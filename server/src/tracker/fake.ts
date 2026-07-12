@@ -1,3 +1,4 @@
+import { CairnError } from "../errors.js";
 import type {
   Capability, Issue, IssueCreate, IssuePatch, IssueState, Phase, Tracker,
 } from "./types.js";
@@ -23,7 +24,7 @@ export class FakeTracker implements Tracker {
 
   async getIssue(id: string): Promise<Issue> {
     const i = this.issues.get(id);
-    if (!i) throw new Error(`not found: ${id}`);
+    if (!i) throw new CairnError("NOT_FOUND", `not found: ${id}`);
     return { ...i };
   }
 
