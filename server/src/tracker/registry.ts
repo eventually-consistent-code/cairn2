@@ -20,7 +20,7 @@ export function makeTracker(cfg: CairnConfig): Tracker {
     }
     default:
       throw new CairnError("CONFIG_INVALID",
-        `tracker type '${type}' is not yet implemented (P1b)`,
-        "use github for now, or wait for the P1b adapter plan");
+        `tracker type '${type}' is not yet implemented`,
+        "use github for now, or wait for the adapter plan");
   }
 }
