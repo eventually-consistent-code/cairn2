@@ -51,6 +51,16 @@ export function trackerContract(name: string, factory: () => Promise<Tracker>): 
       else expect(got.state).toBe("open"); // degraded but never 'closed'
     });
 
+    it("in_progress → open transition reads back open", async () => {
+      if (!t.capabilities.hasInProgress) return;
+      const made = await t.createIssue({ title: "contract: wip-return" });
+      await t.updateIssue(made.id, { state: "in_progress" });
+      await t.updateIssue(made.id, { state: "open" });
+      await eventually(async () => {
+        expect((await t.getIssue(made.id)).state).toBe("open");
+      });
+    }, 30_000);
+
     it("close is effective and idempotent", async () => {
       const made = await t.createIssue({ title: "contract: close" });
       await t.closeIssue(made.id);
