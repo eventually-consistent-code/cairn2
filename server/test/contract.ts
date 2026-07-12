@@ -19,12 +19,15 @@ export function trackerContract(name: string, factory: () => Promise<Tracker>): 
       if (t.capabilities.hasLabels) expect(got.labels).toContain("cairn-test");
     });
 
-    it("update changes title and body", async () => {
-      const made = await t.createIssue({ title: "contract: update", body: "old" });
+    it("update changes title and body without clobbering unpatched fields", async () => {
+      const made = await t.createIssue({
+        title: "contract: update", body: "old", labels: ["keep-me"],
+      });
       await t.updateIssue(made.id, { title: "contract: updated", body: "new" });
       const got = await t.getIssue(made.id);
       expect(got.title).toBe("contract: updated");
       expect(got.body).toContain("new");
+      if (t.capabilities.hasLabels) expect(got.labels).toContain("keep-me");
     });
 
     it("in_progress maps per capabilities and reads back", async () => {
@@ -45,9 +48,13 @@ export function trackerContract(name: string, factory: () => Promise<Tracker>): 
     it("phase create + assignment + list filter", async () => {
       if (!t.capabilities.hasPhases) return;
       const ph = await t.createPhase(`contract-phase-${Date.now()}`);
-      const made = await t.createIssue({ title: "contract: phased", phase: ph.id });
+      const inPhase = await t.createIssue({ title: "contract: phased", phase: ph.id });
+      const outOfPhase = await t.createIssue({ title: "contract: unphased" });
       const listed = await t.listIssues({ phase: ph.id });
-      expect(listed.map((i) => i.id)).toContain(made.id);
+      const ids = listed.map((i) => i.id);
+      expect(ids).toContain(inPhase.id);
+      expect(ids).not.toContain(outOfPhase.id);
+      expect(listed.every((i) => i.phase === ph.id)).toBe(true);
       expect((await t.listPhases()).map((p) => p.id)).toContain(ph.id);
     });
 
