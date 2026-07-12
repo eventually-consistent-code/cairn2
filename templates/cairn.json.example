@@ -1,0 +1,8 @@
+{
+  "$schema": "cairn 2.0 project config. tracker = your single source of truth for work items. Tokens come from env vars, never this file.",
+  "tracker": {
+    "type": "github",
+    "config": { "repo": "owner/name" }
+  },
+  "agents": { "model": "auto" }
+}
