@@ -83,7 +83,13 @@ export class GitHubTracker implements Tracker {
     if (patch.labels !== undefined) body.labels = patch.labels;
     if (patch.assignee !== undefined) body.assignees = [patch.assignee];
     if (patch.state === "closed") body.state = "closed";
-    if (patch.state === "open") body.state = "open";
+    if (patch.state === "open") {
+      const current = patch.labels
+        ? patch.labels.filter((l) => l !== WIP_LABEL)
+        : (await this.getIssue(id)).labels;
+      body.state = "open";
+      body.labels = current;
+    }
     if (patch.state === "in_progress") {
       const current = patch.labels ?? (await this.getIssue(id)).labels;
       body.state = "open";

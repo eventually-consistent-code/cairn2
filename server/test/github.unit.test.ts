@@ -75,6 +75,20 @@ describe("GitHubTracker mapping", () => {
     expect(closed.state).toBe("closed");
   });
 
+  it("updateIssue(state=open) strips the in-progress label but keeps others", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: ghIssue({ labels: [{ name: "in-progress" }, { name: "priority-high" }] }) }, // GET current
+      { status: 200, body: ghIssue({ labels: [{ name: "priority-high" }], state: "open" }) }, // PATCH
+    ]);
+    const t = new GitHubTracker({ repo: "o/r" }, f, () => "tok");
+    await t.updateIssue("7", { state: "open" });
+    const patchCall = calls[calls.length - 1];
+    expect(patchCall.method).toBe("PATCH");
+    expect(patchCall.body).toMatchObject({ state: "open" });
+    expect(patchCall.body.labels).toContain("priority-high");
+    expect(patchCall.body.labels).not.toContain("in-progress");
+  });
+
   it("createPhase POSTs a milestone; listIssues filters by milestone", async () => {
     const { f, calls } = fixtureFetch([
       { status: 201, body: { number: 2, title: "Phase 1", state: "open" } },
