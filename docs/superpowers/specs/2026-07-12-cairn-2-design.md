@@ -151,6 +151,28 @@ Per-project default in `cairn.json`; per-command override (`--quick`,
 | plan | native plan mode only | PLAN.md + CONTEXT.md | + plan-checker agent pass |
 | verify | tests pass | + tracker cross-check | + goal-backward VERIFICATION.md, eval gates |
 
+### Model routing for agent fan-out
+
+Deep-mode fan-out picks a model per subagent — smart by default, user
+overridable:
+
+- **Config:** `cairn.json` → `"agents": { "model": "auto" }`
+  (`auto | inherit | haiku | sonnet | opus`). Per-project default;
+  per-command override (`--model opus`). `inherit` disables routing
+  (session model everywhere); an explicit model pins everything.
+- **Auto rubric** (skill-owned judgment; config schema server-validated):
+
+  | work class | signals | routed model |
+  |---|---|---|
+  | mechanical | enumerate/locate/scrape (file discovery, doc collection) | small/fast (haiku-tier) |
+  | synthesis | research briefs, pattern analysis, standard planning | session model (sonnet-tier) |
+  | judgment gates | plan-checker, adversarial verify, architecture trade-offs | strongest available (opus-tier) |
+
+  Signals: task verb (list vs synthesize vs judge), scope size, novelty,
+  and blast radius — output that gates a lifecycle transition
+  (`verify`/`ship`) always routes up, never down. Bias rule: downgrade only
+  mechanical work; when uncertain, inherit.
+
 ### Native tooling replaces GSD machinery
 
 - Researcher/planner/checker agent zoo → native **Agent fan-out / Workflow**
