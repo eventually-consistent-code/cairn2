@@ -23,6 +23,7 @@ interface GhIssue {
   number: number; title: string; body: string | null; state: string;
   labels: Array<{ name: string }>; milestone: { number: number } | null;
   assignee: { login: string } | null; updated_at: string; html_url: string;
+  pull_request?: unknown;
 }
 
 export class GitHubTracker implements Tracker {
@@ -108,7 +109,7 @@ export class GitHubTracker implements Tracker {
     if (filter?.phase) params.set("milestone", filter.phase);
     const raw = (await this.api(
       "GET", `/repos/${this.cfg.repo}/issues?${params}`)) as GhIssue[];
-    let issues = raw.map((r) => this.normalize(r));
+    let issues = raw.filter((r) => !("pull_request" in r)).map((r) => this.normalize(r));
     if (filter?.state) issues = issues.filter((i) => i.state === filter.state);
     return issues;
   }

@@ -89,6 +89,19 @@ describe("GitHubTracker mapping", () => {
     expect(patchCall.body.labels).not.toContain("in-progress");
   });
 
+  it("listIssues excludes pull requests returned by the issues endpoint", async () => {
+    const { f } = fixtureFetch([
+      { status: 200, body: [
+        ghIssue({ number: 7 }),
+        ghIssue({ number: 9, pull_request: { url: "https://api.github.com/repos/o/r/pulls/9" } }),
+      ] },
+    ]);
+    const t = new GitHubTracker({ repo: "o/r" }, f, () => "tok");
+    const issues = await t.listIssues();
+    expect(issues).toHaveLength(1);
+    expect(issues[0].id).toBe("7");
+  });
+
   it("createPhase POSTs a milestone; listIssues filters by milestone", async () => {
     const { f, calls } = fixtureFetch([
       { status: 201, body: { number: 2, title: "Phase 1", state: "open" } },
