@@ -20,7 +20,7 @@ export async function fetchJson(
       resp = await fetchImpl(url, init);
     } catch (e) {
       lastErr = new CairnError("TRACKER_DOWN", `network error calling ${url}: ${e}`);
-      await sleep(backoffMs * 2 ** attempt);
+      if (attempt < retries) await sleep(backoffMs * 2 ** attempt);
       continue;
     }
     if (resp.ok) {
@@ -32,7 +32,7 @@ export async function fetchJson(
       const remaining = resp.headers.get("x-ratelimit-remaining");
       if (resp.status === 403 && remaining === "0") {
         lastErr = new CairnError("RATE_LIMITED", `rate limited: ${url}`);
-        await sleep(backoffMs * 2 ** attempt);
+        if (attempt < retries) await sleep(backoffMs * 2 ** attempt);
         continue;
       }
       throw new CairnError("AUTH_MISSING", `HTTP ${resp.status} from ${url}`,
@@ -42,7 +42,7 @@ export async function fetchJson(
     if (resp.status === 429 || resp.status >= 500) {
       lastErr = new CairnError(resp.status === 429 ? "RATE_LIMITED" : "TRACKER_DOWN",
         `HTTP ${resp.status} from ${url}`);
-      await sleep(backoffMs * 2 ** attempt);
+      if (attempt < retries) await sleep(backoffMs * 2 ** attempt);
       continue;
     }
     throw new CairnError("TRACKER_DOWN", `HTTP ${resp.status} from ${url}`);

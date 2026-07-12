@@ -39,4 +39,12 @@ describe("fetchJson", () => {
     await expect(fetchJson(f, "https://x", {}, { retries: 1, backoffMs: 1 }))
       .rejects.toMatchObject({ code: "TRACKER_DOWN" });
   });
+
+  it("does not sleep after the final failed attempt", async () => {
+    const f: FetchLike = async () => res(500);
+    const start = Date.now();
+    await expect(fetchJson(f, "https://x", {}, { retries: 0, backoffMs: 1000 }))
+      .rejects.toMatchObject({ code: "TRACKER_DOWN" });
+    expect(Date.now() - start).toBeLessThan(500);
+  });
 });
