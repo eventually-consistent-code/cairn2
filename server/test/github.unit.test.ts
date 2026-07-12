@@ -43,14 +43,28 @@ describe("GitHubTracker mapping", () => {
     expect((await t.getIssue("7")).state).toBe("in_progress");
   });
 
-  it("updateIssue(state=in_progress) adds the label; closed sets state", async () => {
+  it("in_progress without explicit labels preserves the issue's existing labels", async () => {
     const { f, calls } = fixtureFetch([
-      { status: 200, body: ghIssue({ labels: [{ name: "in-progress" }] }) },
+      { status: 200, body: ghIssue({ labels: [{ name: "priority-high" }] }) }, // GET current
+      { status: 200, body: ghIssue({ labels: [{ name: "priority-high" }, { name: "in-progress" }] }) }, // PATCH
     ]);
     const t = new GitHubTracker({ repo: "o/r" }, f, () => "tok");
     await t.updateIssue("7", { state: "in_progress" });
-    expect(calls[0].method).toBe("PATCH");
-    expect(calls[0].body).toMatchObject({ labels: ["in-progress"] });
+    const patchCall = calls[calls.length - 1];
+    expect(patchCall.method).toBe("PATCH");
+    expect(patchCall.body.labels).toEqual(expect.arrayContaining(["priority-high", "in-progress"]));
+  });
+
+  it("updateIssue(state=in_progress) adds the label; closed sets state", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: ghIssue({ labels: [] }) }, // GET current (no existing labels)
+      { status: 200, body: ghIssue({ labels: [{ name: "in-progress" }] }) }, // PATCH
+    ]);
+    const t = new GitHubTracker({ repo: "o/r" }, f, () => "tok");
+    await t.updateIssue("7", { state: "in_progress" });
+    const patchCall = calls[calls.length - 1];
+    expect(patchCall.method).toBe("PATCH");
+    expect(patchCall.body).toMatchObject({ labels: ["in-progress"] });
 
     const { f: f2, calls: c2 } = fixtureFetch([
       { status: 200, body: ghIssue({ state: "closed" }) },
