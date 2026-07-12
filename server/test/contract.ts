@@ -1,6 +1,19 @@
 import { describe, it, expect, beforeAll } from "vitest";
 import type { Tracker } from "../src/tracker/types.js";
 
+/** Retry an async assertion block until it passes or the deadline hits (live backends are eventually consistent). */
+async function eventually<T>(fn: () => Promise<T>, timeoutMs = 15_000, intervalMs = 1_000): Promise<T> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    try {
+      return await fn();
+    } catch (e) {
+      if (Date.now() >= deadline) throw e;
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+  }
+}
+
 /** Behavioral contract every cairn tracker adapter must satisfy. */
 export function trackerContract(name: string, factory: () => Promise<Tracker>): void {
   describe(`tracker contract: ${name}`, () => {
@@ -50,13 +63,15 @@ export function trackerContract(name: string, factory: () => Promise<Tracker>): 
       const ph = await t.createPhase(`contract-phase-${Date.now()}`);
       const inPhase = await t.createIssue({ title: "contract: phased", phase: ph.id });
       const outOfPhase = await t.createIssue({ title: "contract: unphased" });
-      const listed = await t.listIssues({ phase: ph.id });
-      const ids = listed.map((i) => i.id);
-      expect(ids).toContain(inPhase.id);
-      expect(ids).not.toContain(outOfPhase.id);
-      expect(listed.every((i) => i.phase === ph.id)).toBe(true);
+      await eventually(async () => {
+        const listed = await t.listIssues({ phase: ph.id });
+        const ids = listed.map((i) => i.id);
+        expect(ids).toContain(inPhase.id);
+        expect(ids).not.toContain(outOfPhase.id);
+        expect(listed.every((i) => i.phase === ph.id)).toBe(true);
+      });
       expect((await t.listPhases()).map((p) => p.id)).toContain(ph.id);
-    });
+    }, 30_000);
 
     it("updatedAt is ISO-8601 parseable", async () => {
       const made = await t.createIssue({ title: "contract: ts" });
