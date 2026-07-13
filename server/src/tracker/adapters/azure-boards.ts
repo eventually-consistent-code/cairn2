@@ -261,9 +261,12 @@ export class AzureBoardsTracker implements Tracker {
 
   async listIssues(filter?: { phase?: string; state?: IssueState }): Promise<Issue[]> {
     let query = "SELECT [System.Id] FROM WorkItems";
+    const projectClause = `[System.TeamProject] = '${this.escapeWiql(this.cfg.project)}'`;
     if (filter?.phase) {
       const path = await this.resolvePhasePath(filter.phase);
-      query += ` WHERE [System.IterationPath] = '${this.escapeWiql(path)}'`;
+      query += ` WHERE ${projectClause} AND [System.IterationPath] = '${this.escapeWiql(path)}'`;
+    } else {
+      query += ` WHERE ${projectClause}`;
     }
     const wiqlRaw = await this.api(
       "POST", `/${this.projectPath}/_apis/wit/wiql`, { query },
