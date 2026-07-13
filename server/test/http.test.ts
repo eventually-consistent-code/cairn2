@@ -59,4 +59,20 @@ describe("fetchJson", () => {
     await expect(fetchJson(f, "https://x", {}, { context: "t op" }))
       .rejects.toMatchObject({ code: "TRACKER_DOWN", message: expect.stringContaining("malformed JSON") });
   });
+
+  it("paginate follows Link rel=next and concatenates pages", async () => {
+    let call = 0;
+    const f: FetchLike = async () => {
+      call++;
+      if (call === 1)
+        return new Response(JSON.stringify([1, 2]), {
+          status: 200,
+          headers: { link: '<https://x?page=2>; rel="next"' },
+        });
+      return new Response(JSON.stringify([3]), { status: 200 });
+    };
+    const { paginate } = await import("../src/tracker/http.js");
+    expect(await paginate(f, "https://x", {})).toEqual([1, 2, 3]);
+    expect(call).toBe(2);
+  });
 });

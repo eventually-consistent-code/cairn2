@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { CairnError } from "../../errors.js";
-import { fetchJson, type FetchLike } from "../http.js";
+import { fetchJson, paginate, type FetchLike } from "../http.js";
 import type {
   Capability, Issue, IssueCreate, IssuePatch, IssueState, Phase, Tracker,
 } from "../types.js";
@@ -38,14 +38,18 @@ export class GitHubTracker implements Tracker {
     private readonly tokenProvider: () => string = resolveGithubToken,
   ) {}
 
+  private headers(): Record<string, string> {
+    return {
+      authorization: `Bearer ${this.tokenProvider()}`,
+      accept: "application/vnd.github+json",
+      "content-type": "application/json",
+    };
+  }
+
   private async api(method: string, path: string, body?: unknown): Promise<unknown> {
     return fetchJson(this.fetchImpl, `${API}${path}`, {
       method,
-      headers: {
-        authorization: `Bearer ${this.tokenProvider()}`,
-        accept: "application/vnd.github+json",
-        "content-type": "application/json",
-      },
+      headers: this.headers(),
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   }
@@ -121,8 +125,11 @@ export class GitHubTracker implements Tracker {
   async listIssues(filter?: { phase?: string; state?: IssueState }): Promise<Issue[]> {
     const params = new URLSearchParams({ state: "all", per_page: "100" });
     if (filter?.phase) params.set("milestone", filter.phase);
-    const raw = (await this.api(
-      "GET", `/repos/${this.cfg.repo}/issues?${params}`)) as GhIssue[];
+    const raw = (await paginate(
+      this.fetchImpl, `${API}/repos/${this.cfg.repo}/issues?${params}`,
+      { method: "GET", headers: this.headers() },
+      { context: "github issue_list" },
+    )) as GhIssue[];
     let issues = raw.filter((r) => !("pull_request" in r)).map((r) => this.normalize(r));
     if (filter?.state) issues = issues.filter((i) => i.state === filter.state);
     return issues;
@@ -136,9 +143,11 @@ export class GitHubTracker implements Tracker {
   }
 
   async listPhases(): Promise<Phase[]> {
-    const raw = (await this.api(
-      "GET", `/repos/${this.cfg.repo}/milestones?state=all`)) as
-      Array<{ number: number; title: string; state: string }>;
+    const raw = (await paginate(
+      this.fetchImpl, `${API}/repos/${this.cfg.repo}/milestones?state=all`,
+      { method: "GET", headers: this.headers() },
+      { context: "github phase_list" },
+    )) as Array<{ number: number; title: string; state: string }>;
     return raw.map((m) => ({ id: String(m.number), name: m.title,
       state: m.state === "closed" ? "closed" : "open" }));
   }
