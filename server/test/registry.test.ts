@@ -8,22 +8,21 @@ const cfg = (type: string, config: Record<string, unknown>): CairnConfig =>
      agents: { model: "auto" } });
 
 describe("makeTracker", () => {
-  it("builds a GitHubTracker for type=github", () => {
-    expect(makeTracker(cfg("github", { repo: "o/r" }))).toBeInstanceOf(GitHubTracker);
+  it("builds a GitHubTracker for type=github", async () => {
+    expect(await makeTracker(cfg("github", { repo: "o/r" }))).toBeInstanceOf(GitHubTracker);
   });
 
-  it("rejects github config missing repo", () => {
-    expect(() => makeTracker(cfg("github", {})))
-      .toThrowError(expect.objectContaining({ code: "CONFIG_INVALID" }));
+  it("rejects github config missing repo", async () => {
+    await expect(makeTracker(cfg("github", {}))).rejects.toMatchObject({ code: "CONFIG_INVALID" });
   });
 
-  it("names unimplemented backends clearly", () => {
-    expect(() => makeTracker(cfg("clickup", {})))
-      .toThrowError(/clickup.*not yet implemented/);
+  it("rejects path-traversal repo strings", async () => {
+    await expect(makeTracker(cfg("github", { repo: "../.." })))
+      .rejects.toMatchObject({ code: "CONFIG_INVALID" });
   });
 
-  it("rejects path-traversal repo strings", () => {
-    expect(() => makeTracker(cfg("github", { repo: "../.." })))
-      .toThrowError(expect.objectContaining({ code: "CONFIG_INVALID" }));
+  it("names unimplemented backends clearly", async () => {
+    await expect(makeTracker(cfg("gitlab", {})))
+      .rejects.toThrowError(/gitlab.*not yet implemented/);
   });
 });

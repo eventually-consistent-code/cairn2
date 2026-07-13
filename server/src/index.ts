@@ -16,8 +16,8 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
   const ctx = new ActiveContext(deps.projectDir);
   let tracker: Tracker | undefined = deps.tracker;
 
-  const getTracker = (): Tracker => {
-    if (!tracker) tracker = new CachedTracker(makeTracker(loadConfig(deps.projectDir)));
+  const getTracker = async (): Promise<Tracker> => {
+    if (!tracker) tracker = new CachedTracker(await makeTracker(loadConfig(deps.projectDir)));
     return tracker;
   };
 
@@ -53,12 +53,12 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       inputSchema: { title: z.string(), body: z.string().optional(),
                      labels: z.array(z.string()).optional(),
                      phase: z.string().optional() } },
-    wrap((a: { title: string; body?: string; labels?: string[]; phase?: string }) =>
-      getTracker().createIssue(a)));
+    wrap(async (a: { title: string; body?: string; labels?: string[]; phase?: string }) =>
+      (await getTracker()).createIssue(a)));
 
   server.registerTool("issue_get",
     { description: "Fetch one issue", inputSchema: { id: z.string() } },
-    wrap((a: { id: string }) => getTracker().getIssue(a.id)));
+    wrap(async (a: { id: string }) => (await getTracker()).getIssue(a.id)));
 
   server.registerTool("issue_update",
     { description: "Update an issue (title/body/state/labels/assignee)",
@@ -66,29 +66,29 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
                      body: z.string().optional(), state: StateEnum.optional(),
                      labels: z.array(z.string()).optional(),
                      assignee: z.string().optional() } },
-    wrap((a: { id: string; title?: string; body?: string; state?: IssueState;
+    wrap(async (a: { id: string; title?: string; body?: string; state?: IssueState;
                labels?: string[]; assignee?: string }) => {
       const { id, ...patch } = a;
-      return getTracker().updateIssue(id, patch);
+      return (await getTracker()).updateIssue(id, patch);
     }));
 
   server.registerTool("issue_close",
     { description: "Close an issue", inputSchema: { id: z.string() } },
-    wrap((a: { id: string }) => getTracker().closeIssue(a.id)));
+    wrap(async (a: { id: string }) => (await getTracker()).closeIssue(a.id)));
 
   server.registerTool("issue_list",
     { description: "List issues, optionally by phase/state",
       inputSchema: { phase: z.string().optional(), state: StateEnum.optional() } },
-    wrap((a: { phase?: string; state?: IssueState }) => getTracker().listIssues(a)));
+    wrap(async (a: { phase?: string; state?: IssueState }) => (await getTracker()).listIssues(a)));
 
   server.registerTool("phase_create",
     { description: "Create a phase (milestone/epic/list per backend)",
       inputSchema: { name: z.string() } },
-    wrap((a: { name: string }) => getTracker().createPhase(a.name)));
+    wrap(async (a: { name: string }) => (await getTracker()).createPhase(a.name)));
 
   server.registerTool("phase_list",
     { description: "List phases", inputSchema: {} },
-    wrap(() => getTracker().listPhases()));
+    wrap(async () => (await getTracker()).listPhases()));
 
   return server;
 }
