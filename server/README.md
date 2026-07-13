@@ -20,3 +20,13 @@ cd server && npm run test:live
 The suite creates issues/milestones prefixed `contract:` in the sandbox repo.
 Clean up by closing them or deleting the repo; the suite never touches
 anything it did not create.
+
+## Rebuilding `dist/`
+
+The `server/dist/` directory is committed to the repository so that marketplace installations (via git clone or tarball) can run the MCP server without requiring a build step. When you modify files in `server/src/`, you must rebuild and commit the updated `dist/` directory:
+
+```bash
+cd server && npm run build && git add dist && git commit -m "…"
+```
+
+Contributors should always rebuild `dist/` alongside source changes; a CI check for drift is planned as future work.
