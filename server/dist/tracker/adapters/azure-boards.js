@@ -125,6 +125,21 @@ export class AzureBoardsTracker {
     escapeWiql(s) {
         return s.replace(/'/g, "''");
     }
+    /**
+     * Normalizes a classificationnodes iteration path to the System.IterationPath
+     * format: strips a leading backslash and the literal "Iteration\" segment
+     * classificationnodes includes but System.IterationPath doesn't, e.g.
+     * `\Proj\Iteration\Sprint 1` -> `Proj\Sprint 1`.
+     */
+    normalizeIterationPath(path) {
+        return path.replace(/^\\/, "").replace(/^([^\\]+)\\Iteration\\/, "$1\\");
+    }
+    /** Flattens a classificationnodes response into a flat list of leaf-ish iteration nodes, tolerating both response shapes. */
+    flattenIterationNodes(raw) {
+        if ("value" in raw && Array.isArray(raw.value))
+            return raw.value;
+        return raw.children ?? [];
+    }
     /** Resolves a phase id (GUID) to its iteration path, refreshing the map from listPhases() if unknown. */
     async resolvePhasePath(phaseId) {
         if (!this.phasePaths.has(phaseId))
@@ -212,9 +227,13 @@ export class AzureBoardsTracker {
     }
     async listIssues(filter) {
         let query = "SELECT [System.Id] FROM WorkItems";
+        const projectClause = `[System.TeamProject] = '${this.escapeWiql(this.cfg.project)}'`;
         if (filter?.phase) {
             const path = await this.resolvePhasePath(filter.phase);
-            query += ` WHERE [System.IterationPath] = '${this.escapeWiql(path)}'`;
+            query += ` WHERE ${projectClause} AND [System.IterationPath] = '${this.escapeWiql(path)}'`;
+        }
+        else {
+            query += ` WHERE ${projectClause}`;
         }
         const wiqlRaw = await this.api("POST", `/${this.projectPath}/_apis/wit/wiql`, { query }, { context: "azure-boards issue_list_wiql" });
         let ids = wiqlRaw.workItems.map((w) => w.id);
@@ -247,12 +266,15 @@ export class AzureBoardsTracker {
     }
     async listPhases() {
         const raw = await this.api("GET", `/${this.projectPath}/_apis/wit/classificationnodes/iterations`, undefined, { params: { "$depth": "2" }, context: "azure-boards phase_list" });
+        // Tolerate both known live-response shapes: a { value: [...] } wrapper, or
+        // the root classification node itself with a `children` array (no `value`).
+        const nodes = this.flattenIterationNodes(raw);
         this.phasePaths.clear();
-        for (const node of raw.value) {
-            const path = node.path ?? `${this.cfg.project}\\${node.name}`;
+        for (const node of nodes) {
+            const path = node.path ? this.normalizeIterationPath(node.path) : `${this.cfg.project}\\${node.name}`;
             this.phasePaths.set(node.identifier, path);
         }
         this.phasesLoaded = true; // mark map as refreshed for this instance
-        return raw.value.map((node) => ({ id: node.identifier, name: node.name, state: "open" }));
+        return nodes.map((node) => ({ id: node.identifier, name: node.name, state: "open" }));
     }
 }

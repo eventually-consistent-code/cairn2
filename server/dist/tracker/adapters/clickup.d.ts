@@ -72,6 +72,8 @@ export declare class ClickUpTracker implements Tracker {
     private headers;
     private api;
     private assertId;
+    /** Validates a caller-supplied phase (list) id before it reaches a URL. defaultListId is trusted config, not user input. */
+    private assertPhaseId;
     private normalizeState;
     private normalize;
     createIssue(input: IssueCreate): Promise<Issue>;

@@ -65,6 +65,15 @@ export declare class AzureBoardsTracker implements Tracker {
     private normalize;
     /** Escapes single quotes in a WIQL string literal by doubling them. */
     private escapeWiql;
+    /**
+     * Normalizes a classificationnodes iteration path to the System.IterationPath
+     * format: strips a leading backslash and the literal "Iteration\" segment
+     * classificationnodes includes but System.IterationPath doesn't, e.g.
+     * `\Proj\Iteration\Sprint 1` -> `Proj\Sprint 1`.
+     */
+    private normalizeIterationPath;
+    /** Flattens a classificationnodes response into a flat list of leaf-ish iteration nodes, tolerating both response shapes. */
+    private flattenIterationNodes;
     /** Resolves a phase id (GUID) to its iteration path, refreshing the map from listPhases() if unknown. */
     private resolvePhasePath;
     /** Resolves an iteration path to a phase id (GUID), self-healing the map on miss if not yet loaded. */
