@@ -65,6 +65,9 @@ export class AzureBoardsTracker implements Tracker {
   /** id (GUID) -> full iteration path, refreshed from listPhases() when an unknown id shows up. */
   private phasePaths = new Map<string, string>();
 
+  /** Tracks whether we've called listPhases() once on this instance (guards against infinite refresh loops). */
+  private phasesLoaded = false;
+
   constructor(
     private readonly cfg: Config,
     private readonly fetchImpl: FetchLike = fetch,
@@ -171,6 +174,27 @@ export class AzureBoardsTracker implements Tracker {
     return path;
   }
 
+  /** Resolves an iteration path to a phase id (GUID), self-healing the map on miss if not yet loaded. */
+  private async phaseIdForPath(iterationPath: string | undefined): Promise<string | undefined> {
+    if (!iterationPath) return undefined;
+
+    // Scan map for a match.
+    for (const [id, path] of this.phasePaths) {
+      if (path === iterationPath) return id;
+    }
+
+    // Miss: if map not yet refreshed this instance, call listPhases() once and rescan.
+    if (!this.phasesLoaded) {
+      await this.listPhases();
+      for (const [id, path] of this.phasePaths) {
+        if (path === iterationPath) return id;
+      }
+    }
+
+    // Still missing after refresh (or map already loaded and no match): give up.
+    return undefined;
+  }
+
   async createIssue(input: IssueCreate): Promise<Issue> {
     const ops: Array<{ op: string; path: string; value: unknown }> = [
       { op: "add", path: "/fields/System.Title", value: input.title },
@@ -197,7 +221,12 @@ export class AzureBoardsTracker implements Tracker {
       "GET", `/${this.projectPath}/_apis/wit/workitems/${id}`, undefined,
       { context: "azure-boards issue_get" },
     );
-    return this.normalize(raw as WorkItem);
+    const workItem = raw as WorkItem;
+    const issue = this.normalize(workItem);
+    if (issue.phase === undefined && workItem.fields["System.IterationPath"]) {
+      issue.phase = await this.phaseIdForPath(workItem.fields["System.IterationPath"]);
+    }
+    return issue;
   }
 
   async updateIssue(id: string, patch: IssuePatch): Promise<Issue> {
@@ -218,7 +247,12 @@ export class AzureBoardsTracker implements Tracker {
       "PATCH", `/${this.projectPath}/_apis/wit/workitems/${id}`, ops,
       { contentType: "application/json-patch+json", context: "azure-boards issue_update" },
     );
-    return this.normalize(raw as WorkItem);
+    const workItem = raw as WorkItem;
+    const issue = this.normalize(workItem);
+    if (issue.phase === undefined && workItem.fields["System.IterationPath"]) {
+      issue.phase = await this.phaseIdForPath(workItem.fields["System.IterationPath"]);
+    }
+    return issue;
   }
 
   async closeIssue(id: string): Promise<Issue> {
@@ -248,7 +282,18 @@ export class AzureBoardsTracker implements Tracker {
       { params: { ids: ids.join(","), "$expand": "all" }, context: "azure-boards issue_list_batch" },
     ) as { value: WorkItem[] };
 
-    let issues = batchRaw.value.map((w) => this.normalize(w));
+    const workItems = batchRaw.value;
+    let issues = workItems.map((w) => this.normalize(w));
+
+    // Self-heal phase resolution for all issues at once (one listPhases call per 100+ items)
+    const unresolved = issues.filter((i) => i.phase === undefined && workItems.find((w) => w.id === Number(i.id))?.fields["System.IterationPath"]);
+    if (unresolved.length > 0) {
+      for (const issue of unresolved) {
+        const raw = workItems.find((w) => w.id === Number(issue.id))!;
+        issue.phase = await this.phaseIdForPath(raw.fields["System.IterationPath"]);
+      }
+    }
+
     if (filter?.state) issues = issues.filter((i) => i.state === filter.state);
     return issues;
   }
@@ -274,6 +319,7 @@ export class AzureBoardsTracker implements Tracker {
       const path = node.path ?? `${this.cfg.project}\\${node.name}`;
       this.phasePaths.set(node.identifier, path);
     }
+    this.phasesLoaded = true; // mark map as refreshed for this instance
     return raw.value.map((node) => ({ id: node.identifier, name: node.name, state: "open" }));
   }
 }

@@ -267,4 +267,24 @@ describe("AzureBoardsTracker mapping", () => {
       if (prevEnv !== undefined) process.env.AZURE_DEVOPS_PAT = prevEnv;
     }
   });
+
+  it("getIssue self-heals phase lookup on cold phasePaths map (no prior listPhases call)", async () => {
+    // COLD map scenario: work item assigned to "Proj\\Sprint 9" iteration by another session.
+    // The map is empty. getIssue should:
+    // 1. Fetch the work item (IterationPath = "Proj\\Sprint 9")
+    // 2. Call listPhases to populate the map (finds "Sprint 9" with id guid-sprint-9)
+    // 3. Rescan and resolve phase = guid-sprint-9
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: wi({ fields: { "System.IterationPath": "Proj\\Sprint 9" } }) },
+      { status: 200, body: { value: [{ identifier: "guid-sprint-9", name: "Sprint 9", path: "Proj\\Sprint 9" }] } },
+    ]);
+    const t = new AzureBoardsTracker(cfg, f, () => "pat123");
+    // Do NOT call listPhases — map is cold
+    const issue = await t.getIssue("7");
+    expect(issue.phase).toBe("guid-sprint-9");
+    // Verify both API calls happened in order: GET work item, then GET classificationnodes
+    expect(calls).toHaveLength(2);
+    expect(calls[0].url).toContain("/workitems/7");
+    expect(calls[1].url).toContain("/classificationnodes/iterations");
+  });
 });
