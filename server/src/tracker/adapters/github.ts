@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, paginate, type FetchLike } from "../http.js";
 import type {
@@ -7,6 +8,16 @@ import type {
 
 const API = "https://api.github.com";
 const WIP_LABEL = "in-progress";
+
+// Repo must be "owner/name" — the lookahead blocks path-traversal strings
+// like "../.." from slipping through as a "valid" repo slug.
+export const configSchema = z.object({
+  repo: z.string().regex(/^(?!.*\.\.)[\w.-]+\/[\w.-]+$/),
+});
+
+export function make(config: z.infer<typeof configSchema>, fetchImpl?: FetchLike): Tracker {
+  return new GitHubTracker(config, fetchImpl);
+}
 
 export function resolveGithubToken(): string {
   const env = process.env.GITHUB_TOKEN;
