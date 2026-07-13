@@ -6,6 +6,7 @@ import { CairnError } from "./errors.js";
 import { loadConfig } from "./config.js";
 import { ActiveContext } from "./active-context.js";
 import { makeTracker } from "./tracker/registry.js";
+import { CachedTracker } from "./tracker/cached.js";
 import type { Tracker, IssueState } from "./tracker/types.js";
 
 const StateEnum = z.enum(["open", "in_progress", "closed"]);
@@ -16,7 +17,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
   let tracker: Tracker | undefined = deps.tracker;
 
   const getTracker = (): Tracker => {
-    if (!tracker) tracker = makeTracker(loadConfig(deps.projectDir));
+    if (!tracker) tracker = new CachedTracker(makeTracker(loadConfig(deps.projectDir)));
     return tracker;
   };
 
