@@ -4,7 +4,7 @@ import type { CairnConfig } from "../config.js";
 import type { Tracker } from "./types.js";
 import { GitHubTracker } from "./adapters/github.js";
 
-const GitHubCfg = z.object({ repo: z.string().regex(/^[^/]+\/[^/]+$/) });
+const GitHubCfg = z.object({ repo: z.string().regex(/^(?!.*\.\.)[\w.-]+\/[\w.-]+$/) });
 
 export function makeTracker(cfg: CairnConfig): Tracker {
   const { type, config } = cfg.tracker;
