@@ -4,6 +4,13 @@
   "description": "cairn 2.0 MCP server — tracker, planning, memory",
   "type": "module",
   "license": "MIT",
+  "main": "dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "bin": {
     "cairn-server": "dist/index.js"
   },

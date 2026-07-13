@@ -1,4 +1,7 @@
 #!/usr/bin/env node
+import { readFileSync } from "node:fs";
+import { realpathSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -11,8 +14,10 @@ import type { Tracker, IssueState } from "./tracker/types.js";
 
 const StateEnum = z.enum(["open", "in_progress", "closed"]);
 
+const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version as string;
+
 export function buildServer(deps: { projectDir: string; tracker?: Tracker }): McpServer {
-  const server = new McpServer({ name: "cairn", version: "2.0.0-alpha.0" });
+  const server = new McpServer({ name: "cairn", version: VERSION });
   const ctx = new ActiveContext(deps.projectDir);
   let tracker: Tracker | undefined = deps.tracker;
 
@@ -94,7 +99,16 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
 }
 
 // CLI entry — stdio transport; config loads lazily per tool call.
-const isMain = process.argv[1]?.endsWith("index.js");
+const isMain = (() => {
+  const argv1 = process.argv[1];
+  if (!argv1) return false;
+  try {
+    return import.meta.url === pathToFileURL(realpathSync(argv1)).href;
+  } catch {
+    return false;
+  }
+})();
+
 if (isMain) {
   const projectDir = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
   const server = buildServer({ projectDir });
