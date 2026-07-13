@@ -215,6 +215,10 @@ export class JiraTracker implements Tracker {
   }
 
   async listIssues(filter?: { phase?: string; state?: IssueState }): Promise<Issue[]> {
+    if (filter?.phase && !ID_RE.test(filter.phase)) {
+      throw new CairnError("NOT_FOUND", `invalid phase key: ${filter.phase}`,
+        "phase key must look like PROJ-123");
+    }
     const jql = filter?.phase
       ? `parent = ${filter.phase}`
       : `project = ${this.cfg.projectKey}`;
