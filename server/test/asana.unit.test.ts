@@ -155,6 +155,13 @@ describe("AsanaTracker mapping", () => {
     expect(issues).toHaveLength(1);
   });
 
+  it("listIssues rejects an injection-shaped phase id before any HTTP call", async () => {
+    const { f, calls } = fixtureFetch([]);
+    const t = new AsanaTracker({ projectGid: "999", tokenEnv: "ASANA_TOKEN" }, f, () => "tok");
+    await expect(t.listIssues({ phase: "../../team/x" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(calls.length).toBe(0);
+  });
+
   it("listIssues() derives phase from memberships.section.gid", async () => {
     const { f } = fixtureFetch([
       { status: 200, body: { data: [asanaTask({ memberships: [{ section: { gid: "5001" } }] }).data] } },

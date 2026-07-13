@@ -150,6 +150,13 @@ describe("ClickUpTracker mapping", () => {
     expect(calls[0].url).toBe("https://api.clickup.com/api/v2/list/555/task?include_closed=true");
   });
 
+  it("listIssues rejects an injection-shaped phase id before any HTTP call", async () => {
+    const { f, calls } = fixtureFetch([]);
+    const t = new ClickUpTracker(cfg, f, () => "tok");
+    await expect(t.listIssues({ phase: "../../team/x" })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(calls.length).toBe(0);
+  });
+
   it("createPhase POSTs /folder/{folderId}/list when configured with folderId", async () => {
     const { f, calls } = fixtureFetch([{ status: 200, body: { id: "777", name: "Phase 1" } }]);
     const t = new ClickUpTracker(cfg, f, () => "tok");

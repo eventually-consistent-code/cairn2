@@ -85,6 +85,14 @@ export class ClickUpTracker implements Tracker {
     }
   }
 
+  /** Validates a caller-supplied phase (list) id before it reaches a URL. defaultListId is trusted config, not user input. */
+  private assertPhaseId(id: string): void {
+    if (!/^[a-z0-9]+$/i.test(id)) {
+      throw new CairnError("NOT_FOUND", `invalid phase id: ${id}`,
+        "phase id must be alphanumeric");
+    }
+  }
+
   private normalizeState(status: CuStatus): IssueState {
     if (status.type === "open") return "open";
     if (status.type === "done" || status.type === "closed") return "closed";
@@ -109,6 +117,7 @@ export class ClickUpTracker implements Tracker {
   }
 
   async createIssue(input: IssueCreate): Promise<Issue> {
+    if (input.phase) this.assertPhaseId(input.phase);
     const listId = input.phase ?? this.cfg.defaultListId;
     const body: Record<string, unknown> = {
       name: input.title, description: input.body ?? "",
@@ -170,6 +179,7 @@ export class ClickUpTracker implements Tracker {
     // no "all tasks across lists" endpoint without iterating every list, so
     // an unphased call is scoped to defaultListId just like a phased call is
     // scoped to that phase's list.
+    if (filter?.phase) this.assertPhaseId(filter.phase);
     const listId = filter?.phase ?? this.cfg.defaultListId;
     const raw = (await this.api("GET", `/list/${listId}/task?include_closed=true`,
       undefined, "clickup listIssues")) as { tasks: CuTask[] };
