@@ -25,4 +25,16 @@ describe("CachedTracker", () => {
     await t.updateIssue(made.id, { title: "via-cache" }); // write → clear
     expect((await t.getIssue(made.id)).title).toBe("via-cache");
   });
+
+  it("cached reads return independent copies — mutation cannot poison the cache", async () => {
+    const inner = new FakeTracker();
+    const t = new CachedTracker(inner, new ReadCache(60_000));
+    const made = await t.createIssue({ title: "a", labels: ["x"] });
+    const first = await t.getIssue(made.id);
+    first.labels.push("EVIL");
+    first.title = "mutated";
+    const second = await t.getIssue(made.id); // same TTL window — cache hit
+    expect(second.labels).toEqual(["x"]);
+    expect(second.title).toBe("a");
+  });
 });
