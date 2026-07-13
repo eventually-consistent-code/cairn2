@@ -126,4 +126,18 @@ describe("GitHubTracker mapping", () => {
     await t.getIssue("7");
     expect(auth).toBe("Bearer tok123");
   });
+
+  it("rejects non-numeric issue ids before any HTTP call", async () => {
+    const { f, calls } = fixtureFetch([]);
+    const t = new GitHubTracker({ repo: "o/r" }, f, () => "tok");
+    await expect(t.getIssue("7/comments")).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(calls.length).toBe(0);
+  });
+
+  it("throws CONFIG_INVALID on non-numeric phase instead of dropping it", async () => {
+    const { f } = fixtureFetch([]);
+    const t = new GitHubTracker({ repo: "o/r" }, f, () => "tok");
+    await expect(t.createIssue({ title: "x", phase: "nope" }))
+      .rejects.toMatchObject({ code: "CONFIG_INVALID" });
+  });
 });

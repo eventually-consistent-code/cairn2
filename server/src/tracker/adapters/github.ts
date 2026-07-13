@@ -50,6 +50,13 @@ export class GitHubTracker implements Tracker {
     });
   }
 
+  private assertId(id: string): void {
+    if (!/^\d+$/.test(id)) {
+      throw new CairnError("NOT_FOUND", `invalid issue id: ${id}`,
+        "issue id must be a numeric string");
+    }
+  }
+
   private normalize(raw: GhIssue): Issue {
     const labels = raw.labels.map((l) => l.name);
     let state: IssueState = raw.state === "closed" ? "closed" : "open";
@@ -64,6 +71,11 @@ export class GitHubTracker implements Tracker {
   }
 
   async createIssue(input: IssueCreate): Promise<Issue> {
+    if (input.phase && !/^\d+$/.test(input.phase)) {
+      throw new CairnError("CONFIG_INVALID",
+        `invalid phase: ${input.phase}`,
+        "phase must be a numeric string");
+    }
     const body: Record<string, unknown> = {
       title: input.title, body: input.body ?? "", labels: input.labels ?? [],
     };
@@ -73,11 +85,13 @@ export class GitHubTracker implements Tracker {
   }
 
   async getIssue(id: string): Promise<Issue> {
+    this.assertId(id);
     const raw = await this.api("GET", `/repos/${this.cfg.repo}/issues/${id}`);
     return this.normalize(raw as GhIssue);
   }
 
   async updateIssue(id: string, patch: IssuePatch): Promise<Issue> {
+    this.assertId(id);
     const body: Record<string, unknown> = {};
     if (patch.title !== undefined) body.title = patch.title;
     if (patch.body !== undefined) body.body = patch.body;

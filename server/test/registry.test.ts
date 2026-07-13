@@ -21,4 +21,9 @@ describe("makeTracker", () => {
     expect(() => makeTracker(cfg("clickup", {})))
       .toThrowError(/clickup.*not yet implemented/);
   });
+
+  it("rejects path-traversal repo strings", () => {
+    expect(() => makeTracker(cfg("github", { repo: "../.." })))
+      .toThrowError(expect.objectContaining({ code: "CONFIG_INVALID" }));
+  });
 });
