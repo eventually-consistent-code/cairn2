@@ -145,7 +145,7 @@ export class ClickUpTracker implements Tracker {
     const body: Record<string, unknown> = {};
     if (patch.title !== undefined) body.name = patch.title;
     if (patch.body !== undefined) body.description = patch.body;
-    if (patch.assignee !== undefined) body.assignees = { add: [patch.assignee] };
+    // assignee writes need numeric user-id resolution — deferred until assignee semantics are speced
     if (patch.state === "closed") body.status = this.cfg.statuses.closed;
     if (patch.state === "open") body.status = this.cfg.statuses.open;
     if (patch.state === "in_progress") body.status = this.cfg.statuses.in_progress;

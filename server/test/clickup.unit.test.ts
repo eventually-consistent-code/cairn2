@@ -214,6 +214,15 @@ describe("ClickUpTracker mapping", () => {
     expect(calls.some((c) => c.method === "DELETE" || c.url.includes("/tag/"))).toBe(false);
   });
 
+  it("updateIssue silently ignores assignee patch; preserves title in PUT body", async () => {
+    const { f, calls } = fixtureFetch([{ status: 200, body: cuTask({ name: "t" }) }]);
+    const t = new ClickUpTracker(cfg, f, () => "tok");
+    await t.updateIssue("abc123", { title: "t", assignee: "someone" });
+    expect(calls[0].method).toBe("PUT");
+    expect(calls[0].body).toMatchObject({ name: "t" });
+    expect(calls[0].body).not.toHaveProperty("assignees");
+  });
+
   it("rejects non-alphanumeric issue ids before any HTTP call", async () => {
     const { f, calls } = fixtureFetch([]);
     const t = new ClickUpTracker(cfg, f, () => "tok");
