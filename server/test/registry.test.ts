@@ -7,6 +7,19 @@ const cfg = (type: string, config: Record<string, unknown>): CairnConfig =>
   ({ tracker: { type: type as CairnConfig["tracker"]["type"], config },
      agents: { model: "auto" } });
 
+// Minimal valid config per adapter's configSchema — used for the six-backend
+// build smoke test below. None of the adapters resolve their token env var
+// until the first API call, so this exercises construction only (no network,
+// no env vars needed).
+const MINIMAL: Record<string, Record<string, unknown>> = {
+  github: { repo: "o/r" },
+  gitlab: { project: "o/r" },
+  jira: { baseUrl: "https://x.atlassian.net", projectKey: "X" },
+  asana: { projectGid: "123" },
+  "azure-boards": { orgUrl: "https://dev.azure.com/o", project: "P" },
+  clickup: { defaultListId: "1", spaceId: "2" },
+};
+
 describe("makeTracker", () => {
   it("builds a GitHubTracker for type=github", async () => {
     expect(await makeTracker(cfg("github", { repo: "o/r" }))).toBeInstanceOf(GitHubTracker);
@@ -21,11 +34,10 @@ describe("makeTracker", () => {
       .rejects.toMatchObject({ code: "CONFIG_INVALID" });
   });
 
-  it("names unimplemented backends clearly", async () => {
-    // The gitlab adapter doesn't exist, so import() will throw a module-not-found error
-    // Our error handler should map this to CONFIG_INVALID with "not yet implemented"
-    await expect(makeTracker(cfg("gitlab", {})))
-      .rejects.toMatchObject({ code: "CONFIG_INVALID" });
+  it("builds a tracker for every supported type", async () => {
+    for (const [type, config] of Object.entries(MINIMAL)) {
+      expect(await makeTracker(cfg(type, config))).toBeTruthy();
+    }
   });
 });
 

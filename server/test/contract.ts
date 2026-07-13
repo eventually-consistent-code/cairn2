@@ -61,6 +61,15 @@ export function trackerContract(name: string, factory: () => Promise<Tracker>): 
       });
     }, 30_000);
 
+    it("closed → open transition reads back open (reopen)", async () => {
+      const made = await t.createIssue({ title: "contract: reopen" });
+      await t.closeIssue(made.id);
+      await t.updateIssue(made.id, { state: "open" });
+      await eventually(async () => {
+        expect((await t.getIssue(made.id)).state).toBe("open");
+      });
+    }, 30_000);
+
     it("close is effective and idempotent", async () => {
       const made = await t.createIssue({ title: "contract: close" });
       await t.closeIssue(made.id);
