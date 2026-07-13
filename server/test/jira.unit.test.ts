@@ -240,6 +240,14 @@ describe("JiraTracker mapping", () => {
     expect(calls.length).toBe(0);
   });
 
+  it("rejects a non-key phase filter before any HTTP (JQL injection guard)", async () => {
+    const { f, calls } = fixtureFetch([]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e@x.com", token: "tok" }));
+    await expect(t.listIssues({ phase: "CHN-1 OR project = X" }))
+      .rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(calls.length).toBe(0);
+  });
+
   it("throws AUTH_MISSING with zero HTTP calls when email/token env vars are absent", async () => {
     const { f, calls } = fixtureFetch([]);
     const original = { email: process.env.JIRA_EMAIL, token: process.env.JIRA_API_TOKEN };
