@@ -47,4 +47,16 @@ describe("fetchJson", () => {
       .rejects.toMatchObject({ code: "TRACKER_DOWN" });
     expect(Date.now() - start).toBeLessThan(500);
   });
+
+  it("prefixes errors with context when provided", async () => {
+    const f: FetchLike = async () => res(404);
+    await expect(fetchJson(f, "https://x", {}, { context: "github issue_get" }))
+      .rejects.toMatchObject({ code: "NOT_FOUND", message: expect.stringContaining("[github issue_get]") });
+  });
+
+  it("maps malformed 2xx JSON to typed TRACKER_DOWN", async () => {
+    const f: FetchLike = async () => new Response("<html>oops</html>", { status: 200 });
+    await expect(fetchJson(f, "https://x", {}, { context: "t op" }))
+      .rejects.toMatchObject({ code: "TRACKER_DOWN", message: expect.stringContaining("malformed JSON") });
+  });
 });
