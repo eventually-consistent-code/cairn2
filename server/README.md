@@ -15,12 +15,17 @@ env vars aren't set, so `npm test` never touches the network.
 
 | type | unit | contract (fake) | contract (cached) | live status | live env vars |
 |---|---|---|---|---|---|
-| `github` | ✅ | ✅ | ✅ | 🟢 live-green (7/7, sandbox verified) | `CAIRN_TEST_GITHUB_REPO`, `GITHUB_TOKEN` (or `gh auth login`) |
+| `github` | ✅ | ✅ | ✅ | 🟢 live-green (8/8, sandbox, 2026-07-13) | `CAIRN_TEST_GITHUB_REPO`, `GITHUB_TOKEN` (or `gh auth login`) |
 | `gitlab` | ✅ | ✅ | ✅ | ⏳ implemented, live pending credentials | `CAIRN_TEST_GITLAB_PROJECT`, `GITLAB_TOKEN` |
 | `jira` | ✅ | ✅ | ✅ | ⏳ implemented, live pending credentials | `CAIRN_TEST_JIRA_BASE_URL`, `CAIRN_TEST_JIRA_PROJECT_KEY`, `JIRA_EMAIL`, `JIRA_API_TOKEN` |
 | `asana` | ✅ | ✅ | ✅ | ⏳ implemented, live pending credentials | `CAIRN_TEST_ASANA_PROJECT_GID`, `ASANA_TOKEN` |
 | `azure-boards` | ✅ | ✅ | ✅ | ⏳ implemented, live pending credentials | `CAIRN_TEST_AZURE_ORG_URL`, `CAIRN_TEST_AZURE_PROJECT`, `AZURE_DEVOPS_PAT` |
 | `clickup` | ✅ | ✅ | ✅ | ⏳ implemented, live pending credentials | `CAIRN_TEST_CLICKUP_DEFAULT_LIST`, `CAIRN_TEST_CLICKUP_SPACE` (or `CAIRN_TEST_CLICKUP_FOLDER`), `CLICKUP_TOKEN` |
+
+"contract (fake)" is ONE shared run of `test/contract.ts` against `FakeTracker`
+(and `CachedTracker(FakeTracker)` for "contract (cached)") — it is not a
+per-adapter run; each adapter's own live-gate coverage is what "live status"
+reports above.
 
 "contract (fake)"/"contract (cached)" mean the adapter's behavior is exercised
 indirectly — every adapter shares the same `trackerContract` suite
