@@ -154,7 +154,10 @@ export class JiraTracker implements Tracker {
     const match = resp.transitions.find(
       (t) => t.to?.name?.toLowerCase() === target || t.name?.toLowerCase() === target,
     );
-    if (!match) return;
+    if (!match) {
+      console.error(`[cairn] jira: no transition to "${targetName}" found for issue ${key}; leaving state unchanged`);
+      return;
+    }
     await this.api("POST", `/rest/api/3/issue/${key}/transitions`,
       { transition: { id: match.id } }, "jira transition");
   }
@@ -164,7 +167,10 @@ export class JiraTracker implements Tracker {
     const resp = (await this.api("GET", `/rest/api/3/issue/${key}/transitions`,
       undefined, "jira transition_list")) as { transitions: JiraTransition[] };
     const match = resp.transitions.find((t) => t.to?.statusCategory?.key === "new");
-    if (!match) return;
+    if (!match) {
+      console.error(`[cairn] jira: no transition to an "open"-category state found for issue ${key}; leaving state unchanged`);
+      return;
+    }
     await this.api("POST", `/rest/api/3/issue/${key}/transitions`,
       { transition: { id: match.id } }, "jira transition");
   }
@@ -219,9 +225,12 @@ export class JiraTracker implements Tracker {
       throw new CairnError("NOT_FOUND", `invalid phase key: ${filter.phase}`,
         "phase key must look like PROJ-123");
     }
+    // Epics model cairn "phases", not issues — exclude them from the unfiltered
+    // list. A parent-filtered query can't match an epic anyway (epics have no
+    // parent), so no exclusion is needed on that branch.
     const jql = filter?.phase
       ? `parent = ${filter.phase}`
-      : `project = ${this.cfg.projectKey}`;
+      : `project = ${this.cfg.projectKey} AND issuetype != Epic`;
     const raw = (await this.api("POST", "/rest/api/3/search", {
       jql,
       maxResults: MAX_RESULTS,
