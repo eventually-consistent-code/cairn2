@@ -293,6 +293,40 @@ describe("AzureBoardsTracker mapping", () => {
     }
   });
 
+  it("listPhases tolerates the root-node/children response shape (no top-level value), normalizing \\Iteration\\ paths", async () => {
+    // Real Azure DevOps root classification-node response: no top-level `value`
+    // wrapper — the root node itself, with a `children` array. Paths are
+    // stored as `\Proj\Iteration\Sprint 1` (leading backslash + literal
+    // "Iteration" segment) but System.IterationPath values look like
+    // `Proj\Sprint 1` — normalize before storing so phase resolution matches.
+    const { f, calls } = fixtureFetch([
+      {
+        status: 200,
+        body: {
+          identifier: "root-guid", name: "Proj", path: "\\Proj",
+          children: [
+            { identifier: "guid-9", name: "Sprint 9", path: "\\Proj\\Iteration\\Sprint 9" },
+          ],
+        },
+      },
+    ]);
+    const t = new AzureBoardsTracker(cfg, f, () => "pat123");
+    const phases = await t.listPhases();
+    expect(calls[0].method).toBe("GET");
+    expect(phases).toEqual([{ id: "guid-9", name: "Sprint 9", state: "open" }]);
+
+    // The id->path map must store the normalized form matching System.IterationPath.
+    const { f: f2 } = fixtureFetch([
+      { status: 200, body: { workItems: [{ id: 7 }] } },
+      { status: 200, body: { value: [wi({ id: 7, fields: { "System.IterationPath": "Proj\\Sprint 9" } })] } },
+    ]);
+    const t2 = new AzureBoardsTracker(cfg, f2, () => "pat123");
+    (t2 as unknown as { phasePaths: Map<string, string> }).phasePaths = (t as unknown as { phasePaths: Map<string, string> }).phasePaths;
+    (t2 as unknown as { phasesLoaded: boolean }).phasesLoaded = true;
+    const issues = await t2.listIssues();
+    expect(issues[0].phase).toBe("guid-9");
+  });
+
   it("getIssue self-heals phase lookup on cold phasePaths map (no prior listPhases call)", async () => {
     // COLD map scenario: work item assigned to "Proj\\Sprint 9" iteration by another session.
     // The map is empty. getIssue should:

@@ -55,6 +55,7 @@ interface IterationNode {
   identifier: string;
   name: string;
   path?: string;
+  children?: IterationNode[];
 }
 
 export class AzureBoardsTracker implements Tracker {
@@ -161,6 +162,22 @@ export class AzureBoardsTracker implements Tracker {
   /** Escapes single quotes in a WIQL string literal by doubling them. */
   private escapeWiql(s: string): string {
     return s.replace(/'/g, "''");
+  }
+
+  /**
+   * Normalizes a classificationnodes iteration path to the System.IterationPath
+   * format: strips a leading backslash and the literal "Iteration\" segment
+   * classificationnodes includes but System.IterationPath doesn't, e.g.
+   * `\Proj\Iteration\Sprint 1` -> `Proj\Sprint 1`.
+   */
+  private normalizeIterationPath(path: string): string {
+    return path.replace(/^\\/, "").replace(/^([^\\]+)\\Iteration\\/, "$1\\");
+  }
+
+  /** Flattens a classificationnodes response into a flat list of leaf-ish iteration nodes, tolerating both response shapes. */
+  private flattenIterationNodes(raw: { value: IterationNode[] } | IterationNode): IterationNode[] {
+    if ("value" in raw && Array.isArray(raw.value)) return raw.value;
+    return (raw as IterationNode).children ?? [];
   }
 
   /** Resolves a phase id (GUID) to its iteration path, refreshing the map from listPhases() if unknown. */
@@ -315,14 +332,18 @@ export class AzureBoardsTracker implements Tracker {
     const raw = await this.api(
       "GET", `/${this.projectPath}/_apis/wit/classificationnodes/iterations`, undefined,
       { params: { "$depth": "2" }, context: "azure-boards phase_list" },
-    ) as { value: IterationNode[] };
+    ) as { value: IterationNode[] } | IterationNode;
+
+    // Tolerate both known live-response shapes: a { value: [...] } wrapper, or
+    // the root classification node itself with a `children` array (no `value`).
+    const nodes = this.flattenIterationNodes(raw);
 
     this.phasePaths.clear();
-    for (const node of raw.value) {
-      const path = node.path ?? `${this.cfg.project}\\${node.name}`;
+    for (const node of nodes) {
+      const path = node.path ? this.normalizeIterationPath(node.path) : `${this.cfg.project}\\${node.name}`;
       this.phasePaths.set(node.identifier, path);
     }
     this.phasesLoaded = true; // mark map as refreshed for this instance
-    return raw.value.map((node) => ({ id: node.identifier, name: node.name, state: "open" }));
+    return nodes.map((node) => ({ id: node.identifier, name: node.name, state: "open" }));
   }
 }
