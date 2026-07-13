@@ -76,6 +76,8 @@ export class GitLabTracker implements Tracker {
     if (patch.state === "closed") {
       body.state_event = "close";
     } else if (patch.state === "open") {
+      // unconditional — GitLab reopens closed issues only via state_event; redundant reopen is a no-op
+      body.state_event = "reopen";
       const current = patch.labels
         ? patch.labels.filter((l) => l !== WIP)
         : (await this.getIssue(id)).labels;

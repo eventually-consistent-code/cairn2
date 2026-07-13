@@ -124,7 +124,7 @@ describe("GitLabTracker mapping", () => {
     expect(labels).toEqual(expect.arrayContaining(["priority-high", "in-progress"]));
   });
 
-  it("updateIssue(state=open) strips the WIP label but keeps others", async () => {
+  it("updateIssue(state=open) sends state_event=reopen and strips the WIP label", async () => {
     vi.stubEnv("GITLAB_TOKEN", "tok");
     const { f, calls } = fixtureFetch([
       { status: 200, body: glIssue({ labels: ["in-progress", "priority-high"] }) }, // GET current
@@ -134,10 +134,26 @@ describe("GitLabTracker mapping", () => {
     await t.updateIssue("7", { state: "open" });
     const putCall = calls[calls.length - 1];
     expect(putCall.method).toBe("PUT");
+    expect(putCall.body).toMatchObject({ state_event: "reopen" });
     const labels = String(putCall.body.labels).split(",").filter(Boolean);
     expect(labels).toContain("priority-high");
     expect(labels).not.toContain("in-progress");
-    expect(putCall.body).not.toHaveProperty("state_event");
+  });
+
+  it("updateIssue(state=open) on a closed issue sends state_event=reopen to actually reopen", async () => {
+    vi.stubEnv("GITLAB_TOKEN", "tok");
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: glIssue({ state: "closed", labels: ["priority-high"] }) }, // GET current
+      { status: 200, body: glIssue({ state: "opened", labels: ["priority-high"] }) }, // PUT
+    ]);
+    const t = new GitLabTracker(baseCfg, f);
+    const issue = await t.updateIssue("7", { state: "open" });
+    const putCall = calls[calls.length - 1];
+    expect(putCall.method).toBe("PUT");
+    expect(putCall.body).toMatchObject({ state_event: "reopen" });
+    const labels = String(putCall.body.labels).split(",").filter(Boolean);
+    expect(labels).toContain("priority-high");
+    expect(issue.state).toBe("open");
   });
 
   it("updateIssue(state=closed) sends state_event=close", async () => {
