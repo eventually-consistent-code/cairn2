@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { fetchJson } from "../src/tracker/http.js";
 import type { FetchLike } from "../src/tracker/http.js";
 
@@ -74,5 +74,23 @@ describe("fetchJson", () => {
     const { paginate } = await import("../src/tracker/http.js");
     expect(await paginate(f, "https://x", {})).toEqual([1, 2, 3]);
     expect(call).toBe(2);
+  });
+
+  it("paginate caps at 10 pages and warns on truncation", async () => {
+    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
+    let call = 0;
+    const f: FetchLike = async () => {
+      call++;
+      return new Response(JSON.stringify([call]), {
+        status: 200,
+        headers: { link: `<https://x?page=${call + 1}>; rel="next"` }, // always another page
+      });
+    };
+    const { paginate } = await import("../src/tracker/http.js");
+    const out = await paginate(f, "https://x", {});
+    expect(out).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    expect(call).toBe(10);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("pagination truncated"));
+    warn.mockRestore();
   });
 });
