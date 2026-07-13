@@ -122,6 +122,10 @@ export class AsanaTracker implements Tracker {
   async listIssues(filter?: { phase?: string; state?: IssueState }): Promise<Issue[]> {
     let raw: AsanaTask[];
     if (filter?.phase) {
+      if (!/^\d+$/.test(filter.phase)) {
+        throw new CairnError("NOT_FOUND", `invalid phase: ${filter.phase}`,
+          "phase must be a numeric section gid");
+      }
       const list = await this.api("GET",
         `/sections/${filter.phase}/tasks?opt_fields=${OPT_FIELDS}`,
         undefined, "issue_list_phase");
