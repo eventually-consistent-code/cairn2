@@ -176,6 +176,22 @@ describe("JiraTracker mapping", () => {
     expect(closed.state).toBe("closed");
   });
 
+  it("updateIssue logs (does not throw) when no matching transition is found", async () => {
+    const { f, calls } = fixtureFetch([
+      {
+        status: 200,
+        body: { transitions: [{ id: "21", name: "Done", to: { name: "Done", statusCategory: { key: "done" } } }] },
+      },
+      { status: 200, body: jiraIssue({ status: { statusCategory: { key: "new" } } }) }, // GET after (no transition POSTed)
+    ]);
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const t = new JiraTracker(cfg, f, () => ({ email: "e@x.com", token: "tok" }));
+    await expect(t.updateIssue("CHN-101", { state: "in_progress" })).resolves.toBeDefined();
+    expect(spy).toHaveBeenCalledWith(expect.stringContaining("CHN-101"));
+    expect(calls.some((c) => c.method === "POST" && c.url.includes("/transitions"))).toBe(false);
+    spy.mockRestore();
+  });
+
   it("listIssues(phase) POSTs a JQL search with parent = <KEY> and maxResults 100", async () => {
     const { f, calls } = fixtureFetch([
       { status: 200, body: { issues: [jiraIssue()] } },
@@ -186,6 +202,24 @@ describe("JiraTracker mapping", () => {
     expect(calls[0].method).toBe("POST");
     expect(calls[0].body).toMatchObject({ jql: "parent = CHN-1", maxResults: 100 });
     expect(issues).toHaveLength(1);
+  });
+
+  it("listIssues() without a phase excludes epics from the JQL (epics are phases, not issues)", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: { issues: [jiraIssue()] } },
+    ]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e@x.com", token: "tok" }));
+    await t.listIssues();
+    expect(calls[0].body).toMatchObject({ jql: "project = CHN AND issuetype != Epic" });
+  });
+
+  it("listIssues(phase) does NOT add the epic-exclusion clause (parent filter already excludes epics)", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: { issues: [jiraIssue()] } },
+    ]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e@x.com", token: "tok" }));
+    await t.listIssues({ phase: "CHN-1" });
+    expect(calls[0].body).toMatchObject({ jql: "parent = CHN-1" });
   });
 
   it("listIssues warns via console.error when results are truncated at the 100 cap", async () => {
