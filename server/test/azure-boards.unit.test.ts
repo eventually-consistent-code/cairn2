@@ -199,6 +199,31 @@ describe("AzureBoardsTracker mapping", () => {
     expect(issues).toHaveLength(2);
   });
 
+  it("listIssues() without a phase scopes the WIQL query to the configured project", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: { workItems: [{ id: 7 }] } },
+      { status: 200, body: { value: [wi({ id: 7 })] } },
+    ]);
+    const t = new AzureBoardsTracker(cfg, f, () => "pat123");
+    await t.listIssues();
+    const wiqlCall = calls[0];
+    expect(wiqlCall.body.query).toContain("[System.TeamProject] = 'Proj'");
+  });
+
+  it("listIssues(phase) scopes the WIQL query to the configured project in addition to the iteration path", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: { value: [{ identifier: "guid-1", name: "Sprint 1", path: "Proj\\Sprint 1" }] } },
+      { status: 200, body: { workItems: [{ id: 7 }] } },
+      { status: 200, body: { value: [wi({ id: 7 })] } },
+    ]);
+    const t = new AzureBoardsTracker(cfg, f, () => "pat123");
+    await t.listPhases();
+    await t.listIssues({ phase: "guid-1" });
+    const wiqlCall = calls[1];
+    expect(wiqlCall.body.query).toContain("[System.TeamProject] = 'Proj'");
+    expect(wiqlCall.body.query).toContain("[System.IterationPath] = 'Proj\\Sprint 1'");
+  });
+
   it("listIssues caps at 100 ids and logs a truncation warning", async () => {
     const ids = Array.from({ length: 150 }, (_, i) => i + 1);
     const { f } = fixtureFetch([
