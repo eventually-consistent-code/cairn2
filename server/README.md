@@ -70,6 +70,11 @@ export JIRA_API_TOKEN="<token from https://id.atlassian.com/manage-profile/secur
 cd server && npx vitest run test/jira.live.test.ts
 ```
 
+Known risk: this adapter posts search queries to `POST /rest/api/3/search`,
+which Atlassian has deprecated on Jira Cloud in favor of `/search/jql`.
+Migrating the adapter is expected to be needed by the time this gate runs
+live against a real Jira Cloud instance.
+
 ### asana
 
 ```bash
@@ -88,6 +93,12 @@ export CAIRN_TEST_AZURE_PROJECT="<throwaway project you own>"
 export AZURE_DEVOPS_PAT="<PAT with Work Items (Read & Write) scope>"
 cd server && npx vitest run test/azure-boards.live.test.ts
 ```
+
+Known risk: the classificationnodes/iterations response-shape handling (both
+the `{ value: [...] }` wrapper and the root-node `children` shape, plus
+`\Iteration\`-path normalization) was hardened speculatively based on known
+API variance, not against a live org. This live gate is the definitive check
+that the parsing matches what a real Azure DevOps org actually returns.
 
 ### clickup
 

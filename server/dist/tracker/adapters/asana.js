@@ -97,6 +97,9 @@ export class AsanaTracker {
     async listIssues(filter) {
         let raw;
         if (filter?.phase) {
+            if (!/^\d+$/.test(filter.phase)) {
+                throw new CairnError("NOT_FOUND", `invalid phase: ${filter.phase}`, "phase must be a numeric section gid");
+            }
             const list = await this.api("GET", `/sections/${filter.phase}/tasks?opt_fields=${OPT_FIELDS}`, undefined, "issue_list_phase");
             raw = list;
         }
