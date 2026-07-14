@@ -29,7 +29,36 @@ describe("cairn MCP server", () => {
     expect(tools).toEqual([
       "context_get", "context_set", "issue_close", "issue_create", "issue_get",
       "issue_list", "issue_update", "phase_create", "phase_list",
-    ]);
+      "plan_drift", "plan_issues_set", "plan_phase_ensure",
+      "plan_scaffold_project", "plan_scaffold_phase", "plan_status",
+    ].sort());
+  });
+
+  it("plan lifecycle through tools: scaffold → ensure → issues_set → status → drift", async () => {
+    const proj = await call("plan_scaffold_project", { name: "T" });
+    expect(proj.json.created.length).toBe(2);
+    const ph = await call("plan_scaffold_phase", { number: 1, name: "Core" });
+    expect(ph.json.dir).toBe("01-core");
+    const ensured = await call("plan_phase_ensure", { number: 1, name: "Core" });
+    expect(ensured.json.name).toBe("Phase 1: Core");
+    const made = await call("issue_create", { title: "req 1", phase: ensured.json.id });
+    await call("plan_issues_set", { phaseDir: "01-core", issues: [made.json.id] });
+    const status = await call("plan_status", {});
+    expect(status.json.phases[0].issues).toEqual([made.json.id]);
+    const drift = await call("plan_drift", {});
+    expect(drift.json.ok).toEqual([made.json.id]);
+    expect(drift.json.flagged).toEqual([]);
+  });
+
+  it("plan_issues_set rejects traversal-shaped phaseDir", async () => {
+    const res = await call("plan_issues_set", { phaseDir: "../evil", issues: [] });
+    expect(res.isError).toBe(true);
+  });
+
+  it("plan_issues_set rejects a phaseDir with no scaffolded PLAN.md", async () => {
+    const res = await call("plan_issues_set", { phaseDir: "99-unscaffolded", issues: [] });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("NOT_FOUND");
   });
 
   it("issue lifecycle: create → in_progress → close through tools", async () => {
