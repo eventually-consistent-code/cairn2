@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, unlinkSync } from "node:fs";
+import { existsSync, mkdtempSync, writeFileSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { checkProvenance, checkCardStaleness } from "../src/memory/staleness.js";
@@ -38,6 +38,13 @@ describe("checkProvenance", () => {
   it("unknown for a bad commit sha", () => {
     const { dir } = initRepo();
     expect(checkProvenance(dir, "a.ts", "0000000000000000000000000000000000000")).toBe("unknown");
+  });
+
+  it("returns unknown (never shells out unsafely) for an option-injection-shaped commit", () => {
+    const { dir } = initRepo();
+    expect(checkProvenance(dir, "a.ts", "--output=pwned.txt")).toBe("unknown");
+    // no such file should have been created by an injected git flag
+    expect(existsSync(join(dir, "pwned.txt"))).toBe(false);
   });
 });
 

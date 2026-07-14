@@ -5,6 +5,11 @@ import { join } from "node:path";
 export type ProvenanceStatus = "unchanged" | "changed" | "deleted" | "unknown";
 
 export function checkProvenance(projectDir: string, file: string, commit: string): ProvenanceStatus {
+  // commit comes from card frontmatter -- cards are git-committed and shareable,
+  // so a hostile PR could smuggle in something like "--output=some/file" here.
+  // It sits in option position ahead of "--" in the execFileSync call below, so
+  // refuse anything that isn't shaped like a real hex SHA before we shell out.
+  if (!/^[0-9a-f]{4,40}$/i.test(commit)) return "unknown";
   if (!existsSync(join(projectDir, file))) return "deleted";
   try {
     execFileSync("git", ["diff", "--quiet", commit, "--", file], { cwd: projectDir, stdio: "ignore" });
