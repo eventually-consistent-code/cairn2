@@ -61,6 +61,12 @@ describe("cairn MCP server", () => {
     expect(res.json.code).toBe("NOT_FOUND");
   });
 
+  it("plan_issues_set rejects an issue id containing a comma", async () => {
+    const res = await call("plan_issues_set", { phaseDir: "01-core", issues: ["A,B"] });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("CONFIG_INVALID");
+  });
+
   it("issue lifecycle: create → in_progress → close through tools", async () => {
     const made = await call("issue_create", { title: "via mcp" });
     expect(made.json.state).toBe("open");
