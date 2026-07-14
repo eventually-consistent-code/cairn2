@@ -66,4 +66,14 @@ describe("MemoryIndex", () => {
     expect(idx2.search("durable content").length).toBe(1);
     idx2.close();
   });
+
+  it("searches queries containing apostrophes and hyphens without throwing", () => {
+    const idx = new MemoryIndex(freshDbPath());
+    idx.index({ content: "don't use rate-limit headers directly", source: "s", phase: null, issueId: null, createdAt: "2026-07-14T00:00:00Z" });
+    expect(() => idx.search("don't")).not.toThrow();
+    expect(idx.search("don't").length).toBe(1);
+    expect(() => idx.search("rate-limit")).not.toThrow();
+    expect(idx.search("rate-limit").length).toBe(1);
+    idx.close();
+  });
 });

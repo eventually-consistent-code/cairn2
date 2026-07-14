@@ -110,6 +110,14 @@ describe("cairn MCP server", () => {
     expect(recall.json.find((c: { id: string }) => c.id === card.json.id).stale).toBe(false);
   });
 
+  it("mem_search rejects a negative limit at the schema boundary", async () => {
+    // Zod's positive() check runs at the MCP input-validation layer, before our
+    // handler ever sees it -- so this surfaces as a protocol-level rejection
+    // rather than a { isError: true } tool result. Either way, -1 never reaches
+    // the query (SQLite treats LIMIT -1 as "unlimited").
+    await expect(call("mem_search", { query: "anything", limit: -1 })).rejects.toThrow();
+  });
+
   it("mem_card_recall flags a card stale when its provenance file changed", async () => {
     const gitDir = mkdtempSync(join(tmpdir(), "cairn-mcp-git-"));
     execFileSync("git", ["init", "-q"], { cwd: gitDir });
