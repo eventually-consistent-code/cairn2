@@ -7,6 +7,7 @@ export interface PhaseInfo {
     hasPlan: boolean;
     hasVerification: boolean;
     issues: string[];
+    parseError?: string;
 }
 export declare function projectStatus(projectDir: string): {
     hasProject: boolean;
