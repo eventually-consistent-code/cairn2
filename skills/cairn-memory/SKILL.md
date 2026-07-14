@@ -1,7 +1,13 @@
 ---
 name: cairn-memory
-description: Use when a repo has cairn.json and the cairn MCP tools (mem_*) are available — the cairn 2.0 memory lifecycle. Owns the distill-then-drop policy (what deserves a durable card vs. disposable index), scoped recall conventions, staleness handling. This skill owns judgment: what's worth keeping, when to distill, and how to act on a stale or over-capacity signal.
+description: Use when a repo has cairn.json and the cairn MCP tools (mem_*) are available — the cairn 2.0 memory lifecycle. Owns the distill-then-drop policy (what deserves a durable card vs. disposable index), scoped recall conventions, staleness handling, and the capacity-guard advisory.
 ---
+
+# cairn memory (anti-rot policy)
+
+The server owns mechanism (indexing, search, card storage, git-diff staleness
+checks). This skill owns judgment: what's worth keeping, when to distill, and
+how to act on a stale or over-capacity signal.
 
 ## Activation gate
 
