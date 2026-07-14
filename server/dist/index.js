@@ -110,7 +110,7 @@ export function buildServer(deps) {
     }));
     server.registerTool("mem_search", { description: "Full-text search the memory index, optionally scoped to a phase/issue",
         inputSchema: { query: z.string(), phase: z.number().int().optional(),
-            issueId: z.string().optional(), limit: z.number().int().optional() } }, wrap((a) => getMemIndex().search(a.query, { phase: a.phase, issueId: a.issueId }, a.limit ?? 10)));
+            issueId: z.string().optional(), limit: z.number().int().positive().optional() } }, wrap((a) => getMemIndex().search(a.query, { phase: a.phase, issueId: a.issueId }, a.limit ?? 10)));
     server.registerTool("mem_stats", { description: "Memory index size — chunk count and approximate token usage (capacity guard signal)",
         inputSchema: {} }, wrap(() => getMemIndex().stats()));
     server.registerTool("mem_card_create", { description: "Write a durable memory card (decision/constraint/gotcha/reference) with provenance",

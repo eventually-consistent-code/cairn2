@@ -2,6 +2,12 @@ import { execFileSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { join } from "node:path";
 export function checkProvenance(projectDir, file, commit) {
+    // commit comes from card frontmatter -- cards are git-committed and shareable,
+    // so a hostile PR could smuggle in something like "--output=some/file" here.
+    // It sits in option position ahead of "--" in the execFileSync call below, so
+    // refuse anything that isn't shaped like a real hex SHA before we shell out.
+    if (!/^[0-9a-f]{4,40}$/i.test(commit))
+        return "unknown";
     if (!existsSync(join(projectDir, file)))
         return "deleted";
     try {
