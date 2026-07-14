@@ -11,6 +11,9 @@ export const ConfigSchema = z.object({
   agents: z
     .object({ model: z.enum(["auto", "inherit", "haiku", "sonnet", "opus"]) })
     .default({ model: "auto" }),
+  memory: z
+    .object({ tokenThreshold: z.number().int().positive() })
+    .default({ tokenThreshold: 150000 }),
 });
 export type CairnConfig = z.infer<typeof ConfigSchema>;
 
