@@ -14,6 +14,15 @@ export function projectStatus(projectDir) {
             if (!m)
                 continue;
             const base = join(phasesDir, entry);
+            let issues = [];
+            let parseError;
+            try {
+                issues = readPlanIssues(projectDir, entry);
+            }
+            catch (e) {
+                const message = e instanceof Error ? e.message : String(e);
+                parseError = `${entry}: ${message}`;
+            }
             phases.push({
                 number: Number(m[1]),
                 dir: entry,
@@ -22,7 +31,8 @@ export function projectStatus(projectDir) {
                 hasResearch: existsSync(join(base, "RESEARCH.md")),
                 hasPlan: existsSync(join(base, "PLAN.md")),
                 hasVerification: existsSync(join(base, "VERIFICATION.md")),
-                issues: readPlanIssues(projectDir, entry),
+                issues,
+                ...(parseError ? { parseError } : {}),
             });
         }
     }
