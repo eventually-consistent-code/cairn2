@@ -58,4 +58,19 @@ describe("plan issue round-trip", () => {
       join(d, ".cairn/plans/phases", pd, "PLAN.md"), "utf8");
     expect(raw).toContain("# Phase 1: Core — Plan"); // template body survived
   });
+
+  it("rejects issue ids with frontmatter-breaking characters, leaving PLAN.md untouched", () => {
+    const d = dir();
+    const { dir: pd } = scaffoldPhase(d, 1, "Core");
+    const planPath = join(d, ".cairn/plans/phases", pd, "PLAN.md");
+    const before = readFileSync(planPath, "utf8");
+
+    expect(() => writePlanIssues(d, pd, ["A,B"])).toThrowError(
+      expect.objectContaining({ code: "CONFIG_INVALID" }));
+    expect(readFileSync(planPath, "utf8")).toBe(before);
+
+    expect(() => writePlanIssues(d, pd, ["A\nB"])).toThrowError(
+      expect.objectContaining({ code: "CONFIG_INVALID" }));
+    expect(readFileSync(planPath, "utf8")).toBe(before);
+  });
 });

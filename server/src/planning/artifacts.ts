@@ -96,8 +96,16 @@ export function readPlanIssues(projectDir: string, phaseDir: string): string[] {
   return parsePlanDoc(readFileSync(path, "utf8")).frontmatter.issues;
 }
 
+const ISSUE_ID_BREAKING_CHARS_RE = /[,[\]\n]/;
+
 export function writePlanIssues(projectDir: string, phaseDir: string,
   issues: string[]): void {
+  for (const id of issues) {
+    if (ISSUE_ID_BREAKING_CHARS_RE.test(id)) {
+      throw new CairnError("CONFIG_INVALID",
+        `invalid issue id '${id}': commas, brackets, and newlines are not allowed (breaks frontmatter)`);
+    }
+  }
   const path = join(plansRoot(projectDir), "phases", phaseDir, "PLAN.md");
   const raw = existsSync(path) ? readFileSync(path, "utf8") : PLAN_TEMPLATE(0, phaseDir);
   const { data, body } = parseFrontmatter(raw);
