@@ -7,6 +7,7 @@ export interface PhaseInfo {
   hasContext: boolean; hasResearch: boolean;
   hasPlan: boolean; hasVerification: boolean;
   issues: string[];
+  parseError?: string;
 }
 
 const PHASE_DIR_RE = /^(\d{2})-([a-z0-9-]+)$/;
@@ -24,6 +25,14 @@ export function projectStatus(projectDir: string): {
       const m = PHASE_DIR_RE.exec(entry);
       if (!m) continue;
       const base = join(phasesDir, entry);
+      let issues: string[] = [];
+      let parseError: string | undefined;
+      try {
+        issues = readPlanIssues(projectDir, entry);
+      } catch (e) {
+        const message = e instanceof Error ? e.message : String(e);
+        parseError = `${entry}: ${message}`;
+      }
       phases.push({
         number: Number(m[1]),
         dir: entry,
@@ -32,7 +41,8 @@ export function projectStatus(projectDir: string): {
         hasResearch: existsSync(join(base, "RESEARCH.md")),
         hasPlan: existsSync(join(base, "PLAN.md")),
         hasVerification: existsSync(join(base, "VERIFICATION.md")),
-        issues: readPlanIssues(projectDir, entry),
+        issues,
+        ...(parseError ? { parseError } : {}),
       });
     }
   }
