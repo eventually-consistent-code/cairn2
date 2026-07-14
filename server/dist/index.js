@@ -1,6 +1,7 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { realpathSync } from "node:fs";
+import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -10,6 +11,9 @@ import { loadConfig } from "./config.js";
 import { ActiveContext } from "./active-context.js";
 import { makeTracker } from "./tracker/registry.js";
 import { CachedTracker } from "./tracker/cached.js";
+import { scaffoldProject, scaffoldPhase, writePlanIssues } from "./planning/artifacts.js";
+import { projectStatus } from "./planning/status.js";
+import { driftReport, ensurePhase } from "./planning/mirror.js";
 const StateEnum = z.enum(["open", "in_progress", "closed"]);
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 export function buildServer(deps) {
@@ -61,6 +65,30 @@ export function buildServer(deps) {
     server.registerTool("phase_create", { description: "Create a phase (milestone/epic/list per backend)",
         inputSchema: { name: z.string() } }, wrap(async (a) => (await getTracker()).createPhase(a.name)));
     server.registerTool("phase_list", { description: "List phases", inputSchema: {} }, wrap(async () => (await getTracker()).listPhases()));
+    server.registerTool("plan_scaffold_project", { description: "Create .cairn/plans/PROJECT.md + roadmap.md (never overwrites)",
+        inputSchema: { name: z.string() } }, wrap((a) => scaffoldProject(deps.projectDir, a.name)));
+    server.registerTool("plan_scaffold_phase", { description: "Create phases/NN-slug/ with CONTEXT.md + PLAN.md (+RESEARCH.md)",
+        inputSchema: { number: z.number().int(), name: z.string(),
+            research: z.boolean().optional() } }, wrap((a) => scaffoldPhase(deps.projectDir, a.number, a.name, { research: a.research })));
+    server.registerTool("plan_status", { description: "Phases, artifact presence, and referenced tracker issues",
+        inputSchema: {} }, wrap(() => projectStatus(deps.projectDir)));
+    server.registerTool("plan_phase_ensure", { description: "Ensure the tracker has a phase named 'Phase N: <name>' (idempotent)",
+        inputSchema: { number: z.number().int(), name: z.string() } }, wrap(async (a) => ensurePhase(await getTracker(), a.number, a.name)));
+    server.registerTool("plan_drift", { description: "Flag plan-referenced issues that are missing or closed-unverified",
+        inputSchema: {} }, wrap(async () => driftReport(await getTracker(), deps.projectDir)));
+    const PHASE_DIR_RE = /^\d{2}-[a-z0-9-]+$/;
+    server.registerTool("plan_issues_set", { description: "Set the tracker issue ids a phase's PLAN.md advances",
+        inputSchema: { phaseDir: z.string(), issues: z.array(z.string()) } }, wrap((a) => {
+        if (!PHASE_DIR_RE.test(a.phaseDir)) {
+            throw new CairnError("CONFIG_INVALID", `phaseDir must look like 01-name, got '${a.phaseDir}'`);
+        }
+        const planPath = join(deps.projectDir, ".cairn", "plans", "phases", a.phaseDir, "PLAN.md");
+        if (!existsSync(planPath)) {
+            throw new CairnError("NOT_FOUND", `no PLAN.md at phaseDir '${a.phaseDir}' — scaffold it first with plan_scaffold_phase`);
+        }
+        writePlanIssues(deps.projectDir, a.phaseDir, a.issues);
+        return { ok: true };
+    }));
     return server;
 }
 // CLI entry — stdio transport; config loads lazily per tool call.
