@@ -170,7 +170,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
   server.registerTool("mem_search",
     { description: "Full-text search the memory index, optionally scoped to a phase/issue",
       inputSchema: { query: z.string(), phase: z.number().int().optional(),
-                     issueId: z.string().optional(), limit: z.number().int().optional() } },
+                     issueId: z.string().optional(), limit: z.number().int().positive().optional() } },
     wrap((a: { query: string; phase?: number; issueId?: string; limit?: number }) =>
       getMemIndex().search(a.query, { phase: a.phase, issueId: a.issueId }, a.limit ?? 10)));
 

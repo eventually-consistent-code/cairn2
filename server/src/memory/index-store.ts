@@ -50,8 +50,13 @@ export class MemoryIndex {
   }
 
   search(query: string, filter: { phase?: number; issueId?: string } = {}, limit = 10): SearchResult[] {
+    // FTS5 has its own query grammar (apostrophes, leading hyphens, unbalanced
+    // quotes/parens all mean something special). Wrap the raw agent-supplied
+    // query as a quoted phrase so it's treated as literal text instead of
+    // FTS5 syntax -- doubling internal quotes escapes them per FTS5 rules.
+    const safeQuery = `"${query.replace(/"/g, '""')}"`;
     const conditions = ["chunks MATCH ?"];
-    const params: unknown[] = [query];
+    const params: unknown[] = [safeQuery];
     if (filter.phase !== undefined) { conditions.push("phase = ?"); params.push(filter.phase); }
     if (filter.issueId !== undefined) { conditions.push("issue_id = ?"); params.push(filter.issueId); }
     params.push(limit);
