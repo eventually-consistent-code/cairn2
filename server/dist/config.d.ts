@@ -17,6 +17,13 @@ export declare const ConfigSchema: z.ZodObject<{
     }, {
         model: "auto" | "inherit" | "haiku" | "sonnet" | "opus";
     }>>;
+    memory: z.ZodDefault<z.ZodObject<{
+        tokenThreshold: z.ZodNumber;
+    }, "strip", z.ZodTypeAny, {
+        tokenThreshold: number;
+    }, {
+        tokenThreshold: number;
+    }>>;
 }, "strip", z.ZodTypeAny, {
     tracker: {
         type: "github" | "gitlab" | "jira" | "asana" | "azure-boards" | "clickup";
@@ -25,6 +32,9 @@ export declare const ConfigSchema: z.ZodObject<{
     agents: {
         model: "auto" | "inherit" | "haiku" | "sonnet" | "opus";
     };
+    memory: {
+        tokenThreshold: number;
+    };
 }, {
     tracker: {
         type: "github" | "gitlab" | "jira" | "asana" | "azure-boards" | "clickup";
@@ -32,6 +42,9 @@ export declare const ConfigSchema: z.ZodObject<{
     };
     agents?: {
         model: "auto" | "inherit" | "haiku" | "sonnet" | "opus";
+    } | undefined;
+    memory?: {
+        tokenThreshold: number;
     } | undefined;
 }>;
 export type CairnConfig = z.infer<typeof ConfigSchema>;
