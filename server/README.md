@@ -34,6 +34,49 @@ indirectly — every adapter shares the same `trackerContract` suite
 in each `<name>.live.test.ts`, gated as shown below; "unit" is each adapter's
 own `<name>.unit.test.ts` against fixture HTTP responses.
 
+## Planning tools
+
+The `plan_*` tools manage project artifacts and phase tracking across cairn integrations:
+
+| tool | purpose |
+|---|---|
+| `plan_scaffold_project` | Create `.cairn/plans/PROJECT.md` + `roadmap.md` (never overwrites) |
+| `plan_scaffold_phase` | Create `phases/NN-slug/` with `CONTEXT.md` + `PLAN.md` (+ optional `RESEARCH.md`) |
+| `plan_status` | Report phases, artifact presence (CONTEXT/RESEARCH/PLAN/VERIFICATION), and referenced tracker issues |
+| `plan_phase_ensure` | Ensure the tracker has a phase named `Phase N: <name>` (idempotent by canonical name) |
+| `plan_drift` | Flag plan-referenced issues that are missing or closed without a VERIFICATION.md |
+| `plan_issues_set` | Set the tracker issue ids a phase's `PLAN.md` frontmatter advances |
+
+### Artifact layout
+
+Plans live at `<projectDir>/.cairn/plans/`:
+
+```
+.cairn/plans/
+  PROJECT.md       # project vision and scope
+  roadmap.md       # phase roadmap
+  phases/
+    01-name/       # phase directories (zero-padded number + slug)
+      CONTEXT.md   # phase requirements
+      RESEARCH.md  # optional deep-mode research
+      PLAN.md      # execution plan (frontmatter: issues: [<tracker-ids>])
+      VERIFICATION.md  # (optional) drift guard — presence exempts a closed issue
+```
+
+Each phase directory name matches `NN-<slug>` where `NN` is 01..99 zero-padded
+and `<slug>` is lowercase alphanumerics + hyphens (auto-slugified from phase name).
+
+### Drift semantics
+
+`plan_drift` scans all phase PLAN.md frontmatters for referenced tracker issues and flags:
+
+- **missing**: issue id no longer exists in the tracker
+- **closed**: issue is closed AND its phase has no VERIFICATION.md
+
+The presence of a `VERIFICATION.md` file in a phase directory signals that the
+phase has been verified complete, so closed issues are no longer considered drift.
+This gate is the human-controlled contract between plan state and phase completion.
+
 ## Running the live gates
 
 Only `github` is live-green today — it's been run against a real sandbox
