@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from "vitest";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -31,6 +32,8 @@ describe("cairn MCP server", () => {
       "issue_list", "issue_update", "phase_create", "phase_list",
       "plan_drift", "plan_issues_set", "plan_phase_ensure",
       "plan_scaffold_project", "plan_scaffold_phase", "plan_status",
+      "mem_index", "mem_search", "mem_stats",
+      "mem_card_create", "mem_card_list", "mem_card_recall",
     ].sort());
   });
 
@@ -85,5 +88,60 @@ describe("cairn MCP server", () => {
   it("CairnError surfaces as isError with code + nextAction", async () => {
     const res = await call("issue_get", { id: "nope" });
     expect(res.isError).toBe(true);
+  });
+
+  it("memory lifecycle: index -> search -> stats -> card create -> list -> recall (fresh)", async () => {
+    await call("mem_index", { content: "GitHub secondary rate limits return 403", source: "research", phase: 1 });
+    const found = await call("mem_search", { query: "rate limits" });
+    expect(found.json.length).toBeGreaterThan(0);
+
+    const stats = await call("mem_stats", {});
+    expect(stats.json.chunkCount).toBeGreaterThan(0);
+
+    const card = await call("mem_card_create", {
+      type: "gotcha", body: "GitHub 403 can mean auth failure OR rate limiting.", scopePhase: 1,
+    });
+    expect(card.json.id).toBeTruthy();
+
+    const list = await call("mem_card_list", { scopePhase: 1 });
+    expect(list.json.length).toBe(1);
+
+    const recall = await call("mem_card_recall", {});
+    expect(recall.json.find((c: { id: string }) => c.id === card.json.id).stale).toBe(false);
+  });
+
+  it("mem_search rejects a negative limit at the schema boundary", async () => {
+    // Zod's positive() check runs at the MCP input-validation layer, before our
+    // handler ever sees it -- so this surfaces as a protocol-level rejection
+    // rather than a { isError: true } tool result. Either way, -1 never reaches
+    // the query (SQLite treats LIMIT -1 as "unlimited").
+    await expect(call("mem_search", { query: "anything", limit: -1 })).rejects.toThrow();
+  });
+
+  it("mem_card_recall flags a card stale when its provenance file changed", async () => {
+    const gitDir = mkdtempSync(join(tmpdir(), "cairn-mcp-git-"));
+    execFileSync("git", ["init", "-q"], { cwd: gitDir });
+    execFileSync("git", ["config", "user.email", "t@t.com"], { cwd: gitDir });
+    execFileSync("git", ["config", "user.name", "t"], { cwd: gitDir });
+    writeFileSync(join(gitDir, "f.ts"), "v1\n");
+    execFileSync("git", ["add", "f.ts"], { cwd: gitDir });
+    execFileSync("git", ["commit", "-q", "-m", "v1"], { cwd: gitDir });
+    const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: gitDir }).toString().trim();
+
+    const gitServer = buildServer({ projectDir: gitDir, tracker: new FakeTracker() });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    const gitClient = new Client({ name: "test-git", version: "0.0.0" });
+    await Promise.all([gitServer.connect(st), gitClient.connect(ct)]);
+    const gitCall = async (name: string, args: Record<string, unknown> = {}) => {
+      const res = await gitClient.callTool({ name, arguments: args });
+      const text = (res.content as Array<{ type: string; text: string }>)[0].text;
+      return { ...res, json: JSON.parse(text) };
+    };
+
+    await gitCall("mem_card_create", { type: "gotcha", body: "test", provenance: [{ file: "f.ts", commit }] });
+    writeFileSync(join(gitDir, "f.ts"), "v2 changed\n");
+    const recall = await gitCall("mem_card_recall", {});
+    expect(recall.json[0].stale).toBe(true);
+    expect(recall.json[0].staleReasons[0]).toContain("f.ts");
   });
 });

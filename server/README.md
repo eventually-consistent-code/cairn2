@@ -77,6 +77,49 @@ The presence of a `VERIFICATION.md` file in a phase directory signals that the
 phase has been verified complete, so closed issues are no longer considered drift.
 This gate is the human-controlled contract between plan state and phase completion.
 
+## Memory tools
+
+The `mem_*` tools give agents a two-tier memory: a disposable full-text index for
+reference material, and durable, git-committed cards for decisions/constraints/
+gotchas/references:
+
+| tool | purpose |
+|---|---|
+| `mem_index` | Index reference material into the searchable memory store (disposable, rebuildable) |
+| `mem_search` | Full-text search the memory index, optionally scoped to a phase/issue |
+| `mem_stats` | Memory index size — chunk count and approximate token usage (capacity guard signal) |
+| `mem_card_create` | Write a durable memory card (decision/constraint/gotcha/reference) with provenance |
+| `mem_card_list` | List memory cards, optionally filtered by phase/issue scope |
+| `mem_card_recall` | List memory cards with staleness checked against their provenance (the anti-rot check) |
+
+### Artifact layout
+
+Two tiers, with different durability guarantees:
+
+```
+~/.cairn/index/<project>.db        # Tier 1 — FTS5 index, disposable, never git-tracked, safe to delete (rebuildable)
+.cairn/memory/cards/*.md           # Tier 2 — durable memory cards, git-committed
+```
+
+Tier 1 is a `better-sqlite3` FTS5 virtual table keyed off `mem_index`/`mem_search`.
+Tier 2 cards are frontmatter'd Markdown files (`type`, `scopePhase`, `scopeIssue`,
+`provenanceFiles`, `provenanceCommits`, `created`) with a deterministic id
+(`<type>-<sha256(body).slice(0,8)>`), so re-creating a card with identical content
+never produces a duplicate file.
+
+### Staleness
+
+Every `mem_card_recall` call re-checks each card's provenance against `git diff`
+at the recorded commit; `stale: true` means the underlying files have since
+changed (or vanished, or couldn't be verified) — treat the card as a lead to
+re-verify, not a fact to trust.
+
+### Capacity guard
+
+`cairn.json` carries `memory.tokenThreshold` (default `150000`) — read directly
+from config by the skill (not returned by any tool) to decide when the memory
+index is getting large enough to warrant summarizing or pruning.
+
 ## Running the live gates
 
 Only `github` is live-green today — it's been run against a real sandbox
