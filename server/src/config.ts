@@ -14,6 +14,7 @@ export const ConfigSchema = z.object({
   memory: z
     .object({ tokenThreshold: z.number().int().positive() })
     .default({ tokenThreshold: 150000 }),
+  user: z.object({ handle: z.string().min(1) }).optional(),
 });
 export type CairnConfig = z.infer<typeof ConfigSchema>;
 
