@@ -30,8 +30,8 @@ describe("cairn MCP server", () => {
     expect(tools).toEqual([
       "context_get", "context_set", "issue_close", "issue_create", "issue_get",
       "issue_list", "issue_update", "phase_create", "phase_list",
-      "plan_drift", "plan_issues_set", "plan_phase_ensure",
-      "plan_scaffold_project", "plan_scaffold_phase", "plan_status",
+      "plan_drift", "plan_import", "plan_issues_set", "plan_phase_ensure",
+      "plan_scaffold_project", "plan_scaffold_phase", "plan_status", "plan_unplanned",
       "mem_index", "mem_search", "mem_stats",
       "mem_card_create", "mem_card_list", "mem_card_recall",
     ].sort());
@@ -143,5 +143,24 @@ describe("cairn MCP server", () => {
     const recall = await gitCall("mem_card_recall", {});
     expect(recall.json[0].stale).toBe(true);
     expect(recall.json[0].staleReasons[0]).toContain("f.ts");
+  });
+
+  it("plan_unplanned surfaces tracker issues no plan references", async () => {
+    const stray = await call("issue_create", { title: "tracker-origin stray" });
+    const report = await call("plan_unplanned", {});
+    expect(report.json.unplanned.map((i: { id: string }) => i.id))
+      .toContain(stray.json.id);
+  });
+
+  it("plan_import reverse-mirrors a tracker phase into plan artifacts", async () => {
+    const ph = await call("phase_create", { name: "Phase 7: Imported Work" });
+    const issue = await call("issue_create", { title: "imported req", phase: ph.json.id });
+    const result = await call("plan_import", { phaseRef: ph.json.id });
+    expect(result.json).toMatchObject({
+      dir: "07-imported-work", number: 7, issues: [issue.json.id],
+    });
+    const status = await call("plan_status", {});
+    expect(status.json.phases.find((p: { number: number }) => p.number === 7).issues)
+      .toEqual([issue.json.id]);
   });
 });

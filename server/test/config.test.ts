@@ -45,4 +45,20 @@ describe("loadConfig", () => {
     }));
     expect(loadConfig(d).memory.tokenThreshold).toBe(50000);
   });
+
+  it("user is optional and absent by default", () => {
+    const d = dir();
+    writeFileSync(join(d, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
+    expect(loadConfig(d).user).toBeUndefined();
+  });
+
+  it("user.handle round-trips when provided", () => {
+    const d = dir();
+    writeFileSync(join(d, "cairn.json"), JSON.stringify({
+      tracker: { type: "github", config: { repo: "o/r" } },
+      user: { handle: "jsreed" },
+    }));
+    expect(loadConfig(d).user).toEqual({ handle: "jsreed" });
+  });
 });
