@@ -29,4 +29,12 @@ describe("unplannedReport", () => {
     const report = await unplannedReport(new FakeTracker(), dir());
     expect(report).toEqual({ unplanned: [], referencedCount: 0 });
   });
+
+  it("an unreferenced in_progress issue still surfaces (exclusion is closed-only)", async () => {
+    const t = new FakeTracker();
+    const wip = await t.createIssue({ title: "in-flight but unplanned" });
+    await t.updateIssue(wip.id, { state: "in_progress" });
+    const report = await unplannedReport(t, dir());
+    expect(report.unplanned.map((i) => i.id)).toEqual([wip.id]);
+  });
 });
