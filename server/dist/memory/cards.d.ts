@@ -8,9 +8,9 @@ export declare const CardFrontmatterSchema: z.ZodEffects<z.ZodObject<{
     created: z.ZodString;
 }, "strip", z.ZodTypeAny, {
     type: "decision" | "constraint" | "gotcha" | "reference";
+    created: string;
     provenanceFiles: string[];
     provenanceCommits: string[];
-    created: string;
     scopePhase?: string | undefined;
     scopeIssue?: string | undefined;
 }, {
@@ -22,9 +22,9 @@ export declare const CardFrontmatterSchema: z.ZodEffects<z.ZodObject<{
     provenanceCommits?: string[] | undefined;
 }>, {
     type: "decision" | "constraint" | "gotcha" | "reference";
+    created: string;
     provenanceFiles: string[];
     provenanceCommits: string[];
-    created: string;
     scopePhase?: string | undefined;
     scopeIssue?: string | undefined;
 }, {

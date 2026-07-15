@@ -24,6 +24,13 @@ export declare const ConfigSchema: z.ZodObject<{
     }, {
         tokenThreshold: number;
     }>>;
+    user: z.ZodOptional<z.ZodObject<{
+        handle: z.ZodString;
+    }, "strip", z.ZodTypeAny, {
+        handle: string;
+    }, {
+        handle: string;
+    }>>;
 }, "strip", z.ZodTypeAny, {
     tracker: {
         type: "github" | "gitlab" | "jira" | "asana" | "azure-boards" | "clickup";
@@ -35,6 +42,9 @@ export declare const ConfigSchema: z.ZodObject<{
     memory: {
         tokenThreshold: number;
     };
+    user?: {
+        handle: string;
+    } | undefined;
 }, {
     tracker: {
         type: "github" | "gitlab" | "jira" | "asana" | "azure-boards" | "clickup";
@@ -45,6 +55,9 @@ export declare const ConfigSchema: z.ZodObject<{
     } | undefined;
     memory?: {
         tokenThreshold: number;
+    } | undefined;
+    user?: {
+        handle: string;
     } | undefined;
 }>;
 export type CairnConfig = z.infer<typeof ConfigSchema>;
