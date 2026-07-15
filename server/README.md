@@ -129,6 +129,8 @@ The `plan_*` and `issue_*` tools coordinate team workflow when multiple agents (
 | `plan_unplanned` | Tracker issues (non-closed) that no phase's PLAN.md references — work at risk of being missed |
 | `plan_import` | Reverse-mirror a tracker phase (by id or name substring) into .cairn/plans/ artifacts |
 
+On very large trackers the underlying issue list is capped (1000 items on GitHub/GitLab via pagination, 100 on Jira/Asana/Azure Boards/ClickUp), so `plan_unplanned`'s report may be incomplete beyond that cap; a truncation warning is logged to the server's stderr when it happens.
+
 ### Configuration
 
 **User handle (optional).** Set `cairn.json`'s `user.handle` field to your identity (e.g., your GitHub username) to participate in ownership tracking:
@@ -145,6 +147,8 @@ When `user.handle` is set:
 - **Skip others' work:** By default, the work flow skips issues assigned to teammates, to avoid stepping on toes.
 
 When `user.handle` is absent, cairn operates in single-user mode — no assignee tracking, no ownership checks.
+
+Assignee **write** support today is GitHub and Azure Boards only. The other backends accept the `issue_update(..., assignee: ...)` call but don't propagate it: ClickUp explicitly defers it (needs numeric user-id resolution not yet implemented); Jira, Asana, and GitLab have no assignee mapping yet.
 
 ### Infrastructure (not new machinery)
 
