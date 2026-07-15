@@ -65,4 +65,15 @@ describe("importPhase", () => {
     expect(second.issues).toEqual(ids);
     expect(readPlanIssues(d, "03-billing-engine")).toEqual(ids);
   });
+
+  it("re-importing a non-canonical phase reuses its number (no silent duplicate)", async () => {
+    const t = new FakeTracker();
+    const ph = await t.createPhase("Sprint 12");
+    const d = dir();
+    const first = await importPhase(t, d, ph.id);
+    expect(first.dir).toBe("01-sprint-12");
+    const second = await importPhase(t, d, ph.id);
+    expect(second.dir).toBe("01-sprint-12");
+    expect(second.number).toBe(1);
+  });
 });

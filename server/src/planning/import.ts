@@ -40,12 +40,14 @@ export async function importPhase(
 
   const canonical = CANONICAL_RE.exec(phase.name);
   const status = projectStatus(projectDir);
+  const name = canonical ? canonical[2] : phase.name;
+  const slug = slugify(name);
+  const prior = status.phases.find((p) => p.dir === phaseDirName(p.number, slug));
   const number = canonical
     ? Number(canonical[1])
-    : Math.max(0, ...status.phases.map((p) => p.number)) + 1;
-  const name = canonical ? canonical[2] : phase.name;
+    : prior?.number ?? Math.max(0, ...status.phases.map((p) => p.number)) + 1;
 
-  const dirName = phaseDirName(number, slugify(name));
+  const dirName = phaseDirName(number, slug);
   const existing = status.phases.find((p) => p.number === number);
   if (existing && existing.dir !== dirName) {
     throw new CairnError("CONFIG_INVALID",
