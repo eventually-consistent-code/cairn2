@@ -15,6 +15,9 @@ import type { Tracker, IssueState } from "./tracker/types.js";
 import { scaffoldProject, scaffoldPhase, writePlanIssues } from "./planning/artifacts.js";
 import { projectStatus } from "./planning/status.js";
 import { driftReport, ensurePhase } from "./planning/mirror.js";
+import { MemoryIndex, indexDbPath } from "./memory/index-store.js";
+import { createCard, listCards } from "./memory/cards.js";
+import { checkCardStaleness } from "./memory/staleness.js";
 
 const StateEnum = z.enum(["open", "in_progress", "closed"]);
 
@@ -144,6 +147,68 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       writePlanIssues(deps.projectDir, a.phaseDir, a.issues);
       return { ok: true };
     }));
+
+  let memIndex: MemoryIndex | undefined;
+  const getMemIndex = (): MemoryIndex => {
+    if (!memIndex) memIndex = new MemoryIndex(indexDbPath(deps.projectDir));
+    return memIndex;
+  };
+
+  server.registerTool("mem_index",
+    { description: "Index reference material into the searchable memory store (disposable, rebuildable)",
+      inputSchema: { content: z.string(), source: z.string(),
+                     phase: z.number().int().optional(), issueId: z.string().optional() } },
+    wrap((a: { content: string; source: string; phase?: number; issueId?: string }) => {
+      getMemIndex().index({
+        content: a.content, source: a.source,
+        phase: a.phase ?? null, issueId: a.issueId ?? null,
+        createdAt: new Date().toISOString(),
+      });
+      return { ok: true };
+    }));
+
+  server.registerTool("mem_search",
+    { description: "Full-text search the memory index, optionally scoped to a phase/issue",
+      inputSchema: { query: z.string(), phase: z.number().int().optional(),
+                     issueId: z.string().optional(), limit: z.number().int().positive().optional() } },
+    wrap((a: { query: string; phase?: number; issueId?: string; limit?: number }) =>
+      getMemIndex().search(a.query, { phase: a.phase, issueId: a.issueId }, a.limit ?? 10)));
+
+  server.registerTool("mem_stats",
+    { description: "Memory index size — chunk count and approximate token usage (capacity guard signal)",
+      inputSchema: {} },
+    wrap(() => getMemIndex().stats()));
+
+  server.registerTool("mem_card_create",
+    { description: "Write a durable memory card (decision/constraint/gotcha/reference) with provenance",
+      inputSchema: {
+        type: z.enum(["decision", "constraint", "gotcha", "reference"]),
+        body: z.string(),
+        scopePhase: z.number().int().optional(),
+        scopeIssue: z.string().optional(),
+        provenance: z.array(z.object({ file: z.string(), commit: z.string() })).optional(),
+      } },
+    wrap((a: { type: "decision" | "constraint" | "gotcha" | "reference"; body: string;
+               scopePhase?: number; scopeIssue?: string;
+               provenance?: Array<{ file: string; commit: string }> }) =>
+      createCard(deps.projectDir, a)));
+
+  server.registerTool("mem_card_list",
+    { description: "List memory cards, optionally filtered by phase/issue scope",
+      inputSchema: { scopePhase: z.number().int().optional(), scopeIssue: z.string().optional() } },
+    wrap((a: { scopePhase?: number; scopeIssue?: string }) => listCards(deps.projectDir, a)));
+
+  server.registerTool("mem_card_recall",
+    { description: "List memory cards with staleness checked against their provenance (the anti-rot check)",
+      inputSchema: { scopePhase: z.number().int().optional(), scopeIssue: z.string().optional() } },
+    wrap((a: { scopePhase?: number; scopeIssue?: string }) =>
+      listCards(deps.projectDir, a).map((card) => {
+        const provenance = card.frontmatter.provenanceFiles.map((file, i) => ({
+          file, commit: card.frontmatter.provenanceCommits[i],
+        }));
+        const check = checkCardStaleness(deps.projectDir, provenance);
+        return { ...card, stale: check.stale, staleReasons: check.reasons };
+      })));
 
   return server;
 }

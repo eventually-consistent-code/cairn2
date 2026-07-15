@@ -29,4 +29,20 @@ describe("loadConfig", () => {
     expect(() => loadConfig(d)).toThrowError(
       expect.objectContaining({ code: "CONFIG_INVALID" }));
   });
+
+  it("memory.tokenThreshold defaults to 150000 when omitted", () => {
+    const d = dir();
+    writeFileSync(join(d, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
+    expect(loadConfig(d).memory.tokenThreshold).toBe(150000);
+  });
+
+  it("memory.tokenThreshold respects an explicit override", () => {
+    const d = dir();
+    writeFileSync(join(d, "cairn.json"), JSON.stringify({
+      tracker: { type: "github", config: { repo: "o/r" } },
+      memory: { tokenThreshold: 50000 },
+    }));
+    expect(loadConfig(d).memory.tokenThreshold).toBe(50000);
+  });
 });
