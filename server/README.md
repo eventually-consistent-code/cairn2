@@ -141,7 +141,7 @@ The `plan_*` and `issue_*` tools coordinate team workflow when multiple agents (
 ```
 
 When `user.handle` is set:
-- **Claim & assign:** `/cairn:work <phase>` calls `issue_update(id, assignee: <handle>)` so teammates see who holds each issue (read-only if assigned to someone else — pass `--force` to override).
+- **Claim & assign:** `/cairn:work <phase>` calls `issue_update(id, assignee: <handle>)` so teammates see who holds each issue. If an issue is assigned to someone else, the workflow skips it unless the user explicitly overrides.
 - **Skip others' work:** By default, the work flow skips issues assigned to teammates, to avoid stepping on toes.
 
 When `user.handle` is absent, cairn operates in single-user mode — no assignee tracking, no ownership checks.
@@ -152,7 +152,7 @@ Plans and memory cards collaborate via **ordinary git** — push your changes, o
 
 Work-state concurrency (two agents starting the same issue at once) is **the tracker's responsibility** — its `issue_update()` call with `state: "in_progress"` is the atomic claim. Cairn reads the tracker's truth; the tracker enforces the constraint.
 
-**Per-machine isolation.** Each machine holds its own `active-context` state (`.cairn/active-context.json`). Agents on different machines can work on different issues in the same phase without conflict — coordination happens via the tracker and git-committed plan artifacts.
+**Per-machine isolation.** Each machine holds its own `active-context` state (`.cairn/state/active-context.json`). Agents on different machines can work on different issues in the same phase without conflict — coordination happens via the tracker and git-committed plan artifacts.
 
 ## Running the live gates
 
