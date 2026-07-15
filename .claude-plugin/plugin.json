@@ -1,0 +1,20 @@
+{
+  "name": "cairn2",
+  "version": "2.0.0-alpha.0",
+  "description": "cairn 2.0 (private dogfood build) — converged work management: tracker-truth planning, provenance-checked memory, and one /cairn entrypoint, backed by a typed MCP server.",
+  "author": {
+    "name": "eventually-consistent-code",
+    "url": "https://github.com/eventually-consistent-code"
+  },
+  "homepage": "https://github.com/eventually-consistent-code/cairn2",
+  "repository": "https://github.com/eventually-consistent-code/cairn2",
+  "license": "MIT",
+  "keywords": [
+    "claude-code",
+    "cairn",
+    "planning",
+    "memory",
+    "issue-tracker",
+    "workflow"
+  ]
+}
