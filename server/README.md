@@ -120,6 +120,40 @@ re-verify, not a fact to trust.
 from config by the skill (not returned by any tool) to decide when the memory
 index is getting large enough to warrant summarizing or pruning.
 
+## Collaboration
+
+The `plan_*` and `issue_*` tools coordinate team workflow when multiple agents (or humans + agents) work on the same project.
+
+| tool | purpose |
+|---|---|
+| `plan_unplanned` | Tracker issues (non-closed) that no phase's PLAN.md references — work at risk of being missed |
+| `plan_import` | Reverse-mirror a tracker phase (by id or name substring) into .cairn/plans/ artifacts |
+
+### Configuration
+
+**User handle (optional).** Set `cairn.json`'s `user.handle` field to your identity (e.g., your GitHub username) to participate in ownership tracking:
+
+```json
+{
+  "tracker": { "type": "github", "config": {} },
+  "user": { "handle": "alice" }
+}
+```
+
+When `user.handle` is set:
+- **Claim & assign:** `/cairn:work <phase>` calls `issue_update(id, assignee: <handle>)` so teammates see who holds each issue (read-only if assigned to someone else — pass `--force` to override).
+- **Skip others' work:** By default, the work flow skips issues assigned to teammates, to avoid stepping on toes.
+
+When `user.handle` is absent, cairn operates in single-user mode — no assignee tracking, no ownership checks.
+
+### Infrastructure (not new machinery)
+
+Plans and memory cards collaborate via **ordinary git** — push your changes, open a PR, review and merge together. The server does not enforce locking or concurrency control.
+
+Work-state concurrency (two agents starting the same issue at once) is **the tracker's responsibility** — its `issue_update()` call with `state: "in_progress"` is the atomic claim. Cairn reads the tracker's truth; the tracker enforces the constraint.
+
+**Per-machine isolation.** Each machine holds its own `active-context` state (`.cairn/active-context.json`). Agents on different machines can work on different issues in the same phase without conflict — coordination happens via the tracker and git-committed plan artifacts.
+
 ## Running the live gates
 
 Only `github` is live-green today — it's been run against a real sandbox
