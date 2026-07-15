@@ -14,6 +14,8 @@ import { CachedTracker } from "./tracker/cached.js";
 import { scaffoldProject, scaffoldPhase, writePlanIssues } from "./planning/artifacts.js";
 import { projectStatus } from "./planning/status.js";
 import { driftReport, ensurePhase } from "./planning/mirror.js";
+import { unplannedReport } from "./planning/collab.js";
+import { importPhase } from "./planning/import.js";
 import { MemoryIndex, indexDbPath } from "./memory/index-store.js";
 import { createCard, listCards } from "./memory/cards.js";
 import { checkCardStaleness } from "./memory/staleness.js";
@@ -131,6 +133,10 @@ export function buildServer(deps) {
         const check = checkCardStaleness(deps.projectDir, provenance);
         return { ...card, stale: check.stale, staleReasons: check.reasons };
     })));
+    server.registerTool("plan_unplanned", { description: "Tracker issues (non-closed) that no phase's PLAN.md references — work at risk of being missed",
+        inputSchema: {} }, wrap(async () => unplannedReport(await getTracker(), deps.projectDir)));
+    server.registerTool("plan_import", { description: "Reverse-mirror a tracker phase (by id or name substring) into .cairn/plans/ artifacts",
+        inputSchema: { phaseRef: z.string() } }, wrap(async (a) => importPhase(await getTracker(), deps.projectDir, a.phaseRef)));
     return server;
 }
 // CLI entry — stdio transport; config loads lazily per tool call.
