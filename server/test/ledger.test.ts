@@ -62,6 +62,26 @@ describe("appendLedger", () => {
     );
   });
 
+  it("sanitizes embedded newlines in entry fields to a single line", () => {
+    const d = dir();
+    scaffoldProject(d, "P");
+    const { dir: phaseDir } = scaffoldPhase(d, 3, "Ledger Phase");
+
+    const { line } = appendLedger(d, phaseDir, {
+      ...entry,
+      summary: "line one\nline two\n   line three",
+    });
+
+    expect(line.split("\n").length).toBe(1);
+    expect(line).toBe(
+      "- [x] task-3 — line one line two line three — commits a1b2c3d..d4e5f6a — PROJ-105 closed 2026-07-14",
+    );
+
+    const content = readFileSync(ledgerPath(d, phaseDir), "utf8");
+    const entryLines = content.split("\n").filter((l) => l.startsWith("- [x]"));
+    expect(entryLines.length).toBe(1);
+  });
+
   it("throws NOT_FOUND with a nextAction for a phaseDir that doesn't exist", () => {
     const d = dir();
     scaffoldProject(d, "P");

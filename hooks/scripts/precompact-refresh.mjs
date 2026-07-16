@@ -13,8 +13,8 @@
 import { handoffPath, mtimeMs, readJson, atomicWriteJson, uncommittedFiles } from "./lib.mjs";
 
 function main() {
-  const cwd = process.cwd();
-  const path = handoffPath(cwd);
+  const projectDir = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
+  const path = handoffPath(projectDir);
 
   if (mtimeMs(path) === null) return; // no handoff yet -- nothing to patch
 
@@ -23,7 +23,7 @@ function main() {
     ...existing,
     created: new Date().toISOString(),
     source: "precompact",
-    uncommitted_files: uncommittedFiles(cwd),
+    uncommitted_files: uncommittedFiles(projectDir),
   };
   atomicWriteJson(path, merged);
 }

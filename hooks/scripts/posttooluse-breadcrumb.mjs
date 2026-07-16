@@ -16,8 +16,8 @@ import { handoffPath, mtimeMs, readJson, atomicWriteJson, uncommittedFiles } fro
 const THROTTLE_MS = 60_000;
 
 function main() {
-  const cwd = process.cwd();
-  const path = handoffPath(cwd);
+  const projectDir = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
+  const path = handoffPath(projectDir);
 
   const existingMtime = mtimeMs(path);
   if (existingMtime === null) return; // no handoff yet -- breadcrumbs never scaffold one
@@ -28,7 +28,7 @@ function main() {
     ...existing,
     created: new Date().toISOString(),
     source: "posttooluse",
-    uncommitted_files: uncommittedFiles(cwd),
+    uncommitted_files: uncommittedFiles(projectDir),
   };
   atomicWriteJson(path, merged);
 }
