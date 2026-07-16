@@ -143,7 +143,16 @@ export function writeHandoff(projectDir: string, patch: Partial<Handoff> & { sou
   }
 
   const path = handoffPath(projectDir);
-  const existing = readRaw(path);
+  // A corrupt existing file (crashed session, partial write from an older cairn)
+  // must not wedge every subsequent automated write -- treat it as absent and
+  // let this write replace it with a valid handoff. Anything else still surfaces.
+  let existing: Handoff | null;
+  try {
+    existing = readRaw(path);
+  } catch (e) {
+    if (e instanceof CairnError && e.code === "HANDOFF_INVALID") existing = null;
+    else throw e;
+  }
   const project = patch.project ?? existing?.project ?? basename(resolve(projectDir));
   const base = existing ?? blankHandoff(project, patch.source);
 

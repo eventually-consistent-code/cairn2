@@ -89,3 +89,40 @@ $ npx tsc --noEmit
 - **Discipline**: no new dependencies; `node:`-prefixed imports only; reused `loadConfig`/`CairnError` rather than reinventing config/error handling; did not add anything beyond the brief's stated interfaces (no extra exported helpers, no premature `HANDOFF_STALE` throw site since that belongs to a later task).
 - **Testing**: TDD evidence above (two RED→GREEN cycles: config, then continuity). All test assertions exercise real behavior (real filesystem via tmpdir, real hashing, real staleness math) rather than mocks. Full-suite + tsc run clean before commit.
 - One thing I did **not** do: didn't add a `writeHandoff` runtime re-validation pass on the merged object before writing (relying on TS to guarantee shape at the call site, consistent with how `active-context.ts` doesn't re-validate either). Flagging in case a later task's callers bypass TS types (e.g. deserializing tool-call args) and want that safety net added at the MCP-tool-wiring layer (Task 2) instead.
+
+## Fix after review (2026-07-16)
+
+**Finding (Important):** `writeHandoff` called `readRaw(path)` unguarded, so a corrupt existing handoff file threw `HANDOFF_INVALID` on every subsequent automated write — contradicting both the report's "corrupt existing file treated as absent" claim and the function's own "safe for hot paths like PostToolUse" doc comment.
+
+**Fix:** wrapped the `readRaw(path)` call inside `writeHandoff` in try/catch — on `HANDOFF_INVALID` the existing file is treated as absent (falls back to `blankHandoff` and the write replaces the corrupt file with a valid handoff); any other error rethrows.
+
+**TDD evidence:**
+
+RED — two new tests added first, failing against the unfixed code:
+```
+$ npx vitest run test/continuity.test.ts
+ FAIL  test/continuity.test.ts > writeHandoff > recovers from a corrupt existing handoff instead of throwing (safe on hot paths)
+ FAIL  test/continuity.test.ts > writeHandoff > recovers from a schema-invalid (but valid-JSON) existing handoff as well
+AssertionError: expected [Function] to not throw an error but 'CairnError: handoff at /Users/jsreed/…' was thrown
+ Test Files  1 failed (1)
+      Tests  2 failed | 22 passed (24)
+```
+
+GREEN — after the fix:
+```
+$ npx vitest run test/continuity.test.ts
+ ✓ test/continuity.test.ts (24 tests) 15ms
+ Test Files  1 passed (1)
+      Tests  24 passed (24)
+
+$ npx vitest run
+ Test Files  25 passed | 6 skipped (31)
+      Tests  245 passed | 6 skipped (251)
+
+$ npx tsc --noEmit
+(clean, no output)
+```
+
+**Tests added:** garbage JSON at the handoff path → `writeHandoff` succeeds and the file reads back valid; schema-invalid-but-valid-JSON existing file → same recovery. Both assert the rewritten file parses via `readHandoff` with `version: 1` and the patched fields present.
+
+**Commit:** `fix(server): writeHandoff recovers from corrupt existing handoff`

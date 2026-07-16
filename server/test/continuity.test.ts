@@ -272,6 +272,28 @@ describe("writeHandoff", () => {
       expect.objectContaining({ code: "CONFIG_INVALID" }));
   });
 
+  it("recovers from a corrupt existing handoff instead of throwing (safe on hot paths)", () => {
+    const d = registered();
+    const p = handoffPath(d);
+    cleanupHandoffPaths.push(p);
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, "{ corrupt garbage from a crashed session");
+    expect(() => writeHandoff(d, { source: "posttooluse", next_action: "carry on" })).not.toThrow();
+    const result = readHandoff(d)!; // file must now be valid again
+    expect(result.handoff.next_action).toBe("carry on");
+    expect(result.handoff.version).toBe(1);
+  });
+
+  it("recovers from a schema-invalid (but valid-JSON) existing handoff as well", () => {
+    const d = registered();
+    const p = handoffPath(d);
+    cleanupHandoffPaths.push(p);
+    mkdirSync(dirname(p), { recursive: true });
+    writeFileSync(p, JSON.stringify({ version: 99, source: "bogus" }));
+    expect(() => writeHandoff(d, { source: "tool" })).not.toThrow();
+    expect(readHandoff(d)!.handoff.version).toBe(1);
+  });
+
   it("atomic write leaves no .tmp residue", () => {
     const d = registered();
     const p = handoffPath(d);
