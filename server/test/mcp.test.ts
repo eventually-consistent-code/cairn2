@@ -1,13 +1,34 @@
-import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { mkdtempSync, writeFileSync, mkdirSync, chmodSync, rmSync } from "node:fs";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildServer } from "../src/index.js";
 import { FakeTracker } from "../src/tracker/fake.js";
 import { handoffPath } from "../src/core/continuity.js";
+
+// Controllable failure injection for the continuity resilience test below.
+// Mocks ONLY writeHandoff (everything else passes through to the real module)
+// so a single test can simulate an unwritable ~/.cairn/handoff without
+// chmodding the real shared homedir directory -- vitest runs test files in
+// parallel workers, and other suites write handoffs there unguarded, so a
+// chmod window would EACCES-flake unrelated tests.
+const continuityFailure = vi.hoisted(() => ({ failWrites: false, failedAttempts: 0 }));
+vi.mock("../src/core/continuity.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/core/continuity.js")>();
+  return {
+    ...actual,
+    writeHandoff: (...args: Parameters<typeof actual.writeHandoff>) => {
+      if (continuityFailure.failWrites) {
+        continuityFailure.failedAttempts += 1;
+        throw new Error("simulated EACCES: handoff dir unwritable");
+      }
+      return actual.writeHandoff(...args);
+    },
+  };
+});
 
 describe("cairn MCP server", () => {
   let client: Client;
@@ -222,17 +243,19 @@ describe("continuity: write-through + tools", () => {
     expect(got.json).toBeNull();
   });
 
-  it("primary tool still succeeds when the handoff dir is unwritable", async () => {
-    const handoffDir = dirname(handoffPath(projectDir));
-    mkdirSync(handoffDir, { recursive: true });
-    chmodSync(handoffDir, 0o444); // read-only: writeHandoff's temp-file write must fail
+  it("primary tool still succeeds when the handoff write fails", async () => {
+    continuityFailure.failWrites = true; // writeHandoff throws (simulated unwritable dir)
+    continuityFailure.failedAttempts = 0;
     try {
       const made = await call("issue_create", { title: "unaffected by continuity failure" });
       const updated = await call("issue_update", { id: made.json.id, state: "closed" });
       expect(updated.json.state).toBe("closed"); // primary tool result, unaffected
       expect(updated.isError).toBeFalsy();
+      // Prove the failing path was actually exercised, not vacuously skipped:
+      // issue_update's write-through must have attempted (and swallowed) a write.
+      expect(continuityFailure.failedAttempts).toBeGreaterThan(0);
     } finally {
-      chmodSync(handoffDir, 0o755); // restore so afterAll cleanup can remove the dir
+      continuityFailure.failWrites = false;
     }
   });
 });
