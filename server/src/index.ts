@@ -23,6 +23,7 @@ import { checkCardStaleness } from "./memory/staleness.js";
 import { readHandoff, writeHandoff, clearHandoff } from "./core/continuity.js";
 import type { Handoff } from "./core/continuity.js";
 import { appendLedger } from "./planning/ledger.js";
+import { writeBanner, bannerStats } from "./memory/banner.js";
 
 const StateEnum = z.enum(["open", "in_progress", "closed"]);
 const HandoffSourceEnum = z.enum(["tool", "posttooluse", "precompact", "waypoint"]);
@@ -94,6 +95,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       }
       if (state.issueId !== undefined) patch.issue = state.issueId;
       refreshHandoff(patch);
+      writeBanner(deps.projectDir);
       return state;
     }));
 
@@ -223,9 +225,10 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       getMemIndex().search(a.query, { phase: a.phase, issueId: a.issueId }, a.limit ?? 10)));
 
   server.registerTool("mem_stats",
-    { description: "Memory index size — chunk count and approximate token usage (capacity guard signal)",
+    { description: "Memory index size — chunk count and approximate token usage (capacity guard signal), "
+        + "plus recall-banner token accounting",
       inputSchema: {} },
-    wrap(() => getMemIndex().stats()));
+    wrap(() => ({ ...getMemIndex().stats(), ...bannerStats(deps.projectDir) })));
 
   server.registerTool("mem_card_create",
     { description: "Write a durable memory card (decision/constraint/gotcha/reference) with provenance",
@@ -247,6 +250,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       }
       if (a.scopeIssue !== undefined) patch.issue = a.scopeIssue;
       refreshHandoff(patch);
+      writeBanner(deps.projectDir);
       return card;
     }));
 
