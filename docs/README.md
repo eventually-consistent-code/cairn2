@@ -24,7 +24,8 @@ records — status lines say whether a doc is approved or draft.
 | [P2](superpowers/plans/2026-07-13-cairn-2-p2.md) | Planning engine: artifacts, mirroring, depth dial, lifecycle verbs |
 | [P3](superpowers/plans/2026-07-14-cairn-2-p3.md) | Memory: FTS5 index, provenance-checked cards, staleness, distill lifecycle |
 | [P4](superpowers/plans/2026-07-15-cairn-2-p4.md) | Collaboration: unplanned-work surfacing, import, assignee awareness |
-| [Tier 0](superpowers/plans/2026-07-15-cairn-2-tier-0.md) | Trailhead restructure (next up) |
+| [Tier 0](superpowers/plans/2026-07-15-cairn-2-tier-0.md) | Trailhead: single /cairn entrypoint, routing skill, shims, conformance ratchet |
+| [Tier A0](superpowers/plans/2026-07-15-cairn-2-tier-a0.md) | Continuity: handoff engine, ledger, recall banner, mem_timeline, hooks, waypoint (next up) |
 
 ## Research (`superpowers/research/`)
 
