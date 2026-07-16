@@ -55,7 +55,7 @@ describe("cairn MCP server", () => {
       "plan_drift", "plan_import", "plan_issues_set", "plan_phase_ensure",
       "plan_scaffold_project", "plan_scaffold_phase", "plan_status", "plan_unplanned",
       "mem_index", "mem_search", "mem_stats",
-      "mem_card_create", "mem_card_list", "mem_card_recall",
+      "mem_card_create", "mem_card_list", "mem_card_recall", "mem_timeline",
       "continuity_checkpoint", "continuity_get", "continuity_clear",
       "ledger_append",
     ].sort());
