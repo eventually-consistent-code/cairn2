@@ -1,12 +1,13 @@
-import { describe, it, expect, beforeAll } from "vitest";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
+import { mkdtempSync, writeFileSync, mkdirSync, chmodSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildServer } from "../src/index.js";
 import { FakeTracker } from "../src/tracker/fake.js";
+import { handoffPath } from "../src/core/continuity.js";
 
 describe("cairn MCP server", () => {
   let client: Client;
@@ -34,6 +35,7 @@ describe("cairn MCP server", () => {
       "plan_scaffold_project", "plan_scaffold_phase", "plan_status", "plan_unplanned",
       "mem_index", "mem_search", "mem_stats",
       "mem_card_create", "mem_card_list", "mem_card_recall",
+      "continuity_checkpoint", "continuity_get", "continuity_clear",
     ].sort());
   });
 
@@ -162,5 +164,75 @@ describe("cairn MCP server", () => {
     const status = await call("plan_status", {});
     expect(status.json.phases.find((p: { number: number }) => p.number === 7).issues)
       .toEqual([issue.json.id]);
+  });
+});
+
+describe("continuity: write-through + tools", () => {
+  // A dedicated registered project (cairn.json present) + server/client pair --
+  // write-through only fires when the project is registered (Task 1's
+  // unregistered guard), so this needs its own fixture rather than the shared
+  // suite's tmpdir above, which is deliberately left unregistered.
+  let projectDir: string;
+  let client: Client;
+
+  const call = async (name: string, args: Record<string, unknown> = {}) => {
+    const res = await client.callTool({ name, arguments: args });
+    const text = (res.content as Array<{ type: string; text: string }>)[0].text;
+    return { ...res, json: JSON.parse(text) };
+  };
+
+  beforeAll(async () => {
+    projectDir = mkdtempSync(join(tmpdir(), "cairn-continuity-mcp-"));
+    writeFileSync(join(projectDir, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
+    const server = buildServer({ projectDir, tracker: new FakeTracker() });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    client = new Client({ name: "test-continuity", version: "0.0.0" });
+    await Promise.all([server.connect(st), client.connect(ct)]);
+  });
+
+  afterAll(() => {
+    rmSync(handoffPath(projectDir), { force: true });
+    rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  it("issue_update leaves a handoff naming that issue", async () => {
+    const made = await call("issue_create", { title: "via mcp" });
+    await call("issue_update", { id: made.json.id, state: "in_progress" });
+    const got = await call("continuity_get", {});
+    expect(got.json.handoff.issue).toBe(made.json.id);
+    expect(got.json.handoff.source).toBe("tool");
+  });
+
+  it("continuity_checkpoint then continuity_get round-trips", async () => {
+    await call("continuity_checkpoint", {
+      next_action: "finish the write-through wiring", notes: "task 2",
+    });
+    const got = await call("continuity_get", {});
+    expect(got.json.handoff.next_action).toBe("finish the write-through wiring");
+    expect(got.json.handoff.notes).toBe("task 2");
+    expect(got.json.stale).toBe(false);
+  });
+
+  it("continuity_clear deletes the handoff", async () => {
+    await call("continuity_checkpoint", { next_action: "x" });
+    const cleared = await call("continuity_clear", {});
+    expect(cleared.json.cleared).toBe(true);
+    const got = await call("continuity_get", {});
+    expect(got.json).toBeNull();
+  });
+
+  it("primary tool still succeeds when the handoff dir is unwritable", async () => {
+    const handoffDir = dirname(handoffPath(projectDir));
+    mkdirSync(handoffDir, { recursive: true });
+    chmodSync(handoffDir, 0o444); // read-only: writeHandoff's temp-file write must fail
+    try {
+      const made = await call("issue_create", { title: "unaffected by continuity failure" });
+      const updated = await call("issue_update", { id: made.json.id, state: "closed" });
+      expect(updated.json.state).toBe("closed"); // primary tool result, unaffected
+      expect(updated.isError).toBeFalsy();
+    } finally {
+      chmodSync(handoffDir, 0o755); // restore so afterAll cleanup can remove the dir
+    }
   });
 });
