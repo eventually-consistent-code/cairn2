@@ -61,4 +61,62 @@ describe("loadConfig", () => {
     }));
     expect(loadConfig(d).user).toEqual({ handle: "jsreed" });
   });
+
+  it("continuity defaults apply when omitted", () => {
+    const d = dir();
+    writeFileSync(join(d, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
+    const cfg = loadConfig(d);
+    expect(cfg.continuity).toEqual({
+      resume: "prompt",
+      checkpoint: true,
+      wipCommits: false,
+      recallIndex: { enabled: true, maxCards: 20 },
+    });
+  });
+
+  it("continuity respects explicit overrides", () => {
+    const d = dir();
+    writeFileSync(join(d, "cairn.json"), JSON.stringify({
+      tracker: { type: "github", config: { repo: "o/r" } },
+      continuity: {
+        resume: "auto",
+        checkpoint: false,
+        wipCommits: true,
+        recallIndex: { enabled: false, maxCards: 5 },
+      },
+    }));
+    const cfg = loadConfig(d);
+    expect(cfg.continuity).toEqual({
+      resume: "auto",
+      checkpoint: false,
+      wipCommits: true,
+      recallIndex: { enabled: false, maxCards: 5 },
+    });
+  });
+
+  it("continuity.recallIndex defaults apply when continuity block is present but recallIndex omitted", () => {
+    const d = dir();
+    writeFileSync(join(d, "cairn.json"), JSON.stringify({
+      tracker: { type: "github", config: { repo: "o/r" } },
+      continuity: { resume: "off" },
+    }));
+    const cfg = loadConfig(d);
+    expect(cfg.continuity.resume).toBe("off");
+    expect(cfg.continuity.checkpoint).toBe(true);
+    expect(cfg.continuity.recallIndex).toEqual({ enabled: true, maxCards: 20 });
+  });
+
+  it("an existing fixture config without a continuity block still parses (backward compatible)", () => {
+    const d = dir();
+    writeFileSync(join(d, "cairn.json"), JSON.stringify({
+      tracker: { type: "jira", config: { baseUrl: "https://x.atlassian.net", projectKey: "PROJ" } },
+      agents: { model: "sonnet" },
+      memory: { tokenThreshold: 90000 },
+      user: { handle: "jsreed" },
+    }));
+    const cfg = loadConfig(d);
+    expect(cfg.continuity.resume).toBe("prompt");
+    expect(cfg.agents.model).toBe("sonnet");
+  });
 });
