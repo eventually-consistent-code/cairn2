@@ -20,5 +20,9 @@ Execute the given phase per the `cairn-planning` skill.
    the tracker stays the durable truth.
 5. On completion **with tests passing**: `issue_close(id)`. On stopping early:
    leave in_progress and report why.
-6. After the last issue: `context_set(issueId: null)` and suggest
+6. On `issue_close`: `ledger_append(phaseDir: <NN-slug>, taskRef: id, summary:
+   <one line — what shipped>, baseCommit: <HEAD when this issue started>,
+   headCommit: <HEAD now>, issueId: id, closedDate: <today, YYYY-MM-DD>)` —
+   the durable, git-committed record that the task landed.
+7. After the last issue: `context_set(issueId: null)` and suggest
    `/cairn verify <N>`.

@@ -21,8 +21,8 @@ export declare const configSchema: z.ZodObject<{
         open?: string | undefined;
     }>>;
 }, "strip", z.ZodTypeAny, {
-    orgUrl: string;
     project: string;
+    orgUrl: string;
     workItemType: string;
     patEnv: string;
     apiVersion: string;
@@ -32,8 +32,8 @@ export declare const configSchema: z.ZodObject<{
         closed: string;
     };
 }, {
-    orgUrl: string;
     project: string;
+    orgUrl: string;
     workItemType?: string | undefined;
     patEnv?: string | undefined;
     apiVersion?: string | undefined;
