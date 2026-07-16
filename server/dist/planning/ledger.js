@@ -7,10 +7,16 @@ import { projectStatus } from "./status.js";
 function shortSha(commit) {
     return commit.slice(0, 7);
 }
+/** Collapses embedded newlines (and the whitespace around them) to a single space, so a
+ *  multi-line field (e.g. a pasted commit-message summary) can never break the ledger's
+ *  one-line-per-entry invariant. */
+function sanitize(field) {
+    return field.replace(/\s*\n\s*/g, " ").trim();
+}
 function formatEntry(entry) {
-    return `- [x] ${entry.taskRef} — ${entry.summary} — commits `
-        + `${shortSha(entry.baseCommit)}..${shortSha(entry.headCommit)} — `
-        + `${entry.issueId} closed ${entry.closedDate}\n`;
+    return `- [x] ${sanitize(entry.taskRef)} — ${sanitize(entry.summary)} — commits `
+        + `${shortSha(sanitize(entry.baseCommit))}..${shortSha(sanitize(entry.headCommit))} — `
+        + `${sanitize(entry.issueId)} closed ${sanitize(entry.closedDate)}\n`;
 }
 function ledgerHeader(phase) {
     return `# Phase ${phase.number}: ${phase.name} — Ledger\n\n`

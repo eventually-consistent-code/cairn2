@@ -12,10 +12,11 @@ Execute the given phase per the `cairn-planning` skill.
    assigned to someone who is not you (compare against `user.handle` in
    cairn.json, only when it's set there — if unset, there are no ownership
    checks), say so and skip unless the user overrides.
-3. Before starting an issue: `issue_update(id, state: "in_progress")` — and
-   when `user.handle` is set in cairn.json, also pass
-   `assignee: <handle>` so teammates see who holds it. Then
-   `context_set(phase: <N>, issueId: id)`.
+3. Before starting an issue: record `git rev-parse HEAD` as this issue's
+   `baseCommit` (for step 6's `ledger_append`). Then
+   `issue_update(id, state: "in_progress")` — and when `user.handle` is set
+   in cairn.json, also pass `assignee: <handle>` so teammates see who holds
+   it. Then `context_set(phase: <N>, issueId: id)`.
 4. Do the work the issue + PLAN.md describe. Track in-session with TaskCreate;
    the tracker stays the durable truth.
 5. On completion **with tests passing**: `issue_close(id)`. On stopping early:

@@ -249,6 +249,18 @@ describe("continuity: write-through + tools", () => {
     expect(got.json.handoff.source).toBe("tool");
   });
 
+  it("context_set({issueId: null}) clears a stale issue out of the handoff", async () => {
+    const made = await call("issue_create", { title: "to be cleared" });
+    await call("issue_update", { id: made.json.id, state: "in_progress" });
+    const before = await call("continuity_get", {});
+    expect(before.json.handoff.issue).toBe(made.json.id); // stale issue landed, per the test above
+
+    await call("context_set", { issueId: null });
+
+    const after = await call("continuity_get", {});
+    expect(after.json.handoff.issue).toBeUndefined(); // explicit null must drop the field, not just skip patching it
+  });
+
   it("ledger_append leaves a handoff naming the phase and issue", async () => {
     await call("plan_scaffold_project", { name: "T" });
     await call("plan_scaffold_phase", { number: 1, name: "Core" });

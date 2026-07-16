@@ -33,17 +33,17 @@ function buildResumeBlock(handoff, mode) {
 }
 
 function main() {
-  const cwd = process.cwd();
+  const projectDir = process.env.CLAUDE_PROJECT_DIR ?? process.cwd();
   const parts = [];
 
-  const bp = bannerPath(cwd);
+  const bp = bannerPath(projectDir);
   if (existsSync(bp)) {
     const bannerText = readFileSync(bp, "utf8").trim();
     if (bannerText.length > 0) parts.push(bannerText);
   }
 
-  const hp = handoffPath(cwd);
-  const mode = resumeMode(cwd);
+  const hp = handoffPath(projectDir);
+  const mode = resumeMode(projectDir);
   if (mtimeMs(hp) !== null && mode !== "off") {
     const handoff = readJson(hp);
     parts.push(buildResumeBlock(handoff, mode));

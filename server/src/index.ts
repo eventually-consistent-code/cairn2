@@ -121,11 +121,21 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       ctx.set(a);
       const state = ctx.get();
       const patch: Partial<Handoff> & { source: Handoff["source"] } = { source: "tool" };
-      if (state.phase !== undefined) {
+      // Explicit null means "clear this field" -- map it to an own-property `undefined`
+      // on the patch so the {...base, ...patch} merge in writeHandoff overwrites the
+      // stale value and JSON.stringify drops it, instead of silently omitting the key
+      // (which would leave the prior phase/issue in the handoff forever).
+      if (a.phase === null) {
+        patch.phase = undefined;
+      } else if (a.phase !== undefined && state.phase !== undefined) {
         const ref = phaseHandoffRef(state.phase);
         if (ref) patch.phase = ref;
       }
-      if (state.issueId !== undefined) patch.issue = state.issueId;
+      if (a.issueId === null) {
+        patch.issue = undefined;
+      } else if (a.issueId !== undefined) {
+        patch.issue = state.issueId;
+      }
       refreshHandoff(patch);
       writeBanner(deps.projectDir);
       return state;

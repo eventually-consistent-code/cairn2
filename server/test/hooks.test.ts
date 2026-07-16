@@ -4,7 +4,7 @@ import {
 } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { basename, dirname, join } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 
@@ -81,14 +81,31 @@ function writeHandoffFixture(home: string, projectDir: string, data: Record<stri
   return path;
 }
 
-/** Runs a hook script with cwd=projectDir, HOME=home. Returns trimmed stdout. */
-function runHook(script: string, projectDir: string, home: string): string {
+/** Runs a hook script with cwd=projectDir, HOME=home, plus any extra env (e.g. CLAUDE_PROJECT_DIR). Returns trimmed stdout. */
+function runHook(script: string, projectDir: string, home: string, extraEnv: Record<string, string> = {}): string {
   return execFileSync(process.execPath, [script], {
     cwd: projectDir,
-    env: { ...process.env, HOME: home },
+    env: { ...process.env, HOME: home, ...extraEnv },
     encoding: "utf8",
     timeout: 5000,
   }).trim();
+}
+
+/**
+ * Hash/base as the scripts compute it for CLAUDE_PROJECT_DIR: that value is an env-var
+ * string, never chdir'd into by the OS, so plain `path.resolve()` (no symlink
+ * canonicalization) is exactly what the script's own pathHash does -- unlike the
+ * process.cwd() case above, no realCwd detour is needed here.
+ */
+function hashAndBaseForEnvDir(dir: string): { base: string; hash: string } {
+  const abs = resolve(dir);
+  const hash = createHash("sha256").update(abs).digest("hex").slice(0, 16);
+  return { base: basename(abs), hash };
+}
+
+function handoffPathForEnvDir(home: string, projectDir: string): string {
+  const { base, hash } = hashAndBaseForEnvDir(projectDir);
+  return join(home, ".cairn", "handoff", `${base}-${hash}.json`);
 }
 
 function backdateMtime(path: string, msAgo: number): void {
@@ -170,6 +187,28 @@ describe("posttooluse-breadcrumb", () => {
     runHook(BREADCRUMB, proj, home);
     const elapsed = Date.now() - started;
     expect(elapsed).toBeLessThan(100);
+  });
+
+  it("CLAUDE_PROJECT_DIR, not cwd, governs the handoff path when both are set", () => {
+    const cwdDir = freshDir("cairn-hooks-cwd-"); // spawned cwd -- must be ignored when CLAUDE_PROJECT_DIR is set
+    const projectDir = freshDir("cairn-hooks-projectdir-"); // CLAUDE_PROJECT_DIR -- must win, matching the server's `?? cwd` fallback
+    const home = freshDir("cairn-hooks-home-");
+
+    const path = handoffPathForEnvDir(home, projectDir);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify(baseHandoff(), null, 2) + "\n");
+    backdateMtime(path, 70_000);
+
+    // Decoy handoff keyed off cwd's own hash -- must be left untouched, proving cwd was ignored.
+    const decoyPath = writeHandoffFixture(home, cwdDir, baseHandoff({ source: "decoy" }));
+    backdateMtime(decoyPath, 70_000);
+    const decoyBefore = readFileSync(decoyPath, "utf8");
+
+    runHook(BREADCRUMB, cwdDir, home, { CLAUDE_PROJECT_DIR: projectDir });
+
+    const written = JSON.parse(readFileSync(path, "utf8"));
+    expect(written.source).toBe("posttooluse");
+    expect(readFileSync(decoyPath, "utf8")).toBe(decoyBefore);
   });
 });
 

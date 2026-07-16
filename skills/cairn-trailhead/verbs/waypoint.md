@@ -11,8 +11,9 @@ No `resume` argument — pause:
 1. Ask for `next_action` (what to pick up next) and `notes` (anything else
    worth remembering), batched in one question.
 2. `continuity_checkpoint(source: "waypoint", next_action: <answer>, notes:
-   <answer>)` — a full refresh, not a patch over stale fields. Phase/issue
-   context comes from `context_get()`.
+   <answer>)` — this merge-patches over the existing handoff, so any stale
+   fields it doesn't touch survive; `continuity_clear()` first if a clean
+   slate is needed. Phase/issue context comes from `context_get()`.
 3. `continuity.wipCommits` is `true` and there's uncommitted work: offer a
    `wip(cairn): waypoint — <next_action>` commit. Never commit without
    asking, flag or not.
