@@ -31,6 +31,37 @@ export declare const ConfigSchema: z.ZodObject<{
     }, {
         handle: string;
     }>>;
+    continuity: z.ZodDefault<z.ZodObject<{
+        resume: z.ZodDefault<z.ZodEnum<["prompt", "auto", "off"]>>;
+        checkpoint: z.ZodDefault<z.ZodBoolean>;
+        wipCommits: z.ZodDefault<z.ZodBoolean>;
+        recallIndex: z.ZodDefault<z.ZodObject<{
+            enabled: z.ZodDefault<z.ZodBoolean>;
+            maxCards: z.ZodDefault<z.ZodNumber>;
+        }, "strip", z.ZodTypeAny, {
+            enabled: boolean;
+            maxCards: number;
+        }, {
+            enabled?: boolean | undefined;
+            maxCards?: number | undefined;
+        }>>;
+    }, "strip", z.ZodTypeAny, {
+        resume: "auto" | "prompt" | "off";
+        checkpoint: boolean;
+        wipCommits: boolean;
+        recallIndex: {
+            enabled: boolean;
+            maxCards: number;
+        };
+    }, {
+        resume?: "auto" | "prompt" | "off" | undefined;
+        checkpoint?: boolean | undefined;
+        wipCommits?: boolean | undefined;
+        recallIndex?: {
+            enabled?: boolean | undefined;
+            maxCards?: number | undefined;
+        } | undefined;
+    }>>;
 }, "strip", z.ZodTypeAny, {
     tracker: {
         type: "github" | "gitlab" | "jira" | "asana" | "azure-boards" | "clickup";
@@ -41,6 +72,15 @@ export declare const ConfigSchema: z.ZodObject<{
     };
     memory: {
         tokenThreshold: number;
+    };
+    continuity: {
+        resume: "auto" | "prompt" | "off";
+        checkpoint: boolean;
+        wipCommits: boolean;
+        recallIndex: {
+            enabled: boolean;
+            maxCards: number;
+        };
     };
     user?: {
         handle: string;
@@ -58,6 +98,15 @@ export declare const ConfigSchema: z.ZodObject<{
     } | undefined;
     user?: {
         handle: string;
+    } | undefined;
+    continuity?: {
+        resume?: "auto" | "prompt" | "off" | undefined;
+        checkpoint?: boolean | undefined;
+        wipCommits?: boolean | undefined;
+        recallIndex?: {
+            enabled?: boolean | undefined;
+            maxCards?: number | undefined;
+        } | undefined;
     } | undefined;
 }>;
 export type CairnConfig = z.infer<typeof ConfigSchema>;
