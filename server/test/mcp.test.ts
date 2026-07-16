@@ -57,6 +57,7 @@ describe("cairn MCP server", () => {
       "mem_index", "mem_search", "mem_stats",
       "mem_card_create", "mem_card_list", "mem_card_recall",
       "continuity_checkpoint", "continuity_get", "continuity_clear",
+      "ledger_append",
     ].sort());
   });
 
@@ -91,6 +92,29 @@ describe("cairn MCP server", () => {
     const res = await call("plan_issues_set", { phaseDir: "01-core", issues: ["A,B"] });
     expect(res.isError).toBe(true);
     expect(res.json.code).toBe("CONFIG_INVALID");
+  });
+
+  it("ledger_append writes a formatted line to the phase's LEDGER.md", async () => {
+    const res = await call("ledger_append", {
+      phaseDir: "01-core", taskRef: "task-1", summary: "wire the tool",
+      baseCommit: "a1b2c3d4e5f6", headCommit: "d4e5f6a1b2c3",
+      issueId: "PROJ-1", closedDate: "2026-07-16",
+    });
+    expect(res.isError).toBeFalsy();
+    expect(res.json.line).toBe(
+      "- [x] task-1 — wire the tool — commits a1b2c3d..d4e5f6a — PROJ-1 closed 2026-07-16",
+    );
+  });
+
+  it("ledger_append rejects a phaseDir with no scaffolded phase", async () => {
+    const res = await call("ledger_append", {
+      phaseDir: "99-unscaffolded", taskRef: "task-1", summary: "x",
+      baseCommit: "a1b2c3d4e5f6", headCommit: "d4e5f6a1b2c3",
+      issueId: "PROJ-1", closedDate: "2026-07-16",
+    });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("NOT_FOUND");
+    expect(res.json.nextAction).toBeTruthy();
   });
 
   it("issue lifecycle: create → in_progress → close through tools", async () => {
@@ -223,6 +247,19 @@ describe("continuity: write-through + tools", () => {
     const got = await call("continuity_get", {});
     expect(got.json.handoff.issue).toBe(made.json.id);
     expect(got.json.handoff.source).toBe("tool");
+  });
+
+  it("ledger_append leaves a handoff naming the phase and issue", async () => {
+    await call("plan_scaffold_project", { name: "T" });
+    await call("plan_scaffold_phase", { number: 1, name: "Core" });
+    await call("ledger_append", {
+      phaseDir: "01-core", taskRef: "task-1", summary: "wire the tool",
+      baseCommit: "a1b2c3d4e5f6", headCommit: "d4e5f6a1b2c3",
+      issueId: "PROJ-9", closedDate: "2026-07-16",
+    });
+    const got = await call("continuity_get", {});
+    expect(got.json.handoff.phase).toEqual({ number: 1, slug: "core" });
+    expect(got.json.handoff.issue).toBe("PROJ-9");
   });
 
   it("continuity_checkpoint then continuity_get round-trips", async () => {

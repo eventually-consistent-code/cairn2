@@ -22,6 +22,7 @@ import { createCard, listCards } from "./memory/cards.js";
 import { checkCardStaleness } from "./memory/staleness.js";
 import { readHandoff, writeHandoff, clearHandoff } from "./core/continuity.js";
 import type { Handoff } from "./core/continuity.js";
+import { appendLedger } from "./planning/ledger.js";
 
 const StateEnum = z.enum(["open", "in_progress", "closed"]);
 const HandoffSourceEnum = z.enum(["tool", "posttooluse", "precompact", "waypoint"]);
@@ -315,6 +316,29 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
     { description: "Delete the session handoff for this project, if any",
       inputSchema: {} },
     wrap(() => ({ cleared: clearHandoff(deps.projectDir) })));
+
+  server.registerTool("ledger_append",
+    { description: "Append a verified-task line to a phase's LEDGER.md (append-only; creates the file with a header on first write)",
+      inputSchema: {
+        phaseDir: z.string(),
+        taskRef: z.string(),
+        summary: z.string(),
+        baseCommit: z.string(),
+        headCommit: z.string(),
+        issueId: z.string(),
+        closedDate: z.string(),
+      } },
+    wrap((a: { phaseDir: string; taskRef: string; summary: string; baseCommit: string;
+               headCommit: string; issueId: string; closedDate: string }) => {
+      const { phaseDir, ...entry } = a;
+      const result = appendLedger(deps.projectDir, phaseDir, entry);
+      refreshHandoff({
+        source: "tool",
+        phase: { number: Number(phaseDir.slice(0, 2)), slug: phaseDir.slice(3) },
+        issue: entry.issueId,
+      });
+      return result;
+    }));
 
   return server;
 }
