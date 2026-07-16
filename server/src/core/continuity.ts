@@ -1,0 +1,171 @@
+import { z } from "zod";
+import { createHash } from "node:crypto";
+import { homedir } from "node:os";
+import {
+  existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync,
+} from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { CairnError } from "../errors.js";
+import { loadConfig } from "../config.js";
+
+const STALE_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
+
+/** Same per-machine hashing scheme as indexDbPath: sha256(resolve(dir)).slice(0,16), keyed off basename. */
+function pathHash(projectDir: string): { base: string; hash: string } {
+  const abs = resolve(projectDir);
+  const hash = createHash("sha256").update(abs).digest("hex").slice(0, 16);
+  return { base: basename(abs), hash };
+}
+
+export function handoffPath(projectDir: string): string {
+  const { base, hash } = pathHash(projectDir);
+  return join(homedir(), ".cairn", "handoff", `${base}-${hash}.json`);
+}
+
+export function bannerPath(projectDir: string): string {
+  const { base, hash } = pathHash(projectDir);
+  return join(homedir(), ".cairn", "banner", `${base}-${hash}.md`);
+}
+
+export interface Handoff {
+  version: 1;
+  created: string;
+  source: "tool" | "posttooluse" | "precompact" | "waypoint";
+  project: string;
+  phase?: { number: number; slug: string };
+  issue?: string;
+  plan?: string;
+  task: { current: string; title: string };
+  tasks_completed: string[];
+  tasks_remaining: string[];
+  blockers: string[];
+  decisions_in_flight: string[];
+  uncommitted_files: string[];
+  next_action: string;
+  notes: string;
+  partial: boolean;
+}
+
+export const HandoffSchema: z.ZodType<Handoff> = z.object({
+  version: z.literal(1),
+  created: z.string(),
+  source: z.enum(["tool", "posttooluse", "precompact", "waypoint"]),
+  project: z.string(),
+  phase: z.object({ number: z.number().int(), slug: z.string() }).optional(),
+  issue: z.string().optional(),
+  plan: z.string().optional(),
+  task: z.object({ current: z.string(), title: z.string() }),
+  tasks_completed: z.array(z.string()),
+  tasks_remaining: z.array(z.string()),
+  blockers: z.array(z.string()),
+  decisions_in_flight: z.array(z.string()),
+  uncommitted_files: z.array(z.string()),
+  next_action: z.string(),
+  notes: z.string(),
+  partial: z.boolean(),
+});
+
+/** Handoff with no task in flight and no next action -- the baseline every write patches over. */
+function blankHandoff(project: string, source: Handoff["source"]): Handoff {
+  return {
+    version: 1,
+    created: new Date().toISOString(),
+    source,
+    project,
+    task: { current: "", title: "" },
+    tasks_completed: [],
+    tasks_remaining: [],
+    blockers: [],
+    decisions_in_flight: [],
+    uncommitted_files: [],
+    next_action: "",
+    notes: "",
+    partial: false,
+  };
+}
+
+/** A handoff counts as "rich" once there's a task in flight or a stated next action. */
+function isRich(h: Pick<Handoff, "task" | "next_action">): boolean {
+  return h.task.current !== "" || h.next_action !== "";
+}
+
+/** Reads the raw handoff file at `path`, returning null when absent. Throws HANDOFF_INVALID on corrupt content. */
+function readRaw(path: string): Handoff | null {
+  let raw: string;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return null;
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    throw new CairnError("HANDOFF_INVALID", `handoff at ${path} is not valid JSON: ${e}`,
+      "inspect or discard ~/.cairn/handoff/…");
+  }
+  const result = HandoffSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new CairnError("HANDOFF_INVALID",
+      `handoff at ${path} failed schema validation: ${result.error.issues
+        .map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`,
+      "inspect or discard ~/.cairn/handoff/…");
+  }
+  return result.data;
+}
+
+/**
+ * Reads the project's handoff. Never errors the session for staleness -- callers
+ * get `stale: true` and decide what to do with it. Invalid JSON/schema still
+ * throws HANDOFF_INVALID, since that's a corrupt file, not a stale one.
+ */
+export function readHandoff(projectDir: string): { handoff: Handoff; stale: boolean } | null {
+  const handoff = readRaw(handoffPath(projectDir));
+  if (!handoff) return null;
+  const stale = Date.now() - new Date(handoff.created).getTime() > STALE_MS;
+  return { handoff, stale };
+}
+
+/**
+ * Merges `patch` over the existing handoff (or a blank skeleton) and writes it
+ * atomically. Two guards keep this safe to call from hot paths like PostToolUse:
+ *  - unregistered guard: no loadable cairn.json -> skip silently, never scaffold.
+ *  - skeleton guard: richness is monotonic between clears -- a write can't
+ *    replace a rich handoff (task.current or next_action non-empty) with an
+ *    empty one. clearHandoff() is the explicit way to wipe a handoff.
+ */
+export function writeHandoff(projectDir: string, patch: Partial<Handoff> & { source: Handoff["source"] }): void {
+  try {
+    loadConfig(projectDir);
+  } catch (e) {
+    if (e instanceof CairnError && e.code === "CONFIG_MISSING") return;
+    throw e;
+  }
+
+  const path = handoffPath(projectDir);
+  const existing = readRaw(path);
+  const project = patch.project ?? existing?.project ?? basename(resolve(projectDir));
+  const base = existing ?? blankHandoff(project, patch.source);
+
+  const merged: Handoff = {
+    ...base,
+    ...patch,
+    version: 1,
+    created: new Date().toISOString(),
+  };
+
+  if (existing && isRich(existing) && !isRich(merged)) return; // silently keep the richer file
+
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.tmp`;
+  writeFileSync(tmp, JSON.stringify(merged, null, 2) + "\n");
+  renameSync(tmp, path);
+}
+
+/** Deletes the project's handoff file, if any. Returns whether one existed. */
+export function clearHandoff(projectDir: string): boolean {
+  const path = handoffPath(projectDir);
+  if (!existsSync(path)) return false;
+  unlinkSync(path);
+  return true;
+}

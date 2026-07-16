@@ -1,6 +1,7 @@
 export type ErrorCode =
   | "CONFIG_MISSING" | "CONFIG_INVALID" | "AUTH_MISSING"
-  | "RATE_LIMITED" | "NOT_FOUND" | "TRACKER_DOWN";
+  | "RATE_LIMITED" | "NOT_FOUND" | "TRACKER_DOWN"
+  | "HANDOFF_INVALID" | "HANDOFF_STALE";
 
 export class CairnError extends Error {
   constructor(
