@@ -17,8 +17,8 @@ import { projectStatus } from "./planning/status.js";
 import { driftReport, ensurePhase } from "./planning/mirror.js";
 import { unplannedReport } from "./planning/collab.js";
 import { importPhase } from "./planning/import.js";
-import { MemoryIndex, indexDbPath } from "./memory/index-store.js";
-import { createCard, listCards } from "./memory/cards.js";
+import { MemoryIndex, indexDbPath, type SearchResult } from "./memory/index-store.js";
+import { createCard, listCards, readCard } from "./memory/cards.js";
 import { checkCardStaleness } from "./memory/staleness.js";
 import { readHandoff, writeHandoff, clearHandoff } from "./core/continuity.js";
 import type { Handoff } from "./core/continuity.js";
@@ -30,6 +30,38 @@ const HandoffSourceEnum = z.enum(["tool", "posttooluse", "precompact", "waypoint
 const HandoffPhaseRefSchema = z.object({ number: z.number().int(), slug: z.string() });
 
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version as string;
+
+// mem_timeline support -- title/cost derivation mirrors memory/banner.ts's private
+// helpers (duplicated rather than exported to keep this task's footprint to the
+// files it's scoped to).
+function timelineCardTitle(body: string): string {
+  const firstLine = (body.split("\n")[0] ?? "").trim();
+  return firstLine.length > 60 ? `${firstLine.slice(0, 59)}…` : firstLine;
+}
+function timelineCardCost(body: string): number {
+  return Math.ceil(body.length / 4);
+}
+
+interface TimelineCardItem { id: string; type: string; title: string; created: string; cost: number }
+interface TimelineChunkItem { source: string; createdAt: string }
+type TimelineItem = TimelineCardItem | TimelineChunkItem;
+
+const timelineCmp = (a: string, b: string): number => (a < b ? -1 : a > b ? 1 : 0);
+
+// Cards carry a day-precision `created` string; chunks carry a full ISO `createdAt`
+// string. Comparing them as plain strings is the "day-precision caveat" the tool
+// description calls out: same-day chunks sort after same-day cards (a day string
+// is a lexicographic prefix of, and therefore less than, any timestamp on that same
+// day). Same-day cards are true ties, so they tie-break on id.
+const timelineSortKey = (item: TimelineItem): [string, string] =>
+  "created" in item ? [item.created, item.id] : [item.createdAt, item.source];
+
+const timelineMergeSort = (items: TimelineItem[]): TimelineItem[] =>
+  [...items].sort((a, b) => {
+    const [ka, sa] = timelineSortKey(a);
+    const [kb, sb] = timelineSortKey(b);
+    return ka === kb ? timelineCmp(sa, sb) : timelineCmp(ka, kb);
+  });
 
 export function buildServer(deps: { projectDir: string; tracker?: Tracker }): McpServer {
   const server = new McpServer({ name: "cairn", version: VERSION });
@@ -270,6 +302,68 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
         const check = checkCardStaleness(deps.projectDir, provenance);
         return { ...card, stale: check.stale, staleReasons: check.reasons };
       })));
+
+  server.registerTool("mem_timeline",
+    { description: "Chronological neighbors around an anchor (a memory card id or an index chunk source) -- "
+        + "answers \"what was happening around this decision?\" at index cost. Day-precision caveat: cards "
+        + "carry a day-precision created date while index chunks carry a full ISO timestamp, so entries are "
+        + "ordered by whatever precision they actually carry (a same-day chunk timestamp sorts after a "
+        + "same-day card); same-day cards tie-break by id.",
+      inputSchema: {
+        anchor: z.string(),
+        before: z.number().int().nonnegative().optional(),
+        after: z.number().int().nonnegative().optional(),
+      } },
+    wrap((a: { anchor: string; before?: number; after?: number }) => {
+      const before = a.before ?? 3;
+      const after = a.after ?? 3;
+
+      let anchorCreatedAt: string;
+      let anchorCardId: string | undefined;
+      try {
+        const card = readCard(deps.projectDir, a.anchor);
+        anchorCreatedAt = card.frontmatter.created;
+        anchorCardId = card.id;
+      } catch {
+        const chunkCreatedAt = getMemIndex().sourceCreatedAt(a.anchor);
+        if (chunkCreatedAt === undefined) {
+          throw new CairnError("NOT_FOUND", `no card or index chunk '${a.anchor}'`,
+            "check the id with mem_card_list or the source with mem_search");
+        }
+        anchorCreatedAt = chunkCreatedAt;
+      }
+
+      const isBeforeAnchor = (created: string, id: string): boolean =>
+        created < anchorCreatedAt
+        || (created === anchorCreatedAt && anchorCardId !== undefined && id < anchorCardId);
+      const isAfterAnchor = (created: string, id: string): boolean =>
+        created > anchorCreatedAt
+        || (created === anchorCreatedAt && anchorCardId !== undefined && id > anchorCardId);
+
+      const cardItems: TimelineCardItem[] = listCards(deps.projectDir)
+        .filter((c) => c.id !== anchorCardId)
+        .map((c) => ({
+          id: c.id, type: c.frontmatter.type, title: timelineCardTitle(c.body),
+          created: c.frontmatter.created, cost: timelineCardCost(c.body),
+        }));
+      const cardsBefore = cardItems.filter((c) => isBeforeAnchor(c.created, c.id));
+      const cardsAfter = cardItems.filter((c) => isAfterAnchor(c.created, c.id));
+
+      const chunkNeighbors: SearchResult[] = getMemIndex().timeline(anchorCreatedAt, before, after);
+      const chunksBefore: TimelineChunkItem[] = chunkNeighbors
+        .filter((c) => c.createdAt < anchorCreatedAt)
+        .map((c) => ({ source: c.source, createdAt: c.createdAt }));
+      const chunksAfter: TimelineChunkItem[] = chunkNeighbors
+        .filter((c) => c.createdAt > anchorCreatedAt)
+        .map((c) => ({ source: c.source, createdAt: c.createdAt }));
+
+      const beforeMerged = before > 0
+        ? timelineMergeSort([...cardsBefore, ...chunksBefore]).slice(-before) : [];
+      const afterMerged = after > 0
+        ? timelineMergeSort([...cardsAfter, ...chunksAfter]).slice(0, after) : [];
+
+      return [...beforeMerged, ...afterMerged];
+    }));
 
   server.registerTool("plan_unplanned",
     { description: "Tracker issues (non-closed) that no phase's PLAN.md references — work at risk of being missed",

@@ -66,6 +66,34 @@ export class MemoryIndex {
     ).all(...params) as SearchResult[];
   }
 
+  /** createdAt of the earliest-indexed chunk for `source`, or undefined if none exists. */
+  sourceCreatedAt(source: string): string | undefined {
+    const row = this.db.prepare(
+      "SELECT created_at as createdAt FROM chunks WHERE source = ? ORDER BY created_at ASC LIMIT 1",
+    ).get(source) as { createdAt: string } | undefined;
+    return row?.createdAt;
+  }
+
+  /**
+   * Chronologically adjacent index chunks around `anchorCreatedAt` -- up to
+   * `before` chunks strictly earlier (closest first reversed to ascending)
+   * and up to `after` chunks strictly later, concatenated ascending. Ties
+   * on the exact anchor timestamp are excluded (that's the anchor itself,
+   * or a same-millisecond collision -- neither belongs in its own neighbor
+   * list).
+   */
+  timeline(anchorCreatedAt: string, before: number, after: number): SearchResult[] {
+    const beforeRows = before > 0 ? this.db.prepare(
+      `SELECT content, source, phase, issue_id as issueId, created_at as createdAt
+       FROM chunks WHERE created_at < ? ORDER BY created_at DESC, source DESC LIMIT ?`,
+    ).all(anchorCreatedAt, before) as SearchResult[] : [];
+    const afterRows = after > 0 ? this.db.prepare(
+      `SELECT content, source, phase, issue_id as issueId, created_at as createdAt
+       FROM chunks WHERE created_at > ? ORDER BY created_at ASC, source ASC LIMIT ?`,
+    ).all(anchorCreatedAt, after) as SearchResult[] : [];
+    return [...beforeRows.reverse(), ...afterRows];
+  }
+
   stats(): IndexStats {
     const row = this.db.prepare(
       "SELECT COUNT(*) as chunkCount, COALESCE(SUM(LENGTH(content)), 0) as approxBytes FROM chunks",
