@@ -20,8 +20,12 @@ import { importPhase } from "./planning/import.js";
 import { MemoryIndex, indexDbPath } from "./memory/index-store.js";
 import { createCard, listCards } from "./memory/cards.js";
 import { checkCardStaleness } from "./memory/staleness.js";
+import { readHandoff, writeHandoff, clearHandoff } from "./core/continuity.js";
+import type { Handoff } from "./core/continuity.js";
 
 const StateEnum = z.enum(["open", "in_progress", "closed"]);
+const HandoffSourceEnum = z.enum(["tool", "posttooluse", "precompact", "waypoint"]);
+const HandoffPhaseRefSchema = z.object({ number: z.number().int(), slug: z.string() });
 
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version as string;
 
@@ -50,6 +54,27 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       }
     };
 
+  // Best-effort handoff refresh for the write-through points below. Continuity
+  // is a hint, never authority (trust order: tracker + git > ledger > handoff)
+  // -- so a refresh failure (unwritable ~/.cairn/handoff, corrupt file, etc.)
+  // must never fail the primary tool call that triggered it.
+  const refreshHandoff = (patch: Partial<Handoff> & { source: Handoff["source"] }): void => {
+    try {
+      writeHandoff(deps.projectDir, patch);
+    } catch {
+      // swallowed by design -- see comment above.
+    }
+  };
+
+  // Resolves a phase number to the {number, slug} shape the handoff wants, by
+  // matching against locally scaffolded phase dirs (NN-slug). Returns
+  // undefined when the phase hasn't been scaffolded locally -- best-effort,
+  // same spirit as the rest of write-through refresh.
+  const phaseHandoffRef = (number: number): { number: number; slug: string } | undefined => {
+    const match = projectStatus(deps.projectDir).phases.find((p) => p.number === number);
+    return match ? { number, slug: match.dir.slice(3) } : undefined;
+  };
+
   server.registerTool("context_get",
     { description: "Get the active cairn context (phase, issue)", inputSchema: {} },
     wrap(() => ctx.get()));
@@ -59,7 +84,16 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       inputSchema: { phase: z.number().nullable().optional(),
                      issueId: z.string().nullable().optional() } },
     wrap((a: { phase?: number | null; issueId?: string | null }) => {
-      ctx.set(a); return ctx.get();
+      ctx.set(a);
+      const state = ctx.get();
+      const patch: Partial<Handoff> & { source: Handoff["source"] } = { source: "tool" };
+      if (state.phase !== undefined) {
+        const ref = phaseHandoffRef(state.phase);
+        if (ref) patch.phase = ref;
+      }
+      if (state.issueId !== undefined) patch.issue = state.issueId;
+      refreshHandoff(patch);
+      return state;
     }));
 
   server.registerTool("issue_create",
@@ -83,12 +117,18 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
     wrap(async (a: { id: string; title?: string; body?: string; state?: IssueState;
                labels?: string[]; assignee?: string }) => {
       const { id, ...patch } = a;
-      return (await getTracker()).updateIssue(id, patch);
+      const result = await (await getTracker()).updateIssue(id, patch);
+      refreshHandoff({ source: "tool", issue: id });
+      return result;
     }));
 
   server.registerTool("issue_close",
     { description: "Close an issue", inputSchema: { id: z.string() } },
-    wrap(async (a: { id: string }) => (await getTracker()).closeIssue(a.id)));
+    wrap(async (a: { id: string }) => {
+      const result = await (await getTracker()).closeIssue(a.id);
+      refreshHandoff({ source: "tool", issue: a.id });
+      return result;
+    }));
 
   server.registerTool("issue_list",
     { description: "List issues, optionally by phase/state",
@@ -147,6 +187,11 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
           `no PLAN.md at phaseDir '${a.phaseDir}' — scaffold it first with plan_scaffold_phase`);
       }
       writePlanIssues(deps.projectDir, a.phaseDir, a.issues);
+      refreshHandoff({
+        source: "tool",
+        phase: { number: Number(a.phaseDir.slice(0, 2)), slug: a.phaseDir.slice(3) },
+        plan: join(".cairn", "plans", "phases", a.phaseDir, "PLAN.md"),
+      });
       return { ok: true };
     }));
 
@@ -192,8 +237,17 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       } },
     wrap((a: { type: "decision" | "constraint" | "gotcha" | "reference"; body: string;
                scopePhase?: number; scopeIssue?: string;
-               provenance?: Array<{ file: string; commit: string }> }) =>
-      createCard(deps.projectDir, a)));
+               provenance?: Array<{ file: string; commit: string }> }) => {
+      const card = createCard(deps.projectDir, a);
+      const patch: Partial<Handoff> & { source: Handoff["source"] } = { source: "tool" };
+      if (a.scopePhase !== undefined) {
+        const ref = phaseHandoffRef(a.scopePhase);
+        if (ref) patch.phase = ref;
+      }
+      if (a.scopeIssue !== undefined) patch.issue = a.scopeIssue;
+      refreshHandoff(patch);
+      return card;
+    }));
 
   server.registerTool("mem_card_list",
     { description: "List memory cards, optionally filtered by phase/issue scope",
@@ -220,8 +274,47 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
   server.registerTool("plan_import",
     { description: "Reverse-mirror a tracker phase (by id or name substring) into .cairn/plans/ artifacts",
       inputSchema: { phaseRef: z.string() } },
-    wrap(async (a: { phaseRef: string }) =>
-      importPhase(await getTracker(), deps.projectDir, a.phaseRef)));
+    wrap(async (a: { phaseRef: string }) => {
+      const result = await importPhase(await getTracker(), deps.projectDir, a.phaseRef);
+      refreshHandoff({
+        source: "tool",
+        phase: { number: result.number, slug: result.dir.slice(3) },
+        plan: join(".cairn", "plans", "phases", result.dir, "PLAN.md"),
+      });
+      return result;
+    }));
+
+  server.registerTool("continuity_checkpoint",
+    { description: "Write/refresh the session handoff (checkpoint) for this project",
+      inputSchema: {
+        source: HandoffSourceEnum.optional(),
+        phase: HandoffPhaseRefSchema.optional(),
+        issue: z.string().optional(),
+        plan: z.string().optional(),
+        task: z.object({ current: z.string(), title: z.string() }).optional(),
+        tasks_completed: z.array(z.string()).optional(),
+        tasks_remaining: z.array(z.string()).optional(),
+        blockers: z.array(z.string()).optional(),
+        decisions_in_flight: z.array(z.string()).optional(),
+        uncommitted_files: z.array(z.string()).optional(),
+        next_action: z.string().optional(),
+        notes: z.string().optional(),
+        partial: z.boolean().optional(),
+      } },
+    wrap((a: Partial<Handoff>) => {
+      writeHandoff(deps.projectDir, { ...a, source: a.source ?? "tool" });
+      return readHandoff(deps.projectDir);
+    }));
+
+  server.registerTool("continuity_get",
+    { description: "Read the current session handoff, if any (flags handoffs older than 14 days as stale, never errors on staleness)",
+      inputSchema: {} },
+    wrap(() => readHandoff(deps.projectDir)));
+
+  server.registerTool("continuity_clear",
+    { description: "Delete the session handoff for this project, if any",
+      inputSchema: {} },
+    wrap(() => ({ cleared: clearHandoff(deps.projectDir) })));
 
   return server;
 }
