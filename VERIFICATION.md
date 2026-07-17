@@ -80,7 +80,7 @@ verb doc against the spec's trust order and by the kill-drill procedure
 below, which exercises it end-to-end. No automated test exists for this path
 by design (it requires a live tracker + an agent session).
 
-### Kill-drill procedure — PENDING (needs a live session with cairn2 installed)
+### Kill-drill procedure
 Spec success criterion 1: a session killed mid-`work` (crash, compaction,
 usage cap, `/clear`) resumes at the exact task with zero re-executed work.
 Two drills, recorded here once run, same format as Tier 0's dogfood drill:
@@ -108,6 +108,44 @@ Two drills, recorded here once run, same format as Tier 0's dogfood drill:
    check if compaction triggered a fresh session) → expect the exact task
    resumes, zero re-executed work.
 
-Both drills PENDING — require a live session with cairn2 installed as a
-local plugin, not exercisable from this implementation session. Record pass/
-fail and any deviation here once run, matching Tier 0's drill format above.
+### Kill-drill results — RUN 2026-07-17 (mechanical, real tracker) — PASS 12/12
+
+Run mechanically post-merge: the real `dist/index.js` server driven over
+stdio against a real GitHub tracker (scratch private repo
+`eventually-consistent-code/cairn-drill-scratch`), hook scripts spawned
+exactly as the plugin would fire them, server process killed with SIGKILL
+mid-work. Repeatable drivers committed at `server/drills/drill-a.mjs` and
+`server/drills/drill-b.mjs` (run from `server/`:
+`node drills/drill-a.mjs <projectDir> $PWD/dist/index.js`, then
+`drill-b.mjs <projectDir> <dist> <issueId> <hooks/scripts dir>`).
+
+**Drill A — PASS.** Real issue created + `in_progress` + checkpoint; SIGKILL
+mid-session → handoff file intact (valid JSON, exact issue/task/next_action,
+version 1). Simulated PostToolUse breadcrumb honored the 60s throttle (fresh
+file → skip), then after mtime backdate merge-patched `source:"posttooluse"`
++ `uncommitted_files` while preserving task fields. SessionStart hook
+injected the resume block (issue, current task, next action, age, `prompt`
+phrasing). Fresh server: `continuity_get` → non-stale, exact task;
+`issue_get` cross-check → tracker `in_progress`, matches handoff, no
+contradiction. Resumed at the exact task with zero re-executed work.
+
+**Drill B — PASS.** Fresh handoff write then immediate
+`precompact-refresh.mjs` → wrote despite the <60s-old file (unthrottled),
+stamped `source:"precompact"`, task fields survived; post-"compaction"
+`continuity_get` reads the exact task.
+
+**Contradiction sub-check (criterion 3 data path) — PASS.** Issue closed
+out-of-band on the tracker while handoff still said mid-task: `issue_get`
+(`closed`) vs handoff (`step-2`) mismatch is fully detectable — the data the
+`waypoint resume` trust order needs is all present. `continuity_clear`
+removed the handoff on confirmed resume.
+
+**Caveat:** this exercises every process and file the live flow touches
+(server, all three hook scripts, real tracker), but not the agent-side
+`waypoint` verb behavior itself — that remains prompt-level, verified by
+review. Worth one live dogfood pass alongside the Tier 0 drill above when
+cairn2 is next installed as a local plugin.
+
+**Fix landed during the drill:** SessionStart resume header read
+"(just now ago)" for fresh handoffs — copy corrected to "(just now)"
+(`hooks/scripts/sessionstart-continuity.mjs`).

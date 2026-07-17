@@ -17,7 +17,8 @@ import {
 /** Compact resume block: phase, issue, current task, next_action, age. Phrasing depends on mode. */
 function buildResumeBlock(handoff, mode) {
   const age = humanizeAge(handoff.created);
-  const lines = [`## cairn session handoff (${age} ago)`];
+  const ageLabel = age === "just now" ? age : `${age} ago`;
+  const lines = [`## cairn session handoff (${ageLabel})`];
   if (handoff.phase) lines.push(`- phase: ${handoff.phase.number} (${handoff.phase.slug})`);
   if (handoff.issue) lines.push(`- issue: ${handoff.issue}`);
   if (handoff.task?.current) {
