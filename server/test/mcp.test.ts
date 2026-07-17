@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll } from "vitest";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
+import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +7,28 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildServer } from "../src/index.js";
 import { FakeTracker } from "../src/tracker/fake.js";
+import { handoffPath } from "../src/core/continuity.js";
+
+// Controllable failure injection for the continuity resilience test below.
+// Mocks ONLY writeHandoff (everything else passes through to the real module)
+// so a single test can simulate an unwritable ~/.cairn/handoff without
+// chmodding the real shared homedir directory -- vitest runs test files in
+// parallel workers, and other suites write handoffs there unguarded, so a
+// chmod window would EACCES-flake unrelated tests.
+const continuityFailure = vi.hoisted(() => ({ failWrites: false, failedAttempts: 0 }));
+vi.mock("../src/core/continuity.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../src/core/continuity.js")>();
+  return {
+    ...actual,
+    writeHandoff: (...args: Parameters<typeof actual.writeHandoff>) => {
+      if (continuityFailure.failWrites) {
+        continuityFailure.failedAttempts += 1;
+        throw new Error("simulated EACCES: handoff dir unwritable");
+      }
+      return actual.writeHandoff(...args);
+    },
+  };
+});
 
 describe("cairn MCP server", () => {
   let client: Client;
@@ -33,7 +55,9 @@ describe("cairn MCP server", () => {
       "plan_drift", "plan_import", "plan_issues_set", "plan_phase_ensure",
       "plan_scaffold_project", "plan_scaffold_phase", "plan_status", "plan_unplanned",
       "mem_index", "mem_search", "mem_stats",
-      "mem_card_create", "mem_card_list", "mem_card_recall",
+      "mem_card_create", "mem_card_list", "mem_card_recall", "mem_timeline",
+      "continuity_checkpoint", "continuity_get", "continuity_clear",
+      "ledger_append",
     ].sort());
   });
 
@@ -68,6 +92,29 @@ describe("cairn MCP server", () => {
     const res = await call("plan_issues_set", { phaseDir: "01-core", issues: ["A,B"] });
     expect(res.isError).toBe(true);
     expect(res.json.code).toBe("CONFIG_INVALID");
+  });
+
+  it("ledger_append writes a formatted line to the phase's LEDGER.md", async () => {
+    const res = await call("ledger_append", {
+      phaseDir: "01-core", taskRef: "task-1", summary: "wire the tool",
+      baseCommit: "a1b2c3d4e5f6", headCommit: "d4e5f6a1b2c3",
+      issueId: "PROJ-1", closedDate: "2026-07-16",
+    });
+    expect(res.isError).toBeFalsy();
+    expect(res.json.line).toBe(
+      "- [x] task-1 — wire the tool — commits a1b2c3d..d4e5f6a — PROJ-1 closed 2026-07-16",
+    );
+  });
+
+  it("ledger_append rejects a phaseDir with no scaffolded phase", async () => {
+    const res = await call("ledger_append", {
+      phaseDir: "99-unscaffolded", taskRef: "task-1", summary: "x",
+      baseCommit: "a1b2c3d4e5f6", headCommit: "d4e5f6a1b2c3",
+      issueId: "PROJ-1", closedDate: "2026-07-16",
+    });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("NOT_FOUND");
+    expect(res.json.nextAction).toBeTruthy();
   });
 
   it("issue lifecycle: create → in_progress → close through tools", async () => {
@@ -162,5 +209,102 @@ describe("cairn MCP server", () => {
     const status = await call("plan_status", {});
     expect(status.json.phases.find((p: { number: number }) => p.number === 7).issues)
       .toEqual([issue.json.id]);
+  });
+});
+
+describe("continuity: write-through + tools", () => {
+  // A dedicated registered project (cairn.json present) + server/client pair --
+  // write-through only fires when the project is registered (Task 1's
+  // unregistered guard), so this needs its own fixture rather than the shared
+  // suite's tmpdir above, which is deliberately left unregistered.
+  let projectDir: string;
+  let client: Client;
+
+  const call = async (name: string, args: Record<string, unknown> = {}) => {
+    const res = await client.callTool({ name, arguments: args });
+    const text = (res.content as Array<{ type: string; text: string }>)[0].text;
+    return { ...res, json: JSON.parse(text) };
+  };
+
+  beforeAll(async () => {
+    projectDir = mkdtempSync(join(tmpdir(), "cairn-continuity-mcp-"));
+    writeFileSync(join(projectDir, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
+    const server = buildServer({ projectDir, tracker: new FakeTracker() });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    client = new Client({ name: "test-continuity", version: "0.0.0" });
+    await Promise.all([server.connect(st), client.connect(ct)]);
+  });
+
+  afterAll(() => {
+    rmSync(handoffPath(projectDir), { force: true });
+    rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  it("issue_update leaves a handoff naming that issue", async () => {
+    const made = await call("issue_create", { title: "via mcp" });
+    await call("issue_update", { id: made.json.id, state: "in_progress" });
+    const got = await call("continuity_get", {});
+    expect(got.json.handoff.issue).toBe(made.json.id);
+    expect(got.json.handoff.source).toBe("tool");
+  });
+
+  it("context_set({issueId: null}) clears a stale issue out of the handoff", async () => {
+    const made = await call("issue_create", { title: "to be cleared" });
+    await call("issue_update", { id: made.json.id, state: "in_progress" });
+    const before = await call("continuity_get", {});
+    expect(before.json.handoff.issue).toBe(made.json.id); // stale issue landed, per the test above
+
+    await call("context_set", { issueId: null });
+
+    const after = await call("continuity_get", {});
+    expect(after.json.handoff.issue).toBeUndefined(); // explicit null must drop the field, not just skip patching it
+  });
+
+  it("ledger_append leaves a handoff naming the phase and issue", async () => {
+    await call("plan_scaffold_project", { name: "T" });
+    await call("plan_scaffold_phase", { number: 1, name: "Core" });
+    await call("ledger_append", {
+      phaseDir: "01-core", taskRef: "task-1", summary: "wire the tool",
+      baseCommit: "a1b2c3d4e5f6", headCommit: "d4e5f6a1b2c3",
+      issueId: "PROJ-9", closedDate: "2026-07-16",
+    });
+    const got = await call("continuity_get", {});
+    expect(got.json.handoff.phase).toEqual({ number: 1, slug: "core" });
+    expect(got.json.handoff.issue).toBe("PROJ-9");
+  });
+
+  it("continuity_checkpoint then continuity_get round-trips", async () => {
+    await call("continuity_checkpoint", {
+      next_action: "finish the write-through wiring", notes: "task 2",
+    });
+    const got = await call("continuity_get", {});
+    expect(got.json.handoff.next_action).toBe("finish the write-through wiring");
+    expect(got.json.handoff.notes).toBe("task 2");
+    expect(got.json.stale).toBe(false);
+  });
+
+  it("continuity_clear deletes the handoff", async () => {
+    await call("continuity_checkpoint", { next_action: "x" });
+    const cleared = await call("continuity_clear", {});
+    expect(cleared.json.cleared).toBe(true);
+    const got = await call("continuity_get", {});
+    expect(got.json).toBeNull();
+  });
+
+  it("primary tool still succeeds when the handoff write fails", async () => {
+    continuityFailure.failWrites = true; // writeHandoff throws (simulated unwritable dir)
+    continuityFailure.failedAttempts = 0;
+    try {
+      const made = await call("issue_create", { title: "unaffected by continuity failure" });
+      const updated = await call("issue_update", { id: made.json.id, state: "closed" });
+      expect(updated.json.state).toBe("closed"); // primary tool result, unaffected
+      expect(updated.isError).toBeFalsy();
+      // Prove the failing path was actually exercised, not vacuously skipped:
+      // issue_update's write-through must have attempted (and swallowed) a write.
+      expect(continuityFailure.failedAttempts).toBeGreaterThan(0);
+    } finally {
+      continuityFailure.failWrites = false;
+    }
   });
 });

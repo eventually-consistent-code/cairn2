@@ -1,0 +1,74 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://cairn.dev/schema/handoff-v1.json",
+  "title": "Cairn Handoff v1",
+  "description": "Crash-proof session handoff record written to ~/.cairn/handoff/<project>-<hash>.json. Mirrors the zod HandoffSchema in server/src/core/continuity.ts — the zod schema is the runtime source of truth, this file is the committed versioned contract doc.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "created",
+    "source",
+    "project",
+    "task",
+    "tasks_completed",
+    "tasks_remaining",
+    "blockers",
+    "decisions_in_flight",
+    "uncommitted_files",
+    "next_action",
+    "notes",
+    "partial"
+  ],
+  "properties": {
+    "version": {
+      "const": 1,
+      "description": "Schema version. Always 1 for this contract."
+    },
+    "created": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp stamped by writeHandoff on every write."
+    },
+    "source": {
+      "type": "string",
+      "enum": ["tool", "posttooluse", "precompact", "waypoint"],
+      "description": "What triggered this handoff write."
+    },
+    "project": {
+      "type": "string",
+      "description": "Project display name, derived from basename(resolve(projectDir)) unless overridden."
+    },
+    "phase": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["number", "slug"],
+      "properties": {
+        "number": { "type": "integer" },
+        "slug": { "type": "string" }
+      }
+    },
+    "issue": { "type": "string" },
+    "plan": { "type": "string" },
+    "task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["current", "title"],
+      "properties": {
+        "current": { "type": "string" },
+        "title": { "type": "string" }
+      }
+    },
+    "tasks_completed": { "type": "array", "items": { "type": "string" } },
+    "tasks_remaining": { "type": "array", "items": { "type": "string" } },
+    "blockers": { "type": "array", "items": { "type": "string" } },
+    "decisions_in_flight": { "type": "array", "items": { "type": "string" } },
+    "uncommitted_files": { "type": "array", "items": { "type": "string" } },
+    "next_action": { "type": "string" },
+    "notes": { "type": "string" },
+    "partial": {
+      "type": "boolean",
+      "description": "True when this handoff was written mid-truncation (e.g. precompact) and may be incomplete."
+    }
+  }
+}
