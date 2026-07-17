@@ -91,6 +91,7 @@ gotchas/references:
 | `mem_card_create` | Write a durable memory card (decision/constraint/gotcha/reference) with provenance |
 | `mem_card_list` | List memory cards, optionally filtered by phase/issue scope |
 | `mem_card_recall` | List memory cards with staleness checked against their provenance (the anti-rot check) |
+| `mem_timeline` | Chronological neighbors (cards + index chunks) around an anchor, at index cost |
 
 ### Artifact layout
 
@@ -119,6 +120,107 @@ re-verify, not a fact to trust.
 `cairn.json` carries `memory.tokenThreshold` (default `150000`) — read directly
 from config by the skill (not returned by any tool) to decide when the memory
 index is getting large enough to warrant summarizing or pruning.
+
+### Timeline
+
+`mem_timeline({ anchor, before?: 3, after?: 3 })` answers "what was happening
+around this decision?" at index cost — `anchor` is a memory card id or an
+index chunk source; the result merges chronologically adjacent cards
+(`{ id, type, title, created, cost }`) and index chunks (`{ source,
+createdAt }`) into one ordered list. Cards carry a day-precision `created`
+date while index chunks carry a full ISO timestamp, so entries sort by
+whatever precision they actually have (a same-day chunk sorts after a
+same-day card); same-day cards tie-break by id.
+
+## Session continuity
+
+Kill a session mid-task — compaction, usage cap, `/clear`, a real crash —
+and the next session resumes at the exact task with zero re-executed work.
+The server is the primary writer: every state-changing tool (`context_set`,
+`issue_update`, `issue_close`, `plan_issues_set`, `plan_import`,
+`mem_card_create`, `ledger_append`) refreshes the handoff in-process,
+write-through, on every call.
+
+| tool | purpose |
+|---|---|
+| `continuity_checkpoint` | Write/refresh the session handoff (also called manually by `/cairn waypoint`) |
+| `continuity_get` | Read the current handoff; flags one older than 14 days as stale but never errors on staleness |
+| `continuity_clear` | Delete the handoff — called on confirmed resume, `ship`, and `summit` |
+| `ledger_append` | Append a verified-task line to a phase's git-committed `LEDGER.md` (append-only) |
+
+### Artifact layout
+
+```
+~/.cairn/handoff/<project>-<hash>.json   # per-machine, ephemeral session handoff — never git-tracked
+~/.cairn/banner/<project>-<hash>.md      # pre-rendered recall-index cache (see below)
+.cairn/plans/phases/<NN-slug>/LEDGER.md  # per-phase, git-committed, append-only task ledger
+```
+
+`<hash>` is `sha256(resolve(projectDir)).slice(0, 16)` — the same per-machine
+keying scheme the memory index uses, so handoff/banner state never collides
+across projects that happen to share a basename.
+
+### Resume flow
+
+1. A `PostToolUse` hook (throttled to ≤1 write/60s) and an unthrottled
+   `PreCompact` hook cover the gaps between tool calls; `SessionStart` cats
+   the handoff and, per `continuity.resume`, offers (`prompt`), auto-runs
+   (`auto`), or suppresses (`off`) the resume.
+2. `/cairn waypoint` is the manual path: no argument pauses (prompts for
+   `next_action`/`notes`, optionally offers a `wip(cairn):` commit);
+   `/cairn waypoint resume` resumes.
+3. **Trust order is never the handoff alone.** The tracker and `git log`
+   outrank `LEDGER.md`, which outranks the handoff — a handoff that
+   contradicts the tracker (an issue it names as open that's actually
+   closed, a task the ledger already shows landed) is reported and
+   corrected before it's followed. See
+   `skills/cairn-trailhead/verbs/waypoint.md`.
+4. On confirmed resume, `ship`, or `summit`: `continuity_clear()`.
+
+### Guard rails
+
+- **Skeleton guard.** A write can never replace a handoff with `task.current`
+  or `next_action` populated with an empty one — richness is monotonic
+  between clears.
+- **Unregistered guard.** Every writer requires a loadable `cairn.json`;
+  nothing is ever created outside `~/.cairn/` for a project cairn doesn't
+  know.
+- **Never trusted blind.** A handoff older than 14 days is surfaced as stale
+  and never auto-resumed, even with `continuity.resume: "auto"`.
+- Every hook is fire-and-forget (errors exit 0 silently) and targets <100ms —
+  a hook failure is never visible to the session.
+
+### Recall index (session-start memory banner)
+
+On every card mutation or active-context scope change, the server
+re-renders the banner cache above: a byte-stable, token-cost-annotated table
+of memory cards scoped issue > phase > project (id tiebreak), capped at
+`continuity.recallIndex.maxCards`. `SessionStart` just cats the file — no DB
+access, no runtime spawn. Fetch cost is `ceil(card_chars / 4)`, computed
+fresh at render time; `mem_stats` reports `bannerTokens` (the banner's own
+cost) and `tokensSavedVsFullInjection` (sum of the scoped cards' costs minus
+the banner cost, floored at 0) — honest accounting of what the pre-rendered
+index actually saves versus injecting every card in full.
+
+### Configuration
+
+`cairn.json`'s `continuity` block:
+
+```json
+"continuity": {
+  "resume": "prompt",
+  "checkpoint": true,
+  "wipCommits": false,
+  "recallIndex": { "enabled": true, "maxCards": 20 }
+}
+```
+
+- `resume` — `prompt` (default) asks before resuming, `auto` proceeds
+  without asking, `off` suppresses the `SessionStart` resume offer entirely.
+- `checkpoint` — enables/disables the `PostToolUse` breadcrumb hook.
+- `wipCommits` — `/cairn waypoint` offers a `wip(cairn): waypoint —
+  <next_action>` commit on pause when there's uncommitted work.
+- `recallIndex.enabled` / `recallIndex.maxCards` — the recall banner above.
 
 ## Collaboration
 

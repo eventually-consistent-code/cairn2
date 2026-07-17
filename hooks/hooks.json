@@ -1,0 +1,39 @@
+{
+  "description": "cairn2 continuity hooks -- PostToolUse breadcrumb, PreCompact refresh, SessionStart resume injection. All three are dependency-free, fire-and-forget Node scripts (see hooks/scripts/).",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/posttooluse-breadcrumb.mjs\"",
+            "timeout": 3000
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/precompact-refresh.mjs\"",
+            "timeout": 3000
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/sessionstart-continuity.mjs\"",
+            "timeout": 3000
+          }
+        ]
+      }
+    ]
+  }
+}

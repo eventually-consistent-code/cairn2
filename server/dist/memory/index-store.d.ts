@@ -26,6 +26,17 @@ export declare class MemoryIndex {
         phase?: number;
         issueId?: string;
     }, limit?: number): SearchResult[];
+    /** createdAt of the earliest-indexed chunk for `source`, or undefined if none exists. */
+    sourceCreatedAt(source: string): string | undefined;
+    /**
+     * Chronologically adjacent index chunks around `anchorCreatedAt` -- up to
+     * `before` chunks strictly earlier (closest first reversed to ascending)
+     * and up to `after` chunks strictly later, concatenated ascending. Ties
+     * on the exact anchor timestamp are excluded (that's the anchor itself,
+     * or a same-millisecond collision -- neither belongs in its own neighbor
+     * list).
+     */
+    timeline(anchorCreatedAt: string, before: number, after: number): SearchResult[];
     stats(): IndexStats;
     close(): void;
 }

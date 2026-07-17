@@ -14,6 +14,19 @@ export const ConfigSchema = z.object({
         .object({ tokenThreshold: z.number().int().positive() })
         .default({ tokenThreshold: 150000 }),
     user: z.object({ handle: z.string().min(1) }).optional(),
+    continuity: z
+        .object({
+        resume: z.enum(["prompt", "auto", "off"]).default("prompt"),
+        checkpoint: z.boolean().default(true),
+        wipCommits: z.boolean().default(false),
+        recallIndex: z
+            .object({
+            enabled: z.boolean().default(true),
+            maxCards: z.number().int().positive().default(20),
+        })
+            .default({}),
+    })
+        .default({}),
 });
 export function loadConfig(projectDir) {
     let raw;

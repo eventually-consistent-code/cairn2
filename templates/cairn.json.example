@@ -5,6 +5,12 @@
     "config": { "repo": "owner/name" }
   },
   "agents": { "model": "auto" },
+  "continuity": {
+    "resume": "prompt",
+    "checkpoint": true,
+    "wipCommits": false,
+    "recallIndex": { "enabled": true, "maxCards": 20 }
+  },
   "_alternatives": {
     "gitlab": {
       "type": "gitlab",

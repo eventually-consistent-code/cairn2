@@ -29,8 +29,8 @@ export declare const configSchema: z.ZodObject<{
     tokenEnv: z.ZodDefault<z.ZodString>;
     extraLabels: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
 }, "strip", z.ZodTypeAny, {
-    tokenEnv: string;
     project: string;
+    tokenEnv: string;
     baseUrl: string;
     extraLabels: string[];
 }, {

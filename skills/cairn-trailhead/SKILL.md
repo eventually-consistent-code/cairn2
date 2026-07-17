@@ -24,7 +24,7 @@ canonical registry — `help` renders from it and CI enforces it.
 | `recall` | Search memory, scoped to the active context, with staleness flags | `"<query>" [--phase N] [--issue <id>]` | verbs/recall.md | live |
 | `help` | Render this verb reference | `[verb]` | verbs/help.md | live |
 | `do` | Freeform smart router — classify intent, dispatch the right verb | `"<request>"` | verbs/do.md | live |
-| `waypoint` | Pause/resume session continuity | | verbs/waypoint.md | reserved-A0 |
+| `waypoint` | Pause/resume session continuity | `[resume]` | verbs/waypoint.md | live |
 | `scout` | Research-only mode with resumable checkpointing | | verbs/scout.md | reserved-A |
 | `probe` | Risk-ordered throwaway spike experiments with verdicts | | verbs/probe.md | reserved-A |
 | `draft` | Multi-variant mockups on a shared theme | | verbs/draft.md | reserved-A |
@@ -63,3 +63,5 @@ one: say which tier ships it and show `/cairn help`.
   artifact judgment: `cairn-planning`. What deserves a card, distill timing,
   capacity guard: `cairn-memory`. Subroutines sequence tool calls; they do
   not restate policy.
+- **Continuity.** State-changing verbs refresh the handoff via their tools
+  automatically; `ship`/`summit` clear it.
