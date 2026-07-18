@@ -3,8 +3,9 @@ import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, paginate, type FetchLike } from "../http.js";
 import type {
-  Capability, Issue, IssueCreate, IssuePatch, IssueState, Phase, Tracker,
+  Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
 } from "../types.js";
+import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 
 const API = "https://api.github.com";
 const WIP_LABEL = "in-progress";
@@ -41,6 +42,7 @@ export class GitHubTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, // via label convention
     hasPhases: true, hasDependencies: false, hasLabels: true,
+    hasMilestones: false, hasPhaseClose: false,
   };
 
   constructor(
@@ -162,4 +164,9 @@ export class GitHubTracker implements Tracker {
     return raw.map((m) => ({ id: String(m.number), name: m.title,
       state: m.state === "closed" ? "closed" : "open" }));
   }
+
+  async closePhase(_id: string): Promise<Phase> { return phaseCloseUnsupported("github"); }
+  async createMilestone(_name: string): Promise<Milestone> { return milestonesUnsupported("github"); }
+  async listMilestones(): Promise<Milestone[]> { return milestonesUnsupported("github"); }
+  async completeMilestone(_id: string): Promise<Milestone> { return milestonesUnsupported("github"); }
 }

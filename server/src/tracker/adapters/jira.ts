@@ -2,8 +2,9 @@ import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, type FetchLike } from "../http.js";
 import type {
-  Capability, Issue, IssueCreate, IssuePatch, IssueState, Phase, Tracker,
+  Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
 } from "../types.js";
+import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 
 // Issue keys look like PROJ-123 (letters + digits, dash, digits).
 const ID_RE = /^[A-Z][A-Z0-9]+-\d+$/i;
@@ -98,6 +99,7 @@ function normalizeTimestamp(raw: string): string {
 export class JiraTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
+    hasMilestones: false, hasPhaseClose: false,
   };
 
   constructor(
@@ -270,4 +272,9 @@ export class JiraTracker implements Tracker {
       state: STATUS_CATEGORY_MAP[i.fields.status?.statusCategory?.key ?? "new"] === "closed" ? "closed" : "open",
     }));
   }
+
+  async closePhase(_id: string): Promise<Phase> { return phaseCloseUnsupported("jira"); }
+  async createMilestone(_name: string): Promise<Milestone> { return milestonesUnsupported("jira"); }
+  async listMilestones(): Promise<Milestone[]> { return milestonesUnsupported("jira"); }
+  async completeMilestone(_id: string): Promise<Milestone> { return milestonesUnsupported("jira"); }
 }
