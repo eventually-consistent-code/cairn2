@@ -14,8 +14,8 @@ canonical registry — `help` renders from it and CI enforces it.
 | verb | purpose | args | subroutine | status |
 |---|---|---|---|---|
 | `new` | Start a project — interview, plan artifacts, tracker mirror, issues | `[project name]` | verbs/new.md | live |
-| `plan` | Plan a phase — research per depth, write PLAN.md, reconcile tracker | `<N> [--quick\|--deep] [--model <auto\|haiku\|sonnet\|opus>]` | verbs/plan.md | live |
-| `work` | Execute a phase — claim issues, do the work, close on verified done | `<N>` | verbs/work.md | live |
+| `plan` | Plan a phase — research per depth, write PLAN.md, reconcile tracker | `<N> [--quick\|--deep] [--model <auto\|haiku\|sonnet\|opus>] [--tdd] [--mvp] [--prd <file>] [--ingest <glob>] [--gaps]` | verbs/plan.md | live |
+| `work` | Execute a phase — claim issues, do the work, close on verified done | `<N> [--wave [N]]` | verbs/work.md | live |
 | `verify` | Goal-backward phase check, drift clean, write VERIFICATION.md | `<N>` | verbs/verify.md | live |
 | `ship` | Gate on drift-clean + no open issues in verified phases, then push | | verbs/ship.md | live |
 | `status` | One view — phases, issue states, drift, unplanned work | | verbs/status.md | live |

@@ -1,6 +1,6 @@
 ---
 verb: plan
-args: "<N> [--quick|--deep] [--model <auto|haiku|sonnet|opus>]"
+args: "<N> [--quick|--deep] [--model <auto|haiku|sonnet|opus>] [--tdd] [--mvp] [--prd <file>] [--ingest <glob>] [--gaps]"
 status: live
 ---
 
@@ -16,10 +16,30 @@ Plan the given phase per the `cairn-planning` skill's depth dial.
 3. Write the task breakdown into the phase's PLAN.md body. Keep decisions in
    CONTEXT.md (precedence per shared rules — the tracker gets updated, not
    followed).
-4. Reconcile: `plan_drift()` — resolve anything flagged for this phase
+4. Flags (combinable; all task-list changes still flow through `plan_issues_set`
+   / `plan_meta_set`, never hand-edits):
+   - `--mvp`: shape tasks per the cairn-planning skill's vertical-slice-first
+     policy before writing PLAN.md.
+   - `--prd <file>`: read the file first; interview ONLY the gaps it leaves,
+     batched into one AskUserQuestion.
+   - `--ingest <glob>`: read matching docs; write their decisions into
+     CONTEXT.md as locked decisions with source links. Conflicting docs →
+     surface the conflict, never silently pick.
+   - `--tdd`: per task, judge eligibility per the cairn-planning rubric;
+     batch the proposed eligible/ineligible split into ONE AskUserQuestion
+     for overrides; then `plan_meta_set(phaseDir, tdd: [<eligible ids>])`.
+   - `--gaps`: read this phase's VERIFICATION.md failures + the latest
+     `plan_resync` report; propose new/amended tasks. Goal-breaking gaps →
+     issues in this phase now (`issue_create` + `plan_issues_set`); minor →
+     offer to backlog. Severity call is yours; say which and why.
+   - Wave grouping (with or without flags): when tasks are independent,
+     propose waves and write them with `plan_meta_set(phaseDir,
+     waves: [[ids…], …])`. Waves must partition cleanly — an issue in two
+     waves is a tool error.
+5. Reconcile: `plan_drift()` — resolve anything flagged for this phase
    (recreate missing issues via `issue_create` + `plan_issues_set`; question
    closed-unverified ones with the user).
-5. Adopt: `plan_unplanned()` — for any unplanned issue that belongs to this
+6. Adopt: `plan_unplanned()` — for any unplanned issue that belongs to this
    phase, add its id via `plan_issues_set` (and set its tracker phase with
    `issue_update` if the backend supports phases). Ask before adopting.
-6. Report the plan summary and next step `/cairn work <N>`.
+7. Report the plan summary and next step `/cairn work <N>`.

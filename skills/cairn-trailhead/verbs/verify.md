@@ -12,7 +12,11 @@ Verify the given phase per the `cairn-planning` skill.
 2. `plan_drift()` — this phase must contribute nothing flagged.
 3. `issue_list(phase: <tracker phase id>, state: "open")` — must be empty; report
    stragglers instead of closing them unexamined.
-4. Write `.cairn/plans/phases/<NN-dir>/VERIFICATION.md`: what was checked, what
+4. TDD evidence: for every id in PLAN.md `tdd:` frontmatter, this phase's
+   LEDGER.md line for that id must carry a `tdd <red>..<green>` segment.
+   Any TDD task missing its pair → the phase FAILS verification — report
+   which ids, do not write VERIFICATION.md.
+5. Write `.cairn/plans/phases/<NN-dir>/VERIFICATION.md`: what was checked, what
    passed, deviations. (Its presence marks the phase verified — drift treats
    closed issues in verified phases as normal.)
-5. Report pass/fail and next step (`/cairn ship` or the fixes needed).
+6. Report pass/fail and next step (`/cairn ship` or the fixes needed).
