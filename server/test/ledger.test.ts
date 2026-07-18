@@ -97,4 +97,29 @@ describe("appendLedger", () => {
     expect(err.code).toBe("NOT_FOUND");
     expect(err.nextAction).toBeTruthy();
   });
+
+  it("appends a tdd evidence segment when red+green are given", () => {
+    const d = dir();
+    scaffoldProject(d, "P");
+    const { dir: phaseDir } = scaffoldPhase(d, 3, "Ledger Phase");
+
+    const { line } = appendLedger(d, phaseDir, {
+      taskRef: "T2", summary: "tdd task", baseCommit: "a".repeat(40),
+      headCommit: "b".repeat(40), issueId: "GH-2", closedDate: "2026-07-18",
+      redCommit: "c".repeat(40), greenCommit: "d".repeat(40),
+    });
+    expect(line).toContain("— tdd ccccccc..ddddddd —");
+  });
+
+  it("rejects a lone red or green commit", () => {
+    const d = dir();
+    scaffoldProject(d, "P");
+    const { dir: phaseDir } = scaffoldPhase(d, 3, "Ledger Phase");
+
+    expect(() => appendLedger(d, phaseDir, {
+      taskRef: "T3", summary: "s", baseCommit: "a".repeat(40),
+      headCommit: "b".repeat(40), issueId: "GH-3", closedDate: "2026-07-18",
+      redCommit: "c".repeat(40),
+    })).toThrowError(/both or neither/);
+  });
 });

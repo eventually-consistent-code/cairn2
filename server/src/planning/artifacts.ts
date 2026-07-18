@@ -111,3 +111,68 @@ export function writePlanIssues(projectDir: string, phaseDir: string,
   const { data, body } = parseFrontmatter(raw);
   writeFileSync(path, serializeFrontmatter({ ...data, issues }, body));
 }
+
+export interface PlanMeta { issues: string[]; waves: string[][]; tdd: string[] }
+
+const WAVE_KEY_RE = /^wave_(\d+)$/;
+
+const asList = (v: string | string[] | undefined): string[] =>
+  v === undefined ? [] : Array.isArray(v) ? v : [v];
+
+export function readPlanMeta(projectDir: string, phaseDir: string): PlanMeta {
+  const path = join(plansRoot(projectDir), "phases", phaseDir, "PLAN.md");
+  if (!existsSync(path)) return { issues: [], waves: [], tdd: [] };
+  const { data } = parseFrontmatter(readFileSync(path, "utf8"));
+  const waveKeys = Object.keys(data)
+    .map((k) => WAVE_KEY_RE.exec(k)).filter((m): m is RegExpExecArray => m !== null)
+    .sort((a, b) => Number(a[1]) - Number(b[1]));
+  return {
+    issues: asList(data.issues),
+    waves: waveKeys.map((m) => asList(data[m[0]])),
+    tdd: asList(data.tdd),
+  };
+}
+
+export function writePlanMeta(projectDir: string, phaseDir: string,
+  meta: { waves?: string[][]; tdd?: string[] }): void {
+  const path = join(plansRoot(projectDir), "phases", phaseDir, "PLAN.md");
+  if (!existsSync(path)) {
+    throw new CairnError("NOT_FOUND",
+      `no PLAN.md at phaseDir '${phaseDir}' — scaffold it first with plan_scaffold_phase`);
+  }
+  const raw = readFileSync(path, "utf8");
+  const { data, body } = parseFrontmatter(raw);
+  const issues = new Set(asList(data.issues));
+  const assertKnown = (ids: string[], what: string): void => {
+    for (const id of ids) {
+      if (!issues.has(id)) {
+        throw new CairnError("CONFIG_INVALID",
+          `${what} references '${id}' which is not in this plan's issues list`,
+          "add it with plan_issues_set first");
+      }
+    }
+  };
+  if (meta.waves !== undefined) {
+    const seen = new Set<string>();
+    for (const [i, wave] of meta.waves.entries()) {
+      if (wave.length === 0) {
+        throw new CairnError("CONFIG_INVALID", `wave ${i + 1} is empty`);
+      }
+      assertKnown(wave, `wave ${i + 1}`);
+      for (const id of wave) {
+        if (seen.has(id)) {
+          throw new CairnError("CONFIG_INVALID",
+            `issue '${id}' appears in more than one wave`);
+        }
+        seen.add(id);
+      }
+    }
+    for (const k of Object.keys(data)) if (WAVE_KEY_RE.test(k)) delete data[k];
+    meta.waves.forEach((wave, i) => { data[`wave_${i + 1}`] = wave; });
+  }
+  if (meta.tdd !== undefined) {
+    assertKnown(meta.tdd, "tdd");
+    data.tdd = meta.tdd;
+  }
+  writeFileSync(path, serializeFrontmatter(data, body));
+}

@@ -11,6 +11,8 @@ export interface LedgerEntryInput {
   headCommit: string;
   issueId: string;
   closedDate: string;
+  redCommit?: string;
+  greenCommit?: string;
 }
 
 /** Short-SHA form used in the ledger line -- matches `git log --abbrev=7` convention. */
@@ -26,9 +28,17 @@ function sanitize(field: string): string {
 }
 
 function formatEntry(entry: LedgerEntryInput): string {
+  if ((entry.redCommit === undefined) !== (entry.greenCommit === undefined)) {
+    throw new CairnError("CONFIG_INVALID",
+      "redCommit/greenCommit: both or neither",
+      "pass the failing-test commit AND the passing commit, or omit both");
+  }
+  const tdd = entry.redCommit
+    ? `tdd ${shortSha(sanitize(entry.redCommit))}..${shortSha(sanitize(entry.greenCommit!))} — `
+    : "";
   return `- [x] ${sanitize(entry.taskRef)} — ${sanitize(entry.summary)} — commits `
     + `${shortSha(sanitize(entry.baseCommit))}..${shortSha(sanitize(entry.headCommit))} — `
-    + `${sanitize(entry.issueId)} closed ${sanitize(entry.closedDate)}\n`;
+    + `${tdd}${sanitize(entry.issueId)} closed ${sanitize(entry.closedDate)}\n`;
 }
 
 function ledgerHeader(phase: { number: number; name: string }): string {
