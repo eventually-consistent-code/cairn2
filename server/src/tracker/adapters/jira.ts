@@ -4,7 +4,6 @@ import { fetchJson, type FetchLike } from "../http.js";
 import type {
   Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
 } from "../types.js";
-import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 
 // Issue keys look like PROJ-123 (letters + digits, dash, digits).
 const ID_RE = /^[A-Z][A-Z0-9]+-\d+$/i;
@@ -99,8 +98,10 @@ function normalizeTimestamp(raw: string): string {
 export class JiraTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-    hasMilestones: false, hasPhaseClose: false,
+    hasMilestones: true, hasPhaseClose: true,
   };
+
+  private projectId: number | undefined;
 
   constructor(
     private readonly cfg: JiraConfig,
@@ -273,8 +274,49 @@ export class JiraTracker implements Tracker {
     }));
   }
 
-  async closePhase(_id: string): Promise<Phase> { return phaseCloseUnsupported("jira"); }
-  async createMilestone(_name: string): Promise<Milestone> { return milestonesUnsupported("jira"); }
-  async listMilestones(): Promise<Milestone[]> { return milestonesUnsupported("jira"); }
-  async completeMilestone(_id: string): Promise<Milestone> { return milestonesUnsupported("jira"); }
+  private async resolveProjectId(): Promise<number> {
+    if (this.projectId === undefined) {
+      const raw = (await this.api("GET",
+        `/rest/api/3/project/${this.cfg.projectKey}`, undefined,
+        "jira project_get")) as { id: string };
+      this.projectId = Number(raw.id);
+    }
+    return this.projectId;
+  }
+
+  private normalizeVersion(raw: { id: string; name: string; released?: boolean }): Milestone {
+    return {
+      id: raw.id, name: raw.name,
+      state: raw.released ? "released" : "open",
+      url: `${this.cfg.baseUrl.replace(/\/$/, "")}/projects/${this.cfg.projectKey}/versions/${raw.id}`,
+    };
+  }
+
+  async closePhase(id: string): Promise<Phase> {
+    // Jira phases are Epics, and Epics are issues — the close transition applies.
+    const closed = await this.closeIssue(id);
+    return { id: closed.id, name: closed.title, state: "closed" };
+  }
+
+  async createMilestone(name: string): Promise<Milestone> {
+    const projectId = await this.resolveProjectId();
+    const raw = (await this.api("POST", "/rest/api/3/version",
+      { name, projectId }, "jira milestone_create")) as
+      { id: string; name: string; released?: boolean };
+    return this.normalizeVersion(raw);
+  }
+
+  async listMilestones(): Promise<Milestone[]> {
+    const raw = (await this.api("GET",
+      `/rest/api/3/project/${this.cfg.projectKey}/versions`, undefined,
+      "jira milestone_list")) as Array<{ id: string; name: string; released?: boolean }>;
+    return raw.map((v) => this.normalizeVersion(v));
+  }
+
+  async completeMilestone(id: string): Promise<Milestone> {
+    const raw = (await this.api("PUT", `/rest/api/3/version/${id}`,
+      { released: true }, "jira milestone_complete")) as
+      { id: string; name: string; released?: boolean };
+    return this.normalizeVersion(raw);
+  }
 }
