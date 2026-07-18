@@ -20,7 +20,6 @@ const failures = [];
 
 const SPEC_RESERVED = {
   probe: "C", draft: "C",
-  fast: "A", resync: "A",
   mark: "B", retro: "B", distill: "B", brief: "B", tune: "B",
   trace: "C", triage: "D", basecamp: "F",
 };
