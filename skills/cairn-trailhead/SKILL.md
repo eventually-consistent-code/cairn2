@@ -29,8 +29,8 @@ canonical registry — `help` renders from it and CI enforces it.
 | `route` | Re-route the roadmap — insert/remove/edit phases | `insert\|remove\|edit <N> ["name"]` | verbs/route.md | live |
 | `probe` | Risk-ordered throwaway spike experiments with verdicts | | verbs/probe.md | reserved-C |
 | `draft` | Multi-variant mockups on a shared theme | | verbs/draft.md | reserved-C |
-| `summit` | Complete a milestone; interview into the next | | verbs/summit.md | reserved-A |
-| `auto` | Chained hands-off execution of remaining phases (opt-in) | | verbs/auto.md | reserved-A |
+| `summit` | Complete the milestone — verify gate, tracker close/release, archive, tag | | verbs/summit.md | live |
+| `auto` | Chained hands-off execution of remaining phases (opt-in) | | verbs/auto.md | live |
 | `fast` | Trivial inline change — no artifacts, atomic commit | | verbs/fast.md | reserved-A |
 | `resync` | Detect out-of-band code changes; refresh plan context | | verbs/resync.md | reserved-A |
 | `mark` | Zero-friction capture — notes, seeds, backlog | | verbs/mark.md | reserved-B |

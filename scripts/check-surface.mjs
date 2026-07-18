@@ -19,8 +19,8 @@ const failures = [];
 // --- inputs -----------------------------------------------------------------
 
 const SPEC_RESERVED = {
-  probe: "C", draft: "C", summit: "A",
-  auto: "A", fast: "A", resync: "A",
+  probe: "C", draft: "C",
+  fast: "A", resync: "A",
   mark: "B", retro: "B", distill: "B", brief: "B", tune: "B",
   trace: "C", triage: "D", basecamp: "F",
 };
