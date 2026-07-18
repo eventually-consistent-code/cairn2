@@ -9,9 +9,15 @@ until every phase is verified.
 
 1. `milestone_list()` + `plan_status()` — show what's completing: phases,
    verification state, native milestone (when the backend has one). Any
-   unverified phase → stop, list them, point at `/cairn verify <N>`.
+   unverified phase → stop, list them, point at `/cairn verify <N>`. If the
+   backend has `hasMilestones` and `milestone_list()` shows no current
+   native milestone id (first-milestone case — nothing has stamped one
+   yet), fold an offer to create one now into step 2's question.
 2. Interview the milestone summary (1–3 sentences, what shipped) — one
-   AskUserQuestion, batched with the "start next milestone?" question.
+   AskUserQuestion, batched with the "start next milestone?" question and,
+   when step 1 flagged a missing native milestone, a "create the native
+   milestone for v<N> now?" question (suggest name `v<N>`). On yes:
+   `milestone_create("v<N>")` before step 3.
 3. `milestone_complete(summary)` — closes tracker phases (skips recorded
    for backends whose phase primitive can't close), releases the native
    milestone when supported, archives `phases/` → `milestones/vN/`, bumps
