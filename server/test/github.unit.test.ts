@@ -140,4 +140,16 @@ describe("GitHubTracker mapping", () => {
     await expect(t.createIssue({ title: "x", phase: "nope" }))
       .rejects.toMatchObject({ code: "CONFIG_INVALID" });
   });
+
+  it("closePhase PATCHes the milestone closed", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: { number: 3, title: "Phase 1: core", state: "closed" } },
+    ]);
+    const t = new GitHubTracker({ repo: "o/r" }, f, () => "tok");
+    const p = await t.closePhase("3");
+    expect(calls[0].url).toBe("https://api.github.com/repos/o/r/milestones/3");
+    expect(calls[0].method).toBe("PATCH");
+    expect(calls[0].body).toMatchObject({ state: "closed" });
+    expect(p).toMatchObject({ id: "3", state: "closed" });
+  });
 });
