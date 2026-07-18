@@ -91,8 +91,12 @@ completeMilestone(id: string): Promise<Milestone>
 |---|---|---|
 | Jira | fixVersion | release the version |
 | Azure Boards | Epic work item | close the epic |
-| ClickUp | Folder | archive the folder |
-| GitHub / GitLab / Asana | — (`hasMilestones: false`) | fallback path |
+| GitHub / GitLab / Asana / ClickUp | — (`hasMilestones: false`) | fallback path |
+
+*(ClickUp amended 2026-07-18 at plan time: phases are Lists under a fixed
+configured folder/space and the public API has no move-list endpoint, so a
+milestone Folder can't adopt existing phase lists — ClickUp joins the
+fallback set until an adapter upgrade.)*
 
 ### State lives in git
 
@@ -105,8 +109,12 @@ Ordered, idempotent orchestration:
 
 1. **Gate:** every live phase dir has VERIFICATION.md — else
    `PRECONDITION_FAILED` listing the unverified phases. Nothing moves.
-2. Close every tracker phase object (universal, all backends;
-   already-closed phases skip — this is what makes re-runs safe).
+2. Close every tracker phase object via a new `closePhase(id)` interface
+   method + `Capability.hasPhaseClose` (amended at plan time: GitHub
+   milestones, GitLab milestones, and Jira epics close natively; Azure
+   iteration nodes, Asana sections, and ClickUp lists have no closed
+   state — those record a per-phase skip in the report instead of lying).
+   Already-closed phases skip — this is what makes re-runs safe.
 3. `hasMilestones` → release/complete the native milestone object.
 4. Archive: move `phases/NN-*/` → `milestones/v<N>/`; reset `roadmap.md`
    (frontmatter bumps `milestone` to N+1; archive section links `v<N>` with
@@ -247,7 +255,7 @@ RED → GREEN → REFACTOR procedure itself is prompt-policy in `work.md`.
    new tools; dangling-reference scan over the six new verb docs.
 3. **Dogfood drills** (logged in VERIFICATION.md, run live like Tier 0/A0):
    - **Summit drill:** scratch project, 2 verified phases → `summit` on a
-     `hasMilestones` backend (Jira or ClickUp) AND on GitHub (fallback).
+     `hasMilestones` backend (Jira or Azure Boards) AND on GitHub (fallback).
      Tracker objects closed/released, archive + tag correct, re-run
      idempotent.
    - **Auto drill:** 2-phase scratch project runs hands-off; a rigged
