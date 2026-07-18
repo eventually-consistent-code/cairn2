@@ -25,10 +25,10 @@ canonical registry — `help` renders from it and CI enforces it.
 | `help` | Render this verb reference | `[verb]` | verbs/help.md | live |
 | `do` | Freeform smart router — classify intent, dispatch the right verb | `"<request>"` | verbs/do.md | live |
 | `waypoint` | Pause/resume session continuity | `[resume]` | verbs/waypoint.md | live |
-| `scout` | Research-only mode with resumable checkpointing | | verbs/scout.md | reserved-A |
+| `scout` | Research a phase only — resumable RESEARCH.md checkpoints | `<N>` | verbs/scout.md | live |
+| `route` | Re-route the roadmap — insert/remove/edit phases | `insert\|remove\|edit <N> ["name"]` | verbs/route.md | live |
 | `probe` | Risk-ordered throwaway spike experiments with verdicts | | verbs/probe.md | reserved-C |
 | `draft` | Multi-variant mockups on a shared theme | | verbs/draft.md | reserved-C |
-| `route` | Re-route the roadmap — insert/remove/edit phases | | verbs/route.md | reserved-A |
 | `summit` | Complete a milestone; interview into the next | | verbs/summit.md | reserved-A |
 | `auto` | Chained hands-off execution of remaining phases (opt-in) | | verbs/auto.md | reserved-A |
 | `fast` | Trivial inline change — no artifacts, atomic commit | | verbs/fast.md | reserved-A |
