@@ -19,12 +19,12 @@ const failures = [];
 // --- inputs -----------------------------------------------------------------
 
 const SPEC_RESERVED = {
-  scout: "A", probe: "A", draft: "A", route: "A", summit: "A",
+  scout: "A", probe: "C", draft: "C", route: "A", summit: "A",
   auto: "A", fast: "A", resync: "A",
   mark: "B", retro: "B", distill: "B", brief: "B", tune: "B",
   trace: "C", triage: "D", basecamp: "F",
 };
-const TOOL_PREFIXES = /^(context|issue|plan|mem|continuity|ledger)_/;
+const TOOL_PREFIXES = /^(context|issue|plan|mem|continuity|ledger|milestone)_/;
 
 const skillMd = readFileSync(
   join(root, "skills/cairn-trailhead/SKILL.md"), "utf8");
