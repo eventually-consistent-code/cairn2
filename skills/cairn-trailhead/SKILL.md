@@ -26,8 +26,8 @@ canonical registry — `help` renders from it and CI enforces it.
 | `do` | Freeform smart router — classify intent, dispatch the right verb | `"<request>"` | verbs/do.md | live |
 | `waypoint` | Pause/resume session continuity | `[resume]` | verbs/waypoint.md | live |
 | `scout` | Research-only mode with resumable checkpointing | | verbs/scout.md | reserved-A |
-| `probe` | Risk-ordered throwaway spike experiments with verdicts | | verbs/probe.md | reserved-A |
-| `draft` | Multi-variant mockups on a shared theme | | verbs/draft.md | reserved-A |
+| `probe` | Risk-ordered throwaway spike experiments with verdicts | | verbs/probe.md | reserved-C |
+| `draft` | Multi-variant mockups on a shared theme | | verbs/draft.md | reserved-C |
 | `route` | Re-route the roadmap — insert/remove/edit phases | | verbs/route.md | reserved-A |
 | `summit` | Complete a milestone; interview into the next | | verbs/summit.md | reserved-A |
 | `auto` | Chained hands-off execution of remaining phases (opt-in) | | verbs/auto.md | reserved-A |
