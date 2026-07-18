@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, paginate } from "../http.js";
+import { milestonesUnsupported } from "../unsupported.js";
 const API = "https://api.github.com";
 const WIP_LABEL = "in-progress";
 // Repo must be "owner/name" — the lookahead blocks path-traversal strings
@@ -30,6 +31,7 @@ export class GitHubTracker {
     capabilities = {
         hasInProgress: true, // via label convention
         hasPhases: true, hasDependencies: false, hasLabels: true,
+        hasMilestones: false, hasPhaseClose: true,
     };
     constructor(cfg, fetchImpl = fetch, tokenProvider = resolveGithubToken) {
         this.cfg = cfg;
@@ -136,4 +138,13 @@ export class GitHubTracker {
         return raw.map((m) => ({ id: String(m.number), name: m.title,
             state: m.state === "closed" ? "closed" : "open" }));
     }
+    async closePhase(id) {
+        this.assertId(id);
+        const raw = (await this.api("PATCH", `/repos/${this.cfg.repo}/milestones/${id}`, { state: "closed" }));
+        return { id: String(raw.number), name: raw.title,
+            state: raw.state === "closed" ? "closed" : "open" };
+    }
+    async createMilestone(_name) { return milestonesUnsupported("github"); }
+    async listMilestones() { return milestonesUnsupported("github"); }
+    async completeMilestone(_id) { return milestonesUnsupported("github"); }
 }

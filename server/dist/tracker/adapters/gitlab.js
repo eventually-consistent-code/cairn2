@@ -1,11 +1,15 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, paginate } from "../http.js";
+import { milestonesUnsupported } from "../unsupported.js";
 const WIP = "in-progress";
 export class GitLabTracker {
     cfg;
     fetchImpl;
-    capabilities = { hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true };
+    capabilities = {
+        hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
+        hasMilestones: false, hasPhaseClose: true,
+    };
     constructor(cfg, fetchImpl = fetch) {
         this.cfg = cfg;
         this.fetchImpl = fetchImpl;
@@ -102,6 +106,15 @@ export class GitLabTracker {
         const raw = (await paginate(this.fetchImpl, `${this.base()}/milestones?state=all&per_page=100`, { method: "GET", headers: this.headers() }, { context: "gitlab phase_list" }));
         return raw.map((m) => ({ id: String(m.id), name: m.title, state: m.state === "closed" ? "closed" : "open" }));
     }
+    async closePhase(id) {
+        this.assertId(id);
+        const raw = (await this.api("PUT", `/milestones/${id}`, { state_event: "close" }, "phase_close"));
+        return { id: String(raw.id), name: raw.title,
+            state: raw.state === "closed" ? "closed" : "open" };
+    }
+    async createMilestone(_name) { return milestonesUnsupported("gitlab"); }
+    async listMilestones() { return milestonesUnsupported("gitlab"); }
+    async completeMilestone(_id) { return milestonesUnsupported("gitlab"); }
 }
 export const configSchema = z.object({
     baseUrl: z.string().url().default("https://gitlab.com"),

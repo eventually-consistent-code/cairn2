@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson } from "../http.js";
+import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 const API = "https://api.clickup.com/api/v2";
 const LIST_CAP = 100;
 export const configSchema = z.object({
@@ -31,6 +32,7 @@ export class ClickUpTracker {
     tokenProvider;
     capabilities = {
         hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
+        hasMilestones: false, hasPhaseClose: false,
     };
     constructor(cfg, fetchImpl = fetch, tokenProvider = () => resolveClickUpToken(cfg.tokenEnv)) {
         this.cfg = cfg;
@@ -174,4 +176,8 @@ export class ClickUpTracker {
         const raw = (await this.api("GET", parentPath, undefined, "clickup listPhases"));
         return (raw.lists ?? []).map((l) => ({ id: l.id, name: l.name, state: "open" }));
     }
+    async closePhase(_id) { return phaseCloseUnsupported("clickup"); }
+    async createMilestone(_name) { return milestonesUnsupported("clickup"); }
+    async listMilestones() { return milestonesUnsupported("clickup"); }
+    async completeMilestone(_id) { return milestonesUnsupported("clickup"); }
 }

@@ -17,6 +17,9 @@ import { projectStatus } from "./planning/status.js";
 import { driftReport, ensurePhase } from "./planning/mirror.js";
 import { unplannedReport } from "./planning/collab.js";
 import { importPhase } from "./planning/import.js";
+import { milestoneCreate, milestoneList, milestoneComplete } from "./planning/milestones.js";
+import { resyncReport } from "./planning/resync.js";
+import { readPlanMeta, writePlanMeta } from "./planning/artifacts.js";
 import { MemoryIndex, indexDbPath, type SearchResult } from "./memory/index-store.js";
 import { createCard, listCards, readCard } from "./memory/cards.js";
 import { checkCardStaleness } from "./memory/staleness.js";
@@ -435,9 +438,12 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
         headCommit: z.string(),
         issueId: z.string(),
         closedDate: z.string(),
+        redCommit: z.string().optional(),
+        greenCommit: z.string().optional(),
       } },
     wrap((a: { phaseDir: string; taskRef: string; summary: string; baseCommit: string;
-               headCommit: string; issueId: string; closedDate: string }) => {
+               headCommit: string; issueId: string; closedDate: string;
+               redCommit?: string; greenCommit?: string }) => {
       const { phaseDir, ...entry } = a;
       const result = appendLedger(deps.projectDir, phaseDir, entry);
       refreshHandoff({
@@ -446,6 +452,49 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
         issue: entry.issueId,
       });
       return result;
+    }));
+
+  server.registerTool("milestone_create",
+    { description: "Start the next milestone — native tracker object when the backend supports it; stamps milestone_id into roadmap.md",
+      inputSchema: { name: z.string() } },
+    wrap(async (a: { name: string }) =>
+      milestoneCreate(await getTracker(), deps.projectDir, a.name)));
+
+  server.registerTool("milestone_list",
+    { description: "Current milestone number, archived milestones, and the tracker's native list when supported",
+      inputSchema: {} },
+    wrap(async () => milestoneList(await getTracker(), deps.projectDir)));
+
+  server.registerTool("milestone_complete",
+    { description: "Complete the current milestone: gate on all-phases-verified, close tracker phases, "
+        + "release the native milestone when supported, archive phases/ to milestones/vN/, bump roadmap. "
+        + "Idempotent — safe to re-run after a partial tracker failure",
+      inputSchema: { summary: z.string() } },
+    wrap(async (a: { summary: string }) =>
+      milestoneComplete(await getTracker(), deps.projectDir, a.summary)));
+
+  server.registerTool("plan_resync",
+    { description: "Detect out-of-band commits (covered by no LEDGER.md range) since the last resync marker; "
+        + "advances the marker. First run initializes the marker and reports nothing",
+      inputSchema: {} },
+    wrap(() => resyncReport(deps.projectDir)));
+
+  server.registerTool("plan_meta_set",
+    { description: "Set wave grouping (wave_N frontmatter) and/or the TDD-eligible task list on a phase's PLAN.md",
+      inputSchema: { phaseDir: z.string(),
+                     waves: z.array(z.array(z.string())).optional(),
+                     tdd: z.array(z.string()).optional() } },
+    wrap((a: { phaseDir: string; waves?: string[][]; tdd?: string[] }) => {
+      if (!PHASE_DIR_RE.test(a.phaseDir)) {
+        throw new CairnError("CONFIG_INVALID",
+          `phaseDir must look like 01-name, got '${a.phaseDir}'`);
+      }
+      writePlanMeta(deps.projectDir, a.phaseDir, { waves: a.waves, tdd: a.tdd });
+      refreshHandoff({
+        source: "tool",
+        phase: { number: Number(a.phaseDir.slice(0, 2)), slug: a.phaseDir.slice(3) },
+      });
+      return { ok: true, ...readPlanMeta(deps.projectDir, a.phaseDir) };
     }));
 
   return server;

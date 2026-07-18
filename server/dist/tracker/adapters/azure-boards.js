@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson } from "../http.js";
+import { phaseCloseUnsupported } from "../unsupported.js";
 const MAX_IDS = 100;
 export const configSchema = z.object({
     orgUrl: z.string().url(), // https://dev.azure.com/org
@@ -29,6 +30,7 @@ export class AzureBoardsTracker {
     tokenProvider;
     capabilities = {
         hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
+        hasMilestones: true, hasPhaseClose: false,
     };
     /** id (GUID) -> full iteration path, refreshed from listPhases() when an unknown id shows up. */
     phasePaths = new Map();
@@ -276,5 +278,30 @@ export class AzureBoardsTracker {
         }
         this.phasesLoaded = true; // mark map as refreshed for this instance
         return nodes.map((node) => ({ id: node.identifier, name: node.name, state: "open" }));
+    }
+    async closePhase(_id) { return phaseCloseUnsupported("azure-boards"); }
+    /** Maps an Epic work item to a Milestone; "released" once it hits the configured closed state. */
+    normalizeEpic(raw) {
+        const state = raw.fields["System.State"] === this.cfg.states.closed ? "released" : "open";
+        return { id: String(raw.id), name: raw.fields["System.Title"] ?? "", state, url: raw.url };
+    }
+    async createMilestone(name) {
+        const raw = await this.api("POST", `/${this.projectPath}/_apis/wit/workitems/${encodeURIComponent("$Epic")}`, [{ op: "add", path: "/fields/System.Title", value: name }], { contentType: "application/json-patch+json", context: "azure-boards milestone_create" });
+        return this.normalizeEpic(raw);
+    }
+    async listMilestones() {
+        const query = "SELECT [System.Id] FROM WorkItems WHERE "
+            + `[System.TeamProject] = '${this.escapeWiql(this.cfg.project)}' `
+            + "AND [System.WorkItemType] = 'Epic'";
+        const wiqlRaw = await this.api("POST", `/${this.projectPath}/_apis/wit/wiql`, { query }, { context: "azure-boards milestone_list_wiql" });
+        const ids = wiqlRaw.workItems.map((w) => w.id).slice(0, MAX_IDS);
+        if (ids.length === 0)
+            return [];
+        const batchRaw = await this.api("GET", `/${this.projectPath}/_apis/wit/workitems`, undefined, { params: { ids: ids.join(",") }, context: "azure-boards milestone_list_batch" });
+        return batchRaw.value.map((w) => this.normalizeEpic(w));
+    }
+    async completeMilestone(id) {
+        const raw = await this.api("PATCH", `/${this.projectPath}/_apis/wit/workitems/${id}`, [{ op: "add", path: "/fields/System.State", value: this.cfg.states.closed }], { contentType: "application/json-patch+json", context: "azure-boards milestone_complete" });
+        return this.normalizeEpic(raw);
     }
 }

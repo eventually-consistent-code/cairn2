@@ -21,6 +21,14 @@ export interface Capability {
     hasPhases: boolean;
     hasDependencies: boolean;
     hasLabels: boolean;
+    hasMilestones: boolean;
+    hasPhaseClose: boolean;
+}
+export interface Milestone {
+    id: string;
+    name: string;
+    state: "open" | "released";
+    url?: string;
 }
 export interface IssueCreate {
     title: string;
@@ -47,4 +55,8 @@ export interface Tracker {
     }): Promise<Issue[]>;
     createPhase(name: string): Promise<Phase>;
     listPhases(): Promise<Phase[]>;
+    closePhase(id: string): Promise<Phase>;
+    createMilestone(name: string): Promise<Milestone>;
+    listMilestones(): Promise<Milestone[]>;
+    completeMilestone(id: string): Promise<Milestone>;
 }

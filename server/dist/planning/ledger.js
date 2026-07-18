@@ -14,9 +14,15 @@ function sanitize(field) {
     return field.replace(/\s*\n\s*/g, " ").trim();
 }
 function formatEntry(entry) {
+    if ((entry.redCommit === undefined) !== (entry.greenCommit === undefined)) {
+        throw new CairnError("CONFIG_INVALID", "redCommit/greenCommit: both or neither", "pass the failing-test commit AND the passing commit, or omit both");
+    }
+    const tdd = entry.redCommit
+        ? `tdd ${shortSha(sanitize(entry.redCommit))}..${shortSha(sanitize(entry.greenCommit))} — `
+        : "";
     return `- [x] ${sanitize(entry.taskRef)} — ${sanitize(entry.summary)} — commits `
         + `${shortSha(sanitize(entry.baseCommit))}..${shortSha(sanitize(entry.headCommit))} — `
-        + `${sanitize(entry.issueId)} closed ${sanitize(entry.closedDate)}\n`;
+        + `${tdd}${sanitize(entry.issueId)} closed ${sanitize(entry.closedDate)}\n`;
 }
 function ledgerHeader(phase) {
     return `# Phase ${phase.number}: ${phase.name} — Ledger\n\n`

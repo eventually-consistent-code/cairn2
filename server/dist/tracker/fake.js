@@ -2,9 +2,11 @@ import { CairnError } from "../errors.js";
 export class FakeTracker {
     capabilities = {
         hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
+        hasMilestones: true, hasPhaseClose: true,
     };
     issues = new Map();
     phases = new Map();
+    milestones = new Map();
     seq = 0;
     async createIssue(input) {
         const id = `FAKE-${++this.seq}`;
@@ -53,5 +55,30 @@ export class FakeTracker {
     }
     async listPhases() {
         return [...this.phases.values()].map((p) => ({ ...p }));
+    }
+    async closePhase(id) {
+        const p = this.phases.get(id);
+        if (!p)
+            throw new CairnError("NOT_FOUND", `not found: ${id}`);
+        const next = { ...p, state: "closed" };
+        this.phases.set(id, next);
+        return { ...next };
+    }
+    async createMilestone(name) {
+        const id = `FM-${++this.seq}`;
+        const m = { id, name, state: "open", url: `fake://milestone/${id}` };
+        this.milestones.set(id, m);
+        return { ...m };
+    }
+    async listMilestones() {
+        return [...this.milestones.values()].map((m) => ({ ...m }));
+    }
+    async completeMilestone(id) {
+        const m = this.milestones.get(id);
+        if (!m)
+            throw new CairnError("NOT_FOUND", `not found: ${id}`);
+        const next = { ...m, state: "released" };
+        this.milestones.set(id, next);
+        return { ...next };
     }
 }
