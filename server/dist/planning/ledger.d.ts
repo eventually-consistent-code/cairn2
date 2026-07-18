@@ -5,6 +5,8 @@ export interface LedgerEntryInput {
     headCommit: string;
     issueId: string;
     closedDate: string;
+    redCommit?: string;
+    greenCommit?: string;
 }
 /**
  * Appends one formatted line to a phase's LEDGER.md, creating the file (with

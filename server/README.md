@@ -2,6 +2,8 @@
 
 MCP server for cairn 2.0. See `docs/superpowers/specs/2026-07-12-cairn-2-design.md`.
 
+33 tools total across planning, memory, continuity, collaboration, and milestones.
+
 ## Test rings
 
 1. `npm test` — unit + contract-vs-FakeTracker (CI, no network)
@@ -46,6 +48,8 @@ The `plan_*` tools manage project artifacts and phase tracking across cairn inte
 | `plan_phase_ensure` | Ensure the tracker has a phase named `Phase N: <name>` (idempotent by canonical name) |
 | `plan_drift` | Flag plan-referenced issues that are missing or closed without a VERIFICATION.md |
 | `plan_issues_set` | Set the tracker issue ids a phase's `PLAN.md` frontmatter advances |
+| `plan_meta_set` | Set wave grouping (`wave_N` frontmatter) and/or the TDD-eligible task list on a phase's `PLAN.md` |
+| `plan_resync` | Detect out-of-band commits (covered by no `LEDGER.md` range) since the last resync marker; advances the marker. First run initializes the marker and reports nothing |
 
 ### Artifact layout
 
@@ -76,6 +80,16 @@ and `<slug>` is lowercase alphanumerics + hyphens (auto-slugified from phase nam
 The presence of a `VERIFICATION.md` file in a phase directory signals that the
 phase has been verified complete, so closed issues are no longer considered drift.
 This gate is the human-controlled contract between plan state and phase completion.
+
+## Milestone tools
+
+The `milestone_*` tools manage the project's milestone lifecycle, backed by the tracker's native milestone object when the backend supports one:
+
+| tool | purpose |
+|---|---|
+| `milestone_create` | Start the next milestone — native tracker object when the backend supports it; stamps `milestone_id` into `roadmap.md` |
+| `milestone_list` | Current milestone number, archived milestones, and the tracker's native list when supported |
+| `milestone_complete` | Complete the current milestone: gate on all-phases-verified, close tracker phases, release the native milestone when supported, archive `phases/` to `milestones/vN/`, bump roadmap. Idempotent — safe to re-run after a partial tracker failure |
 
 ## Memory tools
 
