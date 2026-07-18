@@ -378,4 +378,11 @@ describe("AzureBoardsTracker mapping", () => {
     expect(calls[2].body).toEqual([{ op: "add", path: "/fields/System.State", value: "Done" }]);
     expect(done.state).toBe("released");
   });
+
+  it("closePhase is UNSUPPORTED (phase primitive has no closed state)", async () => {
+    const { f } = fixtureFetch([]);
+    const t = makeAzure(f);
+    expect(t.capabilities.hasPhaseClose).toBe(false);
+    await expect(t.closePhase("1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
+  });
 });
