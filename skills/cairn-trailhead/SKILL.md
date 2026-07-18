@@ -31,8 +31,8 @@ canonical registry — `help` renders from it and CI enforces it.
 | `draft` | Multi-variant mockups on a shared theme | | verbs/draft.md | reserved-C |
 | `summit` | Complete the milestone — verify gate, tracker close/release, archive, tag | | verbs/summit.md | live |
 | `auto` | Chained hands-off execution of remaining phases (opt-in) | | verbs/auto.md | live |
-| `fast` | Trivial inline change — no artifacts, atomic commit | | verbs/fast.md | reserved-A |
-| `resync` | Detect out-of-band code changes; refresh plan context | | verbs/resync.md | reserved-A |
+| `fast` | Trivial inline change — one issue, ≤3 files, atomic commit | `"<change>"` | verbs/fast.md | live |
+| `resync` | Detect out-of-band commits; refresh plan context | | verbs/resync.md | live |
 | `mark` | Zero-friction capture — notes, seeds, backlog | | verbs/mark.md | reserved-B |
 | `retro` | Retrospective that writes provenance-backed memory cards | | verbs/retro.md | reserved-B |
 | `distill` | Ship-time knowledge synthesis into docs/ | | verbs/distill.md | reserved-B |
