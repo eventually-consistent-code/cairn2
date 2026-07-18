@@ -1,10 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { mkdtempSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   slugify, phaseDirName, scaffoldProject, scaffoldPhase,
-  readPlanIssues, writePlanIssues,
+  readPlanIssues, writePlanIssues, readPlanMeta, writePlanMeta,
 } from "../src/planning/artifacts.js";
 
 const dir = () => mkdtempSync(join(tmpdir(), "cairn-plans-"));
@@ -72,5 +72,52 @@ describe("plan issue round-trip", () => {
     expect(() => writePlanIssues(d, pd, ["A\nB"])).toThrowError(
       expect.objectContaining({ code: "CONFIG_INVALID" }));
     expect(readFileSync(planPath, "utf8")).toBe(before);
+  });
+});
+
+describe("plan meta (waves/tdd)", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "cairn-meta-"));
+    scaffoldPhase(dir, 1, "core");
+    writePlanIssues(dir, "01-core", ["GH-1", "GH-2", "GH-3"]);
+  });
+
+  it("write + read round-trips waves and tdd", () => {
+    writePlanMeta(dir, "01-core", { waves: [["GH-1", "GH-2"], ["GH-3"]], tdd: ["GH-2"] });
+    expect(readPlanMeta(dir, "01-core")).toEqual({
+      issues: ["GH-1", "GH-2", "GH-3"],
+      waves: [["GH-1", "GH-2"], ["GH-3"]],
+      tdd: ["GH-2"],
+    });
+    const raw = readFileSync(join(dir, ".cairn/plans/phases/01-core/PLAN.md"), "utf8");
+    expect(raw).toContain("wave_1: [GH-1, GH-2]");
+    expect(raw).toContain("wave_2: [GH-3]");
+    expect(raw).toContain("tdd: [GH-2]");
+  });
+
+  it("re-writing waves replaces stale wave_N keys", () => {
+    writePlanMeta(dir, "01-core", { waves: [["GH-1"], ["GH-2"], ["GH-3"]] });
+    writePlanMeta(dir, "01-core", { waves: [["GH-1", "GH-2", "GH-3"]] });
+    const raw = readFileSync(join(dir, ".cairn/plans/phases/01-core/PLAN.md"), "utf8");
+    expect(raw).toContain("wave_1: [GH-1, GH-2, GH-3]");
+    expect(raw).not.toContain("wave_2");
+  });
+
+  it("rejects unknown ids, duplicates across waves, and empty waves", () => {
+    expect(() => writePlanMeta(dir, "01-core", { waves: [["GH-9"]] }))
+      .toThrowError(/GH-9/);
+    expect(() => writePlanMeta(dir, "01-core", { waves: [["GH-1"], ["GH-1"]] }))
+      .toThrowError(/more than one wave/);
+    expect(() => writePlanMeta(dir, "01-core", { waves: [[]] }))
+      .toThrowError(/empty/);
+    expect(() => writePlanMeta(dir, "01-core", { tdd: ["GH-9"] }))
+      .toThrowError(/GH-9/);
+  });
+
+  it("issues writes preserve meta keys (writePlanIssues keeps wave_*/tdd)", () => {
+    writePlanMeta(dir, "01-core", { waves: [["GH-1"]], tdd: ["GH-1"] });
+    writePlanIssues(dir, "01-core", ["GH-1", "GH-2", "GH-3", "GH-4"]);
+    expect(readPlanMeta(dir, "01-core").waves).toEqual([["GH-1"]]);
   });
 });
