@@ -275,4 +275,20 @@ describe("ClickUpTracker mapping", () => {
     expect(configSchema.safeParse({ defaultListId: "1", folderId: "f1" }).success).toBe(true);
     expect(configSchema.safeParse({ defaultListId: "1", spaceId: "s1" }).success).toBe(true);
   });
+
+  it("milestones are UNSUPPORTED (capability-flagged fallback)", async () => {
+    const { f } = fixtureFetch([]);
+    const t = new ClickUpTracker(cfg, f, () => "tok");
+    expect(t.capabilities.hasMilestones).toBe(false);
+    await expect(t.createMilestone("v1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
+    await expect(t.listMilestones()).rejects.toMatchObject({ code: "UNSUPPORTED" });
+    await expect(t.completeMilestone("1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
+  });
+
+  it("closePhase is UNSUPPORTED (phase primitive has no closed state)", async () => {
+    const { f } = fixtureFetch([]);
+    const t = new ClickUpTracker(cfg, f, () => "tok");
+    expect(t.capabilities.hasPhaseClose).toBe(false);
+    await expect(t.closePhase("1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
+  });
 });

@@ -222,4 +222,20 @@ describe("AsanaTracker mapping", () => {
     const cfg = configSchema.parse({ projectGid: "999" });
     expect(cfg.tokenEnv).toBe("ASANA_TOKEN");
   });
+
+  it("milestones are UNSUPPORTED (capability-flagged fallback)", async () => {
+    const { f } = fixtureFetch([]);
+    const t = new AsanaTracker({ projectGid: "999", tokenEnv: "ASANA_TOKEN" }, f, () => "tok");
+    expect(t.capabilities.hasMilestones).toBe(false);
+    await expect(t.createMilestone("v1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
+    await expect(t.listMilestones()).rejects.toMatchObject({ code: "UNSUPPORTED" });
+    await expect(t.completeMilestone("1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
+  });
+
+  it("closePhase is UNSUPPORTED (phase primitive has no closed state)", async () => {
+    const { f } = fixtureFetch([]);
+    const t = new AsanaTracker({ projectGid: "999", tokenEnv: "ASANA_TOKEN" }, f, () => "tok");
+    expect(t.capabilities.hasPhaseClose).toBe(false);
+    await expect(t.closePhase("1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
+  });
 });

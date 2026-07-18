@@ -260,4 +260,14 @@ describe("GitLabTracker mapping", () => {
     await expect(t.getIssue("7")).rejects.toMatchObject({ code: "AUTH_MISSING" });
     expect(calls.length).toBe(0);
   });
+
+  it("milestones are UNSUPPORTED (capability-flagged fallback)", async () => {
+    vi.stubEnv("GITLAB_TOKEN", "tok");
+    const { f } = fixtureFetch([]);
+    const t = new GitLabTracker(baseCfg, f);
+    expect(t.capabilities.hasMilestones).toBe(false);
+    await expect(t.createMilestone("v1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
+    await expect(t.listMilestones()).rejects.toMatchObject({ code: "UNSUPPORTED" });
+    await expect(t.completeMilestone("1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
+  });
 });
