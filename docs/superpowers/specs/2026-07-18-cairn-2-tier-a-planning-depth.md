@@ -131,7 +131,9 @@ half-archived plans dir is worse than re-running the (idempotent) tool.
 capable; stamps `milestone_id` into roadmap frontmatter. `milestone_list`
 merges the git-side view (roadmap frontmatter + `milestones/v*/` archive
 dirs) with the tracker's native list when `hasMilestones` — the read
-surface for `summit` and `status`.
+surface for `summit` and `status`. `summit` bootstraps the current
+milestone's native object through this tool when the backend is capable
+and none is stamped yet (first-milestone case).
 
 ### Server stays off git writes
 

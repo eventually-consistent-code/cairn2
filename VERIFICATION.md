@@ -240,11 +240,19 @@ Tier 0 dogfood drill and the Tier A0 kill-drills above.
 1. Scratch project, 2 phases, both driven to `VERIFICATION.md`-verified
    completion (`plan`, `work`, `verify` each phase).
 2. Run `/cairn summit` against a `hasMilestones` backend — **Jira** (fix
-   version) or **Azure Boards** (Epic) — pick one. Expect: tracker phases
-   closed, native milestone released, `phases/` archived to `milestones/v1/`,
-   `roadmap.md` bumped, milestone tag/id correct.
-3. Repeat step 2's `summit` call again against the same already-completed
-   milestone. Expect: idempotent — no error, no duplicate archive, no
+   version) or **Azure Boards** (Epic) — pick one. This is the first
+   milestone, so no native milestone id is stamped yet: accept the summit
+   flow's offer (step 1/2 of `summit.md`) to create one now via
+   `milestone_create("v1")` before completion proceeds. Expect: tracker
+   phases closed, native milestone released, `phases/` archived to
+   `milestones/v1/`, `roadmap.md` bumped, milestone tag/id correct.
+3. Repeat step 2's `summit` call again immediately. Because step 2 already
+   fully archived the milestone, `projectStatus` now shows zero live phases
+   — expect `PRECONDITION_FAILED` ("no live phases to complete"), not a
+   silent no-op. That exact error is the recorded pass condition here; a
+   clean re-run only happens when a *partial* tracker failure (a
+   `TRACKER_DOWN` from step 2) left the phases live and un-archived — in
+   that case re-running completes cleanly with no duplicate archive and no
    double-release attempt (per `milestoneComplete`'s "is re-runnable" unit
    coverage above, now exercised against a live tracker).
 4. Separately, run the same 2-phase scratch flow against **GitHub**
