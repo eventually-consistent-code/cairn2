@@ -42,7 +42,7 @@ export class GitHubTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, // via label convention
     hasPhases: true, hasDependencies: false, hasLabels: true,
-    hasMilestones: false, hasPhaseClose: false,
+    hasMilestones: false, hasPhaseClose: true,
   };
 
   constructor(
@@ -165,7 +165,13 @@ export class GitHubTracker implements Tracker {
       state: m.state === "closed" ? "closed" : "open" }));
   }
 
-  async closePhase(_id: string): Promise<Phase> { return phaseCloseUnsupported("github"); }
+  async closePhase(id: string): Promise<Phase> {
+    this.assertId(id);
+    const raw = (await this.api("PATCH", `/repos/${this.cfg.repo}/milestones/${id}`,
+      { state: "closed" })) as { number: number; title: string; state: string };
+    return { id: String(raw.number), name: raw.title,
+      state: raw.state === "closed" ? "closed" : "open" };
+  }
   async createMilestone(_name: string): Promise<Milestone> { return milestonesUnsupported("github"); }
   async listMilestones(): Promise<Milestone[]> { return milestonesUnsupported("github"); }
   async completeMilestone(_id: string): Promise<Milestone> { return milestonesUnsupported("github"); }

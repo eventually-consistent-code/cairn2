@@ -19,7 +19,7 @@ interface GlMilestone {
 export class GitLabTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-    hasMilestones: false, hasPhaseClose: false,
+    hasMilestones: false, hasPhaseClose: true,
   };
   constructor(private cfg: z.infer<typeof configSchema>, private fetchImpl: FetchLike = fetch) {}
 
@@ -125,7 +125,13 @@ export class GitLabTracker implements Tracker {
     return raw.map((m) => ({ id: String(m.id), name: m.title, state: m.state === "closed" ? "closed" : "open" }));
   }
 
-  async closePhase(_id: string): Promise<Phase> { return phaseCloseUnsupported("gitlab"); }
+  async closePhase(id: string): Promise<Phase> {
+    this.assertId(id);
+    const raw = (await this.api("PUT", `/milestones/${id}`,
+      { state_event: "close" }, "phase_close")) as GlMilestone;
+    return { id: String(raw.id), name: raw.title,
+      state: raw.state === "closed" ? "closed" : "open" };
+  }
   async createMilestone(_name: string): Promise<Milestone> { return milestonesUnsupported("gitlab"); }
   async listMilestones(): Promise<Milestone[]> { return milestonesUnsupported("gitlab"); }
   async completeMilestone(_id: string): Promise<Milestone> { return milestonesUnsupported("gitlab"); }
