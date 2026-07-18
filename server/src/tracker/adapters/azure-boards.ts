@@ -4,7 +4,7 @@ import { fetchJson, type FetchLike } from "../http.js";
 import type {
   Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
 } from "../types.js";
-import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
+import { phaseCloseUnsupported } from "../unsupported.js";
 
 const MAX_IDS = 100;
 
@@ -62,7 +62,7 @@ interface IterationNode {
 export class AzureBoardsTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-    hasMilestones: false, hasPhaseClose: false,
+    hasMilestones: true, hasPhaseClose: false,
   };
 
   /** id (GUID) -> full iteration path, refreshed from listPhases() when an unknown id shows up. */
@@ -350,7 +350,45 @@ export class AzureBoardsTracker implements Tracker {
   }
 
   async closePhase(_id: string): Promise<Phase> { return phaseCloseUnsupported("azure-boards"); }
-  async createMilestone(_name: string): Promise<Milestone> { return milestonesUnsupported("azure-boards"); }
-  async listMilestones(): Promise<Milestone[]> { return milestonesUnsupported("azure-boards"); }
-  async completeMilestone(_id: string): Promise<Milestone> { return milestonesUnsupported("azure-boards"); }
+
+  /** Maps an Epic work item to a Milestone; "released" once it hits the configured closed state. */
+  private normalizeEpic(raw: WorkItem): Milestone {
+    const state = raw.fields["System.State"] === this.cfg.states.closed ? "released" : "open";
+    return { id: String(raw.id), name: raw.fields["System.Title"] ?? "", state, url: raw.url };
+  }
+
+  async createMilestone(name: string): Promise<Milestone> {
+    const raw = await this.api(
+      "POST", `/${this.projectPath}/_apis/wit/workitems/${encodeURIComponent("$Epic")}`,
+      [{ op: "add", path: "/fields/System.Title", value: name }],
+      { contentType: "application/json-patch+json", context: "azure-boards milestone_create" },
+    );
+    return this.normalizeEpic(raw as WorkItem);
+  }
+
+  async listMilestones(): Promise<Milestone[]> {
+    const query = "SELECT [System.Id] FROM WorkItems WHERE "
+      + `[System.TeamProject] = '${this.escapeWiql(this.cfg.project)}' `
+      + "AND [System.WorkItemType] = 'Epic'";
+    const wiqlRaw = await this.api(
+      "POST", `/${this.projectPath}/_apis/wit/wiql`, { query },
+      { context: "azure-boards milestone_list_wiql" },
+    ) as { workItems: Array<{ id: number }> };
+    const ids = wiqlRaw.workItems.map((w) => w.id).slice(0, MAX_IDS);
+    if (ids.length === 0) return [];
+    const batchRaw = await this.api(
+      "GET", `/${this.projectPath}/_apis/wit/workitems`, undefined,
+      { params: { ids: ids.join(",") }, context: "azure-boards milestone_list_batch" },
+    ) as { value: WorkItem[] };
+    return batchRaw.value.map((w) => this.normalizeEpic(w));
+  }
+
+  async completeMilestone(id: string): Promise<Milestone> {
+    const raw = await this.api(
+      "PATCH", `/${this.projectPath}/_apis/wit/workitems/${id}`,
+      [{ op: "add", path: "/fields/System.State", value: this.cfg.states.closed }],
+      { contentType: "application/json-patch+json", context: "azure-boards milestone_complete" },
+    );
+    return this.normalizeEpic(raw as WorkItem);
+  }
 }
