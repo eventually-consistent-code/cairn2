@@ -2,8 +2,9 @@ import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, type FetchLike } from "../http.js";
 import type {
-  Capability, Issue, IssueCreate, IssuePatch, IssueState, Phase, Tracker,
+  Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
 } from "../types.js";
+import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 
 const MAX_IDS = 100;
 
@@ -61,6 +62,7 @@ interface IterationNode {
 export class AzureBoardsTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
+    hasMilestones: false, hasPhaseClose: false,
   };
 
   /** id (GUID) -> full iteration path, refreshed from listPhases() when an unknown id shows up. */
@@ -346,4 +348,9 @@ export class AzureBoardsTracker implements Tracker {
     this.phasesLoaded = true; // mark map as refreshed for this instance
     return nodes.map((node) => ({ id: node.identifier, name: node.name, state: "open" }));
   }
+
+  async closePhase(_id: string): Promise<Phase> { return phaseCloseUnsupported("azure-boards"); }
+  async createMilestone(_name: string): Promise<Milestone> { return milestonesUnsupported("azure-boards"); }
+  async listMilestones(): Promise<Milestone[]> { return milestonesUnsupported("azure-boards"); }
+  async completeMilestone(_id: string): Promise<Milestone> { return milestonesUnsupported("azure-boards"); }
 }

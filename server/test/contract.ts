@@ -96,5 +96,34 @@ export function trackerContract(name: string, factory: () => Promise<Tracker>): 
       const made = await t.createIssue({ title: "contract: ts" });
       expect(Number.isNaN(Date.parse(made.updatedAt))).toBe(false);
     });
+
+    it("closePhase closes when hasPhaseClose; throws UNSUPPORTED otherwise", async () => {
+      const p = await t.createPhase(`contract phase close ${Date.now()}`);
+      if (t.capabilities.hasPhaseClose) {
+        const closed = await eventually(async () => {
+          const r = await t.closePhase(p.id);
+          expect(r.state).toBe("closed");
+          return r;
+        });
+        expect(closed.id).toBe(p.id);
+      } else {
+        await expect(t.closePhase(p.id)).rejects.toMatchObject({ code: "UNSUPPORTED" });
+      }
+    });
+
+    it("milestone create → list → complete when hasMilestones; throws UNSUPPORTED otherwise", async () => {
+      if (!t.capabilities.hasMilestones) {
+        await expect(t.createMilestone("contract m")).rejects.toMatchObject({ code: "UNSUPPORTED" });
+        return;
+      }
+      const m = await t.createMilestone(`contract milestone ${Date.now()}`);
+      expect(m.state).toBe("open");
+      await eventually(async () => {
+        const all = await t.listMilestones();
+        expect(all.map((x) => x.id)).toContain(m.id);
+      });
+      const done = await t.completeMilestone(m.id);
+      expect(done.state).toBe("released");
+    });
   });
 }
