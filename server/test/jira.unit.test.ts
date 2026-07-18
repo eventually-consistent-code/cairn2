@@ -12,7 +12,9 @@ function fixtureFetch(fixtures: Array<{ status: number; body: unknown }>) {
       body: init?.body ? JSON.parse(String(init.body)) : undefined,
     });
     const fx = fixtures.shift()!;
-    return new Response(JSON.stringify(fx.body), { status: fx.status });
+    // 204/205/304 responses must not carry a body, or the Response ctor throws.
+    const noBody = fx.status === 204 || fx.status === 205 || fx.status === 304;
+    return new Response(noBody ? null : JSON.stringify(fx.body), { status: fx.status });
   };
   return { f, calls };
 }
@@ -32,6 +34,15 @@ const adfBody = (text: string) => ({
   type: "doc", version: 1,
   content: [{ type: "paragraph", content: [{ type: "text", text }] }],
 });
+
+/** Constructs a JiraTracker against project "PROJ" for the milestone/closePhase tests. */
+function makeJira(f: FetchLike) {
+  return new JiraTracker(
+    { ...cfg, projectKey: "PROJ", baseUrl: "https://x.atlassian.net" },
+    f,
+    () => ({ email: "e", token: "t" }),
+  );
+}
 
 const jiraIssue = (over: Record<string, unknown> = {}) => ({
   key: "CHN-101",
@@ -296,5 +307,49 @@ describe("JiraTracker mapping", () => {
       if (original.email !== undefined) process.env.JIRA_EMAIL = original.email;
       if (original.token !== undefined) process.env.JIRA_API_TOKEN = original.token;
     }
+  });
+
+  it("createMilestone resolves projectId once then POSTs a version", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: { id: "10000" } },                                   // GET project
+      { status: 201, body: { id: "10001", name: "v1", released: false } },      // POST version
+      { status: 201, body: { id: "10002", name: "v2", released: false } },      // POST version (cached projectId)
+    ]);
+    const t = makeJira(f);
+    const m = await t.createMilestone("v1");
+    expect(calls[0].url).toContain("/rest/api/3/project/PROJ");
+    expect(calls[1].url).toContain("/rest/api/3/version");
+    expect(calls[1].body).toMatchObject({ name: "v1", projectId: 10000 });
+    expect(m).toMatchObject({ id: "10001", name: "v1", state: "open" });
+    await t.createMilestone("v2");
+    expect(calls.length).toBe(3); // no second project lookup
+  });
+
+  it("listMilestones GETs project versions; completeMilestone releases", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: [{ id: "10001", name: "v1", released: true }] },     // GET versions
+      { status: 200, body: { id: "10001", name: "v1", released: true } },       // PUT version
+    ]);
+    const t = makeJira(f);
+    const all = await t.listMilestones();
+    expect(calls[0].url).toContain("/rest/api/3/project/PROJ/versions");
+    expect(all[0]).toMatchObject({ id: "10001", state: "released" });
+    const done = await t.completeMilestone("10001");
+    expect(calls[1].method).toBe("PUT");
+    expect(calls[1].body).toMatchObject({ released: true });
+    expect(done.state).toBe("released");
+  });
+
+  it("closePhase delegates to the epic close transition", async () => {
+    const { f } = fixtureFetch([
+      { status: 200, body: { transitions: [
+        { id: "31", name: "Done", to: { name: "Done", statusCategory: { key: "done" } } } ] } },
+      { status: 204, body: {} },
+      { status: 200, body: { key: "PROJ-9", fields: { summary: "Phase 1: core",
+        status: { statusCategory: { key: "done" } }, updated: "2026-07-18T00:00:00.000+0000" } } },
+    ]);
+    const t = makeJira(f);
+    const p = await t.closePhase("PROJ-9");
+    expect(p).toMatchObject({ id: "PROJ-9", state: "closed" });
   });
 });
