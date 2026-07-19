@@ -2,8 +2,9 @@ import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, type FetchLike } from "../http.js";
 import type {
-  Capability, Issue, IssueCreate, IssuePatch, IssueState, Phase, Tracker,
+  Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
 } from "../types.js";
+import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 
 const API = "https://api.clickup.com/api/v2";
 const LIST_CAP = 100;
@@ -55,6 +56,7 @@ interface CuTask {
 export class ClickUpTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
+    hasMilestones: false, hasPhaseClose: false,
   };
 
   constructor(
@@ -209,4 +211,9 @@ export class ClickUpTracker implements Tracker {
       { lists: Array<{ id: string; name: string }> };
     return (raw.lists ?? []).map((l) => ({ id: l.id, name: l.name, state: "open" as const }));
   }
+
+  async closePhase(_id: string): Promise<Phase> { return phaseCloseUnsupported("clickup"); }
+  async createMilestone(_name: string): Promise<Milestone> { return milestonesUnsupported("clickup"); }
+  async listMilestones(): Promise<Milestone[]> { return milestonesUnsupported("clickup"); }
+  async completeMilestone(_id: string): Promise<Milestone> { return milestonesUnsupported("clickup"); }
 }

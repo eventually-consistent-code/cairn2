@@ -1,14 +1,16 @@
 import { CairnError } from "../errors.js";
 import type {
-  Capability, Issue, IssueCreate, IssuePatch, IssueState, Phase, Tracker,
+  Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
 } from "./types.js";
 
 export class FakeTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
+    hasMilestones: true, hasPhaseClose: true,
   };
   private issues = new Map<string, Issue>();
   private phases = new Map<string, Phase>();
+  private milestones = new Map<string, Milestone>();
   private seq = 0;
 
   async createIssue(input: IssueCreate): Promise<Issue> {
@@ -63,5 +65,32 @@ export class FakeTracker implements Tracker {
 
   async listPhases(): Promise<Phase[]> {
     return [...this.phases.values()].map((p) => ({ ...p }));
+  }
+
+  async closePhase(id: string): Promise<Phase> {
+    const p = this.phases.get(id);
+    if (!p) throw new CairnError("NOT_FOUND", `not found: ${id}`);
+    const next: Phase = { ...p, state: "closed" };
+    this.phases.set(id, next);
+    return { ...next };
+  }
+
+  async createMilestone(name: string): Promise<Milestone> {
+    const id = `FM-${++this.seq}`;
+    const m: Milestone = { id, name, state: "open", url: `fake://milestone/${id}` };
+    this.milestones.set(id, m);
+    return { ...m };
+  }
+
+  async listMilestones(): Promise<Milestone[]> {
+    return [...this.milestones.values()].map((m) => ({ ...m }));
+  }
+
+  async completeMilestone(id: string): Promise<Milestone> {
+    const m = this.milestones.get(id);
+    if (!m) throw new CairnError("NOT_FOUND", `not found: ${id}`);
+    const next: Milestone = { ...m, state: "released" };
+    this.milestones.set(id, next);
+    return { ...next };
   }
 }

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { type FetchLike } from "../http.js";
-import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Phase, Tracker } from "../types.js";
+import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker } from "../types.js";
 export declare const configSchema: z.ZodObject<{
     repo: z.ZodString;
 }, "strip", z.ZodTypeAny, {
@@ -32,4 +32,8 @@ export declare class GitHubTracker implements Tracker {
     }): Promise<Issue[]>;
     createPhase(name: string): Promise<Phase>;
     listPhases(): Promise<Phase[]>;
+    closePhase(id: string): Promise<Phase>;
+    createMilestone(_name: string): Promise<Milestone>;
+    listMilestones(): Promise<Milestone[]>;
+    completeMilestone(_id: string): Promise<Milestone>;
 }

@@ -149,3 +149,146 @@ cairn2 is next installed as a local plugin.
 **Fix landed during the drill:** SessionStart resume header read
 "(just now ago)" for fresh handoffs — copy corrected to "(just now)"
 (`hooks/scripts/sessionstart-continuity.mjs`).
+
+## Tier A — Planning Depth (2026-07-18)
+
+### Surface conformance
+- `node scripts/check-surface.mjs` → clean: **18 live, 10 reserved, 33 server
+  tools** (`probe`/`draft` sit at `reserved-C` per the Tier A spec's
+  re-tiering decision; the six new verbs — `scout`, `route`, `summit`,
+  `auto`, `fast`, `resync` — are live).
+- Server: `cd server && npx vitest run` → **328 passed / 6 skipped** (334
+  total; the 6 skips are the env-gated `*.live.test.ts` suites — gitlab,
+  jira, asana, azure-boards, clickup, github — which only run with
+  `CAIRN_LIVE_TESTS=1` and real backend credentials, per
+  `server/README.md`'s live-gate instructions). `npx tsc --noEmit` clean.
+  `npm run build` clean; `server/dist/` rebuilt and committed alongside this
+  record.
+
+### Unit evidence summary
+
+**Milestone mapping fixtures per adapter** (`test/*.unit.test.ts`, P1
+fixture-HTTP pattern):
+- `jira.unit.test.ts` — `createMilestone` resolves the Jira `projectId` once
+  then POSTs a `version` (fixVersion); `listMilestones` GETs project
+  versions; `completeMilestone` releases the version. `hasMilestones: true`.
+- `azure-boards.unit.test.ts` — `createMilestone` POSTs an Epic-typed work
+  item via JSON-patch; `listMilestones` WIQL-queries epics then batch-gets;
+  `completeMilestone` PATCHes work-item state. `hasMilestones: true`.
+- **Fallback pinning** (`hasMilestones: false`, capability-flagged) —
+  `github.unit.test.ts`, `gitlab.unit.test.ts`, `asana.unit.test.ts`,
+  `clickup.unit.test.ts`: each asserts `capabilities.hasMilestones === false`
+  and that `createMilestone`/`listMilestones`/`completeMilestone` all reject
+  with `code: "UNSUPPORTED"` rather than silently no-op-ing. (GitHub and
+  GitLab still support native `createPhase`/`closePhase` milestone-as-phase
+  mapping — the fallback is specifically the roadmap-milestone object, not
+  the phase primitive.)
+
+**`milestone_complete` gate/ordering/idempotency**
+(`test/milestones.test.ts`, `describe("milestoneComplete")`):
+- gates on unverified phases and moves nothing if any phase lacks
+  `VERIFICATION.md`.
+- happy path: closes tracker phases, releases the native milestone (when
+  supported), archives `phases/` → `milestones/vN/`, bumps `roadmap.md`.
+- **is re-runnable**: already-closed tracker phases don't error on a second
+  run (safe after a partial tracker failure mid-`milestone_complete`).
+- records skips (rather than erroring) when `hasPhaseClose` is false, and
+  archives anyway.
+- `milestoneCreate`/`milestoneList`: create stamps `milestone_id` into
+  `roadmap.md`; list merges the git archive with the tracker's native list
+  when supported.
+
+**`plan_resync` coverage math** (`test/resync.test.ts`, real throwaway git
+repos via `git init`/`git commit` in a temp dir, not mocks):
+- first run initializes the resync marker and reports nothing (no false
+  positives on a fresh project).
+- flags commits not covered by any `LEDGER.md`-recorded range; ledgered
+  ranges are correctly excluded ("out of band hotfix" flagged, "ledgered
+  work" not).
+- advances the marker after each run — a second run only sees commits made
+  since the last resync, not the same rogue commit twice.
+
+**`plan_meta_set` validation matrix** (`test/artifacts.test.ts`,
+`describe("plan meta (waves/tdd)")`):
+- write + read round-trips `waves` (array-of-arrays of issue ids) and `tdd`
+  (issue-id list) through PLAN.md frontmatter.
+- re-writing `waves` replaces stale `wave_N` keys rather than leaving orphans
+  from a shorter previous wave count.
+- rejects unknown issue ids, duplicate ids across waves, and empty wave
+  arrays — the validation matrix the spec calls for.
+
+**Ledger TDD pair + byte-stable no-TDD format** (`test/ledger.test.ts`):
+- creates the file with a header on first append; second append adds
+  exactly one line, leaving the first untouched (append-only, byte-stable
+  format for entries with no TDD evidence).
+- sanitizes embedded newlines in entry fields to a single line (no
+  multi-line ledger entries corrupting the append-only format).
+- throws `NOT_FOUND` with a `nextAction` for a `phaseDir` that doesn't exist.
+- **TDD pair**: appends a `— tdd ccccccc..ddddddd —` evidence segment when
+  both `redCommit` and `greenCommit` are given; **rejects a lone red or
+  green commit** — a `tdd:`-tagged task cannot land with only half the pair,
+  which is the mechanism success criterion 3 (below) depends on at the
+  `ledger_append`/verify layer.
+
+### Dogfood drill procedures — PENDING (run live like Tier 0/A0)
+
+Per spec §6.3, three drills, to be run in a scratch project with cairn2
+installed as a local plugin and recorded here once run, same format as the
+Tier 0 dogfood drill and the Tier A0 kill-drills above.
+
+**Summit drill — PENDING (run live).**
+1. Scratch project, 2 phases, both driven to `VERIFICATION.md`-verified
+   completion (`plan`, `work`, `verify` each phase).
+2. Run `/cairn summit` against a `hasMilestones` backend — **Jira** (fix
+   version) or **Azure Boards** (Epic) — pick one. This is the first
+   milestone, so no native milestone id is stamped yet: accept the summit
+   flow's offer (step 1/2 of `summit.md`) to create one now via
+   `milestone_create("v1")` before completion proceeds. Expect: tracker
+   phases closed, native milestone released, `phases/` archived to
+   `milestones/v1/`, `roadmap.md` bumped, milestone tag/id correct.
+3. Repeat step 2's `summit` call again immediately. Because step 2 already
+   fully archived the milestone, `projectStatus` now shows zero live phases
+   — expect `PRECONDITION_FAILED` ("no live phases to complete"), not a
+   silent no-op. That exact error is the recorded pass condition here; a
+   clean re-run only happens when a *partial* tracker failure (a
+   `TRACKER_DOWN` from step 2) left the phases live and un-archived — in
+   that case re-running completes cleanly with no duplicate archive and no
+   double-release attempt (per `milestoneComplete`'s "is re-runnable" unit
+   coverage above, now exercised against a live tracker).
+4. Separately, run the same 2-phase scratch flow against **GitHub**
+   (fallback, `hasMilestones: false`). Expect: tracker phases (milestones)
+   closed via the native `closePhase` mapping, roadmap-milestone object
+   creation/release skipped (recorded, not errored), archive + tag still
+   correct.
+
+**Auto drill — PENDING (run live).**
+1. 2-phase scratch project; run `/cairn auto` hands-off (no per-task
+   confirmation).
+2. Expect: every non-taste decision `auto` makes during the run traces to an
+   encoded principle in its run report (spec success criterion 2 — zero
+   un-principled unattended decisions); a taste-decision batch is presented
+   at the end, not mid-run.
+3. Rig a failing `verify` on one task (e.g. a deliberately broken test).
+   Expect: `auto` hard-stops with a usable report naming the failing task
+   and the failure, rather than continuing past it or retrying silently (no
+   self-repair loop — that's Tier C `trace`, a non-goal here).
+4. Mid-run (after at least one task has landed), `SIGKILL` the session.
+   Start a new session; `/cairn waypoint resume` → expect `auto` continues
+   from the exact next task, zero re-executed work — same continuity
+   mechanism the Tier A0 kill-drills exercised, now driven through `auto`
+   instead of `work`.
+
+**Wave drill — PENDING (run live).**
+1. Scratch phase with 4 issues, grouped into 2 waves via `plan_meta_set`
+   (e.g. `waves: [[issue1, issue2], [issue3, issue4]]`).
+2. Run the wave-aware execution flow. Expect: wave 1's two issues dispatch
+   to parallel subagents; both are claimed (`issue_update(state:
+   "in_progress")`), closed, and ledgered (`ledger_append`) before wave 2
+   starts.
+3. Confirm wave 2 does not begin dispatching until every wave 1 issue is
+   closed + ledgered (wave ordering is a hard gate, not a soft hint).
+4. All 4 issues end claimed → closed → ledgered, in the order the wave
+   grouping specifies.
+
+Record results here (PASS/FAIL per drill, per the Tier 0/A0 format above)
+the next time cairn2 is dogfooded as a local plugin.

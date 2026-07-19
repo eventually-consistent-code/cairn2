@@ -41,6 +41,11 @@ const wi = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
+/** Constructs a tracker wired to a fixture fetch, mirroring the file's inline construction convention. */
+function makeAzure(f: FetchLike): AzureBoardsTracker {
+  return new AzureBoardsTracker(cfg, f, () => "pat123");
+}
+
 describe("AzureBoardsTracker mapping", () => {
   it("createIssue POSTs json-patch to workitems/$type with api-version and Basic-PAT auth", async () => {
     const { f, calls } = fixtureFetch([{ status: 200, body: wi() }]);
@@ -345,5 +350,39 @@ describe("AzureBoardsTracker mapping", () => {
     expect(calls).toHaveLength(2);
     expect(calls[0].url).toContain("/workitems/7");
     expect(calls[1].url).toContain("/classificationnodes/iterations");
+  });
+
+  it("createMilestone POSTs an Epic with json-patch title", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: { id: 55, fields: { "System.Title": "v1", "System.State": "To Do" } } },
+    ]);
+    const t = makeAzure(f);
+    const m = await t.createMilestone("v1");
+    expect(calls[0].url).toContain("/_apis/wit/workitems/%24Epic");
+    expect(calls[0].body).toEqual([{ op: "add", path: "/fields/System.Title", value: "v1" }]);
+    expect(m).toMatchObject({ id: "55", name: "v1", state: "open" });
+  });
+
+  it("listMilestones WIQLs epics then batch-gets; completeMilestone patches state", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: { workItems: [{ id: 55 }] } },                                  // WIQL
+      { status: 200, body: { value: [{ id: 55, fields: { "System.Title": "v1", "System.State": "Done" } }] } }, // batch
+      { status: 200, body: { id: 55, fields: { "System.Title": "v1", "System.State": "Done" } } },              // PATCH
+    ]);
+    const t = makeAzure(f);
+    const all = await t.listMilestones();
+    expect(String(calls[0].body?.query ?? "")).toContain("[System.WorkItemType] = 'Epic'");
+    expect(all[0]).toMatchObject({ id: "55", state: "released" });
+    const done = await t.completeMilestone("55");
+    expect(calls[2].method).toBe("PATCH");
+    expect(calls[2].body).toEqual([{ op: "add", path: "/fields/System.State", value: "Done" }]);
+    expect(done.state).toBe("released");
+  });
+
+  it("closePhase is UNSUPPORTED (phase primitive has no closed state)", async () => {
+    const { f } = fixtureFetch([]);
+    const t = makeAzure(f);
+    expect(t.capabilities.hasPhaseClose).toBe(false);
+    await expect(t.closePhase("1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
   });
 });

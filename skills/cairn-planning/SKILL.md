@@ -40,6 +40,20 @@ default > `standard`.
 | plan | draft tasks directly | PLAN.md + CONTEXT.md | + plan-checker agent pass |
 | verify | tests pass | + tracker cross-check (`plan_drift`) | + adversarial verification, VERIFICATION.md rigor |
 
+## MVP shaping (`plan --mvp`)
+
+First tasks form ONE thin vertical slice exercising every layer end-to-end
+(walking skeleton); depth and breadth come only after the slice stands.
+A slice that can't demo is not a slice.
+
+## TDD eligibility (`plan --tdd`)
+
+Eligible: behavior-testable code — logic, APIs, parsers, state machines.
+Not eligible: config, docs, scaffolding, pure styling, generated code.
+Eligibility is per task, decided at plan time, stored in PLAN.md `tdd:`
+frontmatter via `plan_meta_set`; work-time enforcement is the RED/GREEN
+commit pair in the ledger, checked at verify.
+
 ## Model routing (deep-mode fan-out)
 
 `cairn.json` → `agents.model`: `auto | inherit | haiku | sonnet | opus`.

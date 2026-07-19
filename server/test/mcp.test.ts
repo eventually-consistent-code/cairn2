@@ -47,8 +47,11 @@ describe("cairn MCP server", () => {
     return { ...res, json: JSON.parse(text) };
   };
 
+  const listToolNames = async (): Promise<string[]> =>
+    (await client.listTools()).tools.map((t) => t.name).sort();
+
   it("lists the expected tools", async () => {
-    const tools = (await client.listTools()).tools.map((t) => t.name).sort();
+    const tools = await listToolNames();
     expect(tools).toEqual([
       "context_get", "context_set", "issue_close", "issue_create", "issue_get",
       "issue_list", "issue_update", "phase_create", "phase_list",
@@ -58,7 +61,15 @@ describe("cairn MCP server", () => {
       "mem_card_create", "mem_card_list", "mem_card_recall", "mem_timeline",
       "continuity_checkpoint", "continuity_get", "continuity_clear",
       "ledger_append",
+      "milestone_create", "milestone_list", "milestone_complete",
+      "plan_resync", "plan_meta_set",
     ].sort());
+  });
+
+  it("registers the Tier A tools", async () => {
+    const names = await listToolNames();
+    for (const n of ["milestone_create", "milestone_list", "milestone_complete",
+      "plan_resync", "plan_meta_set"]) expect(names).toContain(n);
   });
 
   it("plan lifecycle through tools: scaffold → ensure → issues_set → status → drift", async () => {

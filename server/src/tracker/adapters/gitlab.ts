@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, paginate, type FetchLike } from "../http.js";
-import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Phase, Tracker } from "../types.js";
+import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker } from "../types.js";
+import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 
 const WIP = "in-progress";
 
@@ -16,7 +17,10 @@ interface GlMilestone {
 }
 
 export class GitLabTracker implements Tracker {
-  readonly capabilities: Capability = { hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true };
+  readonly capabilities: Capability = {
+    hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
+    hasMilestones: false, hasPhaseClose: true,
+  };
   constructor(private cfg: z.infer<typeof configSchema>, private fetchImpl: FetchLike = fetch) {}
 
   private token(): string {
@@ -120,6 +124,17 @@ export class GitLabTracker implements Tracker {
     )) as GlMilestone[];
     return raw.map((m) => ({ id: String(m.id), name: m.title, state: m.state === "closed" ? "closed" : "open" }));
   }
+
+  async closePhase(id: string): Promise<Phase> {
+    this.assertId(id);
+    const raw = (await this.api("PUT", `/milestones/${id}`,
+      { state_event: "close" }, "phase_close")) as GlMilestone;
+    return { id: String(raw.id), name: raw.title,
+      state: raw.state === "closed" ? "closed" : "open" };
+  }
+  async createMilestone(_name: string): Promise<Milestone> { return milestonesUnsupported("gitlab"); }
+  async listMilestones(): Promise<Milestone[]> { return milestonesUnsupported("gitlab"); }
+  async completeMilestone(_id: string): Promise<Milestone> { return milestonesUnsupported("gitlab"); }
 }
 
 export const configSchema = z.object({

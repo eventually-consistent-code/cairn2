@@ -239,6 +239,19 @@ describe("GitLabTracker mapping", () => {
     ]);
   });
 
+  it("closePhase PUTs state_event=close on the milestone", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: { id: 9, title: "Phase 1: core", state: "closed" } },
+    ]);
+    const t = new GitLabTracker({ baseUrl: "https://gitlab.com", project: "g/p", tokenEnv: "T", extraLabels: [] }, f);
+    process.env.T = "tok";
+    const p = await t.closePhase("9");
+    expect(calls[0].url).toContain("/milestones/9");
+    expect(calls[0].method).toBe("PUT");
+    expect(calls[0].body).toMatchObject({ state_event: "close" });
+    expect(p).toMatchObject({ id: "9", state: "closed" });
+  });
+
   it("missing token env throws AUTH_MISSING with zero HTTP calls", async () => {
     vi.stubEnv("GITLAB_TOKEN", "");
     delete process.env.GITLAB_TOKEN;
@@ -246,5 +259,15 @@ describe("GitLabTracker mapping", () => {
     const t = new GitLabTracker(baseCfg, f);
     await expect(t.getIssue("7")).rejects.toMatchObject({ code: "AUTH_MISSING" });
     expect(calls.length).toBe(0);
+  });
+
+  it("milestones are UNSUPPORTED (capability-flagged fallback)", async () => {
+    vi.stubEnv("GITLAB_TOKEN", "tok");
+    const { f } = fixtureFetch([]);
+    const t = new GitLabTracker(baseCfg, f);
+    expect(t.capabilities.hasMilestones).toBe(false);
+    await expect(t.createMilestone("v1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
+    await expect(t.listMilestones()).rejects.toMatchObject({ code: "UNSUPPORTED" });
+    await expect(t.completeMilestone("1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
   });
 });

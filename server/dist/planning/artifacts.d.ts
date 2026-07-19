@@ -19,3 +19,13 @@ export declare function scaffoldPhase(projectDir: string, number: number, name: 
 };
 export declare function readPlanIssues(projectDir: string, phaseDir: string): string[];
 export declare function writePlanIssues(projectDir: string, phaseDir: string, issues: string[]): void;
+export interface PlanMeta {
+    issues: string[];
+    waves: string[][];
+    tdd: string[];
+}
+export declare function readPlanMeta(projectDir: string, phaseDir: string): PlanMeta;
+export declare function writePlanMeta(projectDir: string, phaseDir: string, meta: {
+    waves?: string[][];
+    tdd?: string[];
+}): void;

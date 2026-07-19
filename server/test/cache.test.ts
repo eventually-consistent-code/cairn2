@@ -37,4 +37,15 @@ describe("CachedTracker", () => {
     expect(second.labels).toEqual(["x"]);
     expect(second.title).toBe("a");
   });
+
+  it("listMilestones is cached; createMilestone/completeMilestone invalidate", async () => {
+    const fake = new FakeTracker();
+    const t = new CachedTracker(fake);
+    const m = await t.createMilestone("m1");
+    expect((await t.listMilestones()).length).toBe(1);
+    await t.createMilestone("m2");                       // write clears cache
+    expect((await t.listMilestones()).length).toBe(2);
+    await t.completeMilestone(m.id);
+    expect((await t.listMilestones()).find((x) => x.id === m.id)?.state).toBe("released");
+  });
 });

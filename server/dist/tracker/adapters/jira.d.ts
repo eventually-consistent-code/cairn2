@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { type FetchLike } from "../http.js";
-import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Phase, Tracker } from "../types.js";
+import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker } from "../types.js";
 export declare const configSchema: z.ZodObject<{
     baseUrl: z.ZodString;
     projectKey: z.ZodString;
@@ -49,6 +49,7 @@ export declare class JiraTracker implements Tracker {
     private readonly fetchImpl;
     private readonly authProvider;
     readonly capabilities: Capability;
+    private projectId;
     constructor(cfg: JiraConfig, fetchImpl?: FetchLike, authProvider?: () => {
         email: string;
         token: string;
@@ -71,5 +72,11 @@ export declare class JiraTracker implements Tracker {
     }): Promise<Issue[]>;
     createPhase(name: string): Promise<Phase>;
     listPhases(): Promise<Phase[]>;
+    private resolveProjectId;
+    private normalizeVersion;
+    closePhase(id: string): Promise<Phase>;
+    createMilestone(name: string): Promise<Milestone>;
+    listMilestones(): Promise<Milestone[]>;
+    completeMilestone(id: string): Promise<Milestone>;
 }
 export {};

@@ -61,7 +61,9 @@ export class JiraTracker {
     authProvider;
     capabilities = {
         hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
+        hasMilestones: true, hasPhaseClose: true,
     };
+    projectId;
     constructor(cfg, fetchImpl = fetch, authProvider = () => resolveJiraAuth(cfg)) {
         this.cfg = cfg;
         this.fetchImpl = fetchImpl;
@@ -214,5 +216,37 @@ export class JiraTracker {
             name: i.fields.summary,
             state: STATUS_CATEGORY_MAP[i.fields.status?.statusCategory?.key ?? "new"] === "closed" ? "closed" : "open",
         }));
+    }
+    async resolveProjectId() {
+        if (this.projectId === undefined) {
+            const raw = (await this.api("GET", `/rest/api/3/project/${this.cfg.projectKey}`, undefined, "jira project_get"));
+            this.projectId = Number(raw.id);
+        }
+        return this.projectId;
+    }
+    normalizeVersion(raw) {
+        return {
+            id: raw.id, name: raw.name,
+            state: raw.released ? "released" : "open",
+            url: `${this.cfg.baseUrl.replace(/\/$/, "")}/projects/${this.cfg.projectKey}/versions/${raw.id}`,
+        };
+    }
+    async closePhase(id) {
+        // Jira phases are Epics, and Epics are issues — the close transition applies.
+        const closed = await this.closeIssue(id);
+        return { id: closed.id, name: closed.title, state: "closed" };
+    }
+    async createMilestone(name) {
+        const projectId = await this.resolveProjectId();
+        const raw = (await this.api("POST", "/rest/api/3/version", { name, projectId }, "jira milestone_create"));
+        return this.normalizeVersion(raw);
+    }
+    async listMilestones() {
+        const raw = (await this.api("GET", `/rest/api/3/project/${this.cfg.projectKey}/versions`, undefined, "jira milestone_list"));
+        return raw.map((v) => this.normalizeVersion(v));
+    }
+    async completeMilestone(id) {
+        const raw = (await this.api("PUT", `/rest/api/3/version/${id}`, { released: true }, "jira milestone_complete"));
+        return this.normalizeVersion(raw);
     }
 }

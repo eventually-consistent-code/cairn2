@@ -1,5 +1,5 @@
 import { ReadCache } from "../core/cache.js";
-import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Phase, Tracker } from "./types.js";
+import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker } from "./types.js";
 /**
  * Caches read operations (getIssue, listIssues, listPhases) for 60s.
  * Any write invalidates the entire cache (whole-cache write-through invalidation).
@@ -21,4 +21,8 @@ export declare class CachedTracker implements Tracker {
     }): Promise<Issue[]>;
     createPhase(name: string): Promise<Phase>;
     listPhases(): Promise<Phase[]>;
+    closePhase(id: string): Promise<Phase>;
+    createMilestone(name: string): Promise<Milestone>;
+    listMilestones(): Promise<Milestone[]>;
+    completeMilestone(id: string): Promise<Milestone>;
 }

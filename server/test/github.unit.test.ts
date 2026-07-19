@@ -140,4 +140,25 @@ describe("GitHubTracker mapping", () => {
     await expect(t.createIssue({ title: "x", phase: "nope" }))
       .rejects.toMatchObject({ code: "CONFIG_INVALID" });
   });
+
+  it("closePhase PATCHes the milestone closed", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: { number: 3, title: "Phase 1: core", state: "closed" } },
+    ]);
+    const t = new GitHubTracker({ repo: "o/r" }, f, () => "tok");
+    const p = await t.closePhase("3");
+    expect(calls[0].url).toBe("https://api.github.com/repos/o/r/milestones/3");
+    expect(calls[0].method).toBe("PATCH");
+    expect(calls[0].body).toMatchObject({ state: "closed" });
+    expect(p).toMatchObject({ id: "3", state: "closed" });
+  });
+
+  it("milestones are UNSUPPORTED (capability-flagged fallback)", async () => {
+    const { f } = fixtureFetch([]);
+    const t = new GitHubTracker({ repo: "o/r" }, f, () => "tok");
+    expect(t.capabilities.hasMilestones).toBe(false);
+    await expect(t.createMilestone("v1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
+    await expect(t.listMilestones()).rejects.toMatchObject({ code: "UNSUPPORTED" });
+    await expect(t.completeMilestone("1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
+  });
 });

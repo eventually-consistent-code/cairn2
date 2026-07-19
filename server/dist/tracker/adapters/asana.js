@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson } from "../http.js";
+import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 const API = "https://app.asana.com/api/1.0";
 const OPT_FIELDS = "name,notes,completed,modified_at,memberships.section.gid";
 const LIST_CAP = 100;
@@ -17,6 +18,7 @@ export class AsanaTracker {
     tokenProvider;
     capabilities = {
         hasInProgress: false, hasPhases: true, hasDependencies: true, hasLabels: false,
+        hasMilestones: false, hasPhaseClose: false,
     };
     constructor(cfg, fetchImpl = fetch, tokenProvider = () => resolveAsanaToken(cfg.tokenEnv)) {
         this.cfg = cfg;
@@ -123,6 +125,10 @@ export class AsanaTracker {
         const raw = (await this.api("GET", `/projects/${this.cfg.projectGid}/sections`, undefined, "phase_list"));
         return raw.map((s) => ({ id: s.gid, name: s.name, state: "open" }));
     }
+    async closePhase(_id) { return phaseCloseUnsupported("asana"); }
+    async createMilestone(_name) { return milestonesUnsupported("asana"); }
+    async listMilestones() { return milestonesUnsupported("asana"); }
+    async completeMilestone(_id) { return milestonesUnsupported("asana"); }
 }
 export function resolveAsanaToken(tokenEnv) {
     const env = process.env[tokenEnv];

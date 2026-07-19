@@ -1,6 +1,6 @@
 import { ReadCache } from "../core/cache.js";
 import type {
-  Capability, Issue, IssueCreate, IssuePatch, IssueState, Phase, Tracker,
+  Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
 } from "./types.js";
 
 /**
@@ -75,6 +75,33 @@ export class CachedTracker implements Tracker {
 
     const result = await this.inner.listPhases();
     this.cache.set(key, this.clone(result));
+    return result;
+  }
+
+  async closePhase(id: string): Promise<Phase> {
+    const result = await this.inner.closePhase(id);
+    this.cache.clear();
+    return result;
+  }
+
+  async createMilestone(name: string): Promise<Milestone> {
+    const result = await this.inner.createMilestone(name);
+    this.cache.clear();
+    return result;
+  }
+
+  async listMilestones(): Promise<Milestone[]> {
+    const key = "milestones";
+    const cached = this.cache.get<Milestone[]>(key);
+    if (cached) return this.clone(cached);
+    const result = await this.inner.listMilestones();
+    this.cache.set(key, this.clone(result));
+    return result;
+  }
+
+  async completeMilestone(id: string): Promise<Milestone> {
+    const result = await this.inner.completeMilestone(id);
+    this.cache.clear();
     return result;
   }
 }

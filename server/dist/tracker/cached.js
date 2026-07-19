@@ -63,4 +63,28 @@ export class CachedTracker {
         this.cache.set(key, this.clone(result));
         return result;
     }
+    async closePhase(id) {
+        const result = await this.inner.closePhase(id);
+        this.cache.clear();
+        return result;
+    }
+    async createMilestone(name) {
+        const result = await this.inner.createMilestone(name);
+        this.cache.clear();
+        return result;
+    }
+    async listMilestones() {
+        const key = "milestones";
+        const cached = this.cache.get(key);
+        if (cached)
+            return this.clone(cached);
+        const result = await this.inner.listMilestones();
+        this.cache.set(key, this.clone(result));
+        return result;
+    }
+    async completeMilestone(id) {
+        const result = await this.inner.completeMilestone(id);
+        this.cache.clear();
+        return result;
+    }
 }

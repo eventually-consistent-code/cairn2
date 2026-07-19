@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { type FetchLike } from "../http.js";
-import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Phase, Tracker } from "../types.js";
+import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker } from "../types.js";
 export declare const configSchema: z.ZodObject<{
     orgUrl: z.ZodString;
     project: z.ZodString;
@@ -88,5 +88,11 @@ export declare class AzureBoardsTracker implements Tracker {
     }): Promise<Issue[]>;
     createPhase(name: string): Promise<Phase>;
     listPhases(): Promise<Phase[]>;
+    closePhase(_id: string): Promise<Phase>;
+    /** Maps an Epic work item to a Milestone; "released" once it hits the configured closed state. */
+    private normalizeEpic;
+    createMilestone(name: string): Promise<Milestone>;
+    listMilestones(): Promise<Milestone[]>;
+    completeMilestone(id: string): Promise<Milestone>;
 }
 export {};
