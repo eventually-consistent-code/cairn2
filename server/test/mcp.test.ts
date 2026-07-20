@@ -35,6 +35,8 @@ describe("cairn MCP server", () => {
 
   beforeAll(async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "cairn-"));
+    writeFileSync(join(projectDir, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
     const server = buildServer({ projectDir, tracker: new FakeTracker() });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     client = new Client({ name: "test", version: "0.0.0" });
@@ -63,6 +65,7 @@ describe("cairn MCP server", () => {
       "ledger_append",
       "milestone_create", "milestone_list", "milestone_complete",
       "plan_resync", "plan_meta_set",
+      "config_get", "config_set",
     ].sort());
   });
 
@@ -141,6 +144,14 @@ describe("cairn MCP server", () => {
     await call("context_set", { phase: 1, issueId: "FAKE-1" });
     const got = await call("context_get");
     expect(got.json).toEqual({ phase: 1, issueId: "FAKE-1" });
+  });
+
+  it("config_set merges and config_get reflects it", async () => {
+    const set = await call("config_set", { patch: { continuity: { resume: "auto" } } });
+    expect(set.json.continuity.resume).toBe("auto");
+    const got = await call("config_get", {});
+    expect(got.json.continuity.resume).toBe("auto");
+    expect(got.json.leakGuard.enabled).toBe(true); // defaults visible in effective view
   });
 
   it("CairnError surfaces as isError with code + nextAction", async () => {

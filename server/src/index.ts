@@ -7,7 +7,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { CairnError } from "./errors.js";
-import { loadConfig } from "./config.js";
+import { loadConfig, writeConfigPatch } from "./config.js";
 import { ActiveContext } from "./active-context.js";
 import { makeTracker } from "./tracker/registry.js";
 import { CachedTracker } from "./tracker/cached.js";
@@ -506,6 +506,18 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       });
       return { ok: true, ...readPlanMeta(deps.projectDir, a.phaseDir) };
     }));
+
+  server.registerTool("config_get",
+    { description: "Read cairn.json as the validated, post-defaults effective config",
+      inputSchema: {} },
+    wrap(() => loadConfig(deps.projectDir)));
+
+  server.registerTool("config_set",
+    { description: "Merge-patch cairn.json (null deletes a key). Validates the merged result before "
+        + "writing; refuses secret-looking keys/values — credentials live in env vars",
+      inputSchema: { patch: z.record(z.unknown()) } },
+    wrap((a: { patch: Record<string, unknown> }) =>
+      writeConfigPatch(deps.projectDir, a.patch)));
 
   return server;
 }
