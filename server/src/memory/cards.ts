@@ -78,6 +78,20 @@ export function readCard(projectDir: string, id: string): Card {
   return { id, frontmatter: validateFrontmatter(data, `card '${id}' frontmatter`), body };
 }
 
+export function updateCardConfidence(projectDir: string, id: string,
+  confidence: "high" | "medium" | "low"): Card {
+  const path = join(cardsDir(projectDir), `${id}.md`);
+  if (!existsSync(path)) {
+    throw new CairnError("NOT_FOUND", `no card '${id}'`,
+      "list ids with mem_card_list");
+  }
+  const { data, body } = parseFrontmatter(readFileSync(path, "utf8"));
+  data.confidence = confidence;
+  const frontmatter = validateFrontmatter(data, `card '${id}' frontmatter`);
+  writeFileSync(path, serializeFrontmatter(data, body));
+  return { id, frontmatter, body };
+}
+
 export function listCards(projectDir: string, filter: { scopePhase?: number; scopeIssue?: string } = {}): Card[] {
   const dir = cardsDir(projectDir);
   if (!existsSync(dir)) return [];

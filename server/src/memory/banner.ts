@@ -68,8 +68,12 @@ function computeBannerData(projectDir: string): BannerData {
   if (active.phase !== undefined) headerParts.push(`phase ${active.phase}`);
   if (active.issueId !== undefined) headerParts.push(active.issueId);
 
-  const rows = cards.map((card) =>
-    `| ${card.id} | ${card.frontmatter.type} | ${titleFor(card.body)} | ~${fetchCost(card.body)} tok |`);
+  const rows = cards.map((card) => {
+    const type = card.frontmatter.confidence
+      ? `${card.frontmatter.type} (${card.frontmatter.confidence})`
+      : card.frontmatter.type;
+    return `| ${card.id} | ${type} | ${titleFor(card.body)} | ~${fetchCost(card.body)} tok |`;
+  });
   const cardCostTotal = cards.reduce((sum, card) => sum + fetchCost(card.body), 0);
 
   const lines = [

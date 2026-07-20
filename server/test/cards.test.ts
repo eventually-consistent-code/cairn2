@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createCard, readCard, listCards, cardsDir } from "../src/memory/cards.js";
+import { createCard, readCard, listCards, cardsDir, updateCardConfidence } from "../src/memory/cards.js";
 
 const dir = () => mkdtempSync(join(tmpdir(), "cairn-cards-"));
 
@@ -36,6 +36,24 @@ describe("createCard / readCard", () => {
   it("throws NOT_FOUND reading a card that doesn't exist", () => {
     expect(() => readCard(dir(), "decision-deadbeef")).toThrowError(
       expect.objectContaining({ code: "NOT_FOUND" }));
+  });
+});
+
+describe("updateCardConfidence", () => {
+  it("patches frontmatter only — id and body stable", () => {
+    const d = dir();
+    const card = createCard(d, { type: "gotcha", body: "flaky test on arm64", confidence: "medium" });
+    const updated = updateCardConfidence(d, card.id, "high");
+    expect(updated.id).toBe(card.id);
+    expect(updated.body).toBe(card.body);
+    expect(updated.frontmatter.confidence).toBe("high");
+    expect(readCard(d, card.id).frontmatter.confidence).toBe("high");
+  });
+
+  it("on unknown id throws NOT_FOUND", () => {
+    const d = dir();
+    expect(() => updateCardConfidence(d, "note-deadbeef", "low"))
+      .toThrowError(/no card/);
   });
 });
 

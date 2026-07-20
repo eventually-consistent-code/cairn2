@@ -20,7 +20,7 @@ import { importPhase } from "./planning/import.js";
 import { milestoneCreate, milestoneList, milestoneComplete } from "./planning/milestones.js";
 import { resyncReport } from "./planning/resync.js";
 import { MemoryIndex, indexDbPath, type SearchResult } from "./memory/index-store.js";
-import { createCard, listCards, readCard } from "./memory/cards.js";
+import { createCard, listCards, readCard, updateCardConfidence } from "./memory/cards.js";
 import { checkCardStaleness } from "./memory/staleness.js";
 import { readHandoff, writeHandoff, clearHandoff } from "./core/continuity.js";
 import type { Handoff } from "./core/continuity.js";
@@ -315,6 +315,16 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
         const check = checkCardStaleness(deps.projectDir, provenance);
         return { ...card, stale: check.stale, staleReasons: check.reasons };
       })));
+
+  server.registerTool("mem_card_update",
+    { description: "Adjust a memory card's confidence (frontmatter-only; body and id are immutable)",
+      inputSchema: { id: z.string(),
+                     confidence: z.enum(["high", "medium", "low"]) } },
+    wrap((a: { id: string; confidence: "high" | "medium" | "low" }) => {
+      const card = updateCardConfidence(deps.projectDir, a.id, a.confidence);
+      writeBanner(deps.projectDir);
+      return card;
+    }));
 
   server.registerTool("mem_timeline",
     { description: "Chronological neighbors around an anchor (a memory card id or an index chunk source) -- "
