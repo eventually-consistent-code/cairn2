@@ -469,7 +469,7 @@ Per spec §6.3, four drills, to be run in a scratch project with cairn2
 installed as a local plugin and recorded here once run, same format as the
 Tier 0 dogfood drill and the Tier A0/Tier A kill-drills above.
 
-**Mark drill — PENDING (run live).**
+**Mark drill — RUN 2026-07-20, see results below.**
 1. `/cairn mark "<text>"` (bare) → expect: one tool call
    (`issue_create(title: <text>, labels: ["cairn:backlog"])`), zero
    questions asked, the real tracker shows a bare backlog issue with the
@@ -484,7 +484,7 @@ Tier 0 dogfood drill and the Tier A0/Tier A kill-drills above.
    no `AskUserQuestion` at capture time; the note card is recallable via
    `mem_search`/`mem_card_recall` afterward.
 
-**Leak drill — PENDING (run live).**
+**Leak drill — RUN 2026-07-20, see results below.**
 1. In a scratch repo with cairn2 installed, stage a source file containing
    both a `.cairn/` path string and a real tracker id in the configured
    backend's format (e.g. `PROJ-42` for Jira).
@@ -499,7 +499,7 @@ Tier 0 dogfood drill and the Tier A0/Tier A kill-drills above.
    under 100ms (wall-clock observed, not just asserted in the unit harness
    above); both escape hatches confirmed live.
 
-**Retro drill — PENDING (run live).**
+**Retro drill — RUN 2026-07-20, see results below.**
 1. Against a real completed, verified phase in a scratch project: run
    `/cairn retro`.
 2. Expect: lessons extracted from `LEDGER.md` ranges, `VERIFICATION.md`,
@@ -516,7 +516,7 @@ Tier 0 dogfood drill and the Tier A0/Tier A kill-drills above.
    a later phase proved, live — not just in the unit-level round-trip
    above.
 
-**Distill drill — PENDING (run live).**
+**Distill drill — RUN 2026-07-20, see results below.**
 1. Post-`summit` (or post-`ship`) on a scratch project with at least one
    shipped phase carrying locked decisions, a `LEDGER.md`, and
    decision/constraint cards in scope: run `/cairn distill`.
@@ -533,3 +533,51 @@ Tier 0 dogfood drill and the Tier A0/Tier A kill-drills above.
    rewritten to plain prose, phase refs rewritten to milestone/version
    names), proven by the scanner, not by eyeballing; ADRs trace to locked
    decisions.
+
+### Drill results — RUN 2026-07-20 (mechanical, real tracker) — PASS 30/30
+
+Same harness as the Tier A drills: real `dist/index.js` over stdio, hook
+scripts spawned exactly as the plugin fires them, real GitHub tracker
+(`eventually-consistent-code/cairn-drill-scratch`) where a tracker is
+touched; the leak/distill legs use a jira-shaped `cairn.json` (projectKey
+`DRILL`) since the tracker-id pattern is config-derived, no live Jira
+needed. Repeatable drivers at `server/drills/drill-{mark,leak,retro,
+distill}.mjs` (run from `server/`: `node drills/drill-<name>.mjs
+<projectDir> $PWD/dist/index.js`).
+
+**Mark drill — PASS 8/8.** Each capture kind was exactly ONE tool call, no
+interview anywhere in the flow: backlog → bare real issue (label
+`cairn:backlog`, empty body, open); seed → real issue with `Trigger:` body;
+note → `note-*` card auto-scoped to the active phase, recallable via
+`mem_card_list` and `mem_card_recall`; tracker read-back intact.
+
+**Leak drill — PASS 9/9.** Staged `.cairn/` + `DRILL-42` leak → exit 2 with
+hunk-accurate `app.ts:1: [cairn-path]` / `[tracker-id]` listing; fixed
+staging → exit 0; `CAIRN_LEAK_OK=1` prefix → bypass; the same token QUOTED
+in a commit message → still blocks (prefix anchoring held); the
+review-hardened widened scan caught an UNSTAGED tracked leak under
+`git commit -am` while a plain commit with nothing staged passed; and the
+tune front door — a real `config_set({leakGuard:{enabled:false}})` — 
+disabled the guard.
+
+**Retro drill — PASS 7/7.** Real phase worked to verified (issue claimed →
+closed → ledgered with real commit ranges). A deliberately WRONG prior card
+planted at confidence `high` ("bump the retry count") was re-graded to
+`low` via `mem_card_update` after the phase's evidence contradicted it —
+id/body unchanged — and the correction landed as a NEW card; the lesson
+card carries provenance (file + commit from the ledger range). Recall
+surfaces the down-rank; banner re-rendered. Spec success criterion 3
+demonstrated live.
+
+**Distill drill — PASS 6/6.** A naive first-draft ADR carrying
+`phases/01-…`, `.cairn/` and `DRILL-77` refs was CAUGHT by the
+`leak-patterns.mjs` CLI (exit 1, all three pattern classes); rewritten
+public-safe (commit sha instead of internal refs) → re-scan exit 0 — the
+gate; final `docs/` set (ADR + ARCHITECTURE + CHANGELOG-from-ledger)
+mechanically scanned clean; the ADR traces to the locked decision via
+commit sha only. Spec success criterion 4 demonstrated.
+
+**Caveat (as prior tiers):** drivers exercise every tool, file, hook, and
+tracker call the flows touch, following the verb docs step-by-step;
+agent-side judgment (batched approval questions, lesson wording) is
+simulated by the driver, verified by review.
