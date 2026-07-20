@@ -6,9 +6,10 @@ import { CairnError } from "../errors.js";
 import { parseFrontmatter, serializeFrontmatter } from "../planning/frontmatter.js";
 
 export const CardFrontmatterSchema = z.object({
-  type: z.enum(["decision", "constraint", "gotcha", "reference"]),
+  type: z.enum(["decision", "constraint", "gotcha", "reference", "note"]),
   scopePhase: z.string().optional(),
   scopeIssue: z.string().optional(),
+  confidence: z.enum(["high", "medium", "low"]).optional(),
   provenanceFiles: z.array(z.string()).default([]),
   provenanceCommits: z.array(z.string()).default([]),
   created: z.string(),
@@ -41,10 +42,11 @@ function validateFrontmatter(data: Record<string, string | string[]>, context: s
 }
 
 export function createCard(projectDir: string, input: {
-  type: "decision" | "constraint" | "gotcha" | "reference";
+  type: "decision" | "constraint" | "gotcha" | "reference" | "note";
   body: string;
   scopePhase?: number;
   scopeIssue?: string;
+  confidence?: "high" | "medium" | "low";
   provenance?: Array<{ file: string; commit: string }>;
 }): Card {
   const provenanceFiles = (input.provenance ?? []).map((p) => p.file);
@@ -57,6 +59,7 @@ export function createCard(projectDir: string, input: {
   };
   if (input.scopePhase !== undefined) data.scopePhase = String(input.scopePhase);
   if (input.scopeIssue !== undefined) data.scopeIssue = input.scopeIssue;
+  if (input.confidence !== undefined) data.confidence = input.confidence;
 
   const frontmatter = validateFrontmatter(data, "card validation");
   const id = cardId(input.type, input.body);

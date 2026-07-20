@@ -63,4 +63,19 @@ describe("listCards", () => {
     expect(cards.length).toBe(1);
     expect(cards[0].body).toBe("valid one\n");
   });
+
+  it("creates a note card with confidence and round-trips both", () => {
+    const d = dir();
+    const card = createCard(d, { type: "note", body: "jot: waves feel slow on CI", confidence: "low" });
+    expect(card.id.startsWith("note-")).toBe(true);
+    const read = readCard(d, card.id);
+    expect(read.frontmatter.type).toBe("note");
+    expect(read.frontmatter.confidence).toBe("low");
+  });
+
+  it("confidence is optional and absent by default", () => {
+    const d = dir();
+    const card = createCard(d, { type: "decision", body: "no confidence set" });
+    expect(readCard(d, card.id).frontmatter.confidence).toBeUndefined();
+  });
 });

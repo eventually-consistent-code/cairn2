@@ -275,16 +275,17 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
     wrap(() => ({ ...getMemIndex().stats(), ...bannerStats(deps.projectDir) })));
 
   server.registerTool("mem_card_create",
-    { description: "Write a durable memory card (decision/constraint/gotcha/reference) with provenance",
+    { description: "Write a durable memory card (decision/constraint/gotcha/reference/note) with provenance",
       inputSchema: {
-        type: z.enum(["decision", "constraint", "gotcha", "reference"]),
+        type: z.enum(["decision", "constraint", "gotcha", "reference", "note"]),
         body: z.string(),
         scopePhase: z.number().int().optional(),
         scopeIssue: z.string().optional(),
+        confidence: z.enum(["high", "medium", "low"]).optional(),
         provenance: z.array(z.object({ file: z.string(), commit: z.string() })).optional(),
       } },
-    wrap((a: { type: "decision" | "constraint" | "gotcha" | "reference"; body: string;
-               scopePhase?: number; scopeIssue?: string;
+    wrap((a: { type: "decision" | "constraint" | "gotcha" | "reference" | "note"; body: string;
+               scopePhase?: number; scopeIssue?: string; confidence?: "high" | "medium" | "low";
                provenance?: Array<{ file: string; commit: string }> }) => {
       const card = createCard(deps.projectDir, a);
       const patch: Partial<Handoff> & { source: Handoff["source"] } = { source: "tool" };
