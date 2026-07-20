@@ -5,9 +5,10 @@ import { join } from "node:path";
 import { CairnError } from "../errors.js";
 import { parseFrontmatter, serializeFrontmatter } from "../planning/frontmatter.js";
 export const CardFrontmatterSchema = z.object({
-    type: z.enum(["decision", "constraint", "gotcha", "reference"]),
+    type: z.enum(["decision", "constraint", "gotcha", "reference", "note"]),
     scopePhase: z.string().optional(),
     scopeIssue: z.string().optional(),
+    confidence: z.enum(["high", "medium", "low"]).optional(),
     provenanceFiles: z.array(z.string()).default([]),
     provenanceCommits: z.array(z.string()).default([]),
     created: z.string(),
@@ -38,6 +39,8 @@ export function createCard(projectDir, input) {
         data.scopePhase = String(input.scopePhase);
     if (input.scopeIssue !== undefined)
         data.scopeIssue = input.scopeIssue;
+    if (input.confidence !== undefined)
+        data.confidence = input.confidence;
     const frontmatter = validateFrontmatter(data, "card validation");
     const id = cardId(input.type, input.body);
     const body = input.body.endsWith("\n") ? input.body : `${input.body}\n`;
@@ -52,6 +55,17 @@ export function readCard(projectDir, id) {
     }
     const { data, body } = parseFrontmatter(readFileSync(path, "utf8"));
     return { id, frontmatter: validateFrontmatter(data, `card '${id}' frontmatter`), body };
+}
+export function updateCardConfidence(projectDir, id, confidence) {
+    const path = join(cardsDir(projectDir), `${id}.md`);
+    if (!existsSync(path)) {
+        throw new CairnError("NOT_FOUND", `no card '${id}'`, "list ids with mem_card_list");
+    }
+    const { data, body } = parseFrontmatter(readFileSync(path, "utf8"));
+    data.confidence = confidence;
+    const frontmatter = validateFrontmatter(data, `card '${id}' frontmatter`);
+    writeFileSync(path, serializeFrontmatter(data, body));
+    return { id, frontmatter, body };
 }
 export function listCards(projectDir, filter = {}) {
     const dir = cardsDir(projectDir);

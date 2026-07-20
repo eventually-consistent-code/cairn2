@@ -62,6 +62,19 @@ export declare const ConfigSchema: z.ZodObject<{
             maxCards?: number | undefined;
         } | undefined;
     }>>;
+    leakGuard: z.ZodDefault<z.ZodObject<{
+        enabled: z.ZodDefault<z.ZodBoolean>;
+        allow: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+        extraPatterns: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    }, "strip", z.ZodTypeAny, {
+        enabled: boolean;
+        allow: string[];
+        extraPatterns: string[];
+    }, {
+        enabled?: boolean | undefined;
+        allow?: string[] | undefined;
+        extraPatterns?: string[] | undefined;
+    }>>;
 }, "strip", z.ZodTypeAny, {
     tracker: {
         type: "github" | "gitlab" | "jira" | "asana" | "azure-boards" | "clickup";
@@ -81,6 +94,11 @@ export declare const ConfigSchema: z.ZodObject<{
             enabled: boolean;
             maxCards: number;
         };
+    };
+    leakGuard: {
+        enabled: boolean;
+        allow: string[];
+        extraPatterns: string[];
     };
     user?: {
         handle: string;
@@ -108,6 +126,12 @@ export declare const ConfigSchema: z.ZodObject<{
             maxCards?: number | undefined;
         } | undefined;
     } | undefined;
+    leakGuard?: {
+        enabled?: boolean | undefined;
+        allow?: string[] | undefined;
+        extraPatterns?: string[] | undefined;
+    } | undefined;
 }>;
 export type CairnConfig = z.infer<typeof ConfigSchema>;
 export declare function loadConfig(projectDir: string): CairnConfig;
+export declare function writeConfigPatch(projectDir: string, patch: Record<string, unknown>): CairnConfig;
