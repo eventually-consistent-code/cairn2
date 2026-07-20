@@ -234,7 +234,7 @@ export class JiraTracker implements Tracker {
     const jql = filter?.phase
       ? `parent = ${filter.phase}`
       : `project = ${this.cfg.projectKey} AND issuetype != Epic`;
-    const raw = (await this.api("POST", "/rest/api/3/search", {
+    const raw = (await this.api("POST", "/rest/api/3/search/jql", {
       jql,
       maxResults: MAX_RESULTS,
       fields: ["summary", "description", "status", "updated", "labels", "parent"],
@@ -259,7 +259,7 @@ export class JiraTracker implements Tracker {
   }
 
   async listPhases(): Promise<Phase[]> {
-    const raw = (await this.api("POST", "/rest/api/3/search", {
+    const raw = (await this.api("POST", "/rest/api/3/search/jql", {
       jql: `project = ${this.cfg.projectKey} AND issuetype = Epic`,
       maxResults: MAX_RESULTS,
       fields: ["summary", "status", "updated"],

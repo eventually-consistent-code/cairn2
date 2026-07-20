@@ -209,7 +209,7 @@ describe("JiraTracker mapping", () => {
     ]);
     const t = new JiraTracker(cfg, f, () => ({ email: "e@x.com", token: "tok" }));
     const issues = await t.listIssues({ phase: "CHN-1" });
-    expect(calls[0].url).toBe(`${BASE}/rest/api/3/search`);
+    expect(calls[0].url).toBe(`${BASE}/rest/api/3/search/jql`);
     expect(calls[0].method).toBe("POST");
     expect(calls[0].body).toMatchObject({ jql: "parent = CHN-1", maxResults: 100 });
     expect(issues).toHaveLength(1);
