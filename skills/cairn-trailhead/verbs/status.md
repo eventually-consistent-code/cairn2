@@ -15,4 +15,8 @@ Show project status:
 4. `plan_unplanned()` — tracker issues no plan references. If any: list
    id · title · assignee and offer adoption (`/cairn plan <N>` folds them in,
    or `/cairn import` if they belong to a whole unmapped phase).
-5. Keep it to one screen; end with the obvious next `/cairn` step.
+5. Marks: from the open-issue list, group `cairn:backlog` and `cairn:seed`
+   labeled issues separately from phase work. For each open seed, read its
+   `Trigger:` line and flag it when current project state reads as meeting
+   the trigger — firing is your judgment call to surface, the user's to act.
+6. Keep it to one screen; end with the obvious next `/cairn` step.
