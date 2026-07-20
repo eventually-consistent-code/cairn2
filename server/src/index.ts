@@ -7,7 +7,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { CairnError } from "./errors.js";
-import { loadConfig } from "./config.js";
+import { loadConfig, writeConfigPatch } from "./config.js";
 import { ActiveContext } from "./active-context.js";
 import { makeTracker } from "./tracker/registry.js";
 import { CachedTracker } from "./tracker/cached.js";
@@ -20,7 +20,7 @@ import { importPhase } from "./planning/import.js";
 import { milestoneCreate, milestoneList, milestoneComplete } from "./planning/milestones.js";
 import { resyncReport } from "./planning/resync.js";
 import { MemoryIndex, indexDbPath, type SearchResult } from "./memory/index-store.js";
-import { createCard, listCards, readCard } from "./memory/cards.js";
+import { createCard, listCards, readCard, updateCardConfidence } from "./memory/cards.js";
 import { checkCardStaleness } from "./memory/staleness.js";
 import { readHandoff, writeHandoff, clearHandoff } from "./core/continuity.js";
 import type { Handoff } from "./core/continuity.js";
@@ -275,16 +275,17 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
     wrap(() => ({ ...getMemIndex().stats(), ...bannerStats(deps.projectDir) })));
 
   server.registerTool("mem_card_create",
-    { description: "Write a durable memory card (decision/constraint/gotcha/reference) with provenance",
+    { description: "Write a durable memory card (decision/constraint/gotcha/reference/note) with provenance",
       inputSchema: {
-        type: z.enum(["decision", "constraint", "gotcha", "reference"]),
+        type: z.enum(["decision", "constraint", "gotcha", "reference", "note"]),
         body: z.string(),
         scopePhase: z.number().int().optional(),
         scopeIssue: z.string().optional(),
+        confidence: z.enum(["high", "medium", "low"]).optional(),
         provenance: z.array(z.object({ file: z.string(), commit: z.string() })).optional(),
       } },
-    wrap((a: { type: "decision" | "constraint" | "gotcha" | "reference"; body: string;
-               scopePhase?: number; scopeIssue?: string;
+    wrap((a: { type: "decision" | "constraint" | "gotcha" | "reference" | "note"; body: string;
+               scopePhase?: number; scopeIssue?: string; confidence?: "high" | "medium" | "low";
                provenance?: Array<{ file: string; commit: string }> }) => {
       const card = createCard(deps.projectDir, a);
       const patch: Partial<Handoff> & { source: Handoff["source"] } = { source: "tool" };
@@ -314,6 +315,16 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
         const check = checkCardStaleness(deps.projectDir, provenance);
         return { ...card, stale: check.stale, staleReasons: check.reasons };
       })));
+
+  server.registerTool("mem_card_update",
+    { description: "Adjust a memory card's confidence (frontmatter-only; body and id are immutable)",
+      inputSchema: { id: z.string(),
+                     confidence: z.enum(["high", "medium", "low"]) } },
+    wrap((a: { id: string; confidence: "high" | "medium" | "low" }) => {
+      const card = updateCardConfidence(deps.projectDir, a.id, a.confidence);
+      writeBanner(deps.projectDir);
+      return card;
+    }));
 
   server.registerTool("mem_timeline",
     { description: "Chronological neighbors around an anchor (a memory card id or an index chunk source) -- "
@@ -495,6 +506,18 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       });
       return { ok: true, ...readPlanMeta(deps.projectDir, a.phaseDir) };
     }));
+
+  server.registerTool("config_get",
+    { description: "Read cairn.json as the validated, post-defaults effective config",
+      inputSchema: {} },
+    wrap(() => loadConfig(deps.projectDir)));
+
+  server.registerTool("config_set",
+    { description: "Merge-patch cairn.json (null deletes a key). Validates the merged result before "
+        + "writing; refuses secret-looking keys/values — credentials live in env vars",
+      inputSchema: { patch: z.record(z.unknown()) } },
+    wrap((a: { patch: Record<string, unknown> }) =>
+      writeConfigPatch(deps.projectDir, a.patch)));
 
   return server;
 }

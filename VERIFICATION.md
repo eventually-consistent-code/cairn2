@@ -352,3 +352,184 @@ returns HTTP 410 Gone (Atlassian removed the endpoint in favor of
 updated (`server/src/tracker/adapters/jira.ts`). Found live on first
 contact with a real Jira site — the fixture suite and env-gated live tests
 could never have caught it.
+
+## Tier B — Lightweight Subsystems (2026-07-20)
+
+### Surface conformance
+- `node scripts/check-surface.mjs` → clean: **23 live, 5 reserved, 36 server
+  tools** (`mark`, `retro`, `distill`, `brief`, `tune` flip reserved → live;
+  reserved shrinks to `probe`/`draft`/`trace`(C), `triage`(D), `basecamp`(F)
+  per the Tier B spec's re-tiering).
+- Server: `cd server && npx vitest run` → **349 passed / 6 skipped** (355
+  total; same env-gated `*.live.test.ts` skips as Tier A). `npx tsc --noEmit`
+  clean. `npm run build` clean; `server/dist/` rebuilt and committed
+  alongside this record.
+
+### Unit evidence summary
+
+**Card `note` type + confidence round-trip** (`test/cards.test.ts`):
+- `createCard`/`readCard`: `"creates a note card with confidence and
+  round-trips both"` — writes a `note`-typed card with `confidence: "high"`
+  and reads back both fields unchanged; `"confidence is optional and absent
+  by default"` confirms the field never appears uninvited on older card
+  shapes.
+- `updateCardConfidence`: `"patches frontmatter only — id and body stable"`
+  — changes confidence on an existing card and asserts the card's id (a
+  content hash of the body) and body text are byte-identical before/after;
+  `"on unknown id throws NOT_FOUND"`. Together this is the spec's body-
+  immutable contract: a changed *lesson* is a new card, a changed
+  *confidence* is a patch to the same one.
+
+**Banner confidence + byte-stability** (`test/banner.test.ts`, 16/16):
+- `"shows confidence in the type cell when present"` — confidence surfaces
+  in the rendered banner row when set.
+- `"byte-stability: two renders against an unchanged store are
+  byte-identical"` (carried over from Tier A0, re-verified with confidence
+  now in play) — confidence is stable content, not volatile; it does not
+  break the `Buffer.equals` guarantee the SessionStart cat-only read
+  depends on.
+
+**Config merge / null-delete / invalid-untouched / secret-refusal matrix**
+(`test/config.test.ts`, `describe("writeConfigPatch")`):
+- `"merges nested keys and returns the validated result"` — deep-merge
+  patch, validated post-merge.
+- `"null deletes a key"` — same convention as `patchRoadmapMeta`.
+- `"invalid merged config leaves the file untouched"` — a patch that fails
+  `ConfigSchema` validation never reaches disk; `CONFIG_INVALID` thrown,
+  file byte-identical to before the call.
+- `"refuses secret-looking keys and values"` — credential/env-var-shaped
+  patch fields are rejected server-side; secrets live in env vars only.
+- `"leakGuard defaults land via loadConfig"` — the new config block
+  defaults cleanly for projects with no `leakGuard` key yet, same backward-
+  compatibility posture as the Tier A0 `continuity` block.
+
+**Leak-pattern class matrix** (`test/leak-patterns.test.ts`, 4/4):
+- `"hits every default class"` — one hit each for `cairn-path`, two
+  `phase-ref`s, `cairn-label`, `tracker-id` (Jira `DRILL-42`) in a six-line
+  fixture; the seventh clean line produces no hit.
+- `"github config gets NO tracker-id pattern — #N never matches"` — spec's
+  explicit non-match: `"fixes #123 properly"` scans clean under a GitHub
+  config, since bare `#N` is legitimate issue-reference prose, not a leak.
+- `"extraPatterns extend; invalid regexes are skipped silently"` — a
+  malformed regex in `leakGuard.extraPatterns` (`"(["`) never throws or
+  disables the guard; it's dropped and the well-formed pattern still hits.
+  This is the **regex-injection gate** on user-controlled config: a broken
+  or hostile pattern in `cairn.json` can degrade to "one fewer custom
+  pattern," never to a crash or a bypass.
+- `"allowlist: defaults + trailing-/** config globs"` — `.cairn/**`,
+  `docs/**`, `*.md`, and config-supplied `glob/**`/exact-path entries all
+  skip scanning; `src/*.ts` does not.
+
+**Hook block / clean-pass / non-commit-ignore / bypass / timing**
+(`test/hooks.test.ts`, `describe("leak guard hook")`, part of the file's
+19/19):
+- `"blocks a staged .cairn/ leak in a source file (exit 2, listing on
+  stderr)"` — exit 2, stderr contains `app.ts:1:` and the pattern name
+  (`cairn-path`) — the **hunk-accurate line number** (parsed from the
+  diff's `@@ -a,b +c,d @@` header, not a diff-relative offset) landing on
+  the real file line.
+- `"clean staging passes; markdown files are allowlisted"` — exit 0 with a
+  clean source file plus an allowlisted `.md` file that itself mentions a
+  `.cairn/` path.
+- `"non-commit commands exit 0 without scanning"` — `git status` short-
+  circuits before any diff is even read.
+- `"CAIRN_LEAK_OK=1 and leakGuard.enabled=false both bypass"` — both escape
+  hatches from spec §3 verified independently.
+- `"CAIRN_LEAK_OK=1 quoted in the commit message does NOT bypass"` — the
+  override must **prefix** the command (spec wording); a commit message
+  that merely *mentions* the token (`git commit -m "add CAIRN_LEAK_OK=1
+  feature flag"`) still blocks (exit 2). This is the hardened form — see
+  "fix loop" below.
+- `"wall-clock stays under the 100ms budget"` — measured, same budget and
+  fail-open posture as the Tier A0 hooks.
+
+**Suite totals:** 349 passed / 6 skipped, `tsc --noEmit` clean.
+
+### The fix loop worth recording
+
+Review during B6 (leak guard hook) caught two gaps in the first pass:
+1. **Bypass matching was substring, not prefix-anchored.** An early cut of
+   `pretooluse-leakguard.mjs` matched `CAIRN_LEAK_OK=1` anywhere in the
+   command string, which meant a commit message that only *quoted* the
+   token (e.g. documenting the escape hatch, or an attacker hiding the
+   string in prose) would silently disable the guard. Hardened to
+   `/^\s*CAIRN_LEAK_OK=1\s/` — the override must prefix the command, per
+   spec §3's wording — and the quoted-in-message case above was added as
+   its own regression test rather than trusting the fix by inspection.
+2. **Line numbers were diff-relative, not file-accurate.** The first cut
+   counted added lines from the top of each file's diff hunk without
+   reading the hunk header, so a leak reported past the first hunk pointed
+   at the wrong line. Fixed by parsing each `@@ -a,b +c,d @@` header for
+   the true starting file line and incrementing per added line from there
+   — the `app.ts:1:` assertion above is exact-line, not approximate.
+
+### Dogfood drill procedures (spec §6.3)
+
+Per spec §6.3, four drills, to be run in a scratch project with cairn2
+installed as a local plugin and recorded here once run, same format as the
+Tier 0 dogfood drill and the Tier A0/Tier A kill-drills above.
+
+**Mark drill — PENDING (run live).**
+1. `/cairn mark "<text>"` (bare) → expect: one tool call
+   (`issue_create(title: <text>, labels: ["cairn:backlog"])`), zero
+   questions asked, the real tracker shows a bare backlog issue with the
+   text as its title.
+2. `/cairn mark "<text>" --seed "<trigger>"` → expect: one tool call, issue
+   labeled `cairn:seed`, body `Trigger: <trigger>`, appears on the real
+   tracker. `/cairn status` later lists it as an open seed.
+3. `/cairn mark "<text>" --note` → expect: one tool call
+   (`mem_card_create(type: "note", body: <text>)`), auto-scoped to the
+   active phase/issue, zero questions asked.
+4. Pass condition: all three kinds land in exactly one tool call each, with
+   no `AskUserQuestion` at capture time; the note card is recallable via
+   `mem_search`/`mem_card_recall` afterward.
+
+**Leak drill — PENDING (run live).**
+1. In a scratch repo with cairn2 installed, stage a source file containing
+   both a `.cairn/` path string and a real tracker id in the configured
+   backend's format (e.g. `PROJ-42` for Jira).
+2. `git commit` through Claude Code → expect: blocked, exit 2, a
+   `file:line` listing on stderr naming both hits.
+3. Fix the flagged lines, re-stage, commit again → expect: passes clean.
+4. Re-introduce the leak; commit prefixed with `CAIRN_LEAK_OK=1` → expect:
+   overrides once, commit succeeds.
+5. `/cairn tune leakguard off`; re-introduce the leak; commit → expect: no
+   longer blocked (guard disabled). `/cairn tune leakguard on` restores it.
+6. Pass condition: real staged leak blocked with an accurate listing in
+   under 100ms (wall-clock observed, not just asserted in the unit harness
+   above); both escape hatches confirmed live.
+
+**Retro drill — PENDING (run live).**
+1. Against a real completed, verified phase in a scratch project: run
+   `/cairn retro`.
+2. Expect: lessons extracted from `LEDGER.md` ranges, `VERIFICATION.md`,
+   `git log`, and closed issues, written as `note` cards via
+   `mem_card_create` with provenance (files + commits) and a confidence
+   level (`high`/`medium`/`low`) per the spec's grading rule.
+3. Plant a prior card in this phase's scope that a later event
+   contradicts; run `retro` again → expect: the planted card's confidence
+   is down-ranked to `low` via `mem_card_update` (id and body unchanged,
+   confidence field only) and a corrected lesson is written as a NEW card,
+   with one batched `AskUserQuestion` approving the whole set before
+   anything is written.
+4. Pass condition: a card's confidence demonstrably changes because of what
+   a later phase proved, live — not just in the unit-level round-trip
+   above.
+
+**Distill drill — PENDING (run live).**
+1. Post-`summit` (or post-`ship`) on a scratch project with at least one
+   shipped phase carrying locked decisions, a `LEDGER.md`, and
+   decision/constraint cards in scope: run `/cairn distill`.
+2. Expect: `docs/ARCHITECTURE.md` updated per-section (hand-written content
+   never clobbered, conflicts flagged), one `docs/adr/NNNN-<slug>.md` per
+   locked decision that shaped code (provenance-linked to commits), and
+   `docs/CHANGELOG.md` entries grouped by phase from ledger summaries — one
+   batched confirmation showing a diff summary before anything commits.
+3. Mechanically scan every generated file with the `leak-patterns.mjs` CLI
+   (`node hooks/scripts/leak-patterns.mjs docs/ARCHITECTURE.md
+   docs/adr/*.md docs/CHANGELOG.md`) → expect: zero hits — the same scanner
+   the hook enforces, run against distill's own output.
+4. Pass condition: distill output contains zero internal refs (tracker ids
+   rewritten to plain prose, phase refs rewritten to milestone/version
+   names), proven by the scanner, not by eyeballing; ADRs trace to locked
+   decisions.

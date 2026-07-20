@@ -62,6 +62,14 @@ describe("renderBanner", () => {
       `Fetch bodies on demand with mem_card_recall(id). Total if fetched: ~${cost} tok.`);
   });
 
+  it("shows confidence in the type cell when present", () => {
+    const d = registered();
+    createCard(d, { type: "decision", body: "picked sqlite for the index", confidence: "high" });
+    writeBanner(d);
+    const text = readFileSync(bannerPath(d), "utf8");
+    expect(text).toContain("| decision (high) |");
+  });
+
   it("truncates a title to <=60 chars (first line of body)", () => {
     const d = registered();
     const longLine = "x".repeat(80);

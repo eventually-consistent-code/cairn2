@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import {
   mkdtempSync, mkdirSync, writeFileSync, readFileSync, readdirSync, existsSync, rmSync, utimesSync,
 } from "node:fs";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -14,6 +14,8 @@ const scriptsDir = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "ho
 const BREADCRUMB = join(scriptsDir, "posttooluse-breadcrumb.mjs");
 const PRECOMPACT = join(scriptsDir, "precompact-refresh.mjs");
 const SESSIONSTART = join(scriptsDir, "sessionstart-continuity.mjs");
+const SCRIPTS = scriptsDir;
+const LEAKGUARD = join(SCRIPTS, "pretooluse-leakguard.mjs");
 
 const dirs: string[] = [];
 function freshDir(prefix: string): string {
@@ -89,6 +91,31 @@ function runHook(script: string, projectDir: string, home: string, extraEnv: Rec
     encoding: "utf8",
     timeout: 5000,
   }).trim();
+}
+
+/** Fresh temp project dir -- alias over freshDir for leak-guard fixtures below. */
+function tmpProj(): string {
+  return freshDir("cairn-hooks-leakguard-");
+}
+
+/**
+ * Runs a hook script with a stdin payload and captures exit status + stderr,
+ * mirroring runHook's env plumbing (cwd=projectDir, CLAUDE_PROJECT_DIR passthrough)
+ * but via spawnSync so a non-zero exit doesn't throw.
+ */
+function runHookRaw(
+  script: string,
+  projectDir: string,
+  stdinPayload: string,
+): { status: number | null; stderr: string; stdout: string } {
+  const result = spawnSync(process.execPath, [script], {
+    cwd: projectDir,
+    env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
+    input: stdinPayload,
+    encoding: "utf8",
+    timeout: 5000,
+  });
+  return { status: result.status, stderr: result.stderr ?? "", stdout: result.stdout ?? "" };
 }
 
 /**
@@ -316,5 +343,109 @@ describe("sessionstart-continuity", () => {
     expect(ctx).toContain("some banner content");
     expect(ctx.toLowerCase()).not.toContain("ask the user whether");
     expect(ctx).not.toContain("without asking the user");
+  });
+});
+
+const payload = (command: string) =>
+  JSON.stringify({ tool_name: "Bash", tool_input: { command }, cwd: "" });
+
+function gitInit(dir: string): void {
+  execFileSync("git", ["init", "-q"], { cwd: dir });
+  execFileSync("git", ["config", "user.email", "t@t"], { cwd: dir });
+  execFileSync("git", ["config", "user.name", "t"], { cwd: dir });
+}
+
+function stageFile(dir: string, name: string, content: string): void {
+  writeFileSync(join(dir, name), content);
+  execFileSync("git", ["add", name], { cwd: dir });
+}
+
+describe("leak guard hook", () => {
+  it("blocks a staged .cairn/ leak in a source file (exit 2, listing on stderr)", () => {
+    const proj = tmpProj(); gitInit(proj);
+    writeFileSync(join(proj, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
+    stageFile(proj, "app.ts", 'const p = ".cairn/plans/x";\n');
+    const r = runHookRaw(LEAKGUARD, proj, payload("git commit -m x"));
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain("app.ts:1:");
+    expect(r.stderr).toContain("cairn-path");
+  });
+
+  it("clean staging passes; markdown files are allowlisted", () => {
+    const proj = tmpProj(); gitInit(proj);
+    writeFileSync(join(proj, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
+    stageFile(proj, "clean.ts", "const ok = true;\n");
+    stageFile(proj, "notes.md", "see .cairn/plans/roadmap.md\n");
+    expect(runHookRaw(LEAKGUARD, proj, payload("git commit -m x")).status).toBe(0);
+  });
+
+  it("non-commit commands exit 0 without scanning", () => {
+    const proj = tmpProj();
+    expect(runHookRaw(LEAKGUARD, proj, payload("git status")).status).toBe(0);
+  });
+
+  it("CAIRN_LEAK_OK=1 and leakGuard.enabled=false both bypass", () => {
+    const proj = tmpProj(); gitInit(proj);
+    writeFileSync(join(proj, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
+    stageFile(proj, "app.ts", 'const p = ".cairn/x";\n');
+    expect(runHookRaw(LEAKGUARD, proj,
+      payload("CAIRN_LEAK_OK=1 git commit -m x")).status).toBe(0);
+    writeFileSync(join(proj, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } },
+        leakGuard: { enabled: false } }));
+    expect(runHookRaw(LEAKGUARD, proj, payload("git commit -m x")).status).toBe(0);
+  });
+
+  it("CAIRN_LEAK_OK=1 quoted in the commit message does NOT bypass", () => {
+    const proj = tmpProj(); gitInit(proj);
+    writeFileSync(join(proj, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
+    stageFile(proj, "app.ts", 'const p = ".cairn/x";\n');
+    // token appears mid-command (inside the message), not as a prefix -- must still block
+    const r = runHookRaw(LEAKGUARD, proj,
+      payload('git commit -m "add CAIRN_LEAK_OK=1 feature flag"'));
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain("app.ts:1:");
+  });
+
+  it("wall-clock stays under the 100ms budget", () => {
+    const proj = tmpProj(); gitInit(proj);
+    writeFileSync(join(proj, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
+    stageFile(proj, "clean.ts", "const ok = true;\n");
+    runHookRaw(LEAKGUARD, proj, payload("git commit -m x")); // warm-up
+    const t0 = Date.now();
+    runHookRaw(LEAKGUARD, proj, payload("git commit -m x"));
+    expect(Date.now() - t0).toBeLessThan(100);
+  });
+
+  it("`git commit -am` widens the scan to catch a leak in an unstaged tracked file (exit 2)", () => {
+    const proj = tmpProj(); gitInit(proj);
+    writeFileSync(join(proj, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
+    // commit a clean baseline so app.ts is tracked and HEAD exists
+    stageFile(proj, "app.ts", "const ok = true;\n");
+    execFileSync("git", ["commit", "-q", "-m", "init"], { cwd: proj });
+    // modify the tracked file WITHOUT staging -- `-am` would auto-stage this,
+    // so a `--cached`-only scan would miss it
+    writeFileSync(join(proj, "app.ts"), 'const p = ".cairn/plans/x";\n');
+    const r = runHookRaw(LEAKGUARD, proj, payload("git commit -am x"));
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain("app.ts:1:");
+    expect(r.stderr).toContain("cairn-path");
+  });
+
+  it("same unstaged tracked leak with plain `git commit -m x` exits 0 (narrow scan sees nothing staged)", () => {
+    const proj = tmpProj(); gitInit(proj);
+    writeFileSync(join(proj, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
+    stageFile(proj, "app.ts", "const ok = true;\n");
+    execFileSync("git", ["commit", "-q", "-m", "init"], { cwd: proj });
+    writeFileSync(join(proj, "app.ts"), 'const p = ".cairn/plans/x";\n');
+    const r = runHookRaw(LEAKGUARD, proj, payload("git commit -m x"));
+    expect(r.status).toBe(0);
   });
 });

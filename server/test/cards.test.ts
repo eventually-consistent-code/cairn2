@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createCard, readCard, listCards, cardsDir } from "../src/memory/cards.js";
+import { createCard, readCard, listCards, cardsDir, updateCardConfidence } from "../src/memory/cards.js";
 
 const dir = () => mkdtempSync(join(tmpdir(), "cairn-cards-"));
 
@@ -39,6 +39,24 @@ describe("createCard / readCard", () => {
   });
 });
 
+describe("updateCardConfidence", () => {
+  it("patches frontmatter only — id and body stable", () => {
+    const d = dir();
+    const card = createCard(d, { type: "gotcha", body: "flaky test on arm64", confidence: "medium" });
+    const updated = updateCardConfidence(d, card.id, "high");
+    expect(updated.id).toBe(card.id);
+    expect(updated.body).toBe(card.body);
+    expect(updated.frontmatter.confidence).toBe("high");
+    expect(readCard(d, card.id).frontmatter.confidence).toBe("high");
+  });
+
+  it("on unknown id throws NOT_FOUND", () => {
+    const d = dir();
+    expect(() => updateCardConfidence(d, "note-deadbeef", "low"))
+      .toThrowError(/no card/);
+  });
+});
+
 describe("listCards", () => {
   it("empty when the cards dir doesn't exist yet", () => {
     expect(listCards(dir())).toEqual([]);
@@ -62,5 +80,20 @@ describe("listCards", () => {
     const cards = listCards(d);
     expect(cards.length).toBe(1);
     expect(cards[0].body).toBe("valid one\n");
+  });
+
+  it("creates a note card with confidence and round-trips both", () => {
+    const d = dir();
+    const card = createCard(d, { type: "note", body: "jot: waves feel slow on CI", confidence: "low" });
+    expect(card.id.startsWith("note-")).toBe(true);
+    const read = readCard(d, card.id);
+    expect(read.frontmatter.type).toBe("note");
+    expect(read.frontmatter.confidence).toBe("low");
+  });
+
+  it("confidence is optional and absent by default", () => {
+    const d = dir();
+    const card = createCard(d, { type: "decision", body: "no confidence set" });
+    expect(readCard(d, card.id).frontmatter.confidence).toBeUndefined();
   });
 });

@@ -132,7 +132,10 @@ ADDED lines, skipping allowlisted paths (`.cairn/**`, `docs/**`, `*.md`,
 LEDGER/VERIFICATION artifacts). Hit → exit 2 with a file:line listing on
 stderr (blocks the tool call; the agent sees exactly what leaked). Clean →
 exit 0. Same <100ms budget and error posture as the A0 hooks: any internal
-error → exit 0, never blocks work by accident.
+error → exit 0, never blocks work by accident. Commits that auto-stage or
+name pathspecs (`-a`/`-am`/`--all`/pathspec forms) widen the scan to
+`git diff HEAD` so they can't sidestep the index snapshot (amended at final
+review, 2026-07-20).
 
 ### Escape hatches
 

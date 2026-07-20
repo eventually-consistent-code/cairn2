@@ -25,6 +25,10 @@ research dumps) via `mem_index`, labeled with a `source` string and, when
 relevant, `phase`/`issueId`. Never index logs, test output, or build
 output — that's ephemeral; read it, act on it, don't persist it.
 
+Card types (tier 2): `note` cards are un-triaged jottings — cheap to write,
+first to prune; `confidence` (high/medium/low) rides on any card, is
+surfaced at recall, and is re-graded by `retro`, never silently.
+
 ## Distill-then-drop
 
 At issue close and phase transition, ask: "what here deserves a card?" A

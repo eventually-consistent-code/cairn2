@@ -33,11 +33,11 @@ canonical registry — `help` renders from it and CI enforces it.
 | `auto` | Chained hands-off execution of remaining phases (opt-in) | | verbs/auto.md | live |
 | `fast` | Trivial inline change — one issue, ≤3 files, atomic commit | `"<change>"` | verbs/fast.md | live |
 | `resync` | Detect out-of-band commits; refresh plan context | | verbs/resync.md | live |
-| `mark` | Zero-friction capture — notes, seeds, backlog | | verbs/mark.md | reserved-B |
-| `retro` | Retrospective that writes provenance-backed memory cards | | verbs/retro.md | reserved-B |
-| `distill` | Ship-time knowledge synthesis into docs/ | | verbs/distill.md | reserved-B |
-| `brief` | Onboarding briefing from cards + plans | | verbs/brief.md | reserved-B |
-| `tune` | Configure cairn.json — models, workflow toggles, surface | | verbs/tune.md | reserved-B |
+| `mark` | Zero-friction capture — backlog/seed to tracker, note to memory | `"<text>" [--seed "<trigger>"] [--note]` | verbs/mark.md | live |
+| `retro` | Retrospective — provenance-backed lesson cards, confidence re-grading | `[<N> \| --milestone]` | verbs/retro.md | live |
+| `distill` | Ship-time synthesis — plans + cards → public-safe docs/ | | verbs/distill.md | live |
+| `brief` | Onboarding briefing from cards + plans | `[--stdout]` | verbs/brief.md | live |
+| `tune` | Configure cairn.json — models, continuity, leak guard | `[key] [value]` | verbs/tune.md | live |
 | `trace` | Persistent debugging sessions that survive /clear | | verbs/trace.md | reserved-C |
 | `triage` | Open issue/PR triage against project templates | | verbs/triage.md | reserved-D |
 | `basecamp` | Multi-project workspaces and parallel workstreams | | verbs/basecamp.md | reserved-F |
