@@ -11,6 +11,11 @@
     "wipCommits": false,
     "recallIndex": { "enabled": true, "maxCards": 20 }
   },
+  "leakGuard": {
+    "enabled": true,
+    "allow": [],
+    "extraPatterns": []
+  },
   "_alternatives": {
     "gitlab": {
       "type": "gitlab",
