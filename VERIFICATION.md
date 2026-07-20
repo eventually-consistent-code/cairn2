@@ -230,13 +230,13 @@ repos via `git init`/`git commit` in a temp dir, not mocks):
   which is the mechanism success criterion 3 (below) depends on at the
   `ledger_append`/verify layer.
 
-### Dogfood drill procedures — PENDING (run live like Tier 0/A0)
+### Dogfood drill procedures (run 2026-07-19 — results below)
 
 Per spec §6.3, three drills, to be run in a scratch project with cairn2
 installed as a local plugin and recorded here once run, same format as the
 Tier 0 dogfood drill and the Tier A0 kill-drills above.
 
-**Summit drill — PENDING (run live).**
+**Summit drill — RUN 2026-07-19, see results below.**
 1. Scratch project, 2 phases, both driven to `VERIFICATION.md`-verified
    completion (`plan`, `work`, `verify` each phase).
 2. Run `/cairn summit` against a `hasMilestones` backend — **Jira** (fix
@@ -261,7 +261,7 @@ Tier 0 dogfood drill and the Tier A0 kill-drills above.
    creation/release skipped (recorded, not errored), archive + tag still
    correct.
 
-**Auto drill — PENDING (run live).**
+**Auto drill — RUN 2026-07-19, see results below.**
 1. 2-phase scratch project; run `/cairn auto` hands-off (no per-task
    confirmation).
 2. Expect: every non-taste decision `auto` makes during the run traces to an
@@ -278,7 +278,7 @@ Tier 0 dogfood drill and the Tier A0 kill-drills above.
    mechanism the Tier A0 kill-drills exercised, now driven through `auto`
    instead of `work`.
 
-**Wave drill — PENDING (run live).**
+**Wave drill — RUN 2026-07-19, see results below.**
 1. Scratch phase with 4 issues, grouped into 2 waves via `plan_meta_set`
    (e.g. `waves: [[issue1, issue2], [issue3, issue4]]`).
 2. Run the wave-aware execution flow. Expect: wave 1's two issues dispatch
@@ -290,5 +290,65 @@ Tier 0 dogfood drill and the Tier A0 kill-drills above.
 4. All 4 issues end claimed → closed → ledgered, in the order the wave
    grouping specifies.
 
-Record results here (PASS/FAIL per drill, per the Tier 0/A0 format above)
-the next time cairn2 is dogfooded as a local plugin.
+### Drill results — RUN 2026-07-19 (mechanical, real trackers) — PASS 47/47
+
+Run mechanically post-merge, same harness as the Tier A0 kill-drills: the
+real `dist/index.js` server driven over stdio, hook-free, against REAL
+trackers — GitHub (scratch private repo
+`eventually-consistent-code/cairn-drill-scratch`) and a REAL Jira Cloud site
+(`eventually-consistent.atlassian.net`, scratch project `DRILL`,
+company-managed kanban). Repeatable drivers committed at
+`server/drills/drill-summit.mjs`, `drill-auto.mjs`, `drill-wave.mjs` (run
+from `server/`: `node drills/drill-<name>.mjs <projectDir> $PWD/dist/index.js`;
+summit reads the backend from the project's `cairn.json`).
+
+**Summit drill — PASS (Jira native 14/14, GitHub fallback 13/13).** Both
+legs: 2 phases planned/worked/verified end-to-end (real issues claimed,
+closed, ledgered with real commit ranges). Jira: epics closed via the
+transition machinery, first-milestone bootstrap exercised exactly as
+`summit.md` step 1 specifies (`milestone_list` → no stamped id →
+`milestone_create("v1")` → fixVersion created + `milestone_id` stamped),
+`milestone_complete` released the real fixVersion (`state: "released"`),
+archived `phases/` → `milestones/v1/`, bumped roadmap to `milestone: 2`.
+GitHub: both milestone objects closed via native `closePhase`, native
+release correctly skipped (recorded, not errored). Both legs: `git tag v1`,
+`continuity_clear`, and the post-success re-run returned
+`PRECONDITION_FAILED` ("no live phases to complete") — the recorded pass
+condition.
+
+**Auto drill — PASS 12/12.** Leg 1 (hands-off 2-phase run): both phases
+planned → worked → verified with zero mid-run confirmations; every
+non-taste decision in the run report traces to an encoded principle
+(criterion 2), taste batch (2 items) presented once at the end. Leg 2
+(rigged verify failure): hard stop with a report naming the failing task
+and failure; no VERIFICATION.md written, failing issue left `in_progress`,
+phase 2 never started. Leg 3 (SIGKILL mid-run after phase 1 landed): fresh
+server read a non-stale handoff naming phase 2's exact task, tracker
+cross-check matched (`in_progress`), phase 1 issues untouched (still
+closed, zero re-executed work), run completed from the exact task.
+
+**Wave drill — PASS 8/8.** 4 real issues in 2 waves via `plan_meta_set`
+(validation + `wave_N` frontmatter round-trip confirmed). Wave 1's two
+workers ran concurrently — both issues observed `in_progress`
+simultaneously mid-flight — then closed + ledgered. The hard gate held:
+wave 2 was not dispatched until every wave-1 issue was closed AND ledgered,
+and wave-2 issues were verified still open/unledgered at gate time. All 4
+ended claimed → closed → ledgered, ledger entries in wave order.
+
+**Caveat (same as Tier A0):** the drivers exercise every server tool, file,
+and tracker call the live flows touch, and follow the verb docs'
+step-by-step procedure — but agent-side judgment (the batched
+AskUserQuestion flows, principle selection in an unattended run) is
+simulated by the driver, verified by review. An earlier wave-driver variant
+gave each worker its own server process and failed on split-brain read
+caches — corrected to the real architecture (parallel subagents share the
+session's single MCP server, whose write-through invalidation keeps reads
+coherent); worth remembering if wave execution ever moves to multi-session
+dispatch (Tier F).
+
+**Fix landed during the drill:** Jira's `POST /rest/api/3/search` now
+returns HTTP 410 Gone (Atlassian removed the endpoint in favor of
+`/rest/api/3/search/jql`); `listIssues`/`listPhases` migrated, unit fixtures
+updated (`server/src/tracker/adapters/jira.ts`). Found live on first
+contact with a real Jira site — the fixture suite and env-gated live tests
+could never have caught it.
