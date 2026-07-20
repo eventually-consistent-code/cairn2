@@ -2,7 +2,7 @@
 
 MCP server for cairn 2.0. See `docs/superpowers/specs/2026-07-12-cairn-2-design.md`.
 
-33 tools total across planning, memory, continuity, collaboration, and milestones.
+36 tools total across planning, memory, continuity, collaboration, milestones, and config.
 
 ## Test rings
 
@@ -105,6 +105,7 @@ gotchas/references:
 | `mem_card_create` | Write a durable memory card (decision/constraint/gotcha/reference) with provenance |
 | `mem_card_list` | List memory cards, optionally filtered by phase/issue scope |
 | `mem_card_recall` | List memory cards with staleness checked against their provenance (the anti-rot check) |
+| `mem_card_update` | Adjust a memory card's confidence (frontmatter-only; body and id are immutable) |
 | `mem_timeline` | Chronological neighbors (cards + index chunks) around an anchor, at index cost |
 
 ### Artifact layout
@@ -120,7 +121,16 @@ Tier 1 is a `better-sqlite3` FTS5 virtual table keyed off `mem_index`/`mem_searc
 Tier 2 cards are frontmatter'd Markdown files (`type`, `scopePhase`, `scopeIssue`,
 `provenanceFiles`, `provenanceCommits`, `created`) with a deterministic id
 (`<type>-<sha256(body).slice(0,8)>`), so re-creating a card with identical content
-never produces a duplicate file.
+never produces a duplicate file. `type` includes `note` (knowledge captured by
+`/cairn mark --note`, not work); every type may carry an optional
+`confidence: high | medium | low` in frontmatter, surfaced by `mem_search`,
+`mem_card_list`, `mem_card_recall`, and the SessionStart banner when present.
+`mem_card_update({ id, confidence })` is the one mutation cards get — a
+frontmatter-only patch (body and id, a content hash of the body, stay
+immutable; a changed lesson is a new card, not an edit) that throws
+`NOT_FOUND` on an unknown id and triggers a banner re-render. `/cairn retro`
+is the primary writer: it grades a card's confidence up when a later phase
+proves it out, or down (plus a corrected card) when contradicted.
 
 ### Staleness
 
@@ -273,6 +283,68 @@ Plans and memory cards collaborate via **ordinary git** — push your changes, o
 Work-state concurrency (two agents starting the same issue at once) is **the tracker's responsibility** — its `issue_update()` call with `state: "in_progress"` is the atomic claim. Cairn reads the tracker's truth; the tracker enforces the constraint.
 
 **Per-machine isolation.** Each machine holds its own `active-context` state (`.cairn/state/active-context.json`). Agents on different machines can work on different issues in the same phase without conflict — coordination happens via the tracker and git-committed plan artifacts.
+
+## Config tools
+
+`cairn.json` gets a validated single-writer, the same discipline `plan_meta_set`
+and `patchRoadmapMeta` already apply to plan artifacts:
+
+| tool | purpose |
+|---|---|
+| `config_get` | Read `cairn.json` as the parsed, validated, post-defaults effective config (what `/cairn tune` displays) |
+| `config_set` | Deep-merge-patch the raw `cairn.json`; `null` deletes a key |
+
+`config_set` validates the *merged* result against `ConfigSchema` before
+writing anything — an invalid patch throws `CONFIG_INVALID` and the file is
+left untouched. Patches touching tracker credential/env-var-shaped fields are
+refused outright: secrets live in env vars, never in `cairn.json`.
+`ConfigSchema` carries the `leakGuard` block below (all fields defaulted), so
+its toggles validate through the same gate as everything else.
+
+## Hooks
+
+Four dependency-free, fire-and-forget Node scripts, registered in
+`hooks/hooks.json` and run out of `hooks/scripts/`. Every hook targets
+<100ms and fails open — an internal error exits 0 rather than blocking work:
+
+| # | event | matcher | script | purpose |
+|---|---|---|---|---|
+| 1 | `PostToolUse` | `Edit\|Write\|Bash` | `posttooluse-breadcrumb.mjs` | Refresh the session handoff, throttled to ≤1 write/60s (see Session continuity above) |
+| 2 | `PreCompact` | — | `precompact-refresh.mjs` | Unthrottled handoff refresh before compaction discards context |
+| 3 | `SessionStart` | — | `sessionstart-continuity.mjs` | Cat the handoff + recall banner; offer/auto-run/suppress resume per `continuity.resume` |
+| 4 | `PreToolUse` | `Bash` | `pretooluse-leakguard.mjs` | Leak guard — scan a staged `git commit`'s diff for cairn-internal refs before it lands |
+
+### Leak guard (hook #4)
+
+Fires only on `git commit` Bash calls (anything else exits 0 instantly).
+Scans `git diff --cached -U0` ADDED lines against the pattern set in
+`hooks/scripts/leak-patterns.mjs` — the single source both this hook and
+`distill`'s sanitization gate scrub with:
+
+- `.cairn/` path strings
+- phase-dir refs (`phases/NN-slug`, `milestones/vN/`)
+- cairn label strings (`cairn:seed`, `cairn:backlog`)
+- the configured backend's issue-id pattern read from `cairn.json` (e.g.
+  `PROJ-\d+` for Jira) — for GitHub, bare `#N` is deliberately NOT matched,
+  since "fixes #123" is legitimate
+
+Allowlisted paths (`.cairn/**`, `docs/**`, `*.md`, LEDGER/VERIFICATION
+artifacts) are skipped. A hit exits 2 with a `file:line: [pattern] match`
+listing on stderr, computed from the diff's hunk headers (accurate to the
+real file line, not just diff-relative position) — the tool call is blocked
+and the agent sees exactly what leaked and where.
+
+**Escape hatches**, per spec §3:
+- `cairn.json` → `leakGuard: { enabled: true, allow: [globs], extraPatterns:
+  [regex] }`, editable via `/cairn tune leakguard off|on`.
+- One-shot override: prefix the command with `CAIRN_LEAK_OK=1 `. The
+  override must *prefix* the command — `CAIRN_LEAK_OK=1` merely mentioned
+  elsewhere (e.g. quoted inside the commit message) does not bypass the
+  guard.
+
+Accepted limitation (spec §Why): commits made outside Claude Code are
+unguarded — a git-hook installer is a possible later `tune` offering, out of
+scope here.
 
 ## Running the live gates
 
