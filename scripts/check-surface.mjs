@@ -20,7 +20,7 @@ const failures = [];
 
 const SPEC_RESERVED = {
   probe: "C", draft: "C",
-  distill: "B", brief: "B", tune: "B",
+  tune: "B",
   trace: "C", triage: "D", basecamp: "F",
 };
 const TOOL_PREFIXES = /^(context|issue|plan|mem|continuity|ledger|milestone)_/;
