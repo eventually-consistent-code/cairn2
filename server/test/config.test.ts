@@ -1,11 +1,19 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, writeFileSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { loadConfig } from "../src/config.js";
+import { loadConfig, writeConfigPatch } from "../src/config.js";
 import { CairnError } from "../src/errors.js";
 
 const dir = () => mkdtempSync(join(tmpdir(), "cairn-"));
+
+// Makes a temp project dir with a cairn.json seeded from obj — mirrors the
+// dir() + writeFileSync idiom above, just bundled for the writeConfigPatch tests.
+function writeTmpConfig(obj: Record<string, unknown>): string {
+  const d = dir();
+  writeFileSync(join(d, "cairn.json"), JSON.stringify(obj));
+  return d;
+}
 
 describe("loadConfig", () => {
   it("loads a valid github config with default agents.model=auto", () => {
@@ -118,5 +126,47 @@ describe("loadConfig", () => {
     const cfg = loadConfig(d);
     expect(cfg.continuity.resume).toBe("prompt");
     expect(cfg.agents.model).toBe("sonnet");
+  });
+});
+
+describe("writeConfigPatch", () => {
+  const base = { tracker: { type: "github", config: { repo: "o/r" } } };
+
+  it("merges nested keys and returns the validated result", () => {
+    const dir = writeTmpConfig(base);
+    const out = writeConfigPatch(dir, { continuity: { resume: "auto" } });
+    expect(out.continuity.resume).toBe("auto");
+    const raw = JSON.parse(readFileSync(join(dir, "cairn.json"), "utf8"));
+    expect(raw.continuity.resume).toBe("auto");
+    expect(raw.tracker.config.repo).toBe("o/r"); // untouched siblings survive
+  });
+
+  it("null deletes a key", () => {
+    const dir = writeTmpConfig({ ...base, user: { handle: "john" } });
+    writeConfigPatch(dir, { user: null });
+    const raw = JSON.parse(readFileSync(join(dir, "cairn.json"), "utf8"));
+    expect(raw.user).toBeUndefined();
+  });
+
+  it("invalid merged config leaves the file untouched", () => {
+    const dir = writeTmpConfig(base);
+    const before = readFileSync(join(dir, "cairn.json"), "utf8");
+    expect(() => writeConfigPatch(dir, { continuity: { resume: "sometimes" } }))
+      .toThrowError(/CONFIG|resume/i);
+    expect(readFileSync(join(dir, "cairn.json"), "utf8")).toBe(before);
+  });
+
+  it("refuses secret-looking keys and values", () => {
+    const dir = writeTmpConfig(base);
+    expect(() => writeConfigPatch(dir, { tracker: { config: { token: "x" } } }))
+      .toThrowError(/secrets do not belong/);
+    expect(() => writeConfigPatch(dir, { user: { handle: "ATATT3xFfGF0abc" } }))
+      .toThrowError(/secrets do not belong/);
+  });
+
+  it("leakGuard defaults land via loadConfig", () => {
+    const dir = writeTmpConfig(base);
+    const cfg = loadConfig(dir);
+    expect(cfg.leakGuard).toEqual({ enabled: true, allow: [], extraPatterns: [] });
   });
 });
