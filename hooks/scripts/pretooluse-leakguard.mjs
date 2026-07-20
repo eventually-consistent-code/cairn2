@@ -13,6 +13,45 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { buildPatterns, scanLines, isAllowedPath } from "./leak-patterns.mjs";
 
+// Best-effort shell tokenizer -- splits on whitespace and chain operators
+// (&&, ||, ;, |, &) while keeping quoted strings intact. Only used to decide
+// whether a `git commit` invocation is "widened" (see isWidenedCommit); not
+// a general-purpose shell parser, and this whole module fails open.
+function tokenizeShell(command) {
+  const re = /"(?:[^"\\]|\\.)*"|'[^']*'|&&|\|\||[;|&]|\S+/g;
+  const tokens = [];
+  let m;
+  while ((m = re.exec(command)) !== null) tokens.push(m[0]);
+  return tokens;
+}
+
+const CHAIN_OPS = new Set(["&&", "||", ";", "|", "&"]);
+
+// `git commit -a`/`-am`/`--all` auto-stages tracked modifications AFTER we'd
+// read the index, and `git commit <pathspec>` commits named files regardless
+// of what's staged -- both slip past a `--cached` diff. Detect either shape
+// from the command text so the caller can widen the scan.
+function isWidenedCommit(command) {
+  const tokens = tokenizeShell(command);
+  const commitIdx = tokens.findIndex((t) => t === "commit");
+  if (commitIdx === -1) return false;
+  const args = [];
+  for (let i = commitIdx + 1; i < tokens.length; i++) {
+    if (CHAIN_OPS.has(tokens[i])) break;
+    args.push(tokens[i]);
+  }
+  for (let i = 0; i < args.length; i++) {
+    const t = args[i];
+    if (t === "-m" || t === "--message") { i++; continue; } // skip flag + its arg
+    if (/^--message=/.test(t)) continue;
+    if (/^-[a-z]*a/i.test(t)) return true; // short-flag cluster containing "a" (-a, -am, -qam, ...)
+    if (t === "--all") return true;
+    if (t.startsWith("-")) continue; // some other flag -- ignore
+    return true; // bare non-flag token after `commit` -> a pathspec
+  }
+  return false;
+}
+
 try {
   const payload = JSON.parse(readFileSync(0, "utf8"));
   const command = payload?.tool_input?.command ?? "";
@@ -28,9 +67,25 @@ try {
   const config = JSON.parse(readFileSync(cfgPath, "utf8"));
   if (config?.leakGuard?.enabled === false) process.exit(0);
 
-  const diff = execFileSync("git",
-    ["diff", "--cached", "-U0", "--diff-filter=ACM"],
+  // `git commit -a`/`-am`/`--all` or a pathspec commits tracked changes that
+  // were never staged -- widen the scan to `git diff HEAD` (staged + unstaged
+  // tracked changes, a superset of what such a commit would include) so they
+  // can't sidestep the `--cached` index snapshot. Empty repo (no HEAD yet):
+  // fall back to `--cached`.
+  const execDiff = (target) => execFileSync("git",
+    ["diff", target, "-U0", "--diff-filter=ACM"],
     { cwd: projectDir, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
+
+  let diff;
+  if (isWidenedCommit(command)) {
+    try {
+      diff = execDiff("HEAD");
+    } catch {
+      diff = execDiff("--cached");
+    }
+  } else {
+    diff = execDiff("--cached");
+  }
 
   const patterns = buildPatterns(config);
   const allow = config?.leakGuard?.allow ?? [];

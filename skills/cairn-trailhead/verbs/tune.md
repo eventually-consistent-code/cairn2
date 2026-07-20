@@ -15,6 +15,10 @@ hand-edits (single-writer rule).
 - `tune <key> <value>`: direct dot-path set — build the nested patch from
   the dot path (`continuity.resume auto` → `{continuity: {resume:
   "auto"}}`), `config_set`, echo old → new. Value `null` deletes the key.
+  Coerce values by the target key's type before patching (`"false"` →
+  `false`, `"200000"` → `200000`; quoted strings stay strings) — the server
+  rejects type mismatches with `CONFIG_INVALID` and the file is untouched,
+  so a wrong guess is safe but report it plainly.
 - `tune leakguard off|on` = `config_set({leakGuard: {enabled: false|true}})`
   — the guard's front door.
 - Secrets: the server refuses credential-looking keys/values. When that

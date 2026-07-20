@@ -421,4 +421,31 @@ describe("leak guard hook", () => {
     runHookRaw(LEAKGUARD, proj, payload("git commit -m x"));
     expect(Date.now() - t0).toBeLessThan(100);
   });
+
+  it("`git commit -am` widens the scan to catch a leak in an unstaged tracked file (exit 2)", () => {
+    const proj = tmpProj(); gitInit(proj);
+    writeFileSync(join(proj, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
+    // commit a clean baseline so app.ts is tracked and HEAD exists
+    stageFile(proj, "app.ts", "const ok = true;\n");
+    execFileSync("git", ["commit", "-q", "-m", "init"], { cwd: proj });
+    // modify the tracked file WITHOUT staging -- `-am` would auto-stage this,
+    // so a `--cached`-only scan would miss it
+    writeFileSync(join(proj, "app.ts"), 'const p = ".cairn/plans/x";\n');
+    const r = runHookRaw(LEAKGUARD, proj, payload("git commit -am x"));
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain("app.ts:1:");
+    expect(r.stderr).toContain("cairn-path");
+  });
+
+  it("same unstaged tracked leak with plain `git commit -m x` exits 0 (narrow scan sees nothing staged)", () => {
+    const proj = tmpProj(); gitInit(proj);
+    writeFileSync(join(proj, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
+    stageFile(proj, "app.ts", "const ok = true;\n");
+    execFileSync("git", ["commit", "-q", "-m", "init"], { cwd: proj });
+    writeFileSync(join(proj, "app.ts"), 'const p = ".cairn/plans/x";\n');
+    const r = runHookRaw(LEAKGUARD, proj, payload("git commit -m x"));
+    expect(r.status).toBe(0);
+  });
 });
