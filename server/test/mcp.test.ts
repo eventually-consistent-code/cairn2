@@ -66,6 +66,7 @@ describe("cairn MCP server", () => {
       "milestone_create", "milestone_list", "milestone_complete",
       "plan_resync", "plan_meta_set",
       "config_get", "config_set",
+      "issue_comment", "trace_start", "trace_log", "trace_list", "trace_close",
     ].sort());
   });
 
@@ -157,6 +158,20 @@ describe("cairn MCP server", () => {
   it("CairnError surfaces as isError with code + nextAction", async () => {
     const res = await call("issue_get", { id: "nope" });
     expect(res.isError).toBe(true);
+  });
+
+  it("trace lifecycle round-trips against the fake tracker", async () => {
+    const started = await call("trace_start", { description: "mcp drill bug" });
+    expect(started.json.id).toMatch(/^trace-[0-9a-f]{8}$/);
+    expect(started.json.issue).toBeTruthy();
+    await call("trace_log", { id: started.json.id, kind: "evidence", text: "e1" });
+    await call("trace_log", { id: started.json.id, kind: "verdict", text: "cause found" });
+    const open = await call("trace_list", { status: "open" });
+    expect(open.json.some((t: { id: string }) => t.id === started.json.id)).toBe(true);
+    const closed = await call("trace_close", { id: started.json.id, resolution: "fixed" });
+    expect(closed.json.issueClosed).toBe(true);
+    const gone = await call("trace_list", { status: "open" });
+    expect(gone.json.some((t: { id: string }) => t.id === started.json.id)).toBe(false);
   });
 
   it("memory lifecycle: index -> search -> stats -> card create -> list -> recall (fresh)", async () => {

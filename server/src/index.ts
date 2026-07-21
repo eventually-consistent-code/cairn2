@@ -26,6 +26,7 @@ import { readHandoff, writeHandoff, clearHandoff } from "./core/continuity.js";
 import type { Handoff } from "./core/continuity.js";
 import { appendLedger } from "./planning/ledger.js";
 import { writeBanner, bannerStats } from "./memory/banner.js";
+import { startTrace, appendTrace, listTraces, closeTrace } from "./trace/store.js";
 
 const StateEnum = z.enum(["open", "in_progress", "closed"]);
 const HandoffSourceEnum = z.enum(["tool", "posttooluse", "precompact", "waypoint"]);
@@ -518,6 +519,64 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       inputSchema: { patch: z.record(z.unknown()) } },
     wrap((a: { patch: Record<string, unknown> }) =>
       writeConfigPatch(deps.projectDir, a.patch)));
+
+  server.registerTool("issue_comment",
+    { description: "Post a plain-language comment on a tracker issue (management-visible progress note)",
+      inputSchema: { id: z.string(), text: z.string() } },
+    wrap(async (a: { id: string; text: string }) =>
+      (await getTracker()).commentIssue(a.id, a.text)));
+
+  server.registerTool("trace_start",
+    { description: "Open a persistent debugging session (.cairn/trace/<id>.md). Creates the tracker "
+        + "bug issue (label cairn:bug) when no issueId is given. Survives /clear by construction",
+      inputSchema: { description: z.string(), issueId: z.string().optional() } },
+    wrap(async (a: { description: string; issueId?: string }) => {
+      let issueId = a.issueId;
+      if (!issueId) {
+        const issue = await (await getTracker()).createIssue({
+          title: a.description, labels: ["cairn:bug"] });
+        issueId = issue.id;
+      }
+      const { id } = startTrace(deps.projectDir, a.description, issueId);
+      refreshHandoff({ source: "tool", issue: issueId });
+      return { id, issue: issueId };
+    }));
+
+  server.registerTool("trace_log",
+    { description: "Append a typed entry (evidence|hypothesis|test|verdict) to an open trace — append-only",
+      inputSchema: { id: z.string(),
+                     kind: z.enum(["evidence", "hypothesis", "test", "verdict"]),
+                     text: z.string() } },
+    wrap((a: { id: string; kind: "evidence" | "hypothesis" | "test" | "verdict"; text: string }) => {
+      const out = appendTrace(deps.projectDir, a.id, a.kind, a.text);
+      refreshHandoff({ source: "tool" });
+      return out;
+    }));
+
+  server.registerTool("trace_list",
+    { description: "List trace sessions (open and/or resolved) with entry counts",
+      inputSchema: { status: z.enum(["open", "resolved"]).optional() } },
+    wrap((a: { status?: "open" | "resolved" }) => listTraces(deps.projectDir, a.status)));
+
+  server.registerTool("trace_close",
+    { description: "Resolve a trace: requires a verdict entry; archives the session, comments the "
+        + "resolution on the bug issue and closes it",
+      inputSchema: { id: z.string(), resolution: z.string() } },
+    wrap(async (a: { id: string; resolution: string }) => {
+      const out = closeTrace(deps.projectDir, a.id, a.resolution);
+      let issueClosed = false;
+      if (out.issue) {
+        const tracker = await getTracker();
+        try {
+          await tracker.commentIssue(out.issue, `Resolved: ${a.resolution}`);
+        } catch {
+          // comment is best-effort mirror; close is the state change that matters
+        }
+        await tracker.closeIssue(out.issue);
+        issueClosed = true;
+      }
+      return { ...out, issueClosed };
+    }));
 
   return server;
 }
