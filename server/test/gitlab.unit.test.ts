@@ -270,4 +270,14 @@ describe("GitLabTracker mapping", () => {
     await expect(t.listMilestones()).rejects.toMatchObject({ code: "UNSUPPORTED" });
     await expect(t.completeMilestone("1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
   });
+
+  it("commentIssue POSTs a note on the issue", async () => {
+    const { f, calls } = fixtureFetch([{ status: 201, body: { id: 55 } }]);
+    const t = new GitLabTracker({ baseUrl: "https://gitlab.com", project: "g/p", tokenEnv: "T", extraLabels: [] }, f);
+    process.env.T = "tok";
+    const c = await t.commentIssue("9", "plain note");
+    expect(calls[0].url).toContain("/issues/9/notes");
+    expect(calls[0].body).toEqual({ body: "plain note" });
+    expect(c.id).toBe("55");
+  });
 });
