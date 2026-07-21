@@ -20,9 +20,9 @@ const failures = [];
 
 const SPEC_RESERVED = {
   probe: "C", draft: "C",
-  trace: "C", triage: "D", basecamp: "F",
+  triage: "D", basecamp: "F",
 };
-const TOOL_PREFIXES = /^(context|issue|plan|mem|continuity|ledger|milestone)_/;
+const TOOL_PREFIXES = /^(context|issue|plan|mem|continuity|ledger|milestone|config|trace)_/;
 
 const skillMd = readFileSync(
   join(root, "skills/cairn-trailhead/SKILL.md"), "utf8");

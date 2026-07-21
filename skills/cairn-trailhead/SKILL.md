@@ -38,7 +38,7 @@ canonical registry — `help` renders from it and CI enforces it.
 | `distill` | Ship-time synthesis — plans + cards → public-safe docs/ | | verbs/distill.md | live |
 | `brief` | Onboarding briefing from cards + plans | `[--stdout]` | verbs/brief.md | live |
 | `tune` | Configure cairn.json — models, continuity, leak guard | `[key] [value]` | verbs/tune.md | live |
-| `trace` | Persistent debugging sessions that survive /clear | | verbs/trace.md | reserved-C |
+| `trace` | Persistent debugging session — evidence→hypothesis→test, tracker-mirrored | `["<bug>" \| <id> \| close <id>]` | verbs/trace.md | live |
 | `triage` | Open issue/PR triage against project templates | | verbs/triage.md | reserved-D |
 | `basecamp` | Multi-project workspaces and parallel workstreams | | verbs/basecamp.md | reserved-F |
 
