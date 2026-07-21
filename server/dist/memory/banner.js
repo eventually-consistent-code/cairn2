@@ -3,6 +3,7 @@ import { basename, dirname, resolve } from "node:path";
 import { ActiveContext } from "../active-context.js";
 import { loadConfig } from "../config.js";
 import { bannerPath } from "../core/continuity.js";
+import { lastEntryKind, listTraces } from "../trace/store.js";
 import { listCards } from "./cards.js";
 /** Fetch cost is computed fresh at render time -- never stored on the card. */
 function fetchCost(body) {
@@ -53,7 +54,8 @@ function computeBannerData(projectDir) {
         return { text: null, cardCostTotal: 0 };
     const active = new ActiveContext(projectDir).get();
     const cards = scopedCards(listCards(projectDir), active).slice(0, maxCards);
-    if (cards.length === 0)
+    const traces = listTraces(projectDir, "open");
+    if (cards.length === 0 && traces.length === 0)
         return { text: null, cardCostTotal: 0 };
     const project = basename(resolve(projectDir));
     const headerParts = [`cairn recall index — ${project}`];
@@ -61,28 +63,36 @@ function computeBannerData(projectDir) {
         headerParts.push(`phase ${active.phase}`);
     if (active.issueId !== undefined)
         headerParts.push(active.issueId);
-    const rows = cards.map((card) => {
-        const type = card.frontmatter.confidence
-            ? `${card.frontmatter.type} (${card.frontmatter.confidence})`
-            : card.frontmatter.type;
-        return `| ${card.id} | ${type} | ${titleFor(card.body)} | ~${fetchCost(card.body)} tok |`;
-    });
-    const cardCostTotal = cards.reduce((sum, card) => sum + fetchCost(card.body), 0);
-    const lines = [
-        `## ${headerParts.join(" / ")}`,
-        "| id | type | title | fetch cost |",
-        "|----|------|-------|-----------|",
-        ...rows,
-        `Fetch bodies on demand with mem_card_recall(id). Total if fetched: ~${cardCostTotal} tok.`,
-    ];
+    const lines = [`## ${headerParts.join(" / ")}`];
+    let cardCostTotal = 0;
+    if (cards.length > 0) {
+        const rows = cards.map((card) => {
+            const type = card.frontmatter.confidence
+                ? `${card.frontmatter.type} (${card.frontmatter.confidence})`
+                : card.frontmatter.type;
+            return `| ${card.id} | ${type} | ${titleFor(card.body)} | ~${fetchCost(card.body)} tok |`;
+        });
+        cardCostTotal = cards.reduce((sum, card) => sum + fetchCost(card.body), 0);
+        lines.push("| id | type | title | fetch cost |", "|----|------|-------|-----------|", ...rows, `Fetch bodies on demand with mem_card_recall(id). Total if fetched: ~${cardCostTotal} tok.`);
+    }
+    if (traces.length > 0) {
+        lines.push("", "open traces:");
+        for (const t of traces) {
+            const last = lastEntryKind(projectDir, t.id) ?? "none";
+            lines.push(`- ${t.id} — ${t.description} — issue ${t.issue} — since ${t.created} — last: ${last}`);
+        }
+    }
     return { text: `${lines.join("\n")}\n`, cardCostTotal };
 }
 /**
  * Renders the recall banner for `projectDir`: cards scoped issue > phase >
- * project (id tiebreak), capped at `recallIndex.maxCards`. Byte-stable --
- * no timestamps, no volatile ordering; bytes change only when the card
- * store or active context changes. Returns null (and deletes any existing
- * banner file) when `recallIndex.enabled` is false or no cards are in scope.
+ * project (id tiebreak), capped at `recallIndex.maxCards`, followed by an
+ * "open traces:" section (sorted by id) when any open traces exist -- the
+ * banner is non-null if either cards or open traces are present. Byte-stable
+ * -- no timestamps beyond the dates already in trace frontmatter, no volatile
+ * ordering; bytes change only when the card/trace store or active context
+ * changes. Returns null (and deletes any existing banner file) when
+ * `recallIndex.enabled` is false or there is nothing to render.
  */
 export function renderBanner(projectDir) {
     const { text } = computeBannerData(projectDir);

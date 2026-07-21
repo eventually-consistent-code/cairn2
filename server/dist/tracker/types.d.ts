@@ -23,6 +23,7 @@ export interface Capability {
     hasLabels: boolean;
     hasMilestones: boolean;
     hasPhaseClose: boolean;
+    hasComments: boolean;
 }
 export interface Milestone {
     id: string;
@@ -59,4 +60,8 @@ export interface Tracker {
     createMilestone(name: string): Promise<Milestone>;
     listMilestones(): Promise<Milestone[]>;
     completeMilestone(id: string): Promise<Milestone>;
+    commentIssue(id: string, text: string): Promise<{
+        id: string;
+        url?: string;
+    }>;
 }

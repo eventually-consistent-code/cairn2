@@ -30,7 +30,7 @@ export class AzureBoardsTracker {
     tokenProvider;
     capabilities = {
         hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-        hasMilestones: true, hasPhaseClose: false,
+        hasMilestones: true, hasPhaseClose: false, hasComments: true,
     };
     /** id (GUID) -> full iteration path, refreshed from listPhases() when an unknown id shows up. */
     phasePaths = new Map();
@@ -303,5 +303,9 @@ export class AzureBoardsTracker {
     async completeMilestone(id) {
         const raw = await this.api("PATCH", `/${this.projectPath}/_apis/wit/workitems/${id}`, [{ op: "add", path: "/fields/System.State", value: this.cfg.states.closed }], { contentType: "application/json-patch+json", context: "azure-boards milestone_complete" });
         return this.normalizeEpic(raw);
+    }
+    async commentIssue(id, text) {
+        const raw = await this.api("POST", `/${this.projectPath}/_apis/wit/workItems/${id}/comments`, { text }, { params: { "api-version": "7.1-preview.4" }, context: "azure-boards issue_comment" });
+        return { id: String(raw.id), url: raw.url };
     }
 }

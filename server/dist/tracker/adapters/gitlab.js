@@ -8,7 +8,7 @@ export class GitLabTracker {
     fetchImpl;
     capabilities = {
         hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-        hasMilestones: false, hasPhaseClose: true,
+        hasMilestones: false, hasPhaseClose: true, hasComments: true,
     };
     constructor(cfg, fetchImpl = fetch) {
         this.cfg = cfg;
@@ -115,6 +115,11 @@ export class GitLabTracker {
     async createMilestone(_name) { return milestonesUnsupported("gitlab"); }
     async listMilestones() { return milestonesUnsupported("gitlab"); }
     async completeMilestone(_id) { return milestonesUnsupported("gitlab"); }
+    async commentIssue(id, text) {
+        this.assertId(id);
+        const raw = (await this.api("POST", `/issues/${id}/notes`, { body: text }, "issue_comment"));
+        return { id: String(raw.id) };
+    }
 }
 export const configSchema = z.object({
     baseUrl: z.string().url().default("https://gitlab.com"),

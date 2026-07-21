@@ -87,4 +87,9 @@ export class CachedTracker {
         this.cache.clear();
         return result;
     }
+    async commentIssue(id, text) {
+        const result = await this.inner.commentIssue(id, text);
+        this.cache.clear();
+        return result;
+    }
 }

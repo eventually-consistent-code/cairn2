@@ -47,6 +47,14 @@ function livePath(projectDir: string, id: string): string {
   return join(traceDir(projectDir), `${id}.md`);
 }
 
+/** The kind of the final entry block in the trace file (file order), or null if none/missing. */
+export function lastEntryKind(projectDir: string, id: string): TraceKind | null {
+  const path = livePath(projectDir, id);
+  if (!existsSync(path)) return null;
+  const matches = [...readFileSync(path, "utf8").matchAll(ENTRY_RE)];
+  return matches.length ? (matches[matches.length - 1][1] as TraceKind) : null;
+}
+
 export function appendTrace(projectDir: string, id: string, kind: TraceKind,
   text: string): { path: string } {
   const path = livePath(projectDir, id);

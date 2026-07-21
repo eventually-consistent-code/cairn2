@@ -18,7 +18,7 @@ export class AsanaTracker {
     tokenProvider;
     capabilities = {
         hasInProgress: false, hasPhases: true, hasDependencies: true, hasLabels: false,
-        hasMilestones: false, hasPhaseClose: false,
+        hasMilestones: false, hasPhaseClose: false, hasComments: true,
     };
     constructor(cfg, fetchImpl = fetch, tokenProvider = () => resolveAsanaToken(cfg.tokenEnv)) {
         this.cfg = cfg;
@@ -129,6 +129,11 @@ export class AsanaTracker {
     async createMilestone(_name) { return milestonesUnsupported("asana"); }
     async listMilestones() { return milestonesUnsupported("asana"); }
     async completeMilestone(_id) { return milestonesUnsupported("asana"); }
+    async commentIssue(id, text) {
+        this.assertId(id);
+        const raw = (await this.api("POST", `/tasks/${id}/stories`, { data: { text } }, "issue_comment"));
+        return { id: raw.gid };
+    }
 }
 export function resolveAsanaToken(tokenEnv) {
     const env = process.env[tokenEnv];

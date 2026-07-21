@@ -61,7 +61,7 @@ export class JiraTracker {
     authProvider;
     capabilities = {
         hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-        hasMilestones: true, hasPhaseClose: true,
+        hasMilestones: true, hasPhaseClose: true, hasComments: true,
     };
     projectId;
     constructor(cfg, fetchImpl = fetch, authProvider = () => resolveJiraAuth(cfg)) {
@@ -248,5 +248,10 @@ export class JiraTracker {
     async completeMilestone(id) {
         const raw = (await this.api("PUT", `/rest/api/3/version/${id}`, { released: true }, "jira milestone_complete"));
         return this.normalizeVersion(raw);
+    }
+    async commentIssue(id, text) {
+        this.assertId(id);
+        const raw = (await this.api("POST", `/rest/api/3/issue/${id}/comment`, { body: adf(text) }, "jira issue_comment"));
+        return { id: raw.id };
     }
 }

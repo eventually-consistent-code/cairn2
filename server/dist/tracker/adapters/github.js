@@ -31,7 +31,7 @@ export class GitHubTracker {
     capabilities = {
         hasInProgress: true, // via label convention
         hasPhases: true, hasDependencies: false, hasLabels: true,
-        hasMilestones: false, hasPhaseClose: true,
+        hasMilestones: false, hasPhaseClose: true, hasComments: true,
     };
     constructor(cfg, fetchImpl = fetch, tokenProvider = resolveGithubToken) {
         this.cfg = cfg;
@@ -147,4 +147,9 @@ export class GitHubTracker {
     async createMilestone(_name) { return milestonesUnsupported("github"); }
     async listMilestones() { return milestonesUnsupported("github"); }
     async completeMilestone(_id) { return milestonesUnsupported("github"); }
+    async commentIssue(id, text) {
+        this.assertId(id);
+        const raw = (await this.api("POST", `/repos/${this.cfg.repo}/issues/${id}/comments`, { body: text }));
+        return { id: String(raw.id), url: raw.html_url };
+    }
 }

@@ -4,6 +4,7 @@ export declare class FakeTracker implements Tracker {
     private issues;
     private phases;
     private milestones;
+    private issueComments;
     private seq;
     createIssue(input: IssueCreate): Promise<Issue>;
     getIssue(id: string): Promise<Issue>;
@@ -19,4 +20,13 @@ export declare class FakeTracker implements Tracker {
     createMilestone(name: string): Promise<Milestone>;
     listMilestones(): Promise<Milestone[]>;
     completeMilestone(id: string): Promise<Milestone>;
+    commentIssue(id: string, text: string): Promise<{
+        id: string;
+        url?: string;
+    }>;
+    /** Test accessor: comments posted to an issue, in order. */
+    comments(id: string): Array<{
+        id: string;
+        text: string;
+    }>;
 }
