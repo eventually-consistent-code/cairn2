@@ -4,7 +4,7 @@ import { fetchJson, type FetchLike } from "../http.js";
 import type {
   Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
 } from "../types.js";
-import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
+import { commentsUnsupported, milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 
 const API = "https://app.asana.com/api/1.0";
 const OPT_FIELDS = "name,notes,completed,modified_at,memberships.section.gid";
@@ -32,7 +32,7 @@ interface AsanaSection {
 export class AsanaTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: false, hasPhases: true, hasDependencies: true, hasLabels: false,
-    hasMilestones: false, hasPhaseClose: false,
+    hasMilestones: false, hasPhaseClose: false, hasComments: false,
   };
 
   constructor(
@@ -162,6 +162,7 @@ export class AsanaTracker implements Tracker {
   async createMilestone(_name: string): Promise<Milestone> { return milestonesUnsupported("asana"); }
   async listMilestones(): Promise<Milestone[]> { return milestonesUnsupported("asana"); }
   async completeMilestone(_id: string): Promise<Milestone> { return milestonesUnsupported("asana"); }
+  async commentIssue(_id: string, _text: string): Promise<{ id: string; url?: string }> { return commentsUnsupported("asana"); }
 }
 
 export function resolveAsanaToken(tokenEnv: string): string {

@@ -4,6 +4,7 @@ import { fetchJson, type FetchLike } from "../http.js";
 import type {
   Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
 } from "../types.js";
+import { commentsUnsupported } from "../unsupported.js";
 
 // Issue keys look like PROJ-123 (letters + digits, dash, digits).
 const ID_RE = /^[A-Z][A-Z0-9]+-\d+$/i;
@@ -98,7 +99,7 @@ function normalizeTimestamp(raw: string): string {
 export class JiraTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-    hasMilestones: true, hasPhaseClose: true,
+    hasMilestones: true, hasPhaseClose: true, hasComments: false,
   };
 
   private projectId: number | undefined;
@@ -319,4 +320,6 @@ export class JiraTracker implements Tracker {
       { id: string; name: string; released?: boolean };
     return this.normalizeVersion(raw);
   }
+
+  async commentIssue(_id: string, _text: string): Promise<{ id: string; url?: string }> { return commentsUnsupported("jira"); }
 }

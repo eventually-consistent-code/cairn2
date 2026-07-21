@@ -5,7 +5,7 @@ import { fetchJson, paginate, type FetchLike } from "../http.js";
 import type {
   Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
 } from "../types.js";
-import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
+import { commentsUnsupported, milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 
 const API = "https://api.github.com";
 const WIP_LABEL = "in-progress";
@@ -42,7 +42,7 @@ export class GitHubTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, // via label convention
     hasPhases: true, hasDependencies: false, hasLabels: true,
-    hasMilestones: false, hasPhaseClose: true,
+    hasMilestones: false, hasPhaseClose: true, hasComments: false,
   };
 
   constructor(
@@ -175,4 +175,5 @@ export class GitHubTracker implements Tracker {
   async createMilestone(_name: string): Promise<Milestone> { return milestonesUnsupported("github"); }
   async listMilestones(): Promise<Milestone[]> { return milestonesUnsupported("github"); }
   async completeMilestone(_id: string): Promise<Milestone> { return milestonesUnsupported("github"); }
+  async commentIssue(_id: string, _text: string): Promise<{ id: string; url?: string }> { return commentsUnsupported("github"); }
 }

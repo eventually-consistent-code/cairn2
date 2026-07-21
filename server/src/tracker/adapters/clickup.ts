@@ -4,7 +4,7 @@ import { fetchJson, type FetchLike } from "../http.js";
 import type {
   Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
 } from "../types.js";
-import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
+import { commentsUnsupported, milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 
 const API = "https://api.clickup.com/api/v2";
 const LIST_CAP = 100;
@@ -56,7 +56,7 @@ interface CuTask {
 export class ClickUpTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-    hasMilestones: false, hasPhaseClose: false,
+    hasMilestones: false, hasPhaseClose: false, hasComments: false,
   };
 
   constructor(
@@ -216,4 +216,5 @@ export class ClickUpTracker implements Tracker {
   async createMilestone(_name: string): Promise<Milestone> { return milestonesUnsupported("clickup"); }
   async listMilestones(): Promise<Milestone[]> { return milestonesUnsupported("clickup"); }
   async completeMilestone(_id: string): Promise<Milestone> { return milestonesUnsupported("clickup"); }
+  async commentIssue(_id: string, _text: string): Promise<{ id: string; url?: string }> { return commentsUnsupported("clickup"); }
 }

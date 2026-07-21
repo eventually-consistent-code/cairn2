@@ -125,5 +125,15 @@ export function trackerContract(name: string, factory: () => Promise<Tracker>): 
       const done = await t.completeMilestone(m.id);
       expect(done.state).toBe("released");
     });
+
+    it("commentIssue posts and is UNSUPPORTED when hasComments is false", async () => {
+      const made = await t.createIssue({ title: "contract: comment target" });
+      if (!t.capabilities.hasComments) {
+        await expect(t.commentIssue(made.id, "x")).rejects.toMatchObject({ code: "UNSUPPORTED" });
+        return;
+      }
+      const c = await t.commentIssue(made.id, "contract comment body");
+      expect(c.id).toBeTruthy();
+    });
   });
 }

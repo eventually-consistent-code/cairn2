@@ -48,4 +48,14 @@ describe("CachedTracker", () => {
     await t.completeMilestone(m.id);
     expect((await t.listMilestones()).find((x) => x.id === m.id)?.state).toBe("released");
   });
+
+  it("commentIssue invalidates the cache", async () => {
+    const fake = new FakeTracker();
+    const t = new CachedTracker(fake);
+    const issue = await t.createIssue({ title: "c" });
+    await t.getIssue(issue.id);            // primes cache
+    await t.commentIssue(issue.id, "note");
+    expect(fake.comments(issue.id).length).toBe(1);
+    await t.getIssue(issue.id);            // re-fetches (cache cleared) — no stale error
+  });
 });

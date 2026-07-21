@@ -2,7 +2,7 @@ import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, paginate, type FetchLike } from "../http.js";
 import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker } from "../types.js";
-import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
+import { commentsUnsupported, milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 
 const WIP = "in-progress";
 
@@ -19,7 +19,7 @@ interface GlMilestone {
 export class GitLabTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-    hasMilestones: false, hasPhaseClose: true,
+    hasMilestones: false, hasPhaseClose: true, hasComments: false,
   };
   constructor(private cfg: z.infer<typeof configSchema>, private fetchImpl: FetchLike = fetch) {}
 
@@ -135,6 +135,7 @@ export class GitLabTracker implements Tracker {
   async createMilestone(_name: string): Promise<Milestone> { return milestonesUnsupported("gitlab"); }
   async listMilestones(): Promise<Milestone[]> { return milestonesUnsupported("gitlab"); }
   async completeMilestone(_id: string): Promise<Milestone> { return milestonesUnsupported("gitlab"); }
+  async commentIssue(_id: string, _text: string): Promise<{ id: string; url?: string }> { return commentsUnsupported("gitlab"); }
 }
 
 export const configSchema = z.object({
