@@ -4,7 +4,7 @@ import { fetchJson, type FetchLike } from "../http.js";
 import type {
   Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
 } from "../types.js";
-import { commentsUnsupported, phaseCloseUnsupported } from "../unsupported.js";
+import { phaseCloseUnsupported } from "../unsupported.js";
 
 const MAX_IDS = 100;
 
@@ -62,7 +62,7 @@ interface IterationNode {
 export class AzureBoardsTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-    hasMilestones: true, hasPhaseClose: false, hasComments: false,
+    hasMilestones: true, hasPhaseClose: false, hasComments: true,
   };
 
   /** id (GUID) -> full iteration path, refreshed from listPhases() when an unknown id shows up. */
@@ -392,5 +392,12 @@ export class AzureBoardsTracker implements Tracker {
     return this.normalizeEpic(raw as WorkItem);
   }
 
-  async commentIssue(_id: string, _text: string): Promise<{ id: string; url?: string }> { return commentsUnsupported("azure-boards"); }
+  async commentIssue(id: string, text: string): Promise<{ id: string; url?: string }> {
+    const raw = await this.api(
+      "POST", `/${this.projectPath}/_apis/wit/workItems/${id}/comments`,
+      { text },
+      { params: { "api-version": "7.1-preview.4" }, context: "azure-boards issue_comment" },
+    ) as { id: number; url?: string };
+    return { id: String(raw.id), url: raw.url };
+  }
 }
