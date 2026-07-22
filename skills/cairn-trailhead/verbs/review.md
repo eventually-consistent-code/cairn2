@@ -49,7 +49,10 @@ it before it goes in the record.
    has them; a tracker full of minors is a tracker nobody reads.
 3. `audit_record(scope: "review-<target>", verdict, findings)` — every
    review ends here, clean or not. `<target>` is whatever resolved above
-   (`working`, the branch name, or `<phase>`). A clean pass is still a
+   (`working`, the branch name, or `<phase>`). Before using it in the scope,
+   slug the target — lowercase it and collapse every run of characters
+   outside `[a-z0-9]` to a single hyphen (e.g., `feature/ABC-123` becomes
+   `feature-abc-123`, `HEAD~3` becomes `head-3`). A clean pass is still a
    finding worth recording — it's the proof the review ran.
 
 Skipping the record because the diff looked fine is still skipping it.
