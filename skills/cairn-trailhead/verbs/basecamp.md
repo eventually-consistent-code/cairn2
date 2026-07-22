@@ -38,7 +38,8 @@ Interview-lite, not a form:
    `cairn.json` still gets listed — it just shows `unconfigured` on the
    board until someone runs cairn's own `new`/`tune` in it.
 4. Confirm what got written, plain language: workspace name, member
-   count, which ones are focusable today.
+   count, which ones are focusable today (focusable = configured — an
+   unconfigured member can't take focus until it gets its own `cairn.json`).
 
 No workspace tracker, no workspace-level cairn.json — each member keeps
 its own tracker-first setup untouched. `init` only ever writes the
@@ -81,6 +82,20 @@ starts them.
 ## `claim <id>` / `update <id>` / `done <id>` — the lifecycle
 
 Run from inside whichever session picked up a workstream.
+
+**Focus discipline: expect it to get stolen.** The #3256 dispatch pattern
+means N parallel sessions are running against the same workspace root at
+once, and the focus file (`.cairn/basecamp/focus.json`) is workspace-global
+— one file, shared by every session, last write wins. Another session's
+`basecamp focus` can flip it out from under you between two of your own
+tool calls. The step-5 race check below catches board writes that lose a
+race to another session's board update; it does **not** catch a wrong-member
+write, because by the time you re-read `board_get`, your `issue_create` or
+`issue_comment` already landed in whichever member happened to be focused
+at that instant — there's nothing left to detect. So: before ANY tracker or
+board write (not just at claim — every write, every step, every time),
+confirm `workspace_list()` still shows YOUR member as focus. If it doesn't,
+`workspace_focus` back to your member and re-verify before writing.
 
 **`claim <id>`** — in this order, always:
 

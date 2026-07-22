@@ -558,6 +558,23 @@ Per-project state that already keyed off the resolved directory (the
 handoff/banner scheme already hashes `resolve(projectDir)`, so a focused
 member's state lands under its own hash automatically.
 
+### Concurrency caveat
+
+Focus is workspace-global shared state, one file, single-writer, last write
+wins — it is not scoped per session. In the #3256 parallel-dispatch
+topology, several sessions run against the same workspace root at once, and
+one session calling `workspace_focus` redirects every other session's
+*subsequent* `resolveProjectDir()` calls to the new member, silently, with
+no error and no signal to the sessions that just got moved. Each individual
+tool call still resolves against a single, consistent snapshot of the focus
+file taken at the start of that handler — a flip mid-call can never cause
+one tool call to operate on two different members. But a multi-call flow
+(claim a workstream, create an issue, update the board) spans several
+handler invocations, and nothing above `resolveProjectDir()` re-checks that
+focus still points where the flow expects between those calls. Callers
+driving multi-call flows must re-confirm focus themselves before each write
+— see the focus-discipline rule in `skills/cairn-trailhead/verbs/basecamp.md`.
+
 ### Board shapes
 
 `.cairn/basecamp/board.json` at the workspace root — a single-writer,
