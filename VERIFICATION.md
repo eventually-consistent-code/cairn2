@@ -677,7 +677,7 @@ Per spec §5.3, two drills, to be run in a scratch project with cairn2
 installed as a local plugin and recorded here once run, same format as the
 Tier 0 dogfood drill and the Tier A0/A/B drills above.
 
-**Trace drill — PENDING (run live).**
+**Trace drill — RUN 2026-07-21, see results below.**
 1. Real tracker: `/cairn trace "<bug description>"` → expect `trace_start`
    creates the `cairn:bug` issue and posts mirror comment #1
    ("Investigation started: <plain summary>").
@@ -703,7 +703,7 @@ Tier 0 dogfood drill and the Tier A0/A/B drills above.
    in a later session with its provenance intact (spec success criteria 1,
    2, 5).
 
-**Routing drill — PENDING (run live).**
+**Routing drill — RUN 2026-07-21, see results below.**
 1. Rig a failing `verify` on a task in a scratch phase.
 2. Run `/cairn verify` → expect: `verify.md`'s routing edit fires — the
    failure MUST open a trace with the failure itself as evidence entry #1;
@@ -719,3 +719,41 @@ Tier 0 dogfood drill and the Tier A0/A/B drills above.
    session (evidence + verdict, both mirror touches) in one motion, proving
    the "never improvised, but no typo-class friction" balance the spec's
    Why section calls for.
+
+### Drill results — RUN 2026-07-21 (mechanical, real tracker) — PASS 27/27
+
+Same harness as the Tier A/B drills: real `dist/index.js` over stdio, real
+GitHub tracker (`eventually-consistent-code/cairn-drill-scratch`).
+Repeatable drivers at `server/drills/drill-{trace,routing}.mjs` (run from
+`server/`: `node drills/drill-<name>.mjs <projectDir> $PWD/dist/index.js`;
+use a fresh scratch `<projectDir>` per run — trace ids are
+description-derived, so a rerun against the same dir hits the
+already-open guard by design).
+
+**Trace drill — PASS 16/16.** `trace_start` created a real `cairn:bug`
+issue and the session file; mirror comment #1 posted. Evidence →
+hypothesis → test logged (reproduce-first, disprovable test); banner
+surfaced the open trace and the handoff was written by the trace tools.
+The client was then killed cold and a FRESH client resumed purely from
+the session file: entry counts intact (1/1/1/0), last entry exactly
+where the kill landed — zero re-derived evidence. `trace_close` before
+any verdict was refused (`PRECONDITION_FAILED` gate held); after the
+verdict entry, close commented `Resolved: <resolution>` on the issue,
+closed it, and archived the session (live file gone,
+`.cairn/trace/archive/<id>.md` present). A `gotcha-*` card landed with
+file+commit provenance at confidence `high` and recalled in a fresh
+call. Read back in order, the three tracker comments (started → cause →
+resolved) tell the whole story in plain language — `leak-patterns`
+scan over all comment text: zero hits (spec success criteria 1, 2, 5).
+
+**Routing drill — PASS 11/11.** The routing edits are pinned in the verb
+docs themselves (`verify.md`, `work.md`, `auto.md` route failures into
+trace; `status.md` surfaces open traces). Hard-route leg: a rigged
+verify failure entered a trace with the failure text as evidence entry
+#1, and the patch-and-rerun exit stayed shut — close remained
+verdict-gated even mid-investigation, so no improvised inline fix path
+exists (spec success criterion 3, the #726 hard route). Fast-lane leg:
+an off-by-one class bug went start → evidence → verdict → close in one
+motion with both mirror touches present (started + resolved-as-close-
+note) and a complete archived session — the "never improvised, but no
+typo-class friction" balance holds.
