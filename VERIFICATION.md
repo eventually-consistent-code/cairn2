@@ -1898,7 +1898,7 @@ every prior tier's drills (real `dist/index.js` over stdio, real GitHub
 tracker where a tracker is touched). Neither driver exists yet; per this
 tier's convention (see bottom of this file), both are authored post-merge.
 
-**Basecamp drill — PENDING, run post-merge.**
+**Basecamp drill — RUN 2026-07-22, see results below.**
 1. Scratch workspace root with two member directories: one GitHub-
    configured (`cairn.json` pointing at a real scratch repo), one left
    unconfigured (no `cairn.json`). Write `cairn-workspace.json` naming
@@ -1935,7 +1935,7 @@ tier's convention (see bottom of this file), both are authored post-merge.
    (criterion 4); the board reads are byte-equal (criterion 3's
    determinism half); the leak scan is clean.
 
-**Focus-compat drill — PENDING, run post-merge.**
+**Focus-compat drill — RUN 2026-07-22, see results below.**
 1. A scratch project with NO `cairn-workspace.json` anywhere in its parent
    chain (the ordinary single-project case every pre-F1 cairn project
    already is).
@@ -1963,3 +1963,36 @@ tier's convention (see bottom of this file), both are authored post-merge.
 Post-merge convention (same as Tiers D/E): author + run
 `server/drills/drill-{basecamp,focus-compat}.mjs`, then commit the
 drills-run record here.
+
+### Drill results — RUN 2026-07-22 (mechanical) — PASS 24/24
+
+Same harness as every prior tier: real `dist/index.js` over stdio; the
+basecamp drill's configured member uses the real GitHub tracker
+(`eventually-consistent-code/cairn-drill-scratch`); the focus-compat drill
+needs only a plain scratch project. Repeatable drivers at
+`server/drills/drill-{basecamp,focus-compat}.mjs` (run from `server/`:
+`node drills/drill-<name>.mjs <scratchDir> $PWD/dist/index.js`; fresh
+scratch per run).
+
+**Basecamp drill — PASS 15/15.** A two-member workspace (api configured,
+web deliberately not): discovery listed both with `configured` truthful;
+focusing the unconfigured member was refused; focusing api redirected
+EVERYTHING — `context_set` landed in `api/.cairn/` (nothing at the
+workspace root) and `issue_create` hit api's real tracker. The board ran
+the full lifecycle: dispatch queued two workstreams, claim recorded
+active + session tag + the member issue, blocked carried its why, done
+closed the issue with a plain-language note. Board reads byte-equal;
+`workspace_status` aggregated the configured member (phase, open counts)
+without failing on the unconfigured one and without touching focus
+(read-only guarantee held). Leak scan over tracker text: zero hits
+(spec success criteria 1, 3, 4).
+
+**Focus-compat drill — PASS 9/9.** With no workspace anywhere:
+`workspace_list` reported `{ workspace: null }` (not an error);
+`workspace_focus` and `board_get` refused with the init hint; and every
+stateful surface — active context, probe session file + phase stamp,
+audit record path, map store — landed at the exact pre-F1 launch-dir
+paths, with no `.cairn/basecamp/` state ever materializing. The
+workspace layer is invisible until asked for (spec success criterion 2,
+the compatibility guarantee, now proven live as well as by the unedited
+suite).
