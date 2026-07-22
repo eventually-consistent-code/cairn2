@@ -1817,9 +1817,10 @@ single-project byte-compatibility proof. Evidence, grep-before-cite:
   content. No other file under `server/test/` — and no file under
   `server/src/` outside the new `server/src/workspace/` directory — was
   edited by this tier: `git diff --stat main -- server/src/` shows
-  `server/src/index.ts` (routing/registration wiring for the five new
-  tools, additive) and the two new `server/src/workspace/{context,
-  board}.ts` files, nothing else touched.
+  `server/src/index.ts` (the resolveProjectDir/getTracker threading
+  through every pre-existing handler — no tool name or schema changed —
+  plus registrations for the five new tools) and the two new
+  `server/src/workspace/{context, board}.ts` files, nothing else touched.
 - Every pre-existing test file (`trace-store.test.ts`, `sessions-
   store.test.ts`, `banner.test.ts`, `config.test.ts`, `cards.test.ts`,
   `plan-check.test.ts`, `audit-record.test.ts`, all adapter unit/live
