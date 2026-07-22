@@ -19,7 +19,6 @@ const failures = [];
 // --- inputs -----------------------------------------------------------------
 
 const SPEC_RESERVED = {
-  draft: "C",
   triage: "D", basecamp: "F",
 };
 const TOOL_PREFIXES = /^(context|issue|plan|mem|continuity|ledger|milestone|config|trace|probe|draft|session)_/;
