@@ -6,7 +6,7 @@ import { renderBanner, writeBanner, bannerStats } from "../src/memory/banner.js"
 import { bannerPath } from "../src/core/continuity.js";
 import { createCard } from "../src/memory/cards.js";
 import { ActiveContext } from "../src/active-context.js";
-import { appendTrace, startTrace, traceId } from "../src/trace/store.js";
+import { appendSession, startSession } from "../src/sessions/store.js";
 
 const dirs: string[] = [];
 const dir = () => {
@@ -144,31 +144,46 @@ describe("renderBanner", () => {
     expect(ids).toEqual([cards[0].id, cards[1].id]);
   });
 
-  it("banner lists open traces and stays byte-stable", () => {
+  it("banner lists open sessions and stays byte-stable", () => {
     const d = registered();
-    startTrace(d, "index breaks past 64KB", "GH-12");
-    appendTrace(d, traceId("index breaks past 64KB"), "hypothesis", "page edge");
+    const { id } = startSession(d, "trace", "index breaks past 64KB", "GH-12");
+    appendSession(d, "trace", id, "hypothesis", "page edge");
     writeBanner(d);
     const one = readFileSync(bannerPath(d), "utf8");
-    expect(one).toContain("open traces:");
+    expect(one).toContain("open sessions:");
     expect(one).toContain("issue GH-12");
     expect(one).toContain("last: hypothesis");
     writeBanner(d);
     expect(readFileSync(bannerPath(d), "utf8")).toBe(one);
   });
 
-  it("banner renders traces even with zero cards", () => {
+  it("banner renders sessions even with zero cards", () => {
     const d = registered();
-    startTrace(d, "lonely bug", "GH-1");
+    startSession(d, "trace", "lonely bug", "GH-1");
     writeBanner(d);
     expect(readFileSync(bannerPath(d), "utf8")).toContain("lonely bug");
   });
 
-  it("returns null when recallIndex.enabled is false, even with open traces", () => {
+  it("returns null when recallIndex.enabled is false, even with open sessions", () => {
     const d = registered({ enabled: false });
-    startTrace(d, "traced but banner is off", "GH-2");
+    startSession(d, "trace", "traced but banner is off", "GH-2");
     expect(renderBanner(d)).toBeNull();
     expect(existsSync(bannerPath(d))).toBe(false);
+  });
+
+  it("banner lists open sessions across kinds, kind-ordered, byte-stable", () => {
+    const d = registered();
+    const { id: openTraceId } = startSession(d, "trace", "index breaks past 64KB", "GH-12");
+    appendSession(d, "trace", openTraceId, "hypothesis", "page edge");
+    const { id: probeId } = startSession(d, "probe", "can the SDK stream?", "GH-40");
+    appendSession(d, "probe", probeId, "experiment", "poc ran");
+    const text = renderBanner(d)!;
+    expect(text).toContain("open sessions:");
+    expect(text).toMatch(/- trace trace-[0-9a-f]{8} — .* — last: hypothesis/);
+    expect(text).toMatch(
+      /- probe probe-[0-9a-f]{8} — can the SDK stream\? — issue GH-40 — since \d{4}-\d{2}-\d{2} — last: experiment/);
+    expect(text.indexOf("- trace")).toBeLessThan(text.indexOf("- probe"));
+    expect(Buffer.from(renderBanner(d)!).equals(Buffer.from(text))).toBe(true);
   });
 });
 

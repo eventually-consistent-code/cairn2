@@ -3,7 +3,7 @@ import { basename, dirname, resolve } from "node:path";
 import { ActiveContext } from "../active-context.js";
 import { loadConfig } from "../config.js";
 import { bannerPath } from "../core/continuity.js";
-import { lastEntryKind, listTraces } from "../trace/store.js";
+import { lastSessionEntry, listSessions } from "../sessions/store.js";
 import { listCards } from "./cards.js";
 /** Fetch cost is computed fresh at render time -- never stored on the card. */
 function fetchCost(body) {
@@ -54,8 +54,9 @@ function computeBannerData(projectDir) {
         return { text: null, cardCostTotal: 0 };
     const active = new ActiveContext(projectDir).get();
     const cards = scopedCards(listCards(projectDir), active).slice(0, maxCards);
-    const traces = listTraces(projectDir, "open");
-    if (cards.length === 0 && traces.length === 0)
+    const open = ["trace", "probe", "draft"]
+        .flatMap((kind) => listSessions(projectDir, kind, "open"));
+    if (cards.length === 0 && open.length === 0)
         return { text: null, cardCostTotal: 0 };
     const project = basename(resolve(projectDir));
     const headerParts = [`cairn recall index — ${project}`];
@@ -75,11 +76,11 @@ function computeBannerData(projectDir) {
         cardCostTotal = cards.reduce((sum, card) => sum + fetchCost(card.body), 0);
         lines.push("| id | type | title | fetch cost |", "|----|------|-------|-----------|", ...rows, `Fetch bodies on demand with mem_card_recall(id). Total if fetched: ~${cardCostTotal} tok.`);
     }
-    if (traces.length > 0) {
-        lines.push("", "open traces:");
-        for (const t of traces) {
-            const last = lastEntryKind(projectDir, t.id) ?? "none";
-            lines.push(`- ${t.id} — ${t.description} — issue ${t.issue} — since ${t.created} — last: ${last}`);
+    if (open.length > 0) {
+        lines.push("", "open sessions:");
+        for (const s of open) {
+            const last = lastSessionEntry(projectDir, s.kind, s.id) ?? "none";
+            lines.push(`- ${s.kind} ${s.id} — ${s.description} — issue ${s.issue} — since ${s.created} — last: ${last}`);
         }
     }
     return { text: `${lines.join("\n")}\n`, cardCostTotal };
@@ -87,12 +88,13 @@ function computeBannerData(projectDir) {
 /**
  * Renders the recall banner for `projectDir`: cards scoped issue > phase >
  * project (id tiebreak), capped at `recallIndex.maxCards`, followed by an
- * "open traces:" section (sorted by id) when any open traces exist -- the
- * banner is non-null if either cards or open traces are present. Byte-stable
- * -- no timestamps beyond the dates already in trace frontmatter, no volatile
- * ordering; bytes change only when the card/trace store or active context
- * changes. Returns null (and deletes any existing banner file) when
- * `recallIndex.enabled` is false or there is nothing to render.
+ * "open sessions:" section (sorted kind trace/probe/draft, then id) when any
+ * open sessions exist -- the banner is non-null if either cards or open
+ * sessions are present. Byte-stable -- no timestamps beyond the dates already
+ * in session frontmatter, no volatile ordering; bytes change only when the
+ * card/session store or active context changes. Returns null (and deletes any
+ * existing banner file) when `recallIndex.enabled` is false or there is
+ * nothing to render.
  */
 export function renderBanner(projectDir) {
     const { text } = computeBannerData(projectDir);

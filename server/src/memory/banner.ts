@@ -3,7 +3,7 @@ import { basename, dirname, resolve } from "node:path";
 import { ActiveContext, type ActiveContextState } from "../active-context.js";
 import { loadConfig } from "../config.js";
 import { bannerPath } from "../core/continuity.js";
-import { lastEntryKind, listTraces } from "../trace/store.js";
+import { lastSessionEntry, listSessions } from "../sessions/store.js";
 import { listCards, type Card } from "./cards.js";
 
 /** Fetch cost is computed fresh at render time -- never stored on the card. */
@@ -48,7 +48,7 @@ function scopedCards(cards: Card[], active: ActiveContextState): Card[] {
 }
 
 interface BannerData {
-  /** Rendered banner markdown, or null when disabled/no cards and no open traces. */
+  /** Rendered banner markdown, or null when disabled/no cards and no open sessions. */
   text: string | null;
   /** Sum of per-card fetch costs for the cards actually included in the banner. */
   cardCostTotal: number;
@@ -62,8 +62,9 @@ function computeBannerData(projectDir: string): BannerData {
 
   const active = new ActiveContext(projectDir).get();
   const cards = scopedCards(listCards(projectDir), active).slice(0, maxCards);
-  const traces = listTraces(projectDir, "open");
-  if (cards.length === 0 && traces.length === 0) return { text: null, cardCostTotal: 0 };
+  const open = (["trace", "probe", "draft"] as const)
+    .flatMap((kind) => listSessions(projectDir, kind, "open"));
+  if (cards.length === 0 && open.length === 0) return { text: null, cardCostTotal: 0 };
 
   const project = basename(resolve(projectDir));
   const headerParts = [`cairn recall index — ${project}`];
@@ -89,11 +90,11 @@ function computeBannerData(projectDir: string): BannerData {
     );
   }
 
-  if (traces.length > 0) {
-    lines.push("", "open traces:");
-    for (const t of traces) {
-      const last = lastEntryKind(projectDir, t.id) ?? "none";
-      lines.push(`- ${t.id} — ${t.description} — issue ${t.issue} — since ${t.created} — last: ${last}`);
+  if (open.length > 0) {
+    lines.push("", "open sessions:");
+    for (const s of open) {
+      const last = lastSessionEntry(projectDir, s.kind, s.id) ?? "none";
+      lines.push(`- ${s.kind} ${s.id} — ${s.description} — issue ${s.issue} — since ${s.created} — last: ${last}`);
     }
   }
 
@@ -103,12 +104,13 @@ function computeBannerData(projectDir: string): BannerData {
 /**
  * Renders the recall banner for `projectDir`: cards scoped issue > phase >
  * project (id tiebreak), capped at `recallIndex.maxCards`, followed by an
- * "open traces:" section (sorted by id) when any open traces exist -- the
- * banner is non-null if either cards or open traces are present. Byte-stable
- * -- no timestamps beyond the dates already in trace frontmatter, no volatile
- * ordering; bytes change only when the card/trace store or active context
- * changes. Returns null (and deletes any existing banner file) when
- * `recallIndex.enabled` is false or there is nothing to render.
+ * "open sessions:" section (sorted kind trace/probe/draft, then id) when any
+ * open sessions exist -- the banner is non-null if either cards or open
+ * sessions are present. Byte-stable -- no timestamps beyond the dates already
+ * in session frontmatter, no volatile ordering; bytes change only when the
+ * card/session store or active context changes. Returns null (and deletes any
+ * existing banner file) when `recallIndex.enabled` is false or there is
+ * nothing to render.
  */
 export function renderBanner(projectDir: string): string | null {
   const { text } = computeBannerData(projectDir);
