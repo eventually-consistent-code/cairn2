@@ -238,4 +238,13 @@ describe("AsanaTracker mapping", () => {
     expect(t.capabilities.hasPhaseClose).toBe(false);
     await expect(t.closePhase("1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
   });
+
+  it("commentIssue POSTs a comment story", async () => {
+    const { f, calls } = fixtureFetch([{ status: 201, body: { data: { gid: "777" } } }]);
+    const t = new AsanaTracker({ projectGid: "999", tokenEnv: "ASANA_TOKEN" }, f, () => "tok");
+    const c = await t.commentIssue("123", "plain note");
+    expect(calls[0].url).toContain("/tasks/123/stories");
+    expect(calls[0].body).toEqual({ data: { text: "plain note" } });
+    expect(c.id).toBe("777");
+  });
 });

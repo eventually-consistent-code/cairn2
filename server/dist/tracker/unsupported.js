@@ -5,3 +5,6 @@ export function milestonesUnsupported(backend) {
 export function phaseCloseUnsupported(backend) {
     throw new CairnError("UNSUPPORTED", `${backend} phase primitive has no closed state`, "milestone_complete records this as a skipped phase close");
 }
+export function commentsUnsupported(backend) {
+    throw new CairnError("UNSUPPORTED", `${backend} adapter has no comment mapping yet`, "trace mirroring records a skip on this backend");
+}

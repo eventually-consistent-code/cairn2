@@ -92,4 +92,8 @@ export declare class ClickUpTracker implements Tracker {
     createMilestone(_name: string): Promise<Milestone>;
     listMilestones(): Promise<Milestone[]>;
     completeMilestone(_id: string): Promise<Milestone>;
+    commentIssue(id: string, text: string): Promise<{
+        id: string;
+        url?: string;
+    }>;
 }

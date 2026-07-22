@@ -2,7 +2,7 @@
 
 MCP server for cairn 2.0. See `docs/superpowers/specs/2026-07-12-cairn-2-design.md`.
 
-36 tools total across planning, memory, continuity, collaboration, milestones, and config.
+41 tools total across planning, memory, continuity, collaboration, milestones, config, and trace.
 
 ## Test rings
 
@@ -300,6 +300,56 @@ left untouched. Patches touching tracker credential/env-var-shaped fields are
 refused outright: secrets live in env vars, never in `cairn.json`.
 `ConfigSchema` carries the `leakGuard` block below (all fields defaulted), so
 its toggles validate through the same gate as everything else.
+
+## Trace tools
+
+Persistent debugging sessions that survive `/clear` — git-side session files
+paired with a tracker mirror that keeps management informed in plain
+language, without diving into code. The routing law (spec §726): a failed
+`verify` or a reported bug routes into `trace`'s evidence → hypothesis →
+test → verdict flow, never an inline improvised fix (a proven-obvious
+≤3-line fix may still use the fast lane: one evidence entry, one verdict,
+close).
+
+| tool | purpose |
+|---|---|
+| `issue_comment` | Post a plain-language comment on a tracker issue (management-visible progress note) |
+| `trace_start` | Open a session (`.cairn/trace/<id>.md`); creates the tracker bug issue (label `cairn:bug`) when no `issueId` is given; same-description open session → `PRECONDITION_FAILED` pointing at it |
+| `trace_log` | Append a typed entry (`evidence`\|`hypothesis`\|`test`\|`verdict`) — append-only; unknown id → `NOT_FOUND`, resolved session → `PRECONDITION_FAILED` |
+| `trace_list` | List open and/or resolved sessions with entry counts — the read surface for `status`, the SessionStart banner, and resume |
+| `trace_close` | Resolve: requires ≥1 `verdict` entry (else `PRECONDITION_FAILED`: "close needs a verdict — log one first"), archives the session, comments the resolution on the bug issue and closes it |
+
+Backed by the tracker interface's `commentIssue(id, text)` method +
+`Capability.hasComments` (true on all six adapters this tier — GitHub,
+GitLab, Jira, Azure Boards, Asana, ClickUp — the flag exists so a future
+backend can degrade to a recorded skip, same posture as `hasMilestones`).
+
+### Artifact layout
+
+```
+.cairn/trace/<id>.md            # open session — single-writer through the trace_* tools
+.cairn/trace/archive/<id>.md    # moved here on trace_close — immutable once archived
+```
+
+`id = trace-<sha256(description).slice(0,8)>` — the same hashed-content id
+convention memory cards use, so starting the same bug twice resolves to the
+same session instead of forking it. Frontmatter: `status: open|resolved`,
+`issue: <tracker id>`, `created`, `resolved` (close-time). The body is
+append-only typed blocks (`## evidence — <date>`, `## hypothesis`, `## test`,
+`## verdict`) — `trace_log` never rewrites a prior block, only appends a new
+one. `trace_close` appends a final `## resolution` block, stamps
+`status: resolved` + `resolved`, then moves the file live → archive
+(rename, not copy-and-delete) — a resolved session is immutable by
+construction, not by convention — and mechanically refuses to run at all
+without at least one `verdict` entry logged first.
+
+Tracker mirror touches are milestone-only, verb-driven (never per-entry
+noise, never tool-implicit): comment #1 on `trace_start` ("Investigation
+started"), comment #2 at "cause identified", and the resolution rides as the
+`trace_close` issue-close note. `trace_start`/`trace_log` refresh the session
+handoff (`source: "tool"`) the same write-through way every other
+state-changing tool does, so a killed debug session resumes into its trace
+via the continuity machinery above.
 
 ## Hooks
 

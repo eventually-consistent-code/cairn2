@@ -19,4 +19,7 @@ Show project status:
    labeled issues separately from phase work. For each open seed, read its
    `Trigger:` line and flag it when current project state reads as meeting
    the trigger — firing is your judgment call to surface, the user's to act.
+- Open traces: `trace_list(status: "open")` — report id, description, age
+  (from created), linked issue, and last entry kind. An open trace is
+  unfinished debugging — surface it every time.
 6. Keep it to one screen; end with the obvious next `/cairn` step.

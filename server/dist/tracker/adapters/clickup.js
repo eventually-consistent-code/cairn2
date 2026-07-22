@@ -32,7 +32,7 @@ export class ClickUpTracker {
     tokenProvider;
     capabilities = {
         hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-        hasMilestones: false, hasPhaseClose: false,
+        hasMilestones: false, hasPhaseClose: false, hasComments: true,
     };
     constructor(cfg, fetchImpl = fetch, tokenProvider = () => resolveClickUpToken(cfg.tokenEnv)) {
         this.cfg = cfg;
@@ -180,4 +180,9 @@ export class ClickUpTracker {
     async createMilestone(_name) { return milestonesUnsupported("clickup"); }
     async listMilestones() { return milestonesUnsupported("clickup"); }
     async completeMilestone(_id) { return milestonesUnsupported("clickup"); }
+    async commentIssue(id, text) {
+        this.assertId(id);
+        const raw = (await this.api("POST", `/task/${id}/comment`, { comment_text: text }, "clickup issue_comment"));
+        return { id: String(raw.id) };
+    }
 }

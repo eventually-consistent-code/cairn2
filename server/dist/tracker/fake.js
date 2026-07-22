@@ -2,11 +2,12 @@ import { CairnError } from "../errors.js";
 export class FakeTracker {
     capabilities = {
         hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-        hasMilestones: true, hasPhaseClose: true,
+        hasMilestones: true, hasPhaseClose: true, hasComments: true,
     };
     issues = new Map();
     phases = new Map();
     milestones = new Map();
+    issueComments = new Map();
     seq = 0;
     async createIssue(input) {
         const id = `FAKE-${++this.seq}`;
@@ -80,5 +81,17 @@ export class FakeTracker {
         const next = { ...m, state: "released" };
         this.milestones.set(id, next);
         return { ...next };
+    }
+    async commentIssue(id, text) {
+        await this.getIssue(id); // NOT_FOUND on unknown
+        const list = this.issueComments.get(id) ?? [];
+        const comment = { id: `FC-${++this.seq}`, text };
+        list.push(comment);
+        this.issueComments.set(id, list);
+        return { id: comment.id, url: `fake://comment/${comment.id}` };
+    }
+    /** Test accessor: comments posted to an issue, in order. */
+    comments(id) {
+        return [...(this.issueComments.get(id) ?? [])];
     }
 }

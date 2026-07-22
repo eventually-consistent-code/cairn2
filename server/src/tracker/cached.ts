@@ -104,4 +104,10 @@ export class CachedTracker implements Tracker {
     this.cache.clear();
     return result;
   }
+
+  async commentIssue(id: string, text: string): Promise<{ id: string; url?: string }> {
+    const result = await this.inner.commentIssue(id, text);
+    this.cache.clear();
+    return result;
+  }
 }

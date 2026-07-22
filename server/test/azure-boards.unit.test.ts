@@ -385,4 +385,14 @@ describe("AzureBoardsTracker mapping", () => {
     expect(t.capabilities.hasPhaseClose).toBe(false);
     await expect(t.closePhase("1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
   });
+
+  it("commentIssue POSTs a work-item comment with the preview api-version", async () => {
+    const { f, calls } = fixtureFetch([{ status: 200, body: { id: 4001, url: "https://dev.azure.com/o/p/_apis/wit/workItems/55/comments/4001" } }]);
+    const t = makeAzure(f);
+    const c = await t.commentIssue("55", "plain note");
+    expect(calls[0].url).toContain("/workItems/55/comments");
+    expect(calls[0].url).toContain("api-version=7.1-preview.4");
+    expect(calls[0].body).toEqual({ text: "plain note" });
+    expect(c.id).toBe("4001");
+  });
 });

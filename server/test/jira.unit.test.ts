@@ -352,4 +352,14 @@ describe("JiraTracker mapping", () => {
     const p = await t.closePhase("PROJ-9");
     expect(p).toMatchObject({ id: "PROJ-9", state: "closed" });
   });
+
+  it("commentIssue POSTs an ADF-wrapped comment", async () => {
+    const { f, calls } = fixtureFetch([{ status: 201, body: { id: "10500" } }]);
+    const t = makeJira(f);
+    const c = await t.commentIssue("PROJ-9", "plain note");
+    expect(calls[0].url).toContain("/rest/api/3/issue/PROJ-9/comment");
+    expect(calls[0].method).toBe("POST");
+    expect(calls[0].body).toEqual({ body: adfBody("plain note") });
+    expect(c.id).toBe("10500");
+  });
 });

@@ -42,7 +42,7 @@ export class GitHubTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, // via label convention
     hasPhases: true, hasDependencies: false, hasLabels: true,
-    hasMilestones: false, hasPhaseClose: true,
+    hasMilestones: false, hasPhaseClose: true, hasComments: true,
   };
 
   constructor(
@@ -175,4 +175,10 @@ export class GitHubTracker implements Tracker {
   async createMilestone(_name: string): Promise<Milestone> { return milestonesUnsupported("github"); }
   async listMilestones(): Promise<Milestone[]> { return milestonesUnsupported("github"); }
   async completeMilestone(_id: string): Promise<Milestone> { return milestonesUnsupported("github"); }
+  async commentIssue(id: string, text: string): Promise<{ id: string; url?: string }> {
+    this.assertId(id);
+    const raw = (await this.api("POST", `/repos/${this.cfg.repo}/issues/${id}/comments`,
+      { body: text })) as { id: number; html_url?: string };
+    return { id: String(raw.id), url: raw.html_url };
+  }
 }

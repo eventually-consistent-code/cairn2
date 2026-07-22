@@ -161,4 +161,16 @@ describe("GitHubTracker mapping", () => {
     await expect(t.listMilestones()).rejects.toMatchObject({ code: "UNSUPPORTED" });
     await expect(t.completeMilestone("1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
   });
+
+  it("commentIssue POSTs to /issues/{n}/comments", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 201, body: { id: 991, html_url: "https://github.com/o/r/issues/7#issuecomment-991" } },
+    ]);
+    const t = new GitHubTracker({ repo: "o/r" }, f, () => "tok");
+    const c = await t.commentIssue("7", "plain note");
+    expect(calls[0].url).toBe("https://api.github.com/repos/o/r/issues/7/comments");
+    expect(calls[0].method).toBe("POST");
+    expect(calls[0].body).toEqual({ body: "plain note" });
+    expect(c).toEqual({ id: "991", url: "https://github.com/o/r/issues/7#issuecomment-991" });
+  });
 });

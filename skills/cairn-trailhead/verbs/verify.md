@@ -20,3 +20,8 @@ Verify the given phase per the `cairn-planning` skill.
    passed, deviations. (Its presence marks the phase verified — drift treats
    closed issues in verified phases as normal.)
 6. Report pass/fail and next step (`/cairn ship` or the fixes needed).
+7. FAILED verification routes to `trace` — MANDATORY (#726): open a trace
+   (`trace_start` with the failure as the description), log the failing
+   output as the first `evidence`, and continue there. Never patch-and-
+   rerun inline. Proven-obvious ≤3-line causes may take trace's fast lane —
+   still traced, still mirrored.

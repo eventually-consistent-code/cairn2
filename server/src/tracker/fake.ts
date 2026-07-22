@@ -6,11 +6,12 @@ import type {
 export class FakeTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-    hasMilestones: true, hasPhaseClose: true,
+    hasMilestones: true, hasPhaseClose: true, hasComments: true,
   };
   private issues = new Map<string, Issue>();
   private phases = new Map<string, Phase>();
   private milestones = new Map<string, Milestone>();
+  private issueComments = new Map<string, Array<{ id: string; text: string }>>();
   private seq = 0;
 
   async createIssue(input: IssueCreate): Promise<Issue> {
@@ -92,5 +93,19 @@ export class FakeTracker implements Tracker {
     const next: Milestone = { ...m, state: "released" };
     this.milestones.set(id, next);
     return { ...next };
+  }
+
+  async commentIssue(id: string, text: string): Promise<{ id: string; url?: string }> {
+    await this.getIssue(id); // NOT_FOUND on unknown
+    const list = this.issueComments.get(id) ?? [];
+    const comment = { id: `FC-${++this.seq}`, text };
+    list.push(comment);
+    this.issueComments.set(id, list);
+    return { id: comment.id, url: `fake://comment/${comment.id}` };
+  }
+
+  /** Test accessor: comments posted to an issue, in order. */
+  comments(id: string): Array<{ id: string; text: string }> {
+    return [...(this.issueComments.get(id) ?? [])];
   }
 }

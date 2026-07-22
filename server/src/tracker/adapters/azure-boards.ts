@@ -62,7 +62,7 @@ interface IterationNode {
 export class AzureBoardsTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-    hasMilestones: true, hasPhaseClose: false,
+    hasMilestones: true, hasPhaseClose: false, hasComments: true,
   };
 
   /** id (GUID) -> full iteration path, refreshed from listPhases() when an unknown id shows up. */
@@ -390,5 +390,14 @@ export class AzureBoardsTracker implements Tracker {
       { contentType: "application/json-patch+json", context: "azure-boards milestone_complete" },
     );
     return this.normalizeEpic(raw as WorkItem);
+  }
+
+  async commentIssue(id: string, text: string): Promise<{ id: string; url?: string }> {
+    const raw = await this.api(
+      "POST", `/${this.projectPath}/_apis/wit/workItems/${id}/comments`,
+      { text },
+      { params: { "api-version": "7.1-preview.4" }, context: "azure-boards issue_comment" },
+    ) as { id: number; url?: string };
+    return { id: String(raw.id), url: raw.url };
   }
 }

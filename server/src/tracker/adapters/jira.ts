@@ -98,7 +98,7 @@ function normalizeTimestamp(raw: string): string {
 export class JiraTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-    hasMilestones: true, hasPhaseClose: true,
+    hasMilestones: true, hasPhaseClose: true, hasComments: true,
   };
 
   private projectId: number | undefined;
@@ -318,5 +318,12 @@ export class JiraTracker implements Tracker {
       { released: true }, "jira milestone_complete")) as
       { id: string; name: string; released?: boolean };
     return this.normalizeVersion(raw);
+  }
+
+  async commentIssue(id: string, text: string): Promise<{ id: string; url?: string }> {
+    this.assertId(id);
+    const raw = (await this.api("POST", `/rest/api/3/issue/${id}/comment`,
+      { body: adf(text) }, "jira issue_comment")) as { id: string };
+    return { id: raw.id };
   }
 }

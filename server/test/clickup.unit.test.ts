@@ -291,4 +291,13 @@ describe("ClickUpTracker mapping", () => {
     expect(t.capabilities.hasPhaseClose).toBe(false);
     await expect(t.closePhase("1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
   });
+
+  it("commentIssue POSTs a task comment", async () => {
+    const { f, calls } = fixtureFetch([{ status: 200, body: { id: 888 } }]);
+    const t = new ClickUpTracker(cfg, f, () => "tok");
+    const c = await t.commentIssue("abc123", "plain note");
+    expect(calls[0].url).toContain("/task/abc123/comment");
+    expect(calls[0].body).toEqual({ comment_text: "plain note" });
+    expect(c.id).toBe("888");
+  });
 });

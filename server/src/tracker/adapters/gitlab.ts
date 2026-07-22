@@ -19,7 +19,7 @@ interface GlMilestone {
 export class GitLabTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-    hasMilestones: false, hasPhaseClose: true,
+    hasMilestones: false, hasPhaseClose: true, hasComments: true,
   };
   constructor(private cfg: z.infer<typeof configSchema>, private fetchImpl: FetchLike = fetch) {}
 
@@ -135,6 +135,12 @@ export class GitLabTracker implements Tracker {
   async createMilestone(_name: string): Promise<Milestone> { return milestonesUnsupported("gitlab"); }
   async listMilestones(): Promise<Milestone[]> { return milestonesUnsupported("gitlab"); }
   async completeMilestone(_id: string): Promise<Milestone> { return milestonesUnsupported("gitlab"); }
+  async commentIssue(id: string, text: string): Promise<{ id: string; url?: string }> {
+    this.assertId(id);
+    const raw = (await this.api("POST", `/issues/${id}/notes`,
+      { body: text }, "issue_comment")) as { id: number };
+    return { id: String(raw.id) };
+  }
 }
 
 export const configSchema = z.object({
