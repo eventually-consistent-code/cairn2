@@ -2,7 +2,7 @@
 
 MCP server for cairn 2.0. See `docs/superpowers/specs/2026-07-12-cairn-2-design.md`.
 
-41 tools total across planning, memory, continuity, collaboration, milestones, config, and trace.
+48 tools total across planning, memory, continuity, collaboration, milestones, config, and sessions (trace, probe, draft).
 
 ## Test rings
 
@@ -301,55 +301,102 @@ refused outright: secrets live in env vars, never in `cairn.json`.
 `ConfigSchema` carries the `leakGuard` block below (all fields defaulted), so
 its toggles validate through the same gate as everything else.
 
-## Trace tools
+## Sessions
 
-Persistent debugging sessions that survive `/clear` — git-side session files
-paired with a tracker mirror that keeps management informed in plain
-language, without diving into code. The routing law (spec §726): a failed
-`verify` or a reported bug routes into `trace`'s evidence → hypothesis →
-test → verdict flow, never an inline improvised fix (a proven-obvious
-≤3-line fix may still use the fast lane: one evidence entry, one verdict,
-close).
+Persistent, typed session files that survive `/clear` — git-side session
+files paired with a tracker mirror that keeps management informed in plain
+language, without diving into code. Three kinds share one core: `trace`
+(persistent debugging, Tier C1), `probe` (risk-ordered throwaway spikes,
+Tier C2, GSD spike parity), and `draft` (multi-variant HTML mockups on a
+shared theme, Tier C2, GSD sketch parity). The routing law for `trace`
+(spec §726) is unchanged: a failed `verify` or a reported bug routes into
+evidence → hypothesis → test → verdict, never an inline improvised fix (a
+proven-obvious ≤3-line fix may still use the fast lane: one evidence entry,
+one verdict, close).
+
+### The store generalization
+
+`server/src/sessions/store.ts` is the shared core, parameterized by a kind
+descriptor (entry-kind vocabulary + close gate). `server/src/trace/store.ts`
+is now a thin **compatibility re-export** binding the core to the `trace`
+descriptor — the Tier C1 public API (`startTrace`, `appendTrace`,
+`listTraces`, `closeTrace`, `lastEntryKind`, `traceId`) and its on-disk
+format stay byte-identical; `test/trace-store.test.ts` passes unmodified
+and IS the compatibility test.
+
+| kind | dir | entry kinds | close gate |
+|---|---|---|---|
+| `trace` | `.cairn/trace/` | `evidence` `hypothesis` `test` `verdict` | ≥1 `verdict` |
+| `probe` | `.cairn/probe/` | `experiment` `result` `requirement` `verdict` | ≥1 `verdict` |
+| `draft` | `.cairn/draft/` | `variant` `decision` `note` | ≥1 `decision` |
+
+Session ids are description-derived (`<kind>-<sha256(description).slice(0,8)>`
+— the same hashed-content convention memory cards use), with the same
+already-open guard across all three kinds: starting the same description
+twice while a session is open throws `PRECONDITION_FAILED` pointing at the
+existing session instead of forking it. Archives are immutable at
+`.cairn/<kind>/archive/<id>.md` — a resolved session is immutable by
+construction, not by convention, and every kind mechanically refuses to
+close without its gate entry logged first. Probe/draft frontmatter adds one
+optional field over trace's: `phase: <n>`, stamped at `*_start` from the
+active context when one is set — the `session_landscape` phase linkage
+below.
+
+### Tools
 
 | tool | purpose |
 |---|---|
 | `issue_comment` | Post a plain-language comment on a tracker issue (management-visible progress note) |
-| `trace_start` | Open a session (`.cairn/trace/<id>.md`); creates the tracker bug issue (label `cairn:bug`) when no `issueId` is given; same-description open session → `PRECONDITION_FAILED` pointing at it |
+| `trace_start` | Open a trace session (`.cairn/trace/<id>.md`); creates the tracker bug issue (label `cairn:bug`) when no `issueId` is given; same-description open session → `PRECONDITION_FAILED` pointing at it |
 | `trace_log` | Append a typed entry (`evidence`\|`hypothesis`\|`test`\|`verdict`) — append-only; unknown id → `NOT_FOUND`, resolved session → `PRECONDITION_FAILED` |
-| `trace_list` | List open and/or resolved sessions with entry counts — the read surface for `status`, the SessionStart banner, and resume |
+| `trace_list` | List open and/or resolved trace sessions with entry counts — the read surface for `status`, the SessionStart banner, and resume |
 | `trace_close` | Resolve: requires ≥1 `verdict` entry (else `PRECONDITION_FAILED`: "close needs a verdict — log one first"), archives the session, comments the resolution on the bug issue and closes it |
+| `probe_start` | Open a spike session (`.cairn/probe/<id>.md`); creates the tracker issue (label `cairn:spike`) when no `issueId` is given; stamps `phase` from the active context; same-description open session → `PRECONDITION_FAILED` |
+| `probe_log` | Append a typed entry (`experiment`\|`result`\|`requirement`\|`verdict`) — same append-only/gate rules as `trace_log` |
+| `probe_close` | Resolve: requires ≥1 `verdict` entry, archives the session, comments the resolution (`proceed`\|`pivot`\|`stop — <reason>`) and closes the issue |
+| `draft_start` | Open a sketch session (`.cairn/draft/<id>.md`); creates the tracker issue (label `cairn:sketch`) when no `issueId` is given; stamps `phase`; same-description open session → `PRECONDITION_FAILED` |
+| `draft_log` | Append a typed entry (`variant`\|`decision`\|`note`) — same append-only/gate rules as `trace_log` |
+| `draft_close` | Resolve: requires ≥1 `decision` entry, archives the session, comments the chosen direction and closes the issue |
+| `session_landscape` | Read-only join over all three kinds: every session's kind/id/status/issue/description/entryCounts, `openByKind` totals, archived resolution text (read from the `## resolution` block), and phase groupings. Deterministic ordering (kind, then id) — same store state, same bytes |
 
 Backed by the tracker interface's `commentIssue(id, text)` method +
-`Capability.hasComments` (true on all six adapters this tier — GitHub,
-GitLab, Jira, Azure Boards, Asana, ClickUp — the flag exists so a future
-backend can degrade to a recorded skip, same posture as `hasMilestones`).
+`Capability.hasComments` (true on all six adapters — GitHub, GitLab, Jira,
+Azure Boards, Asana, ClickUp — the flag exists so a future backend can
+degrade to a recorded skip, same posture as `hasMilestones`).
 
 ### Artifact layout
 
 ```
-.cairn/trace/<id>.md            # open session — single-writer through the trace_* tools
-.cairn/trace/archive/<id>.md    # moved here on trace_close — immutable once archived
+.cairn/trace/<id>.md              # open trace session — single-writer through the trace_* tools
+.cairn/trace/archive/<id>.md      # moved here on trace_close — immutable once archived
+.cairn/probe/<id>.md              # open probe session
+.cairn/probe/<id>/                # experiment code, runnable, throwaway
+.cairn/probe/archive/<id>.md
+.cairn/draft/<id>.md              # open draft session
+.cairn/draft/<id>/NNN-<name>.html # one variant per file, links the shared theme
+.cairn/draft/themes/default.css   # shared theme — CSS custom properties ONLY, one per project
+.cairn/draft/archive/<id>.md
 ```
 
-`id = trace-<sha256(description).slice(0,8)>` — the same hashed-content id
-convention memory cards use, so starting the same bug twice resolves to the
-same session instead of forking it. Frontmatter: `status: open|resolved`,
-`issue: <tracker id>`, `created`, `resolved` (close-time). The body is
-append-only typed blocks (`## evidence — <date>`, `## hypothesis`, `## test`,
-`## verdict`) — `trace_log` never rewrites a prior block, only appends a new
-one. `trace_close` appends a final `## resolution` block, stamps
-`status: resolved` + `resolved`, then moves the file live → archive
-(rename, not copy-and-delete) — a resolved session is immutable by
-construction, not by convention — and mechanically refuses to run at all
-without at least one `verdict` entry logged first.
+Frontmatter: `status: open|resolved`, `issue: <tracker id>`, `created`,
+`resolved` (close-time), plus probe/draft's optional `phase`. The body is
+append-only typed blocks (e.g. `## evidence — <date>`, `## verdict`) —
+`*_log` never rewrites a prior block, only appends a new one. `*_close`
+appends a final `## resolution` block, stamps `status: resolved` +
+`resolved`, then moves the file live → archive (rename, not
+copy-and-delete). `*_close`-equivalent archiving moves the session `.md`
+only; probe/draft artifact directories remain until the verb's `--wrap`
+packages what is worth keeping (`.claude/skills/<name>/` with provenance),
+after which they're deletable — the verb offers, never auto-deletes.
 
 Tracker mirror touches are milestone-only, verb-driven (never per-entry
-noise, never tool-implicit): comment #1 on `trace_start` ("Investigation
-started"), comment #2 at "cause identified", and the resolution rides as the
-`trace_close` issue-close note. `trace_start`/`trace_log` refresh the session
-handoff (`source: "tool"`) the same write-through way every other
-state-changing tool does, so a killed debug session resumes into its trace
-via the continuity machinery above.
+noise, never tool-implicit): comment #1 on `*_start` ("started"), a
+key-finding/decision comment mid-session, and the resolution rides as the
+`*_close` issue-close note — three touches per session, same story shape
+across all three kinds. `*_start`/`*_log` refresh the session handoff
+(`source: "tool"`) the same write-through way every other state-changing
+tool does, so a killed session resumes into it via the continuity
+machinery above.
 
 ## Hooks
 

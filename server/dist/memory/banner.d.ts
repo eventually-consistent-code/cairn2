@@ -1,12 +1,13 @@
 /**
  * Renders the recall banner for `projectDir`: cards scoped issue > phase >
  * project (id tiebreak), capped at `recallIndex.maxCards`, followed by an
- * "open traces:" section (sorted by id) when any open traces exist -- the
- * banner is non-null if either cards or open traces are present. Byte-stable
- * -- no timestamps beyond the dates already in trace frontmatter, no volatile
- * ordering; bytes change only when the card/trace store or active context
- * changes. Returns null (and deletes any existing banner file) when
- * `recallIndex.enabled` is false or there is nothing to render.
+ * "open sessions:" section (sorted kind trace/probe/draft, then id) when any
+ * open sessions exist -- the banner is non-null if either cards or open
+ * sessions are present. Byte-stable -- no timestamps beyond the dates already
+ * in session frontmatter, no volatile ordering; bytes change only when the
+ * card/session store or active context changes. Returns null (and deletes any
+ * existing banner file) when `recallIndex.enabled` is false or there is
+ * nothing to render.
  */
 export declare function renderBanner(projectDir: string): string | null;
 /**

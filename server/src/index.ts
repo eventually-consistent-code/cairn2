@@ -27,6 +27,7 @@ import type { Handoff } from "./core/continuity.js";
 import { appendLedger } from "./planning/ledger.js";
 import { writeBanner, bannerStats } from "./memory/banner.js";
 import { startTrace, appendTrace, listTraces, closeTrace } from "./trace/store.js";
+import { KIND_SPECS, appendSession, closeSession, sessionLandscape, startSession } from "./sessions/store.js";
 
 const StateEnum = z.enum(["open", "in_progress", "closed"]);
 const HandoffSourceEnum = z.enum(["tool", "posttooluse", "precompact", "waypoint"]);
@@ -577,6 +578,64 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       }
       return { ...out, issueClosed };
     }));
+
+  const registerSessionTools = (kind: "probe" | "draft", label: string) => {
+    const spec = KIND_SPECS[kind];
+    server.registerTool(`${kind}_start`,
+      { description: `Open a persistent ${kind} session (.cairn/${kind}/<id>.md). Creates the tracker `
+          + `issue (label ${label}) when no issueId is given. Survives /clear by construction`,
+        inputSchema: { description: z.string(), issueId: z.string().optional() } },
+      wrap(async (a: { description: string; issueId?: string }) => {
+        let issueId = a.issueId;
+        if (!issueId) {
+          const issue = await (await getTracker()).createIssue({
+            title: a.description, labels: [label] });
+          issueId = issue.id;
+        }
+        const active = new ActiveContext(deps.projectDir).get();
+        const phase = active.phase !== undefined ? String(active.phase) : undefined;
+        const { id } = startSession(deps.projectDir, kind, a.description, issueId, phase);
+        refreshHandoff({ source: "tool", issue: issueId });
+        return { id, issue: issueId };
+      }));
+
+    server.registerTool(`${kind}_log`,
+      { description: `Append a typed entry (${spec.entryKinds.join("|")}) to an open ${kind} session — append-only`,
+        inputSchema: { id: z.string(),
+                       kind: z.enum(spec.entryKinds as [string, ...string[]]),
+                       text: z.string().min(1) } },
+      wrap((a: { id: string; kind: string; text: string }) => {
+        const out = appendSession(deps.projectDir, kind, a.id, a.kind, a.text);
+        refreshHandoff({ source: "tool" });
+        return out;
+      }));
+
+    server.registerTool(`${kind}_close`,
+      { description: `Resolve a ${kind} session: requires a ${spec.closeGate} entry; archives it, comments `
+          + `the resolution on the issue and closes it`,
+        inputSchema: { id: z.string(), resolution: z.string() } },
+      wrap(async (a: { id: string; resolution: string }) => {
+        const out = closeSession(deps.projectDir, kind, a.id, a.resolution);
+        let issueClosed = false;
+        if (out.issue) {
+          const tracker = await getTracker();
+          try { await tracker.commentIssue(out.issue, `Resolved: ${a.resolution}`); }
+          catch { /* best-effort mirror; close is the state change that matters */ }
+          await tracker.closeIssue(out.issue);
+          issueClosed = true;
+        }
+        return { ...out, issueClosed };
+      }));
+  };
+  registerSessionTools("probe", "cairn:spike");
+  registerSessionTools("draft", "cairn:sketch");
+
+  server.registerTool("session_landscape",
+    { description: "Deterministic join over trace/probe/draft sessions — open + resolved with "
+        + "resolutions, counts by kind, phase linkage. Frontier-mode grounding: never re-propose "
+        + "an archived stop-verdict probe",
+      inputSchema: {} },
+    wrap(() => sessionLandscape(deps.projectDir)));
 
   return server;
 }

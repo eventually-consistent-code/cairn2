@@ -19,10 +19,9 @@ const failures = [];
 // --- inputs -----------------------------------------------------------------
 
 const SPEC_RESERVED = {
-  probe: "C", draft: "C",
   triage: "D", basecamp: "F",
 };
-const TOOL_PREFIXES = /^(context|issue|plan|mem|continuity|ledger|milestone|config|trace)_/;
+const TOOL_PREFIXES = /^(context|issue|plan|mem|continuity|ledger|milestone|config|trace|probe|draft|session)_/;
 
 const skillMd = readFileSync(
   join(root, "skills/cairn-trailhead/SKILL.md"), "utf8");
@@ -40,10 +39,16 @@ const verbFiles = readdirSync(join(root, "skills/cairn-trailhead/verbs"))
   .filter((f) => f.endsWith(".md"))
   .map((f) => f.replace(/\.md$/, ""));
 
-// server registry: registerTool("name", …)
+// server registry: registerTool("name", …) plus the templated
+// registerSessionTools("kind", …) factory, which expands to
+// `${kind}_start` / `${kind}_log` / `${kind}_close` at runtime.
 const serverSrc = readFileSync(join(root, "server/src/index.ts"), "utf8");
 const registry = new Set(
   [...serverSrc.matchAll(/registerTool\("([a-z_]+)"/g)].map((m) => m[1]));
+for (const m of serverSrc.matchAll(/registerSessionTools\("([a-z]+)"/g)) {
+  const kind = m[1];
+  for (const suffix of ["start", "log", "close"]) registry.add(`${kind}_${suffix}`);
+}
 if (registry.size === 0) failures.push("no registerTool() names found in server/src/index.ts");
 
 // --- checks ------------------------------------------------------------------

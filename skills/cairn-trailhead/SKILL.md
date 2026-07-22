@@ -27,8 +27,8 @@ canonical registry — `help` renders from it and CI enforces it.
 | `waypoint` | Pause/resume session continuity | `[resume]` | verbs/waypoint.md | live |
 | `scout` | Research a phase only — resumable RESEARCH.md checkpoints | `<N>` | verbs/scout.md | live |
 | `route` | Re-route the roadmap — insert/remove/edit phases | `insert\|remove\|edit <N> ["name"]` | verbs/route.md | live |
-| `probe` | Risk-ordered throwaway spike experiments with verdicts | | verbs/probe.md | reserved-C |
-| `draft` | Multi-variant mockups on a shared theme | | verbs/draft.md | reserved-C |
+| `probe` | Risk-ordered throwaway spike experiments with verdicts | `"<question>"` \| (none = frontier) \| `--wrap [<id>]` | verbs/probe.md | live |
+| `draft` | Multi-variant mockups on a shared theme | `"<design question>"` \| (none = frontier) \| `--wrap [<id>]` | verbs/draft.md | live |
 | `summit` | Complete the milestone — verify gate, tracker close/release, archive, tag | | verbs/summit.md | live |
 | `auto` | Chained hands-off execution of remaining phases (opt-in) | | verbs/auto.md | live |
 | `fast` | Trivial inline change — one issue, ≤3 files, atomic commit | `"<change>"` | verbs/fast.md | live |
