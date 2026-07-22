@@ -83,20 +83,27 @@ starts them.
 Run from inside whichever session picked up a workstream.
 
 **`claim <id>`** — in this order, always:
-1. `workspace_focus(project: <that workstream's member>)` — focus
-   switches FIRST, because everything claim does next (the issue, the
+
+1. `board_get()` — check the workstream's current status first. If already
+   `active`, another session has the claim. Stop and say so (note who has
+   it, if visible), then pick different work.
+2. `workspace_focus(project: <that workstream's member>)` — focus
+   switches next, because everything claim does next (the issue, the
    session tag) needs to land in the right member's tracker.
-2. If the workstream has no `issue` yet: `issue_create` in the now-focused
+3. If the workstream has no `issue` yet: `issue_create` in the now-focused
    member's tracker, plain-language title, `phase` left unset unless the
    workstream clearly maps to one. If it already names an issue, link to
    that one — never create a second issue for the same workstream.
-3. `board_update(patch: { <id>: { status: "active", session: <a free-text
+4. `board_update(patch: { <id>: { status: "active", session: <a free-text
    tag identifying this session>, issue: <the issue id> } })`.
+5. **Race check:** immediately after `board_update`, re-read `board_get` and
+   confirm YOUR session tag is in place. The board is last-write-wins: if
+   another session's tag appears instead, you lost the race. Back off: close
+   or abandon any issue you just created (one-line comment), and pick
+   different work.
 
 **Never claim a workstream that's already `active`.** Two sessions on one
-workstream is exactly what the single-writer board exists to prevent —
-check `board_get` first; if it's already active, stop and say so instead
-of overwriting someone else's claim.
+workstream is exactly what the single-writer board exists to prevent.
 
 **`update <id>`** — `board_update` with a fresh `note` (one line, current
 state) and `status` when it changed. `status: "blocked"` REQUIRES a `note`
