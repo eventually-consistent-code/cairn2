@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
-import { mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -75,7 +75,31 @@ describe("cairn MCP server", () => {
       "session_landscape",
       "plan_check", "audit_record",
       "map_set", "map_get",
+      "workspace_list", "workspace_focus", "workspace_status",
+      "board_get", "board_update",
     ].sort());
+  });
+
+  it("pins the tool count at 60", async () => {
+    expect((await listToolNames()).length).toBe(60);
+  });
+
+  it("workspace_list without a workspace returns { workspace: null }, not an error", async () => {
+    const out = await call("workspace_list", {});
+    expect(out.isError).toBeFalsy();
+    expect(out.json.workspace).toBeNull();
+  });
+
+  it("workspace_focus without a workspace is a PRECONDITION_FAILED error", async () => {
+    const res = await call("workspace_focus", { project: "anything" });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("PRECONDITION_FAILED");
+  });
+
+  it("board_get without a workspace is a PRECONDITION_FAILED error", async () => {
+    const res = await call("board_get", {});
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("PRECONDITION_FAILED");
   });
 
   it("registers the Tier A tools", async () => {
@@ -447,5 +471,151 @@ describe("continuity: write-through + tools", () => {
     } finally {
       continuityFailure.failWrites = false;
     }
+  });
+});
+
+// A valid single-member cairn.json body, reused across the workspace fixtures.
+const CAIRN_JSON = JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } });
+
+describe("workspace: focus redirect + board (two-member fixture)", () => {
+  let wsRoot: string;
+  let client: Client;
+
+  const call = async (name: string, args: Record<string, unknown> = {}) => {
+    const res = await client.callTool({ name, arguments: args });
+    const text = (res.content as Array<{ type: string; text: string }>)[0].text;
+    return { ...res, json: JSON.parse(text) };
+  };
+
+  beforeAll(async () => {
+    wsRoot = mkdtempSync(join(tmpdir(), "cairn-ws-"));
+    mkdirSync(join(wsRoot, "member-a"));
+    mkdirSync(join(wsRoot, "member-b"));
+    writeFileSync(join(wsRoot, "member-a", "cairn.json"), CAIRN_JSON);
+    writeFileSync(join(wsRoot, "member-b", "cairn.json"), CAIRN_JSON);
+    writeFileSync(join(wsRoot, "cairn-workspace.json"), JSON.stringify({
+      workspace: "ws-test",
+      members: [{ name: "a", path: "member-a" }, { name: "b", path: "member-b" }],
+    }));
+    const server = buildServer({ projectDir: wsRoot, tracker: new FakeTracker() });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    client = new Client({ name: "test-ws", version: "0.0.0" });
+    await Promise.all([server.connect(st), client.connect(ct)]);
+  });
+
+  afterAll(() => {
+    rmSync(wsRoot, { recursive: true, force: true });
+  });
+
+  it("workspace_list reports the workspace, members, and null focus", async () => {
+    const out = await call("workspace_list", {});
+    expect(out.json.workspace).toBe("ws-test");
+    expect(out.json.members.map((m: { name: string }) => m.name).sort()).toEqual(["a", "b"]);
+    expect(out.json.members.every((m: { configured: boolean }) => m.configured)).toBe(true);
+    expect(out.json.focus).toBeNull();
+  });
+
+  it("workspace_focus rejects an unknown member", async () => {
+    const res = await call("workspace_focus", { project: "ghost" });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("CONFIG_INVALID");
+  });
+
+  it("focus on b redirects context_set into member b's .cairn/ only", async () => {
+    const focused = await call("workspace_focus", { project: "b" });
+    expect(focused.json).toEqual({ focus: "b", projectDir: join(wsRoot, "member-b") });
+
+    await call("context_set", { phase: 7 });
+    const got = await call("context_get", {});
+    expect(got.json).toEqual({ phase: 7 });
+
+    // the context landed in member b's store -- and NOWHERE else
+    const ctxFile = join(".cairn", "state", "active-context.json");
+    expect(existsSync(join(wsRoot, "member-b", ctxFile))).toBe(true);
+    expect(existsSync(join(wsRoot, "member-a", ctxFile))).toBe(false);
+    expect(existsSync(join(wsRoot, ctxFile))).toBe(false);
+
+    // clearing focus lands reads back at the launch dir, which has no context
+    const cleared = await call("workspace_focus", { project: null });
+    expect(cleared.json.focus).toBeNull();
+    const back = await call("context_get", {});
+    expect(back.json).toEqual({});
+  });
+
+  it("board round-trips through board_update / board_get", async () => {
+    const created = await call("board_update", {
+      patch: { ws1: { title: "wire the resolver", project: "a" } } });
+    expect(created.json).toEqual({ workstreams: 1 });
+
+    const got = await call("board_get", {});
+    expect(got.json.workstreams.ws1).toMatchObject({
+      title: "wire the resolver", project: "a", status: "queued" });
+    expect(got.json.counts).toEqual({ queued: 1, active: 0, blocked: 0, done: 0 });
+
+    await call("board_update", { patch: { ws1: { status: "active", note: "claimed" } } });
+    const after = await call("board_get", {});
+    expect(after.json.workstreams.ws1).toMatchObject({ status: "active", note: "claimed" });
+    expect(after.json.counts.active).toBe(1);
+
+    const deleted = await call("board_update", { patch: { ws1: null } });
+    expect(deleted.json).toEqual({ workstreams: 0 });
+  });
+
+  it("board_update rejects a workstream naming a non-member project", async () => {
+    const res = await call("board_update", { patch: { bad: { title: "t", project: "ghost" } } });
+    expect(res.isError).toBe(true);
+  });
+});
+
+describe("workspace_status: per-member isolation", () => {
+  let wsRoot: string;
+  let client: Client;
+
+  const call = async (name: string, args: Record<string, unknown> = {}) => {
+    const res = await client.callTool({ name, arguments: args });
+    const text = (res.content as Array<{ type: string; text: string }>)[0].text;
+    return { ...res, json: JSON.parse(text) };
+  };
+
+  beforeAll(async () => {
+    wsRoot = mkdtempSync(join(tmpdir(), "cairn-ws-status-"));
+    // member "a" IS the workspace root (path ".") so the test-injected
+    // FakeTracker -- bound to the launch dir -- serves its tracker reads.
+    writeFileSync(join(wsRoot, "cairn.json"), CAIRN_JSON);
+    // member "broken" has a cairn.json whose tracker config fails adapter
+    // validation (repo isn't owner/name) -- makeTracker throws fast, no network.
+    mkdirSync(join(wsRoot, "member-broken"));
+    writeFileSync(join(wsRoot, "member-broken", "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "not-a-slug" } } }));
+    writeFileSync(join(wsRoot, "cairn-workspace.json"), JSON.stringify({
+      workspace: "ws-status",
+      members: [{ name: "a", path: "." }, { name: "broken", path: "member-broken" }],
+    }));
+    const server = buildServer({ projectDir: wsRoot, tracker: new FakeTracker() });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    client = new Client({ name: "test-ws-status", version: "0.0.0" });
+    await Promise.all([server.connect(st), client.connect(ct)]);
+  });
+
+  afterAll(() => {
+    rmSync(wsRoot, { recursive: true, force: true });
+  });
+
+  it("one erroring member yields { name, error } without failing the call", async () => {
+    await call("issue_create", { title: "open issue for status" });
+    await call("context_set", { phase: 2 });
+
+    const out = await call("workspace_status", {});
+    expect(out.isError).toBeFalsy();
+    expect(out.json.workspace).toBe("ws-status");
+
+    const a = out.json.members.find((m: { name: string }) => m.name === "a");
+    expect(a).toMatchObject({ name: "a", phase: 2, openSessions: 0 });
+    expect(a.openIssues).toBeGreaterThanOrEqual(1);
+    expect(a.error).toBeUndefined();
+
+    const broken = out.json.members.find((m: { name: string }) => m.name === "broken");
+    expect(broken.error).toBeTruthy();
+    expect(broken.openIssues).toBeUndefined();
   });
 });
