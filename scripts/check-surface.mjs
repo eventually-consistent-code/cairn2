@@ -18,10 +18,8 @@ const failures = [];
 
 // --- inputs -----------------------------------------------------------------
 
-const SPEC_RESERVED = {
-  basecamp: "F",
-};
-const TOOL_PREFIXES = /^(context|issue|plan|mem|continuity|ledger|milestone|config|trace|probe|draft|session|audit|map|thread)_/;
+const SPEC_RESERVED = {};
+const TOOL_PREFIXES = /^(context|issue|plan|mem|continuity|ledger|milestone|config|trace|probe|draft|session|audit|map|thread|workspace|board)_/;
 
 const skillMd = readFileSync(
   join(root, "skills/cairn-trailhead/SKILL.md"), "utf8");
