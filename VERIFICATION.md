@@ -1557,7 +1557,7 @@ tracker where a tracker is touched). No `server/drills/drill-{thread,map,
 backtrack}.mjs` exist yet; authored post-merge per this tier's convention
 (see bottom of this file).
 
-**Thread drill — PENDING (run live post-merge).**
+**Thread drill — RUN 2026-07-22, see results below.**
 1. Real tracker: `/cairn thread "<name>"` → expect `thread_start` creates
    the `cairn:thread` issue and posts mirror comment #1 ("Thread started:
    <plain summary>").
@@ -1582,7 +1582,7 @@ backtrack}.mjs` exist yet; authored post-merge per this tier's convention
    archived, is immutable (a further `thread_log` throws) (spec success
    criterion 1).
 
-**Map drill — PENDING (run live post-merge).**
+**Map drill — RUN 2026-07-22, see results below.**
 1. Server only, no tracker: `map build`-equivalent — issue a sequence of
    `map_set` patches building a small graph (a few `module`/`phase`/
    `issue`/`decision` nodes, `depends-on`/`implements` edges).
@@ -1606,7 +1606,7 @@ backtrack}.mjs` exist yet; authored post-merge per this tier's convention
    drilled (no server tool decides "drift"; `map diff` is `map_get()`
    compared to a fresh in-memory walk).
 
-**Backtrack drill — PENDING (run live post-merge).**
+**Backtrack drill — RUN 2026-07-22, see results below.**
 1. Local scratch git repo: seed a phase with `LEDGER.md`-recorded commit
    ranges (a handful of real commits), plus one LATER commit that touches
    a file also touched inside the ledgered range (the overlap case).
@@ -1623,3 +1623,51 @@ backtrack}.mjs` exist yet; authored post-merge per this tier's convention
 5. Pass condition: the exact ledgered revert set, the file-by-file overlap
    flag, and the reverts-only/original-shas-intact/suite-green apply leg
    all hold mechanically (spec success criterion 4).
+
+### Drill results — RUN 2026-07-22 (mechanical) — PASS 28/28
+
+Same harness as every prior tier: real `dist/index.js` over stdio; the
+thread drill uses the real GitHub tracker
+(`eventually-consistent-code/cairn-drill-scratch`); map and backtrack are
+tracker-free (map is pure server, backtrack seeds a local scratch git
+repo). Repeatable drivers at
+`server/drills/drill-{thread,map,backtrack}.mjs` (run from `server/`:
+`node drills/drill-<name>.mjs <projectDir> $PWD/dist/index.js`; fresh
+scratch `<projectDir>` per drill).
+
+**Thread drill — PASS 10/10.** `thread_start` created the real
+`cairn:thread` issue and the session file; opened-mirror comment posted;
+note/link/decision entries logged; the banner surfaced the open thread
+LAST in kind order. Cold-killed the client; a fresh client's
+`thread_start` with the same name hit the already-open guard (resume IS
+the point), and the landscape showed counts intact — zero re-derived
+context. Close before any wrap entry was refused; after the wrap entry,
+close commented the resolution, closed the issue, archived the session.
+The three tracker comments read opened → wrapped → resolved in plain
+language; leak scan zero hits (spec success criterion 1).
+
+**Map drill — PASS 10/10.** Chunked build done the safe way (nodes across
+two patches, edges in ONE final patch — the map.md warning honored):
+4 nodes / 3 edges. A dangling edge was rejected naming the ghost id and
+the store read back BYTE-IDENTICAL afterward (validate-before-write
+atomicity, live). Two reads byte-equal; node filter returned self +
+touching edges + neighbors; nodeType/edgeType filters narrowed
+correctly; deleting a node with attached edges was refused; a wholesale
+edge replace demonstrated the documented replace semantics; null-delete
+succeeded once detached (spec success criterion 2).
+
+**Backtrack drill — PASS 8/8.** A scratch repo with two ledgered task
+commits (`ledger_append`, real range in LEDGER.md) plus one LATER commit
+overlapping `b.txt`. The revert set computed from the ledger named
+exactly the two task commits; the overlap was flagged file-by-file. The
+apply leg reverted the non-overlapping commit only (the verb's
+manual-review rule for the overlapped file): revert commit created,
+content restored, ORIGINAL SHAS INTACT — `git log` shows history grew,
+nothing rewritten, the overlapping file untouched. The run closed with
+an `audit_record` naming the excluded file (spec success criterion 4).
+
+Criterion 3 (`medic`) and criterion 5 (`status --stats`) are verb-level
+orchestrations of already-drilled tools (`plan_*`, `audit_record`,
+`issue_list`, `mem_stats`, `session_landscape`) — covered by review of
+the verb docs plus those tools' own rings, same treatment as prior
+tiers' prompt-level surfaces.
