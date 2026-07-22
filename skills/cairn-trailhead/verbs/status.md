@@ -1,6 +1,6 @@
 ---
 verb: status
-args: ""
+args: "[--stats]"
 status: live
 ---
 
@@ -33,3 +33,26 @@ Show project status:
   waiting on a fix or a trace — surface them every time, same as an open
   trace.
 6. Keep it to one screen; end with the obvious next `/cairn` step.
+
+## `--stats`
+
+Project stats fold in here — no new verb, no new tool, zero surface growth.
+Every number is a LIVE read at the moment `--stats` runs, never a cached or
+remembered count from an earlier session:
+
+- `plan_status()` — phase count, artifacts present per phase.
+- `issue_list()` — open/closed counts, grouped by label
+  (`cairn:backlog`, `cairn:seed`, `cairn:audit`, `cairn:review`, `cairn:bug`,
+  `cairn:spike`, `cairn:sketch`, `cairn:thread`, whatever the tracker
+  actually carries).
+- `mem_stats()` — memory index size (chunk count, approximate token usage,
+  `bannerTokens`, `tokensSavedVsFullInjection`).
+- `session_landscape()` — open/resolved counts by kind (trace, probe, draft,
+  thread), phase groupings.
+- `.cairn/audit/` records dir — count of audit/review/triage records on
+  disk, most recent scope + date per mode.
+
+Render as a compact table, one line per source above. State plainly that
+these are live reads, not a cached snapshot — the whole point of folding
+stats into `status` instead of a report file is that the numbers can never
+go stale between runs.
