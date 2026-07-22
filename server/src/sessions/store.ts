@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { CairnError } from "../errors.js";
 import { parseFrontmatter, serializeFrontmatter } from "../planning/frontmatter.js";
 
-export type SessionKind = "trace" | "probe" | "draft";
+export type SessionKind = "trace" | "probe" | "draft" | "thread";
 export interface KindSpec {
   kind: SessionKind;
   entryKinds: readonly string[];
@@ -18,6 +18,7 @@ export const KIND_SPECS: Record<SessionKind, KindSpec> = {
   trace: { kind: "trace", entryKinds: ["evidence", "hypothesis", "test", "verdict"], closeGate: "verdict" },
   probe: { kind: "probe", entryKinds: ["experiment", "result", "requirement", "verdict"], closeGate: "verdict" },
   draft: { kind: "draft", entryKinds: ["variant", "decision", "note"], closeGate: "decision" },
+  thread: { kind: "thread", entryKinds: ["note", "link", "decision", "wrap"], closeGate: "wrap" },
 };
 
 export interface SessionInfo {
@@ -26,9 +27,9 @@ export interface SessionInfo {
   entryCounts: Record<string, number>; description: string;
 }
 
-const TITLE_RE = /^# (?:Trace|Probe|Draft): (.*)$/m;
+const TITLE_RE = /^# (?:Trace|Probe|Draft|Thread): (.*)$/m;
 const titlePrefix = (kind: SessionKind) =>
-  kind === "trace" ? "Trace" : kind === "probe" ? "Probe" : "Draft";
+  kind === "trace" ? "Trace" : kind === "probe" ? "Probe" : kind === "draft" ? "Draft" : "Thread";
 const entryRe = (spec: KindSpec) =>
   new RegExp(`^## (${spec.entryKinds.join("|")}) — `, "gm");
 
@@ -41,18 +42,21 @@ const listHint: Record<SessionKind, string> = {
   trace: "list open traces with trace_list",
   probe: "list sessions with session_landscape",
   draft: "list sessions with session_landscape",
+  thread: "list sessions with session_landscape",
 };
 
 const closeHint: Record<SessionKind, string> = {
   trace: "trace_log a verdict (cause + fix + commit), then close",
   probe: "probe_log a verdict (VALIDATED|INVALIDATED|PARTIAL + why), then close",
   draft: "draft_log a decision, then close",
+  thread: "thread_log a wrap (where this thread landed), then close",
 };
 
 const archiveHint: Record<SessionKind, string> = {
   trace: "start a new trace if the bug is back",
   probe: "start a new probe if the question is back",
   draft: "start a new draft if the design question is back",
+  thread: "start a new thread if the topic comes back",
 };
 
 export function sessionId(kind: SessionKind, description: string): string {
@@ -175,7 +179,7 @@ export function sessionResolution(projectDir: string, kind: SessionKind, id: str
   return m ? m[1].trim() : null;
 }
 
-const KIND_ORDER: SessionKind[] = ["trace", "probe", "draft"];
+const KIND_ORDER: SessionKind[] = ["trace", "probe", "draft", "thread"];
 
 export interface Landscape {
   sessions: Array<SessionInfo & { resolution?: string }>;
@@ -190,7 +194,7 @@ export interface Landscape {
  */
 export function sessionLandscape(projectDir: string): Landscape {
   const sessions: Landscape["sessions"] = [];
-  const openByKind = { trace: 0, probe: 0, draft: 0 } as Record<SessionKind, number>;
+  const openByKind = { trace: 0, probe: 0, draft: 0, thread: 0 } as Record<SessionKind, number>;
   for (const kind of KIND_ORDER) {
     for (const s of listSessions(projectDir, kind)) {
       const entry: Landscape["sessions"][number] = { ...s };

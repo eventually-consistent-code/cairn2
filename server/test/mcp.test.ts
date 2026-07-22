@@ -238,7 +238,7 @@ describe("cairn MCP server", () => {
   it("session_landscape's openByKind reflects an open probe created via probe_start", async () => {
     const started = await call("probe_start", { description: "landscape check" });
     const scape = await call("session_landscape", {});
-    expect(Object.keys(scape.json.openByKind).sort()).toEqual(["draft", "probe", "trace"]);
+    expect(Object.keys(scape.json.openByKind).sort()).toEqual(["draft", "probe", "thread", "trace"]);
     expect(scape.json.openByKind.probe).toBeGreaterThanOrEqual(1);
     const found = scape.json.sessions.find((s: { id: string }) => s.id === started.json.id);
     expect(found?.kind).toBe("probe");

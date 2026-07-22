@@ -86,7 +86,7 @@ describe("sessionLandscape", () => {
     startSession(dir, "trace", "bug", "GH-12");
 
     const scape = sessionLandscape(dir);
-    expect(scape.openByKind).toEqual({ trace: 1, probe: 0, draft: 1 });
+    expect(scape.openByKind).toEqual({ trace: 1, probe: 0, draft: 1, thread: 0 });
     const stopped = scape.sessions.find((s) => s.id === p.id);
     expect(stopped?.status).toBe("resolved");
     expect(stopped?.resolution).toBe("stop — SDK cannot stream");
@@ -94,5 +94,30 @@ describe("sessionLandscape", () => {
     // deterministic: kind order trace,probe,draft then id
     expect(JSON.stringify(sessionLandscape(dir))).toBe(JSON.stringify(scape));
     expect(scape.sessions.map((s) => s.kind)).toEqual(["trace", "probe", "draft"]);
+  });
+});
+
+describe("sessions store — thread kind", () => {
+  it("thread vocabulary, wrap gate, archive", () => {
+    const dir = fresh();
+    const { id } = startSession(dir, "thread", "payments refactor", "GH-60", "4");
+    expect(id.startsWith("thread-")).toBe(true);
+    appendSession(dir, "thread", id, "note", "stripe adapter first");
+    appendSession(dir, "thread", id, "link", "probe-ab12cd34 — proved streaming holds");
+    appendSession(dir, "thread", id, "decision", "webhooks over polling");
+    expect(() => appendSession(dir, "thread", id, "evidence", "nope")).toThrow(/entry kind/);
+    expect(() => closeSession(dir, "thread", id, "done")).toThrow(/wrap/);
+    appendSession(dir, "thread", id, "wrap", "landed: adapter migrated, webhooks live");
+    const out = closeSession(dir, "thread", id, "refactor thread wrapped — see wrap entry");
+    expect(out.gateTexts).toEqual(["landed: adapter migrated, webhooks live"]);
+    expect(listSessions(dir, "thread", "resolved")[0].phase).toBe("4");
+  });
+
+  it("landscape includes threads last in kind order", () => {
+    const dir = fresh();
+    startSession(dir, "thread", "t", "GH-61");
+    startSession(dir, "trace", "b", "GH-62");
+    expect(sessionLandscape(dir).sessions.map((s) => s.kind)).toEqual(["trace", "thread"]);
+    expect(sessionLandscape(dir).openByKind).toEqual({ trace: 1, probe: 0, draft: 0, thread: 1 });
   });
 });
