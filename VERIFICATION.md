@@ -1309,7 +1309,7 @@ from an unchanged test count.
 
 ### Dogfood drill procedure (spec §3)
 
-**Triage drill — PENDING (run live post-merge).** Per spec §3, one drill,
+**Triage drill — RUN 2026-07-22, see results below.** Per spec §3, one drill,
 to be run in a scratch project with cairn2 installed as a local plugin
 and recorded here once run — same `server/drills/drill-{name}.mjs`
 harness and format as every prior tier's drills (real `dist/index.js`
@@ -1340,3 +1340,34 @@ bottom of this file).
 5. **Same-day supersede** — re-run `triage` again the same day: confirm
    the record file's content is replaced (not appended), same semantics
    as `audit`/`review`'s same-day supersession.
+
+### Drill results — RUN 2026-07-22 (mechanical, real tracker) — PASS 13/13
+
+Same harness as every prior tier: real `dist/index.js` over stdio, real
+GitHub tracker (`eventually-consistent-code/cairn-drill-scratch`).
+Repeatable driver at `server/drills/drill-triage.mjs` (run from `server/`:
+`node drills/drill-triage.mjs <projectDir> $PWD/dist/index.js`; fresh
+scratch `<projectDir>` per run).
+
+**Triage drill — PASS 13/13.** Staged the rot: an unlabeled issue, a
+bodiless one, a near-duplicate pair, and the real thing for
+resolved-but-open — a `cairn:bug` issue whose trace ran to a verdict,
+closed it with a resolution, and was then reopened out-of-band. Report
+leg: `session_landscape` carried the trace's resolution (the evidence),
+the record landed with 1 important + 4 minors all linked to real issue
+ids, and NOTHING on the tracker moved (bug still open, unlabeled still
+bare). Apply leg: the unlabeled issue got a label drawn only from the
+project's existing vocabulary; the resolved-but-open issue closed with
+the trace id and resolution text quoted in the close comment; the
+duplicate pair got cross-linking comments and BOTH stayed open; the
+bodiless issue was untouched. Same-day re-run superseded the record;
+leak scan over every comment sent: zero hits (spec success criteria
+1-5 all held).
+
+**Harness note (drill mechanics, not product):** GitHub's issue-list
+endpoint is read-after-write inconsistent — issues created seconds
+earlier can be absent from a list call. Real triage sweeps an aged
+tracker, so `issue_list` is the right sweep tool in production; the
+drill pins its classification on per-id `issue_get` (read-after-write
+consistent) and separately asserts `issue_list` answers. Noted in the
+driver's header comment.
