@@ -26,6 +26,11 @@ phase's own stated criteria (PLAN.md, SPEC docs — whatever that phase
 committed to), check delivered state against it, don't substitute a
 generic checklist for the phase's actual bar.
 
+**Milestone mode resolution:** resolve `n` via `milestone_list` first (handles
+both current and archived milestones). No `n` means audit the current milestone.
+If `n` is archived, read artifacts from `milestones/v<n>/` instead of live
+`plan_status` phases.
+
 No target on a phase-scoped mode means: figure out the most recently
 active phase from `plan_status` and audit that.
 
