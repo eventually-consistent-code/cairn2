@@ -121,7 +121,8 @@ export function closeTrace(projectDir: string, id: string, resolution: string): 
   const blocks = body.split(/^## /m).slice(1);
   for (const block of blocks) {
     if (block.startsWith("verdict — ")) {
-      verdicts.push(block.split("\n").slice(1).join("\n").trim());
+      const text = block.split("\n").slice(1).join("\n").trim();
+      if (text.length > 0) verdicts.push(text);
     }
   }
   if (verdicts.length === 0) {

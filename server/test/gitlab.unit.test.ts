@@ -277,6 +277,7 @@ describe("GitLabTracker mapping", () => {
     process.env.T = "tok";
     const c = await t.commentIssue("9", "plain note");
     expect(calls[0].url).toContain("/issues/9/notes");
+    expect(calls[0].method).toBe("POST");
     expect(calls[0].body).toEqual({ body: "plain note" });
     expect(c.id).toBe("55");
   });

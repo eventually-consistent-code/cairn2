@@ -546,7 +546,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
     { description: "Append a typed entry (evidence|hypothesis|test|verdict) to an open trace — append-only",
       inputSchema: { id: z.string(),
                      kind: z.enum(["evidence", "hypothesis", "test", "verdict"]),
-                     text: z.string() } },
+                     text: z.string().min(1) } },
     wrap((a: { id: string; kind: "evidence" | "hypothesis" | "test" | "verdict"; text: string }) => {
       const out = appendTrace(deps.projectDir, a.id, a.kind, a.text);
       refreshHandoff({ source: "tool" });

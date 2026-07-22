@@ -394,7 +394,7 @@ export function buildServer(deps) {
     server.registerTool("trace_log", { description: "Append a typed entry (evidence|hypothesis|test|verdict) to an open trace — append-only",
         inputSchema: { id: z.string(),
             kind: z.enum(["evidence", "hypothesis", "test", "verdict"]),
-            text: z.string() } }, wrap((a) => {
+            text: z.string().min(1) } }, wrap((a) => {
         const out = appendTrace(deps.projectDir, a.id, a.kind, a.text);
         refreshHandoff({ source: "tool" });
         return out;

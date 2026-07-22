@@ -358,6 +358,7 @@ describe("JiraTracker mapping", () => {
     const t = makeJira(f);
     const c = await t.commentIssue("PROJ-9", "plain note");
     expect(calls[0].url).toContain("/rest/api/3/issue/PROJ-9/comment");
+    expect(calls[0].method).toBe("POST");
     expect(calls[0].body).toEqual({ body: adfBody("plain note") });
     expect(c.id).toBe("10500");
   });

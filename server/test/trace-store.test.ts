@@ -66,4 +66,10 @@ describe("trace store", () => {
     expect(() => appendTrace(dir, id, "evidence", "late")).toThrowError(/resolved/);
     expect(() => appendTrace(dir, "trace-00000000", "evidence", "x")).toThrowError(/no trace/);
   });
+
+  it("whitespace-only verdict does not satisfy the close gate", () => {
+    const { id } = startTrace(dir, "b4", "GH-9");
+    appendTrace(dir, id, "verdict", "   ");
+    expect(() => closeTrace(dir, id, "r")).toThrowError(/verdict/);
+  });
 });
