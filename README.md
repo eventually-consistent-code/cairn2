@@ -55,14 +55,14 @@ unplanned-work surfacing (tracker issues no plan references), `import`
 assignee-aware claiming, and plans/cards that collaborate through ordinary
 git PRs.
 
-**Verbs (34 live):** `plan` `work` `verify` `ship` `status` `new` `import`
+**Verbs (35 live):** `plan` `work` `verify` `ship` `status` `new` `import`
 `remember` `recall` `help` `do` `waypoint` `scout` `route` `summit` `auto`
 `fast` `resync` `mark` `retro` `distill` `brief` `tune` `trace` `probe`
 `draft` `audit` `review` `triage` `map` `thread` `profile` `medic`
-`backtrack` — behind a single `/cairn <verb>` entrypoint. One more verb is
-reserved (mapped in the routing skill, not yet built): `basecamp`.
+`backtrack` `basecamp` — behind a single `/cairn <verb>` entrypoint. The
+routing table is complete: the reserved verb set is now empty.
 
-**Server:** 55 typed MCP tools, 416 passing tests (6 skipped — env-gated
+**Server:** 60 typed MCP tools, 459 passing tests (6 skipped — env-gated
 live-backend suites), three dependencies (`@modelcontextprotocol/sdk`,
 `better-sqlite3`, `zod`). Fail loud, never fake state.
 
@@ -87,7 +87,8 @@ and [gap analysis](docs/superpowers/research/2026-07-15-competitor-gap-analysis.
 | Tier C3 | Audits & review governance — `audit` `review`, `plan_check`, `audit_record` | ✅ shipped |
 | Tier D | `triage` — tracker-loop triage | ✅ shipped |
 | Tier E | `map` `thread` `profile` `medic` `backtrack`, `audit docs`, `status --stats` | ✅ shipped |
-| Tier F | `basecamp` multi-project, cross-AI review, frontend quality loop | planned |
+| Tier F1 | `basecamp` — workspace awareness, focus switch, dispatch board | ✅ shipped |
+| Tier F | F2 cross-AI review, F3 frontend quality loop | planned |
 | P5′ | Dogfood gate → 1.x cutover → publish | planned |
 
 ## Development
