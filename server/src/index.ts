@@ -95,8 +95,11 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
   // build-time singleton. A test-injected tracker binds to the launch dir.
   const trackers = new Map<string, Tracker>();
   if (deps.tracker) trackers.set(launchDir, deps.tracker);
-  const getTracker = async (): Promise<Tracker> => {
-    const d = dir();
+  // Accepts an optional pre-resolved dir -- handlers that already snapshotted
+  // `dir()` once (to survive a mid-call workspace_focus flip) pass it through
+  // here instead of letting this resolve dir() again on its own.
+  const getTracker = async (dOverride?: string): Promise<Tracker> => {
+    const d = dOverride ?? dir();
     let t = trackers.get(d);
     if (!t) {
       t = new CachedTracker(await makeTracker(loadConfig(d)));
@@ -105,7 +108,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
     return t;
   };
 
-  const getCtx = (): ActiveContext => new ActiveContext(dir());
+  const getCtx = (d: string = dir()): ActiveContext => new ActiveContext(d);
 
   const ok = (value: unknown) => ({
     content: [{ type: "text" as const, text: JSON.stringify(value) }],
@@ -126,9 +129,10 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
   // is a hint, never authority (trust order: tracker + git > ledger > handoff)
   // -- so a refresh failure (unwritable ~/.cairn/handoff, corrupt file, etc.)
   // must never fail the primary tool call that triggered it.
-  const refreshHandoff = (patch: Partial<Handoff> & { source: Handoff["source"] }): void => {
+  const refreshHandoff = (patch: Partial<Handoff> & { source: Handoff["source"] },
+                           d: string = dir()): void => {
     try {
-      writeHandoff(dir(), patch);
+      writeHandoff(d, patch);
     } catch {
       // swallowed by design -- see comment above.
     }
@@ -138,8 +142,8 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
   // matching against locally scaffolded phase dirs (NN-slug). Returns
   // undefined when the phase hasn't been scaffolded locally -- best-effort,
   // same spirit as the rest of write-through refresh.
-  const phaseHandoffRef = (number: number): { number: number; slug: string } | undefined => {
-    const match = projectStatus(dir()).phases.find((p) => p.number === number);
+  const phaseHandoffRef = (number: number, d: string = dir()): { number: number; slug: string } | undefined => {
+    const match = projectStatus(d).phases.find((p) => p.number === number);
     return match ? { number, slug: match.dir.slice(3) } : undefined;
   };
 
@@ -152,7 +156,11 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       inputSchema: { phase: z.number().nullable().optional(),
                      issueId: z.string().nullable().optional() } },
     wrap((a: { phase?: number | null; issueId?: string | null }) => {
-      const ctx = getCtx();
+      // Snapshot once -- this handler touches active-context, handoff, and the
+      // banner; a workspace_focus flip mid-call must not split those three
+      // writes across two different member projects.
+      const d = dir();
+      const ctx = getCtx(d);
       ctx.set(a);
       const state = ctx.get();
       const patch: Partial<Handoff> & { source: Handoff["source"] } = { source: "tool" };
@@ -163,7 +171,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       if (a.phase === null) {
         patch.phase = undefined;
       } else if (a.phase !== undefined && state.phase !== undefined) {
-        const ref = phaseHandoffRef(state.phase);
+        const ref = phaseHandoffRef(state.phase, d);
         if (ref) patch.phase = ref;
       }
       if (a.issueId === null) {
@@ -171,8 +179,8 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       } else if (a.issueId !== undefined) {
         patch.issue = state.issueId;
       }
-      refreshHandoff(patch);
-      writeBanner(dir());
+      refreshHandoff(patch, d);
+      writeBanner(d);
       return state;
     }));
 
@@ -196,17 +204,19 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
                      assignee: z.string().optional() } },
     wrap(async (a: { id: string; title?: string; body?: string; state?: IssueState;
                labels?: string[]; assignee?: string }) => {
+      const d = dir();
       const { id, ...patch } = a;
-      const result = await (await getTracker()).updateIssue(id, patch);
-      refreshHandoff({ source: "tool", issue: id });
+      const result = await (await getTracker(d)).updateIssue(id, patch);
+      refreshHandoff({ source: "tool", issue: id }, d);
       return result;
     }));
 
   server.registerTool("issue_close",
     { description: "Close an issue", inputSchema: { id: z.string() } },
     wrap(async (a: { id: string }) => {
-      const result = await (await getTracker()).closeIssue(a.id);
-      refreshHandoff({ source: "tool", issue: a.id });
+      const d = dir();
+      const result = await (await getTracker(d)).closeIssue(a.id);
+      refreshHandoff({ source: "tool", issue: a.id }, d);
       return result;
     }));
 
@@ -250,7 +260,10 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
   server.registerTool("plan_drift",
     { description: "Flag plan-referenced issues that are missing or closed-unverified",
       inputSchema: {} },
-    wrap(async () => driftReport(await getTracker(), dir())));
+    wrap(async () => {
+      const d = dir();
+      return driftReport(await getTracker(d), d);
+    }));
 
   const PHASE_DIR_RE = /^\d{2}-[a-z0-9-]+$/;
   server.registerTool("plan_issues_set",
@@ -261,23 +274,24 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
         throw new CairnError("CONFIG_INVALID",
           `phaseDir must look like 01-name, got '${a.phaseDir}'`);
       }
-      const planPath = join(dir(), ".cairn", "plans", "phases", a.phaseDir, "PLAN.md");
+      const d = dir();
+      const planPath = join(d, ".cairn", "plans", "phases", a.phaseDir, "PLAN.md");
       if (!existsSync(planPath)) {
         throw new CairnError("NOT_FOUND",
           `no PLAN.md at phaseDir '${a.phaseDir}' — scaffold it first with plan_scaffold_phase`);
       }
-      writePlanIssues(dir(), a.phaseDir, a.issues);
+      writePlanIssues(d, a.phaseDir, a.issues);
       refreshHandoff({
         source: "tool",
         phase: { number: Number(a.phaseDir.slice(0, 2)), slug: a.phaseDir.slice(3) },
         plan: join(".cairn", "plans", "phases", a.phaseDir, "PLAN.md"),
-      });
+      }, d);
       return { ok: true };
     }));
 
   const memIndexes = new Map<string, MemoryIndex>();
-  const getMemIndex = (): MemoryIndex => {
-    const path = indexDbPath(dir());
+  const getMemIndex = (d: string = dir()): MemoryIndex => {
+    const path = indexDbPath(d);
     let idx = memIndexes.get(path);
     if (!idx) {
       idx = new MemoryIndex(path);
@@ -310,7 +324,10 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
     { description: "Memory index size — chunk count and approximate token usage (capacity guard signal), "
         + "plus recall-banner token accounting",
       inputSchema: {} },
-    wrap(() => ({ ...getMemIndex().stats(), ...bannerStats(dir()) })));
+    wrap(() => {
+      const d = dir();
+      return { ...getMemIndex(d).stats(), ...bannerStats(d) };
+    }));
 
   server.registerTool("mem_card_create",
     { description: "Write a durable memory card (decision/constraint/gotcha/reference/note) with provenance",
@@ -325,15 +342,16 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
     wrap((a: { type: "decision" | "constraint" | "gotcha" | "reference" | "note"; body: string;
                scopePhase?: number; scopeIssue?: string; confidence?: "high" | "medium" | "low";
                provenance?: Array<{ file: string; commit: string }> }) => {
-      const card = createCard(dir(), a);
+      const d = dir();
+      const card = createCard(d, a);
       const patch: Partial<Handoff> & { source: Handoff["source"] } = { source: "tool" };
       if (a.scopePhase !== undefined) {
-        const ref = phaseHandoffRef(a.scopePhase);
+        const ref = phaseHandoffRef(a.scopePhase, d);
         if (ref) patch.phase = ref;
       }
       if (a.scopeIssue !== undefined) patch.issue = a.scopeIssue;
-      refreshHandoff(patch);
-      writeBanner(dir());
+      refreshHandoff(patch, d);
+      writeBanner(d);
       return card;
     }));
 
@@ -345,22 +363,25 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
   server.registerTool("mem_card_recall",
     { description: "List memory cards with staleness checked against their provenance (the anti-rot check)",
       inputSchema: { scopePhase: z.number().int().optional(), scopeIssue: z.string().optional() } },
-    wrap((a: { scopePhase?: number; scopeIssue?: string }) =>
-      listCards(dir(), a).map((card) => {
+    wrap((a: { scopePhase?: number; scopeIssue?: string }) => {
+      const d = dir();
+      return listCards(d, a).map((card) => {
         const provenance = card.frontmatter.provenanceFiles.map((file, i) => ({
           file, commit: card.frontmatter.provenanceCommits[i],
         }));
-        const check = checkCardStaleness(dir(), provenance);
+        const check = checkCardStaleness(d, provenance);
         return { ...card, stale: check.stale, staleReasons: check.reasons };
-      })));
+      });
+    }));
 
   server.registerTool("mem_card_update",
     { description: "Adjust a memory card's confidence (frontmatter-only; body and id are immutable)",
       inputSchema: { id: z.string(),
                      confidence: z.enum(["high", "medium", "low"]) } },
     wrap((a: { id: string; confidence: "high" | "medium" | "low" }) => {
-      const card = updateCardConfidence(dir(), a.id, a.confidence);
-      writeBanner(dir());
+      const d = dir();
+      const card = updateCardConfidence(d, a.id, a.confidence);
+      writeBanner(d);
       return card;
     }));
 
@@ -376,17 +397,21 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
         after: z.number().int().nonnegative().optional(),
       } },
     wrap((a: { anchor: string; before?: number; after?: number }) => {
+      // Snapshot once -- this handler resolves the dir up to four times
+      // (card lookup, chunk lookup, card list, chunk timeline); a mid-call
+      // focus flip must not stitch a timeline together from two members.
+      const d = dir();
       const before = a.before ?? 3;
       const after = a.after ?? 3;
 
       let anchorCreatedAt: string;
       let anchorCardId: string | undefined;
       try {
-        const card = readCard(dir(), a.anchor);
+        const card = readCard(d, a.anchor);
         anchorCreatedAt = card.frontmatter.created;
         anchorCardId = card.id;
       } catch {
-        const chunkCreatedAt = getMemIndex().sourceCreatedAt(a.anchor);
+        const chunkCreatedAt = getMemIndex(d).sourceCreatedAt(a.anchor);
         if (chunkCreatedAt === undefined) {
           throw new CairnError("NOT_FOUND", `no card or index chunk '${a.anchor}'`,
             "check the id with mem_card_list or the source with mem_search");
@@ -401,7 +426,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
         created > anchorCreatedAt
         || (created === anchorCreatedAt && anchorCardId !== undefined && id > anchorCardId);
 
-      const cardItems: TimelineCardItem[] = listCards(dir())
+      const cardItems: TimelineCardItem[] = listCards(d)
         .filter((c) => c.id !== anchorCardId)
         .map((c) => ({
           id: c.id, type: c.frontmatter.type, title: timelineCardTitle(c.body),
@@ -410,7 +435,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       const cardsBefore = cardItems.filter((c) => isBeforeAnchor(c.created, c.id));
       const cardsAfter = cardItems.filter((c) => isAfterAnchor(c.created, c.id));
 
-      const chunkNeighbors: SearchResult[] = getMemIndex().timeline(anchorCreatedAt, before, after);
+      const chunkNeighbors: SearchResult[] = getMemIndex(d).timeline(anchorCreatedAt, before, after);
       const chunksBefore: TimelineChunkItem[] = chunkNeighbors
         .filter((c) => c.createdAt < anchorCreatedAt)
         .map((c) => ({ source: c.source, createdAt: c.createdAt }));
@@ -429,18 +454,22 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
   server.registerTool("plan_unplanned",
     { description: "Tracker issues (non-closed) that no phase's PLAN.md references — work at risk of being missed",
       inputSchema: {} },
-    wrap(async () => unplannedReport(await getTracker(), dir())));
+    wrap(async () => {
+      const d = dir();
+      return unplannedReport(await getTracker(d), d);
+    }));
 
   server.registerTool("plan_import",
     { description: "Reverse-mirror a tracker phase (by id or name substring) into .cairn/plans/ artifacts",
       inputSchema: { phaseRef: z.string() } },
     wrap(async (a: { phaseRef: string }) => {
-      const result = await importPhase(await getTracker(), dir(), a.phaseRef);
+      const d = dir();
+      const result = await importPhase(await getTracker(d), d, a.phaseRef);
       refreshHandoff({
         source: "tool",
         phase: { number: result.number, slug: result.dir.slice(3) },
         plan: join(".cairn", "plans", "phases", result.dir, "PLAN.md"),
-      });
+      }, d);
       return result;
     }));
 
@@ -462,8 +491,9 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
         partial: z.boolean().optional(),
       } },
     wrap((a: Partial<Handoff>) => {
-      writeHandoff(dir(), { ...a, source: a.source ?? "tool" });
-      return readHandoff(dir());
+      const d = dir();
+      writeHandoff(d, { ...a, source: a.source ?? "tool" });
+      return readHandoff(d);
     }));
 
   server.registerTool("continuity_get",
@@ -492,34 +522,42 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
     wrap((a: { phaseDir: string; taskRef: string; summary: string; baseCommit: string;
                headCommit: string; issueId: string; closedDate: string;
                redCommit?: string; greenCommit?: string }) => {
+      const d = dir();
       const { phaseDir, ...entry } = a;
-      const result = appendLedger(dir(), phaseDir, entry);
+      const result = appendLedger(d, phaseDir, entry);
       refreshHandoff({
         source: "tool",
         phase: { number: Number(phaseDir.slice(0, 2)), slug: phaseDir.slice(3) },
         issue: entry.issueId,
-      });
+      }, d);
       return result;
     }));
 
   server.registerTool("milestone_create",
     { description: "Start the next milestone — native tracker object when the backend supports it; stamps milestone_id into roadmap.md",
       inputSchema: { name: z.string() } },
-    wrap(async (a: { name: string }) =>
-      milestoneCreate(await getTracker(), dir(), a.name)));
+    wrap(async (a: { name: string }) => {
+      const d = dir();
+      return milestoneCreate(await getTracker(d), d, a.name);
+    }));
 
   server.registerTool("milestone_list",
     { description: "Current milestone number, archived milestones, and the tracker's native list when supported",
       inputSchema: {} },
-    wrap(async () => milestoneList(await getTracker(), dir())));
+    wrap(async () => {
+      const d = dir();
+      return milestoneList(await getTracker(d), d);
+    }));
 
   server.registerTool("milestone_complete",
     { description: "Complete the current milestone: gate on all-phases-verified, close tracker phases, "
         + "release the native milestone when supported, archive phases/ to milestones/vN/, bump roadmap. "
         + "Idempotent — safe to re-run after a partial tracker failure",
       inputSchema: { summary: z.string() } },
-    wrap(async (a: { summary: string }) =>
-      milestoneComplete(await getTracker(), dir(), a.summary)));
+    wrap(async (a: { summary: string }) => {
+      const d = dir();
+      return milestoneComplete(await getTracker(d), d, a.summary);
+    }));
 
   server.registerTool("plan_resync",
     { description: "Detect out-of-band commits (covered by no LEDGER.md range) since the last resync marker; "
@@ -537,12 +575,13 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
         throw new CairnError("CONFIG_INVALID",
           `phaseDir must look like 01-name, got '${a.phaseDir}'`);
       }
-      writePlanMeta(dir(), a.phaseDir, { waves: a.waves, tdd: a.tdd });
+      const d = dir();
+      writePlanMeta(d, a.phaseDir, { waves: a.waves, tdd: a.tdd });
       refreshHandoff({
         source: "tool",
         phase: { number: Number(a.phaseDir.slice(0, 2)), slug: a.phaseDir.slice(3) },
-      });
-      return { ok: true, ...readPlanMeta(dir(), a.phaseDir) };
+      }, d);
+      return { ok: true, ...readPlanMeta(d, a.phaseDir) };
     }));
 
   server.registerTool("config_get",
@@ -568,14 +607,15 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
         + "bug issue (label cairn:bug) when no issueId is given. Survives /clear by construction",
       inputSchema: { description: z.string(), issueId: z.string().optional() } },
     wrap(async (a: { description: string; issueId?: string }) => {
+      const d = dir();
       let issueId = a.issueId;
       if (!issueId) {
-        const issue = await (await getTracker()).createIssue({
+        const issue = await (await getTracker(d)).createIssue({
           title: a.description, labels: ["cairn:bug"] });
         issueId = issue.id;
       }
-      const { id } = startTrace(dir(), a.description, issueId);
-      refreshHandoff({ source: "tool", issue: issueId });
+      const { id } = startTrace(d, a.description, issueId);
+      refreshHandoff({ source: "tool", issue: issueId }, d);
       return { id, issue: issueId };
     }));
 
@@ -585,8 +625,9 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
                      kind: z.enum(["evidence", "hypothesis", "test", "verdict"]),
                      text: z.string().min(1) } },
     wrap((a: { id: string; kind: "evidence" | "hypothesis" | "test" | "verdict"; text: string }) => {
-      const out = appendTrace(dir(), a.id, a.kind, a.text);
-      refreshHandoff({ source: "tool" });
+      const d = dir();
+      const out = appendTrace(d, a.id, a.kind, a.text);
+      refreshHandoff({ source: "tool" }, d);
       return out;
     }));
 
@@ -600,10 +641,11 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
         + "resolution on the bug issue and closes it",
       inputSchema: { id: z.string(), resolution: z.string() } },
     wrap(async (a: { id: string; resolution: string }) => {
-      const out = closeTrace(dir(), a.id, a.resolution);
+      const d = dir();
+      const out = closeTrace(d, a.id, a.resolution);
       let issueClosed = false;
       if (out.issue) {
-        const tracker = await getTracker();
+        const tracker = await getTracker(d);
         try {
           await tracker.commentIssue(out.issue, `Resolved: ${a.resolution}`);
         } catch {
@@ -622,16 +664,17 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
           + `issue (label ${label}) when no issueId is given. Survives /clear by construction`,
         inputSchema: { description: z.string(), issueId: z.string().optional() } },
       wrap(async (a: { description: string; issueId?: string }) => {
+        const d = dir();
         let issueId = a.issueId;
         if (!issueId) {
-          const issue = await (await getTracker()).createIssue({
+          const issue = await (await getTracker(d)).createIssue({
             title: a.description, labels: [label] });
           issueId = issue.id;
         }
-        const active = getCtx().get();
+        const active = getCtx(d).get();
         const phase = active.phase !== undefined ? String(active.phase) : undefined;
-        const { id } = startSession(dir(), kind, a.description, issueId, phase);
-        refreshHandoff({ source: "tool", issue: issueId });
+        const { id } = startSession(d, kind, a.description, issueId, phase);
+        refreshHandoff({ source: "tool", issue: issueId }, d);
         return { id, issue: issueId };
       }));
 
@@ -641,8 +684,9 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
                        kind: z.enum(spec.entryKinds as [string, ...string[]]),
                        text: z.string().min(1) } },
       wrap((a: { id: string; kind: string; text: string }) => {
-        const out = appendSession(dir(), kind, a.id, a.kind, a.text);
-        refreshHandoff({ source: "tool" });
+        const d = dir();
+        const out = appendSession(d, kind, a.id, a.kind, a.text);
+        refreshHandoff({ source: "tool" }, d);
         return out;
       }));
 
@@ -651,10 +695,11 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
           + `the resolution on the issue and closes it`,
         inputSchema: { id: z.string(), resolution: z.string() } },
       wrap(async (a: { id: string; resolution: string }) => {
-        const out = closeSession(dir(), kind, a.id, a.resolution);
+        const d = dir();
+        const out = closeSession(d, kind, a.id, a.resolution);
         let issueClosed = false;
         if (out.issue) {
-          const tracker = await getTracker();
+          const tracker = await getTracker(d);
           try { await tracker.commentIssue(out.issue, `Resolved: ${a.resolution}`); }
           catch { /* best-effort mirror; close is the state change that matters */ }
           await tracker.closeIssue(out.issue);

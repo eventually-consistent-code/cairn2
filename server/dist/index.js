@@ -78,8 +78,11 @@ export function buildServer(deps) {
     const trackers = new Map();
     if (deps.tracker)
         trackers.set(launchDir, deps.tracker);
-    const getTracker = async () => {
-        const d = dir();
+    // Accepts an optional pre-resolved dir -- handlers that already snapshotted
+    // `dir()` once (to survive a mid-call workspace_focus flip) pass it through
+    // here instead of letting this resolve dir() again on its own.
+    const getTracker = async (dOverride) => {
+        const d = dOverride ?? dir();
         let t = trackers.get(d);
         if (!t) {
             t = new CachedTracker(await makeTracker(loadConfig(d)));
@@ -87,7 +90,7 @@ export function buildServer(deps) {
         }
         return t;
     };
-    const getCtx = () => new ActiveContext(dir());
+    const getCtx = (d = dir()) => new ActiveContext(d);
     const ok = (value) => ({
         content: [{ type: "text", text: JSON.stringify(value) }],
     });
@@ -106,9 +109,9 @@ export function buildServer(deps) {
     // is a hint, never authority (trust order: tracker + git > ledger > handoff)
     // -- so a refresh failure (unwritable ~/.cairn/handoff, corrupt file, etc.)
     // must never fail the primary tool call that triggered it.
-    const refreshHandoff = (patch) => {
+    const refreshHandoff = (patch, d = dir()) => {
         try {
-            writeHandoff(dir(), patch);
+            writeHandoff(d, patch);
         }
         catch {
             // swallowed by design -- see comment above.
@@ -118,15 +121,19 @@ export function buildServer(deps) {
     // matching against locally scaffolded phase dirs (NN-slug). Returns
     // undefined when the phase hasn't been scaffolded locally -- best-effort,
     // same spirit as the rest of write-through refresh.
-    const phaseHandoffRef = (number) => {
-        const match = projectStatus(dir()).phases.find((p) => p.number === number);
+    const phaseHandoffRef = (number, d = dir()) => {
+        const match = projectStatus(d).phases.find((p) => p.number === number);
         return match ? { number, slug: match.dir.slice(3) } : undefined;
     };
     server.registerTool("context_get", { description: "Get the active cairn context (phase, issue)", inputSchema: {} }, wrap(() => getCtx().get()));
     server.registerTool("context_set", { description: "Set/clear active cairn context fields (null clears)",
         inputSchema: { phase: z.number().nullable().optional(),
             issueId: z.string().nullable().optional() } }, wrap((a) => {
-        const ctx = getCtx();
+        // Snapshot once -- this handler touches active-context, handoff, and the
+        // banner; a workspace_focus flip mid-call must not split those three
+        // writes across two different member projects.
+        const d = dir();
+        const ctx = getCtx(d);
         ctx.set(a);
         const state = ctx.get();
         const patch = { source: "tool" };
@@ -138,7 +145,7 @@ export function buildServer(deps) {
             patch.phase = undefined;
         }
         else if (a.phase !== undefined && state.phase !== undefined) {
-            const ref = phaseHandoffRef(state.phase);
+            const ref = phaseHandoffRef(state.phase, d);
             if (ref)
                 patch.phase = ref;
         }
@@ -148,8 +155,8 @@ export function buildServer(deps) {
         else if (a.issueId !== undefined) {
             patch.issue = state.issueId;
         }
-        refreshHandoff(patch);
-        writeBanner(dir());
+        refreshHandoff(patch, d);
+        writeBanner(d);
         return state;
     }));
     server.registerTool("issue_create", { description: "Create an issue in the configured tracker",
@@ -162,14 +169,16 @@ export function buildServer(deps) {
             body: z.string().optional(), state: StateEnum.optional(),
             labels: z.array(z.string()).optional(),
             assignee: z.string().optional() } }, wrap(async (a) => {
+        const d = dir();
         const { id, ...patch } = a;
-        const result = await (await getTracker()).updateIssue(id, patch);
-        refreshHandoff({ source: "tool", issue: id });
+        const result = await (await getTracker(d)).updateIssue(id, patch);
+        refreshHandoff({ source: "tool", issue: id }, d);
         return result;
     }));
     server.registerTool("issue_close", { description: "Close an issue", inputSchema: { id: z.string() } }, wrap(async (a) => {
-        const result = await (await getTracker()).closeIssue(a.id);
-        refreshHandoff({ source: "tool", issue: a.id });
+        const d = dir();
+        const result = await (await getTracker(d)).closeIssue(a.id);
+        refreshHandoff({ source: "tool", issue: a.id }, d);
         return result;
     }));
     server.registerTool("issue_list", { description: "List issues, optionally by phase/state",
@@ -187,28 +196,32 @@ export function buildServer(deps) {
     server.registerTool("plan_phase_ensure", { description: "Ensure the tracker has a phase named 'Phase N: <name>' (idempotent)",
         inputSchema: { number: z.number().int(), name: z.string() } }, wrap(async (a) => ensurePhase(await getTracker(), a.number, a.name)));
     server.registerTool("plan_drift", { description: "Flag plan-referenced issues that are missing or closed-unverified",
-        inputSchema: {} }, wrap(async () => driftReport(await getTracker(), dir())));
+        inputSchema: {} }, wrap(async () => {
+        const d = dir();
+        return driftReport(await getTracker(d), d);
+    }));
     const PHASE_DIR_RE = /^\d{2}-[a-z0-9-]+$/;
     server.registerTool("plan_issues_set", { description: "Set the tracker issue ids a phase's PLAN.md advances",
         inputSchema: { phaseDir: z.string(), issues: z.array(z.string()) } }, wrap((a) => {
         if (!PHASE_DIR_RE.test(a.phaseDir)) {
             throw new CairnError("CONFIG_INVALID", `phaseDir must look like 01-name, got '${a.phaseDir}'`);
         }
-        const planPath = join(dir(), ".cairn", "plans", "phases", a.phaseDir, "PLAN.md");
+        const d = dir();
+        const planPath = join(d, ".cairn", "plans", "phases", a.phaseDir, "PLAN.md");
         if (!existsSync(planPath)) {
             throw new CairnError("NOT_FOUND", `no PLAN.md at phaseDir '${a.phaseDir}' — scaffold it first with plan_scaffold_phase`);
         }
-        writePlanIssues(dir(), a.phaseDir, a.issues);
+        writePlanIssues(d, a.phaseDir, a.issues);
         refreshHandoff({
             source: "tool",
             phase: { number: Number(a.phaseDir.slice(0, 2)), slug: a.phaseDir.slice(3) },
             plan: join(".cairn", "plans", "phases", a.phaseDir, "PLAN.md"),
-        });
+        }, d);
         return { ok: true };
     }));
     const memIndexes = new Map();
-    const getMemIndex = () => {
-        const path = indexDbPath(dir());
+    const getMemIndex = (d = dir()) => {
+        const path = indexDbPath(d);
         let idx = memIndexes.get(path);
         if (!idx) {
             idx = new MemoryIndex(path);
@@ -231,7 +244,10 @@ export function buildServer(deps) {
             issueId: z.string().optional(), limit: z.number().int().positive().optional() } }, wrap((a) => getMemIndex().search(a.query, { phase: a.phase, issueId: a.issueId }, a.limit ?? 10)));
     server.registerTool("mem_stats", { description: "Memory index size — chunk count and approximate token usage (capacity guard signal), "
             + "plus recall-banner token accounting",
-        inputSchema: {} }, wrap(() => ({ ...getMemIndex().stats(), ...bannerStats(dir()) })));
+        inputSchema: {} }, wrap(() => {
+        const d = dir();
+        return { ...getMemIndex(d).stats(), ...bannerStats(d) };
+    }));
     server.registerTool("mem_card_create", { description: "Write a durable memory card (decision/constraint/gotcha/reference/note) with provenance",
         inputSchema: {
             type: z.enum(["decision", "constraint", "gotcha", "reference", "note"]),
@@ -241,34 +257,39 @@ export function buildServer(deps) {
             confidence: z.enum(["high", "medium", "low"]).optional(),
             provenance: z.array(z.object({ file: z.string(), commit: z.string() })).optional(),
         } }, wrap((a) => {
-        const card = createCard(dir(), a);
+        const d = dir();
+        const card = createCard(d, a);
         const patch = { source: "tool" };
         if (a.scopePhase !== undefined) {
-            const ref = phaseHandoffRef(a.scopePhase);
+            const ref = phaseHandoffRef(a.scopePhase, d);
             if (ref)
                 patch.phase = ref;
         }
         if (a.scopeIssue !== undefined)
             patch.issue = a.scopeIssue;
-        refreshHandoff(patch);
-        writeBanner(dir());
+        refreshHandoff(patch, d);
+        writeBanner(d);
         return card;
     }));
     server.registerTool("mem_card_list", { description: "List memory cards, optionally filtered by phase/issue scope",
         inputSchema: { scopePhase: z.number().int().optional(), scopeIssue: z.string().optional() } }, wrap((a) => listCards(dir(), a)));
     server.registerTool("mem_card_recall", { description: "List memory cards with staleness checked against their provenance (the anti-rot check)",
-        inputSchema: { scopePhase: z.number().int().optional(), scopeIssue: z.string().optional() } }, wrap((a) => listCards(dir(), a).map((card) => {
-        const provenance = card.frontmatter.provenanceFiles.map((file, i) => ({
-            file, commit: card.frontmatter.provenanceCommits[i],
-        }));
-        const check = checkCardStaleness(dir(), provenance);
-        return { ...card, stale: check.stale, staleReasons: check.reasons };
-    })));
+        inputSchema: { scopePhase: z.number().int().optional(), scopeIssue: z.string().optional() } }, wrap((a) => {
+        const d = dir();
+        return listCards(d, a).map((card) => {
+            const provenance = card.frontmatter.provenanceFiles.map((file, i) => ({
+                file, commit: card.frontmatter.provenanceCommits[i],
+            }));
+            const check = checkCardStaleness(d, provenance);
+            return { ...card, stale: check.stale, staleReasons: check.reasons };
+        });
+    }));
     server.registerTool("mem_card_update", { description: "Adjust a memory card's confidence (frontmatter-only; body and id are immutable)",
         inputSchema: { id: z.string(),
             confidence: z.enum(["high", "medium", "low"]) } }, wrap((a) => {
-        const card = updateCardConfidence(dir(), a.id, a.confidence);
-        writeBanner(dir());
+        const d = dir();
+        const card = updateCardConfidence(d, a.id, a.confidence);
+        writeBanner(d);
         return card;
     }));
     server.registerTool("mem_timeline", { description: "Chronological neighbors around an anchor (a memory card id or an index chunk source) -- "
@@ -281,17 +302,21 @@ export function buildServer(deps) {
             before: z.number().int().nonnegative().optional(),
             after: z.number().int().nonnegative().optional(),
         } }, wrap((a) => {
+        // Snapshot once -- this handler resolves the dir up to four times
+        // (card lookup, chunk lookup, card list, chunk timeline); a mid-call
+        // focus flip must not stitch a timeline together from two members.
+        const d = dir();
         const before = a.before ?? 3;
         const after = a.after ?? 3;
         let anchorCreatedAt;
         let anchorCardId;
         try {
-            const card = readCard(dir(), a.anchor);
+            const card = readCard(d, a.anchor);
             anchorCreatedAt = card.frontmatter.created;
             anchorCardId = card.id;
         }
         catch {
-            const chunkCreatedAt = getMemIndex().sourceCreatedAt(a.anchor);
+            const chunkCreatedAt = getMemIndex(d).sourceCreatedAt(a.anchor);
             if (chunkCreatedAt === undefined) {
                 throw new CairnError("NOT_FOUND", `no card or index chunk '${a.anchor}'`, "check the id with mem_card_list or the source with mem_search");
             }
@@ -301,7 +326,7 @@ export function buildServer(deps) {
             || (created === anchorCreatedAt && anchorCardId !== undefined && id < anchorCardId);
         const isAfterAnchor = (created, id) => created > anchorCreatedAt
             || (created === anchorCreatedAt && anchorCardId !== undefined && id > anchorCardId);
-        const cardItems = listCards(dir())
+        const cardItems = listCards(d)
             .filter((c) => c.id !== anchorCardId)
             .map((c) => ({
             id: c.id, type: c.frontmatter.type, title: timelineCardTitle(c.body),
@@ -309,7 +334,7 @@ export function buildServer(deps) {
         }));
         const cardsBefore = cardItems.filter((c) => isBeforeAnchor(c.created, c.id));
         const cardsAfter = cardItems.filter((c) => isAfterAnchor(c.created, c.id));
-        const chunkNeighbors = getMemIndex().timeline(anchorCreatedAt, before, after);
+        const chunkNeighbors = getMemIndex(d).timeline(anchorCreatedAt, before, after);
         const chunksBefore = chunkNeighbors
             .filter((c) => c.createdAt < anchorCreatedAt)
             .map((c) => ({ source: c.source, createdAt: c.createdAt }));
@@ -323,15 +348,19 @@ export function buildServer(deps) {
         return [...beforeMerged, ...afterMerged];
     }));
     server.registerTool("plan_unplanned", { description: "Tracker issues (non-closed) that no phase's PLAN.md references — work at risk of being missed",
-        inputSchema: {} }, wrap(async () => unplannedReport(await getTracker(), dir())));
+        inputSchema: {} }, wrap(async () => {
+        const d = dir();
+        return unplannedReport(await getTracker(d), d);
+    }));
     server.registerTool("plan_import", { description: "Reverse-mirror a tracker phase (by id or name substring) into .cairn/plans/ artifacts",
         inputSchema: { phaseRef: z.string() } }, wrap(async (a) => {
-        const result = await importPhase(await getTracker(), dir(), a.phaseRef);
+        const d = dir();
+        const result = await importPhase(await getTracker(d), d, a.phaseRef);
         refreshHandoff({
             source: "tool",
             phase: { number: result.number, slug: result.dir.slice(3) },
             plan: join(".cairn", "plans", "phases", result.dir, "PLAN.md"),
-        });
+        }, d);
         return result;
     }));
     server.registerTool("continuity_checkpoint", { description: "Write/refresh the session handoff (checkpoint) for this project",
@@ -350,8 +379,9 @@ export function buildServer(deps) {
             notes: z.string().optional(),
             partial: z.boolean().optional(),
         } }, wrap((a) => {
-        writeHandoff(dir(), { ...a, source: a.source ?? "tool" });
-        return readHandoff(dir());
+        const d = dir();
+        writeHandoff(d, { ...a, source: a.source ?? "tool" });
+        return readHandoff(d);
     }));
     server.registerTool("continuity_get", { description: "Read the current session handoff, if any (flags handoffs older than 14 days as stale, never errors on staleness)",
         inputSchema: {} }, wrap(() => readHandoff(dir())));
@@ -369,23 +399,33 @@ export function buildServer(deps) {
             redCommit: z.string().optional(),
             greenCommit: z.string().optional(),
         } }, wrap((a) => {
+        const d = dir();
         const { phaseDir, ...entry } = a;
-        const result = appendLedger(dir(), phaseDir, entry);
+        const result = appendLedger(d, phaseDir, entry);
         refreshHandoff({
             source: "tool",
             phase: { number: Number(phaseDir.slice(0, 2)), slug: phaseDir.slice(3) },
             issue: entry.issueId,
-        });
+        }, d);
         return result;
     }));
     server.registerTool("milestone_create", { description: "Start the next milestone — native tracker object when the backend supports it; stamps milestone_id into roadmap.md",
-        inputSchema: { name: z.string() } }, wrap(async (a) => milestoneCreate(await getTracker(), dir(), a.name)));
+        inputSchema: { name: z.string() } }, wrap(async (a) => {
+        const d = dir();
+        return milestoneCreate(await getTracker(d), d, a.name);
+    }));
     server.registerTool("milestone_list", { description: "Current milestone number, archived milestones, and the tracker's native list when supported",
-        inputSchema: {} }, wrap(async () => milestoneList(await getTracker(), dir())));
+        inputSchema: {} }, wrap(async () => {
+        const d = dir();
+        return milestoneList(await getTracker(d), d);
+    }));
     server.registerTool("milestone_complete", { description: "Complete the current milestone: gate on all-phases-verified, close tracker phases, "
             + "release the native milestone when supported, archive phases/ to milestones/vN/, bump roadmap. "
             + "Idempotent — safe to re-run after a partial tracker failure",
-        inputSchema: { summary: z.string() } }, wrap(async (a) => milestoneComplete(await getTracker(), dir(), a.summary)));
+        inputSchema: { summary: z.string() } }, wrap(async (a) => {
+        const d = dir();
+        return milestoneComplete(await getTracker(d), d, a.summary);
+    }));
     server.registerTool("plan_resync", { description: "Detect out-of-band commits (covered by no LEDGER.md range) since the last resync marker; "
             + "advances the marker. First run initializes the marker and reports nothing",
         inputSchema: {} }, wrap(() => resyncReport(dir())));
@@ -396,12 +436,13 @@ export function buildServer(deps) {
         if (!PHASE_DIR_RE.test(a.phaseDir)) {
             throw new CairnError("CONFIG_INVALID", `phaseDir must look like 01-name, got '${a.phaseDir}'`);
         }
-        writePlanMeta(dir(), a.phaseDir, { waves: a.waves, tdd: a.tdd });
+        const d = dir();
+        writePlanMeta(d, a.phaseDir, { waves: a.waves, tdd: a.tdd });
         refreshHandoff({
             source: "tool",
             phase: { number: Number(a.phaseDir.slice(0, 2)), slug: a.phaseDir.slice(3) },
-        });
-        return { ok: true, ...readPlanMeta(dir(), a.phaseDir) };
+        }, d);
+        return { ok: true, ...readPlanMeta(d, a.phaseDir) };
     }));
     server.registerTool("config_get", { description: "Read cairn.json as the validated, post-defaults effective config",
         inputSchema: {} }, wrap(() => loadConfig(dir())));
@@ -413,23 +454,25 @@ export function buildServer(deps) {
     server.registerTool("trace_start", { description: "Open a persistent debugging session (.cairn/trace/<id>.md). Creates the tracker "
             + "bug issue (label cairn:bug) when no issueId is given. Survives /clear by construction",
         inputSchema: { description: z.string(), issueId: z.string().optional() } }, wrap(async (a) => {
+        const d = dir();
         let issueId = a.issueId;
         if (!issueId) {
-            const issue = await (await getTracker()).createIssue({
+            const issue = await (await getTracker(d)).createIssue({
                 title: a.description, labels: ["cairn:bug"]
             });
             issueId = issue.id;
         }
-        const { id } = startTrace(dir(), a.description, issueId);
-        refreshHandoff({ source: "tool", issue: issueId });
+        const { id } = startTrace(d, a.description, issueId);
+        refreshHandoff({ source: "tool", issue: issueId }, d);
         return { id, issue: issueId };
     }));
     server.registerTool("trace_log", { description: "Append a typed entry (evidence|hypothesis|test|verdict) to an open trace — append-only",
         inputSchema: { id: z.string(),
             kind: z.enum(["evidence", "hypothesis", "test", "verdict"]),
             text: z.string().min(1) } }, wrap((a) => {
-        const out = appendTrace(dir(), a.id, a.kind, a.text);
-        refreshHandoff({ source: "tool" });
+        const d = dir();
+        const out = appendTrace(d, a.id, a.kind, a.text);
+        refreshHandoff({ source: "tool" }, d);
         return out;
     }));
     server.registerTool("trace_list", { description: "List trace sessions (open and/or resolved) with entry counts",
@@ -437,10 +480,11 @@ export function buildServer(deps) {
     server.registerTool("trace_close", { description: "Resolve a trace: requires a verdict entry; archives the session, comments the "
             + "resolution on the bug issue and closes it",
         inputSchema: { id: z.string(), resolution: z.string() } }, wrap(async (a) => {
-        const out = closeTrace(dir(), a.id, a.resolution);
+        const d = dir();
+        const out = closeTrace(d, a.id, a.resolution);
         let issueClosed = false;
         if (out.issue) {
-            const tracker = await getTracker();
+            const tracker = await getTracker(d);
             try {
                 await tracker.commentIssue(out.issue, `Resolved: ${a.resolution}`);
             }
@@ -457,34 +501,37 @@ export function buildServer(deps) {
         server.registerTool(`${kind}_start`, { description: `Open a persistent ${kind} session (.cairn/${kind}/<id>.md). Creates the tracker `
                 + `issue (label ${label}) when no issueId is given. Survives /clear by construction`,
             inputSchema: { description: z.string(), issueId: z.string().optional() } }, wrap(async (a) => {
+            const d = dir();
             let issueId = a.issueId;
             if (!issueId) {
-                const issue = await (await getTracker()).createIssue({
+                const issue = await (await getTracker(d)).createIssue({
                     title: a.description, labels: [label]
                 });
                 issueId = issue.id;
             }
-            const active = getCtx().get();
+            const active = getCtx(d).get();
             const phase = active.phase !== undefined ? String(active.phase) : undefined;
-            const { id } = startSession(dir(), kind, a.description, issueId, phase);
-            refreshHandoff({ source: "tool", issue: issueId });
+            const { id } = startSession(d, kind, a.description, issueId, phase);
+            refreshHandoff({ source: "tool", issue: issueId }, d);
             return { id, issue: issueId };
         }));
         server.registerTool(`${kind}_log`, { description: `Append a typed entry (${spec.entryKinds.join("|")}) to an open ${kind} session — append-only`,
             inputSchema: { id: z.string(),
                 kind: z.enum(spec.entryKinds),
                 text: z.string().min(1) } }, wrap((a) => {
-            const out = appendSession(dir(), kind, a.id, a.kind, a.text);
-            refreshHandoff({ source: "tool" });
+            const d = dir();
+            const out = appendSession(d, kind, a.id, a.kind, a.text);
+            refreshHandoff({ source: "tool" }, d);
             return out;
         }));
         server.registerTool(`${kind}_close`, { description: `Resolve a ${kind} session: requires a ${spec.closeGate} entry; archives it, comments `
                 + `the resolution on the issue and closes it`,
             inputSchema: { id: z.string(), resolution: z.string() } }, wrap(async (a) => {
-            const out = closeSession(dir(), kind, a.id, a.resolution);
+            const d = dir();
+            const out = closeSession(d, kind, a.id, a.resolution);
             let issueClosed = false;
             if (out.issue) {
-                const tracker = await getTracker();
+                const tracker = await getTracker(d);
                 try {
                     await tracker.commentIssue(out.issue, `Resolved: ${a.resolution}`);
                 }
