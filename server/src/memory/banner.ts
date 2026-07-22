@@ -62,7 +62,7 @@ function computeBannerData(projectDir: string): BannerData {
 
   const active = new ActiveContext(projectDir).get();
   const cards = scopedCards(listCards(projectDir), active).slice(0, maxCards);
-  const open = (["trace", "probe", "draft"] as const)
+  const open = (["trace", "probe", "draft", "thread"] as const)
     .flatMap((kind) => listSessions(projectDir, kind, "open"));
   if (cards.length === 0 && open.length === 0) return { text: null, cardCostTotal: 0 };
 
@@ -104,7 +104,7 @@ function computeBannerData(projectDir: string): BannerData {
 /**
  * Renders the recall banner for `projectDir`: cards scoped issue > phase >
  * project (id tiebreak), capped at `recallIndex.maxCards`, followed by an
- * "open sessions:" section (sorted kind trace/probe/draft, then id) when any
+ * "open sessions:" section (sorted kind trace/probe/draft/thread, then id) when any
  * open sessions exist -- the banner is non-null if either cards or open
  * sessions are present. Byte-stable -- no timestamps beyond the dates already
  * in session frontmatter, no volatile ordering; bytes change only when the

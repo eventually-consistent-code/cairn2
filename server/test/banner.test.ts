@@ -185,6 +185,17 @@ describe("renderBanner", () => {
     expect(text.indexOf("- trace")).toBeLessThan(text.indexOf("- probe"));
     expect(Buffer.from(renderBanner(d)!).equals(Buffer.from(text))).toBe(true);
   });
+
+  it("banner lists an open thread after the other kinds", () => {
+    const d = registered();
+    const { id: probeId } = startSession(d, "probe", "can the SDK stream?", "GH-40");
+    appendSession(d, "probe", probeId, "experiment", "poc ran");
+    const { id: threadId } = startSession(d, "thread", "design musing", "GH-50");
+    appendSession(d, "thread", threadId, "note", "a note worth keeping");
+    const text = renderBanner(d)!;
+    expect(text).toMatch(/- thread thread-[0-9a-f]{8} — .* — last: note/);
+    expect(text.indexOf("- probe")).toBeLessThan(text.indexOf("- thread"));
+  });
 });
 
 describe("writeBanner", () => {

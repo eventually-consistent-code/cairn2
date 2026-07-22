@@ -2,7 +2,7 @@
 
 MCP server for cairn 2.0. See `docs/superpowers/specs/2026-07-12-cairn-2-design.md`.
 
-50 tools total across planning, memory, continuity, collaboration, milestones, config, sessions (trace, probe, draft), and audits (plan_check, audit_record).
+55 tools total across planning, memory, continuity, collaboration, milestones, config, sessions (trace, probe, draft, thread), audits (plan_check, audit_record), and the project knowledge graph (map_set, map_get).
 
 ## Test rings
 
@@ -305,10 +305,11 @@ its toggles validate through the same gate as everything else.
 
 Persistent, typed session files that survive `/clear` — git-side session
 files paired with a tracker mirror that keeps management informed in plain
-language, without diving into code. Three kinds share one core: `trace`
+language, without diving into code. Four kinds share one core: `trace`
 (persistent debugging, Tier C1), `probe` (risk-ordered throwaway spikes,
-Tier C2, GSD spike parity), and `draft` (multi-variant HTML mockups on a
-shared theme, Tier C2, GSD sketch parity). The routing law for `trace`
+Tier C2, GSD spike parity), `draft` (multi-variant HTML mockups on a
+shared theme, Tier C2, GSD sketch parity), and `thread` (persistent context
+threads that outlive a single sitting, Tier E). The routing law for `trace`
 (spec §726) is unchanged: a failed `verify` or a reported bug routes into
 evidence → hypothesis → test → verdict, never an inline improvised fix (a
 proven-obvious ≤3-line fix may still use the fast lane: one evidence entry,
@@ -329,10 +330,11 @@ and IS the compatibility test.
 | `trace` | `.cairn/trace/` | `evidence` `hypothesis` `test` `verdict` | ≥1 `verdict` |
 | `probe` | `.cairn/probe/` | `experiment` `result` `requirement` `verdict` | ≥1 `verdict` |
 | `draft` | `.cairn/draft/` | `variant` `decision` `note` | ≥1 `decision` |
+| `thread` | `.cairn/thread/` | `note` `link` `decision` `wrap` | ≥1 `wrap` |
 
 Session ids are description-derived (`<kind>-<sha256(description).slice(0,8)>`
 — the same hashed-content convention memory cards use), with the same
-already-open guard across all three kinds: starting the same description
+already-open guard across all four kinds: starting the same description
 twice while a session is open throws `PRECONDITION_FAILED` pointing at the
 existing session instead of forking it. Archives are immutable at
 `.cairn/<kind>/archive/<id>.md` — a resolved session is immutable by
@@ -340,7 +342,9 @@ construction, not by convention, and every kind mechanically refuses to
 close without its gate entry logged first. Probe/draft frontmatter adds one
 optional field over trace's: `phase: <n>`, stamped at `*_start` from the
 active context when one is set — the `session_landscape` phase linkage
-below.
+below; `thread_start` stamps `phase` the identical way. `thread` closes on
+a `wrap` entry rather than a `verdict`/`decision` — a thread closes by
+being wrapped up, never abandoned silently.
 
 ### Tools
 
@@ -357,7 +361,10 @@ below.
 | `draft_start` | Open a sketch session (`.cairn/draft/<id>.md`); creates the tracker issue (label `cairn:sketch`) when no `issueId` is given; stamps `phase`; same-description open session → `PRECONDITION_FAILED` |
 | `draft_log` | Append a typed entry (`variant`\|`decision`\|`note`) — same append-only/gate rules as `trace_log` |
 | `draft_close` | Resolve: requires ≥1 `decision` entry, archives the session, comments the chosen direction and closes the issue |
-| `session_landscape` | Read-only join over all three kinds: every session's kind/id/status/issue/description/entryCounts, `openByKind` totals, archived resolution text (read from the `## resolution` block), and phase groupings. Deterministic ordering (kind, then id) — same store state, same bytes |
+| `thread_start` | Open a persistent context thread (`.cairn/thread/<id>.md`); creates the tracker issue (label `cairn:thread`) when no `issueId` is given; stamps `phase`; same-description open session → resume, not a duplicate (`PRECONDITION_FAILED` pointing at it) |
+| `thread_log` | Append a typed entry (`note`\|`link`\|`decision`\|`wrap`) — same append-only/gate rules as `trace_log` |
+| `thread_close` | Resolve: requires ≥1 `wrap` entry, archives the session, comments the resolution on the issue and closes it |
+| `session_landscape` | Read-only join over all four kinds: every session's kind/id/status/issue/description/entryCounts, `openByKind` totals, archived resolution text (read from the `## resolution` block), and phase groupings. Deterministic ordering (kind, then id — trace, probe, draft, thread) — same store state, same bytes |
 
 Backed by the tracker interface's `commentIssue(id, text)` method +
 `Capability.hasComments` (true on all six adapters — GitHub, GitLab, Jira,
@@ -376,6 +383,8 @@ degrade to a recorded skip, same posture as `hasMilestones`).
 .cairn/draft/<id>/NNN-<name>.html # one variant per file, links the shared theme
 .cairn/draft/themes/default.css   # shared theme — CSS custom properties ONLY, one per project
 .cairn/draft/archive/<id>.md
+.cairn/thread/<id>.md             # open persistent context thread
+.cairn/thread/archive/<id>.md     # moved here on thread_close — immutable once archived
 ```
 
 Frontmatter: `status: open|resolved`, `issue: <tracker id>`, `created`,
@@ -393,10 +402,37 @@ Tracker mirror touches are milestone-only, verb-driven (never per-entry
 noise, never tool-implicit): comment #1 on `*_start` ("started"), a
 key-finding/decision comment mid-session, and the resolution rides as the
 `*_close` issue-close note — three touches per session, same story shape
-across all three kinds. `*_start`/`*_log` refresh the session handoff
-(`source: "tool"`) the same write-through way every other state-changing
-tool does, so a killed session resumes into it via the continuity
-machinery above.
+across all four kinds (`thread` collapses the middle touch: two touches
+only, start and wrap, per `verbs/thread.md`). `*_start`/`*_log` refresh the
+session handoff (`source: "tool"`) the same write-through way every other
+state-changing tool does, so a killed session resumes into it via the
+continuity machinery above.
+
+## Map store (project knowledge graph)
+
+A single-writer knowledge graph backing the `map` verb (Tier E): typed
+nodes and typed edges over one deterministic JSON store, the same
+`config_set`-style merge-patch discipline `cairn.json` uses — validated
+shape + atomic writes, never an index or a database.
+
+```jsonc
+// .cairn/map/map.json
+{
+  "nodes": { "<id>": { "type": "module|phase|issue|decision|person", "label": "...", "detail": "..." } },
+  "edges": [ { "from": "<id>", "to": "<id>", "type": "depends-on|implements|decided-in|owns" } ]
+}
+```
+
+| tool | purpose |
+|---|---|
+| `map_set` | Merge-patch the graph: `patch.nodes` merges by id (`null` deletes an unattached node; deleting one still edge-attached throws `PRECONDITION_FAILED` naming the edges), `patch.edges` — when present — REPLACES the edge list wholesale (edge-level merge has no stable identity). Every edge endpoint must exist in the post-merge node set, or the write throws `PRECONDITION_FAILED` naming the missing id. Invalid node/edge types throw `UNSUPPORTED`. Returns `{ nodes: <count>, edges: <count> }` |
+| `map_get` | Read the graph, whole or filtered by `nodeType`, `edgeType`, or `node` (that node + every edge touching it + the neighbor nodes). Deterministic: nodes sorted by id, edges sorted by `(from, to, type)`. A missing store reads as `{ nodes: {}, edges: [] }`, never an error |
+
+Writes are atomic (`.tmp` file + rename, never a partial `map.json` on
+disk). The `map` verb is the only intended writer of graph *content*
+(`map build` walks code/plans/tracker and proposes patches; `map diff`
+reads and compares but never writes) — the server enforces shape and
+atomicity, the verb owns the intelligence.
 
 ## Plan checks / Audit records
 

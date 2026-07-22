@@ -1371,3 +1371,255 @@ tracker, so `issue_list` is the right sweep tool in production; the
 drill pins its classification on per-id `issue_get` (read-after-write
 consistent) and separately asserts `issue_list` answers. Noted in the
 driver's header comment.
+
+## Tier E — Knowledge & Diagnostics (2026-07-22)
+
+### Surface conformance
+- `node scripts/check-surface.mjs` → clean: **34 live, 1 reserved, 55
+  server tools** (`map`, `thread`, `profile`, `medic`, `backtrack` flip
+  reserved → live; reserved shrinks to `basecamp`(F) alone). `TOOL_PREFIXES`
+  gains `map|thread` per this spec's §1.
+- Server: `cd server && npx vitest run` → **416 passed / 6 skipped** (422
+  total; same env-gated `*.live.test.ts` skips as every prior tier —
+  gitlab, jira, asana, azure-boards, clickup, github). `npx tsc --noEmit`
+  clean. `npm run build` clean; `server/dist/` already matched the rebuilt
+  output — nothing dirtied, nothing to commit this tier.
+
+### Unit evidence summary
+
+**Map store — merge semantics, dangling-edge rejection, deterministic
+filtered reads** (`test/map-store.test.ts`, 13/13):
+- `describe("mapSet")`: `"merges new nodes and edges into an empty store"`;
+  `"merges an existing node's fields and null deletes an unattached node"`
+  — the `config_set` null-delete convention, now on graph nodes;
+  `"rejects deleting a node that still has an edge attached, naming the
+  edge"` — the edge-attached delete guard spec §3 calls for;
+  `"replaces the edges list wholesale rather than merging it"` — the
+  documented "no stable edge identity" contract; `"rejects an edge whose
+  endpoint is missing from the post-merge node set, naming the id"` — the
+  dangling-edge rejection spec success criterion 2 requires;
+  `"rejects an invalid node type"` / `"rejects an invalid edge type"` —
+  the enum validation gate; `"writes atomically -- no leftover .tmp file
+  after a successful write"` — the `.tmp` + rename contract.
+- `describe("mapGet")`: `"returns an empty store when no map file exists
+  yet"` — missing store reads as `{ nodes: {}, edges: [] }`, never an
+  error; `"sorts nodes by id and edges by (from, to, type)
+  deterministically"` — the byte-stable-read half of spec success
+  criterion 2; `"filters by nodeType"` / `"filters by edgeType"` /
+  `"filters by node, returning self, touching edges, and neighbor nodes"`
+  — the three filter shapes spec §3 defines.
+
+**Sessions store: the `thread` kind** (`test/sessions-store.test.ts`,
+`describe("sessions store — thread kind")`, 2 new tests; existing
+`trace`/`probe`/`draft` describe blocks in this file are untouched):
+- `"thread vocabulary, wrap gate, archive"` — `startSession(dir, "thread",
+  ...)` produces a `thread-<sha8>` id; all four thread entry kinds
+  (`note`/`link`/`decision`/`wrap`) append; an out-of-vocabulary kind
+  (`evidence`) is rejected; `closeSession` throws `/wrap/` before a `wrap`
+  entry is logged and succeeds after, returning the wrap entry's text as
+  `gateTexts`; the optional `phase` field round-trips.
+- `"landscape includes threads last in kind order"` —
+  `sessionLandscape`'s `sessions` array orders `["trace", "thread"]`
+  (trace before thread, matching the four-kind order: trace, probe, draft,
+  thread) and `openByKind` carries a `thread` key.
+- One pre-existing assertion in this file's `sessionLandscape` describe
+  block was widened, not changed: `"joins all kinds, carries archived
+  resolutions, groups phases, deterministic"`'s `openByKind` expectation
+  grew from `{ trace: 1, probe: 0, draft: 1 }` to `{ trace: 1, probe: 0,
+  draft: 1, thread: 0 }` — recognizing the new kind exists in the
+  enumeration, not a behavior change to trace/probe/draft's own counts
+  (confirmed: `git diff main -- test/sessions-store.test.ts` shows exactly
+  one changed line, zero other deletions).
+
+**Banner: open thread line, ordered after the other three kinds**
+(`test/banner.test.ts`, 21/21 in the file, zero deletions in this tier's
+diff):
+- `"banner lists an open thread after the other kinds"` — with one open
+  probe and one open thread, the rendered banner contains a
+  `- thread thread-<id> — … — last: note` line, and the probe line's text
+  index is less than the thread line's — kind ordering (trace, probe,
+  draft, thread) holds in the rendered banner, not just in
+  `session_landscape`'s JSON.
+
+**MCP ring: thread and map tools registered and reachable**
+(`test/mcp.test.ts`, 33/33 in the file):
+- `"lists the expected tools"` (registry assertion) — the 55-name list now
+  includes `thread_start`/`thread_log`/`thread_close` and
+  `map_set`/`map_get`, the same structural list `check-surface.mjs`
+  verifies against `server/src/index.ts`.
+- `"thread tools: cairn:thread label, wrap gate"` — `thread_start` creates
+  a `cairn:thread`-labeled issue; `thread_close` before a `wrap` entry is
+  logged returns `isError: true`; after logging one, close returns
+  `issueClosed: true`.
+- `"map tools: round-trips a two-node one-edge graph and rejects a
+  dangling edge"` — `map_set` with two nodes and one edge returns `{
+  nodes: 2, edges: 1 }`; `map_get({})` reads back the exact node and edge
+  shapes; a follow-up `map_set` patch naming a nonexistent edge endpoint
+  (`mod-ghost`) returns `isError: true` — through the actual MCP tool-call
+  layer, not just the bare function tested above.
+- One pre-existing assertion was widened, not changed:
+  `"session_landscape's openByKind reflects an open probe created via
+  probe_start"`'s key-list expectation grew from `["draft", "probe",
+  "trace"]` to `["draft", "probe", "thread", "trace"]` — same
+  enumeration-recognizes-the-new-kind shape as the sessions-store change
+  above, confirmed by `git diff main -- test/mcp.test.ts` (one changed
+  line in this test, plus the new tool names in the registry-list array
+  and the two new `it()` blocks above — no other existing assertion
+  touched).
+
+**Suite totals:** 416 passed / 6 skipped, `tsc --noEmit` clean.
+
+### Spec success criteria 1–6 mapped
+
+1. **A thread survives cold kill and resumes by name with zero re-derived
+   context; close requires a wrap entry; the `cairn:thread` issue tells
+   the story (started → wrapped) in plain language, leak-clean.**
+   Mechanism-verified: `thread_start`/`thread_log` call
+   `refreshHandoff({ source: "tool" })` inline in `src/index.ts`'s
+   `registerSessionTools` factory — the identical write-through pattern
+   trace/probe/draft use (same mechanism-wiring category as every prior
+   tier's continuity call-out). The wrap gate itself is directly
+   unit-verified (`sessions-store.test.ts`'s `"thread vocabulary, wrap
+   gate, archive"` above; `mcp.test.ts`'s `"thread tools: cairn:thread
+   label, wrap gate"` above, through the protocol layer). Live cold-kill +
+   fresh-client resume by name, with the two-touch mirror story (started →
+   wrapped) read back leak-clean, is the **thread drill**'s pass
+   condition, below (PENDING).
+2. **The map store rejects dangling edges, merges deterministically, and
+   answers filtered queries byte-stably; `map diff` names real drift.**
+   Directly unit-verified for the store half — `map-store.test.ts`'s
+   dangling-edge, null-delete, edges-replace-wholesale, and
+   deterministic-sort/filter cases above, plus `mcp.test.ts`'s map round
+   trip through the protocol layer. `map diff` itself is verb-level
+   (`verbs/map.md` §`map diff`) — there is no dedicated server tool for
+   comparing a rebuilt-in-memory graph against the stored one; live proof
+   that it names real drift by name is the **map drill**'s pass condition,
+   below (PENDING).
+3. **`medic` findings land as a record; `--repair` fixes only mechanical
+   structure and lists what it refused to touch.** Verb-level only
+   (`verbs/medic.md`) — `medic` is prompt-level orchestration over tools
+   already proven in prior tiers (`plan_status`, `plan_drift`,
+   `plan_check` from C3, `audit_record` from C3 for the findings record,
+   `plan_phase_ensure`/`plan_scaffold_phase`/`plan_issues_set` for
+   `--repair`'s mechanical fixes). No dedicated server tool decides
+   health/repair classification, and spec §5's drill list carries no
+   `drill-medic.mjs` — this criterion is verified by review of the verb
+   doc against the spec's health/repair/forensics split, not by a
+   mechanical drill.
+4. **`backtrack` computes the exact ledgered revert set, flags overlapping
+   later commits file-by-file, and `--apply` leaves original shas intact
+   (reverts only, suite green).** Verb-level (`verbs/backtrack.md`) — the
+   revert-set computation reads `LEDGER.md` commit ranges + `git log`
+   (both already-proven read paths, `plan_resync`'s Tier A coverage
+   exercises the same `LEDGER.md`-range-vs-`git log` cross-check
+   machinery); `--apply` runs `git revert` only, never `reset --hard` or a
+   force-push, per the verb's "never destructive by default" contract.
+   Live proof that the computed set matches a seeded manifest, the overlap
+   is flagged file-by-file, and the apply leg reverts cleanly with
+   original shas intact is the **backtrack drill**'s pass condition,
+   below (PENDING).
+5. **`status --stats` renders from live tool reads — no cached numbers.**
+   Verb-level (`verbs/status.md` §`--stats`) — every source it folds in is
+   an existing, already-proven read: `plan_status` (A), `issue_list` (P1),
+   `mem_stats` (P2), `session_landscape` (C2), and `listAuditRecords`
+   (`src/audit/record.ts`, C3, backing the `.cairn/audit/` records-dir
+   count). Zero new server code, so nothing new to unit-test — the "live
+   reads only, never cached" contract is a prompt-layer promise riding
+   tools that were already read-only and already unit-proven not to
+   memoize. Verified by review of the verb doc against spec §1's "zero
+   surface growth" call; no dedicated drill in spec §5 for this criterion
+   (bare `status`'s existing behavior is unaffected — `--stats` is
+   additive).
+6. **C1–D surfaces bit-for-bit unaffected: trace/probe/draft store tests,
+   banner three-kind bytes, and all 50 existing tools unchanged
+   (trace-store/sessions-store pre-thread cases/banner C2 cases pass
+   unedited).** Directly verified with one honest caveat: `test/trace-
+   store.test.ts` is completely untouched (`git diff main --
+   test/trace-store.test.ts` — empty) and green in the 416-pass total.
+   `test/sessions-store.test.ts` and `test/mcp.test.ts` each have exactly
+   one pre-existing line touched — an enumeration assertion
+   (`openByKind`'s key set, the tool-name registry list) widened to
+   include the new `thread` kind/tools — not a change to any trace/probe/
+   draft *behavior*; every other line in both files' pre-Tier-E test
+   cases is byte-identical (confirmed by `git diff`, not inferred).
+   `test/banner.test.ts` carries zero deletions — its Tier C1/C2 cases are
+   pure byte-for-bit unedited. All 50 pre-Tier-E tools are unchanged in
+   the registry (`check-surface.mjs`'s 55-count is 50 + the 5 new
+   `thread_start`/`thread_log`/`thread_close`/`map_set`/`map_get`).
+
+### Dogfood drill procedures (spec §5)
+
+Per spec §5, three drills, to be run in a scratch project with cairn2
+installed as a local plugin and recorded here once run — same
+`server/drills/drill-{thread,map,backtrack}.mjs` harness and format as
+every prior tier's drills (real `dist/index.js` over stdio, real GitHub
+tracker where a tracker is touched). No `server/drills/drill-{thread,map,
+backtrack}.mjs` exist yet; authored post-merge per this tier's convention
+(see bottom of this file).
+
+**Thread drill — PENDING (run live post-merge).**
+1. Real tracker: `/cairn thread "<name>"` → expect `thread_start` creates
+   the `cairn:thread` issue and posts mirror comment #1 ("Thread started:
+   <plain summary>").
+2. Log at least one entry of each kind (`note`, `link`, `decision`) via
+   `thread_log` as work happens — a `link` entry carries a reference plus
+   one line of why it matters.
+3. Mid-thread, `SIGKILL` the session. Start a fresh client in the same
+   repo. Expect: resume purely from the session file by re-reading
+   `.cairn/thread/<id>.md` — entry counts intact, last entry exactly where
+   the kill landed, zero re-derived context (spec success criterion 1).
+4. Re-run `/cairn thread "<name>"` against the still-open session → expect
+   the already-open guard fires and resumes (no duplicate issue, no
+   mirror comment on resume — the tracker already knows this thread is
+   open).
+5. `thread_close` before any `wrap` entry is logged → expect refusal
+   (wrap gate held). Log a `wrap` entry, then close → expect the tracker
+   issue comments "Resolved: <resolution>" and closes (mirror touch #2 —
+   two touches only, start and wrap).
+6. Pass condition: reading the two tracker comments back in order (started
+   → resolved) tells the whole story in plain language with zero
+   leak-pattern hits (`leak-patterns.mjs` scan); the session file, once
+   archived, is immutable (a further `thread_log` throws) (spec success
+   criterion 1).
+
+**Map drill — PENDING (run live post-merge).**
+1. Server only, no tracker: `map build`-equivalent — issue a sequence of
+   `map_set` patches building a small graph (a few `module`/`phase`/
+   `issue`/`decision` nodes, `depends-on`/`implements` edges).
+2. Issue a patch with an edge naming a nonexistent endpoint → expect
+   `PRECONDITION_FAILED` naming the missing id; the store is left
+   unchanged (re-read confirms the rejected patch never landed).
+3. Null-delete a node with no edges attached → expect it gone; attempt to
+   delete a node that still has an edge attached → expect
+   `PRECONDITION_FAILED` naming the edge.
+4. Issue a second patch carrying a smaller `edges` array → expect the
+   edge list REPLACED wholesale (old edges not carried over), per the
+   documented "no stable edge identity" contract.
+5. `map_get` with each filter shape (`nodeType`, `edgeType`, `node`) →
+   expect the three documented shapes; two `map_get({})` calls against the
+   unchanged store are byte-equal JSON.
+6. Pass condition: dangling-edge rejection, deterministic merge, and
+   byte-stable filtered reads all hold against the real (not
+   fake-tracker) `dist/index.js` process — spec success criterion 2's
+   store half. The `map diff`-names-real-drift half of criterion 2 is
+   verb-level and reviewed against the verb doc rather than mechanically
+   drilled (no server tool decides "drift"; `map diff` is `map_get()`
+   compared to a fresh in-memory walk).
+
+**Backtrack drill — PENDING (run live post-merge).**
+1. Local scratch git repo: seed a phase with `LEDGER.md`-recorded commit
+   ranges (a handful of real commits), plus one LATER commit that touches
+   a file also touched inside the ledgered range (the overlap case).
+2. Run `backtrack <phase>` (report-only, no `--apply`) → expect the
+   computed revert set matches exactly the ledgered commit range, and the
+   overlapping later commit is flagged file-by-file (named, not just
+   counted) as needing manual review before `--apply` would touch it.
+3. `--apply` → expect `git revert` (no-edit, reverse order) only — never
+   `reset --hard`, never a force-push, never a commit outside the
+   manifest; the test suite runs and is reported green.
+4. Confirm no history rewrite: `git log` after `--apply` shows new revert
+   commits on top; the original ledgered shas are still present and
+   unchanged (`git cat-file -e <sha>` on each).
+5. Pass condition: the exact ledgered revert set, the file-by-file overlap
+   flag, and the reverts-only/original-shas-intact/suite-green apply leg
+   all hold mechanically (spec success criterion 4).
