@@ -20,7 +20,10 @@ edits `map.json` directly, same discipline as `config_set`.
 2. Write in validated chunks via `map_set(patch)` — merge-patch by node id,
    edges replaced as a whole array per patch. Small, reviewable chunks beat
    one giant patch: if a chunk gets rejected (dangling edge, bad type), the
-   rest of the build isn't lost with it.
+   rest of the build isn't lost with it. Chunk NODES across as many patches
+   as you like, but edges go in ONE final patch carrying the complete list —
+   an edges array replaces the whole list, so a partial edges chunk erases
+   every edge written before it.
 3. Report the final shape: node/edge counts by type, and anything the walk
    found but couldn't place (an edge whose endpoint doesn't exist yet, for
    instance) — surfaced, not silently dropped.

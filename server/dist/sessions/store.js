@@ -148,7 +148,7 @@ export function sessionResolution(projectDir, kind, id) {
 }
 const KIND_ORDER = ["trace", "probe", "draft", "thread"];
 /**
- * Deterministic cross-kind session join: sorted kind (trace, probe, draft)
+ * Deterministic cross-kind session join: sorted kind (trace, probe, draft, thread)
  * then id; archived sessions carry their resolution text -- this is the
  * "already probed, verdict was stop" memory frontier mode must never lose.
  */

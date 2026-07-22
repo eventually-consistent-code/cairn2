@@ -188,7 +188,7 @@ export interface Landscape {
 }
 
 /**
- * Deterministic cross-kind session join: sorted kind (trace, probe, draft)
+ * Deterministic cross-kind session join: sorted kind (trace, probe, draft, thread)
  * then id; archived sessions carry their resolution text -- this is the
  * "already probed, verdict was stop" memory frontier mode must never lose.
  */

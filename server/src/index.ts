@@ -643,7 +643,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
   registerSessionTools("thread", "cairn:thread");
 
   server.registerTool("session_landscape",
-    { description: "Deterministic join over trace/probe/draft sessions — open + resolved with "
+    { description: "Deterministic join over trace/probe/draft/thread sessions — open + resolved with "
         + "resolutions, counts by kind, phase linkage. Frontier-mode grounding: never re-propose "
         + "an archived stop-verdict probe",
       inputSchema: {} },

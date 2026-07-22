@@ -476,7 +476,7 @@ export function buildServer(deps) {
     registerSessionTools("probe", "cairn:spike");
     registerSessionTools("draft", "cairn:sketch");
     registerSessionTools("thread", "cairn:thread");
-    server.registerTool("session_landscape", { description: "Deterministic join over trace/probe/draft sessions — open + resolved with "
+    server.registerTool("session_landscape", { description: "Deterministic join over trace/probe/draft/thread sessions — open + resolved with "
             + "resolutions, counts by kind, phase linkage. Frontier-mode grounding: never re-propose "
             + "an archived stop-verdict probe",
         inputSchema: {} }, wrap(() => sessionLandscape(deps.projectDir)));
