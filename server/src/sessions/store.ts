@@ -43,6 +43,18 @@ const listHint: Record<SessionKind, string> = {
   draft: "list sessions with session_landscape",
 };
 
+const closeHint: Record<SessionKind, string> = {
+  trace: "trace_log a verdict (cause + fix + commit), then close",
+  probe: "probe_log a verdict (VALIDATED|INVALIDATED|PARTIAL + why), then close",
+  draft: "draft_log a decision, then close",
+};
+
+const archiveHint: Record<SessionKind, string> = {
+  trace: "start a new trace if the bug is back",
+  probe: "start a new probe if the question is back",
+  draft: "start a new draft if the design question is back",
+};
+
 export function sessionId(kind: SessionKind, description: string): string {
   return `${kind}-${createHash("sha256").update(description).digest("hex").slice(0, 8)}`;
 }
@@ -82,7 +94,7 @@ export function appendSession(projectDir: string, kind: SessionKind, id: string,
     if (existsSync(join(archiveDir(projectDir, kind), `${id}.md`))) {
       throw new CairnError("PRECONDITION_FAILED",
         `${kind} '${id}' is resolved — archived sessions are immutable`,
-        `start a new ${kind} session if it's back`);
+        archiveHint[kind]);
     }
     throw new CairnError("NOT_FOUND", `no ${kind} '${id}'`, listHint[kind]);
   }
@@ -142,8 +154,8 @@ export function closeSession(projectDir: string, kind: SessionKind, id: string, 
   }
   if (gateTexts.length === 0) {
     throw new CairnError("PRECONDITION_FAILED",
-      `${kind} '${id}' has no ${spec.closeGate} entry — close needs one`,
-      `${kind}_log a ${spec.closeGate}, then close`);
+      `${kind} '${id}' has no ${spec.closeGate} entry — close needs a ${spec.closeGate}`,
+      closeHint[kind]);
   }
   data.status = "resolved";
   data.resolved = today();
