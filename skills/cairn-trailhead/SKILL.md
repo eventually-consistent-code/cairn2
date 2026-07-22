@@ -42,6 +42,8 @@ canonical registry — `help` renders from it and CI enforces it.
 | `audit` | Cross-phase quality audits — uat/milestone/security/ui/eval/validation/tests/plans | `<mode> [target]` \| `--fix` | verbs/audit.md | live |
 | `review` | Five-axis code review of a diff, branch, or phase | `[target]` \| `--fix` | verbs/review.md | live |
 | `triage` | Open-issue sweep against project conventions — report by default, --apply for the safe subset | `[--stale-days N]` \| `--apply` | verbs/triage.md | live |
+| `map` | Project knowledge graph — build, query, diff, status | `build` \| `"<question>"` \| `diff` \| `status` | verbs/map.md | live |
+| `thread` | Persistent context threads that survive /clear | `"<name>"` \| (none = list open) \| `--wrap` | verbs/thread.md | live |
 | `basecamp` | Multi-project workspaces and parallel workstreams | | verbs/basecamp.md | reserved-F |
 
 Reserved verbs have no subroutine file yet — each lands with its tier. Invoking
