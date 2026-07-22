@@ -774,7 +774,7 @@ typo-class friction" balance holds.
 ### Unit evidence summary
 
 **Session store generalization: probe/draft kinds + landscape join**
-(`test/sessions-store.test.ts`, 6/6):
+(`test/sessions-store.test.ts`, 7/7):
 - `"starts, appends the probe entry kinds, lists with counts and phase"` —
   `startSession(dir, "probe", ...)` produces a `probe-<sha8>` id; the four
   probe entry kinds (`experiment`/`result`/`requirement`/`verdict`) append
@@ -808,7 +808,7 @@ typo-class friction" balance holds.
 
 **MCP ring: all seven new tools against the fake tracker**
 (`test/mcp.test.ts`):
-- `"registers the full tool set"` (registry assertion) lists all 48 tool
+- `"lists the expected tools"` (registry assertion) lists all 48 tool
   names including `probe_start`/`probe_log`/`probe_close`,
   `draft_start`/`draft_log`/`draft_close`, and `session_landscape` — the
   surface the check-surface ratchet also verifies structurally.
