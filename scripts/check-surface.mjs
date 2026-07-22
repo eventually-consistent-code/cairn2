@@ -19,7 +19,7 @@ const failures = [];
 // --- inputs -----------------------------------------------------------------
 
 const SPEC_RESERVED = {
-  triage: "D", basecamp: "F",
+  basecamp: "F",
 };
 const TOOL_PREFIXES = /^(context|issue|plan|mem|continuity|ledger|milestone|config|trace|probe|draft|session|audit)_/;
 
