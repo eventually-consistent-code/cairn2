@@ -80,6 +80,10 @@ describe("mapSet", () => {
     expect(() => mapSet(dir, {
       edges: [{ from: "mod-a", to: "mod-ghost", type: "depends-on" }],
     })).toThrow(/mod-ghost/);
+    // validate-before-write atomicity: the rejected patch must leave the store untouched.
+    const map = mapGet(dir);
+    expect(map.nodes).toEqual({ "mod-a": { type: "module", label: "A" } });
+    expect(map.edges).toEqual([]);
   });
 
   it("rejects an invalid node type", () => {

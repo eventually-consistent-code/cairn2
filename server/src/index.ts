@@ -30,10 +30,19 @@ import { startTrace, appendTrace, listTraces, closeTrace } from "./trace/store.j
 import { KIND_SPECS, appendSession, closeSession, sessionLandscape, startSession } from "./sessions/store.js";
 import { planCheck } from "./planning/check.js";
 import { writeAuditRecord, type AuditFinding } from "./audit/record.js";
+import { mapGet, mapSet, type EdgeType, type MapEdge, type MapNode, type NodeType } from "./map/store.js";
 
 const StateEnum = z.enum(["open", "in_progress", "closed"]);
 const HandoffSourceEnum = z.enum(["tool", "posttooluse", "precompact", "waypoint"]);
 const HandoffPhaseRefSchema = z.object({ number: z.number().int(), slug: z.string() });
+
+// Zod mirrors of map/store.ts's NodeType/EdgeType/MapNode/MapEdge -- kept in
+// sync by hand (the store module owns the types; this is just the MCP-layer
+// schema for them, same duplication tradeoff as the mem_timeline helpers above).
+const NodeTypeEnum = z.enum(["module", "phase", "issue", "decision", "person"]);
+const EdgeTypeEnum = z.enum(["depends-on", "implements", "decided-in", "owns"]);
+const NodeSchema = z.object({ type: NodeTypeEnum, label: z.string(), detail: z.string().optional() });
+const EdgeSchema = z.object({ from: z.string(), to: z.string(), type: EdgeTypeEnum });
 
 const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version as string;
 
@@ -581,7 +590,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       return { ...out, issueClosed };
     }));
 
-  const registerSessionTools = (kind: "probe" | "draft", label: string) => {
+  const registerSessionTools = (kind: "probe" | "draft" | "thread", label: string) => {
     const spec = KIND_SPECS[kind];
     server.registerTool(`${kind}_start`,
       { description: `Open a persistent ${kind} session (.cairn/${kind}/<id>.md). Creates the tracker `
@@ -631,6 +640,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
   };
   registerSessionTools("probe", "cairn:spike");
   registerSessionTools("draft", "cairn:sketch");
+  registerSessionTools("thread", "cairn:thread");
 
   server.registerTool("session_landscape",
     { description: "Deterministic join over trace/probe/draft sessions — open + resolved with "
@@ -656,6 +666,28 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
         })).default([]) } },
     wrap((a: { scope: string; verdict: "pass" | "findings"; findings: AuditFinding[] }) =>
       writeAuditRecord(deps.projectDir, a.scope, a.verdict, a.findings)));
+
+  server.registerTool("map_set",
+    { description: "Merge-patch the project knowledge graph (.cairn/map/map.json) -- nodes merge by id "
+        + "(null deletes), edges replace wholesale; validates edge endpoints exist and rejects deleting "
+        + "a node that still has an edge attached",
+      inputSchema: { patch: z.object({
+        nodes: z.record(z.union([NodeSchema, z.null()])).optional(),
+        edges: z.array(EdgeSchema).optional(),
+      }) } },
+    wrap((a: { patch: { nodes?: Record<string, MapNode | null>; edges?: MapEdge[] } }) =>
+      mapSet(deps.projectDir, a.patch)));
+
+  server.registerTool("map_get",
+    { description: "Read the project knowledge graph, optionally filtered by nodeType, edgeType, or a "
+        + "node id (self + touching edges + neighbor nodes). Missing store reads as empty",
+      inputSchema: {
+        nodeType: NodeTypeEnum.optional(),
+        edgeType: EdgeTypeEnum.optional(),
+        node: z.string().optional(),
+      } },
+    wrap((a: { nodeType?: NodeType; edgeType?: EdgeType; node?: string }) =>
+      mapGet(deps.projectDir, a)));
 
   return server;
 }

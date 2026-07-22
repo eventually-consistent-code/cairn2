@@ -1,4 +1,4 @@
-export type SessionKind = "trace" | "probe" | "draft";
+export type SessionKind = "trace" | "probe" | "draft" | "thread";
 export interface KindSpec {
     kind: SessionKind;
     entryKinds: readonly string[];

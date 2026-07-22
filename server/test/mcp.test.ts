@@ -71,8 +71,10 @@ describe("cairn MCP server", () => {
       "issue_comment", "trace_start", "trace_log", "trace_list", "trace_close",
       "probe_start", "probe_log", "probe_close",
       "draft_start", "draft_log", "draft_close",
+      "thread_start", "thread_log", "thread_close",
       "session_landscape",
       "plan_check", "audit_record",
+      "map_set", "map_get",
     ].sort());
   });
 
@@ -233,6 +235,37 @@ describe("cairn MCP server", () => {
     await call("draft_log", { id: started.json.id, kind: "decision", text: "card grid" });
     expect((await call("draft_close", { id: started.json.id, resolution: "card grid locked" })).json.issueClosed)
       .toBe(true);
+  });
+
+  it("thread tools: cairn:thread label, wrap gate", async () => {
+    const started = await call("thread_start", { description: "design musing" });
+    expect((await call("issue_get", { id: started.json.issue })).json.labels).toContain("cairn:thread");
+    await call("thread_log", { id: started.json.id, kind: "note", text: "a note worth keeping" });
+    const early = await call("thread_close", { id: started.json.id, resolution: "landed here" });
+    expect(early.isError).toBe(true);
+    await call("thread_log", { id: started.json.id, kind: "wrap", text: "wrapped: landed here" });
+    expect((await call("thread_close", { id: started.json.id, resolution: "landed here" })).json.issueClosed)
+      .toBe(true);
+  });
+
+  it("map tools: round-trips a two-node one-edge graph and rejects a dangling edge", async () => {
+    const set = await call("map_set", { patch: {
+      nodes: {
+        "mod-a": { type: "module", label: "A" },
+        "mod-b": { type: "module", label: "B" },
+      },
+      edges: [{ from: "mod-a", to: "mod-b", type: "depends-on" }],
+    } });
+    expect(set.json).toEqual({ nodes: 2, edges: 1 });
+
+    const got = await call("map_get", {});
+    expect(got.json.nodes["mod-a"]).toEqual({ type: "module", label: "A" });
+    expect(got.json.edges).toEqual([{ from: "mod-a", to: "mod-b", type: "depends-on" }]);
+
+    const dangling = await call("map_set", { patch: {
+      edges: [{ from: "mod-a", to: "mod-ghost", type: "depends-on" }],
+    } });
+    expect(dangling.isError).toBe(true);
   });
 
   it("session_landscape's openByKind reflects an open probe created via probe_start", async () => {
