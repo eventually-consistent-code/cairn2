@@ -1284,8 +1284,9 @@ from an unchanged test count.
    **triage drill**'s duplicate leg, below (PENDING).
 3. **Report-only default: a bare `triage` run mutates nothing on the
    tracker and still writes the record.** Verb-level (`verbs/triage.md`
-   §"Bare vs. `--apply`") — only `issue_list` (a read) runs without
-   `--apply`; `audit_record` (C3, unit-proven) still writes the report.
+   §"Bare vs. `--apply`") — `issue_list` (a read) is the only TRACKER
+   call without `--apply`; `session_landscape` reads locally and
+   `audit_record` (C3, unit-proven) still writes the report.
    Live proof is the **triage drill**'s report leg, below (PENDING).
 4. **Labels added under `--apply` come only from the project's existing
    label set.** Verb-level (`verbs/triage.md` §"`--apply`" unlabeled row +
@@ -1324,7 +1325,8 @@ bottom of this file).
    `important` finding (the resolved-but-open issue) and the remaining
    findings `minor`, every finding's `issue:` field linking a real issue
    id, and zero mutations on the tracker (no comment, no label, no close
-   — `issue_list` is the only call that ran).
+   — `issue_list` is the only tracker call that ran; landscape and record
+   reads/writes are local).
 3. **Apply leg** — re-run with `--apply`: confirm the unlabeled issue
    gets a label pulled from the project's existing label set (never an
    invented name); the resolved-but-open issue is closed, but only after
