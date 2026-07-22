@@ -37,6 +37,12 @@ const archiveDir = (p: string, kind: SessionKind) => join(kindDir(p, kind), "arc
 const livePath = (p: string, kind: SessionKind, id: string) => join(kindDir(p, kind), `${id}.md`);
 const today = () => new Date().toISOString().slice(0, 10);
 
+const listHint: Record<SessionKind, string> = {
+  trace: "list open traces with trace_list",
+  probe: "list sessions with session_landscape",
+  draft: "list sessions with session_landscape",
+};
+
 export function sessionId(kind: SessionKind, description: string): string {
   return `${kind}-${createHash("sha256").update(description).digest("hex").slice(0, 8)}`;
 }
@@ -78,7 +84,7 @@ export function appendSession(projectDir: string, kind: SessionKind, id: string,
         `${kind} '${id}' is resolved — archived sessions are immutable`,
         `start a new ${kind} session if it's back`);
     }
-    throw new CairnError("NOT_FOUND", `no ${kind} '${id}'`, `list sessions with session_landscape`);
+    throw new CairnError("NOT_FOUND", `no ${kind} '${id}'`, listHint[kind]);
   }
   appendFileSync(path, `\n## ${entryKind} — ${today()}\n${text.trimEnd()}\n`);
   return { path };
@@ -124,7 +130,7 @@ export function closeSession(projectDir: string, kind: SessionKind, id: string, 
   const spec = KIND_SPECS[kind];
   const path = livePath(projectDir, kind, id);
   if (!existsSync(path)) {
-    throw new CairnError("NOT_FOUND", `no open ${kind} '${id}'`, "list sessions with session_landscape");
+    throw new CairnError("NOT_FOUND", `no open ${kind} '${id}'`, listHint[kind]);
   }
   const { data, body } = parseFrontmatter(readFileSync(path, "utf8"));
   const gateTexts: string[] = [];
