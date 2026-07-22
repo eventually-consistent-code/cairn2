@@ -17,3 +17,6 @@ Render the verb reference from the routing table in SKILL.md.
      route summit auto fast resync · B mark retro distill brief tune ·
      C trace · D triage · F basecamp.
 4. Close with: freeform works too — `/cairn do "<what you want>"`.
+
+Every verb reads `.cairn/profile.md` when present and calibrates
+tone/depth to it — advisory only, never a change to what a verb decides.
