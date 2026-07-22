@@ -1250,8 +1250,8 @@ passed / 6 skipped, `tsc --noEmit` clean — unchanged from Tier C3.
 
 ### Server untouched
 Evidence command: `git diff --stat main -- server/` → **empty output,
-zero lines**. This tier's entire diff against `main` is three files, none
-under `server/`:
+zero lines**. This tier's code diff against `main` (excluding this
+verification-record commit) is three files, none under `server/`:
 
 ```
  scripts/check-surface.mjs              |  2 +-
