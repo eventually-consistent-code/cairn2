@@ -50,7 +50,11 @@ function extractContracts(lines: string[], planRel: string): Contract[] {
     const kind = m[2] as "Produces" | "Consumes";
     const startLine = i;
     const parts = [m[3]];
-    let inFence = false;
+    // A fence can open ON the contract line itself (e.g. a "- Produces:"
+    // bullet ending with ```) — an odd count of ``` markers on this line
+    // means the fence is still open, so continuation lines start in-fence
+    // exactly as if the fence had opened on a later line.
+    let inFence = (lines[i].match(/```/g) ?? []).length % 2 === 1;
     let j = i + 1;
     while (j < lines.length) {
       const next = lines[j];
@@ -169,6 +173,13 @@ export function planCheck(projectDir: string, phase?: number):
     }
   }
 
-  findings.sort((a, b) => (a.plan === b.plan ? a.line - b.line : a.plan < b.plan ? -1 : 1));
+  // Fully explicit tie-break — byte-equal output is a binding constraint, so
+  // sort order must never fall back on readdir/filesystem enumeration order.
+  const cmp = (a: string, b: string): number => (a === b ? 0 : a < b ? -1 : 1);
+  findings.sort((a, b) =>
+    cmp(a.plan, b.plan) || (a.line - b.line) || cmp(a.type, b.type)
+    || cmp(a.counterpart?.plan ?? "", b.counterpart?.plan ?? "")
+    || ((a.counterpart?.line ?? 0) - (b.counterpart?.line ?? 0))
+    || cmp(a.detail, b.detail));
   return { findings, scanned: plans.length };
 }

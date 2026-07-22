@@ -78,4 +78,51 @@ describe("planCheck — unanchored thresholds", () => {
   it("empty project: zero findings, zero scanned", () => {
     expect(planCheck(fresh())).toEqual({ findings: [], scanned: 0 });
   });
+
+  it("adjacent independent thresholds do not anchor each other", () => {
+    const dir = fresh();
+    plan(dir, "01-perf", [
+      "Response must be < 100ms per perf/baseline.json.",
+      "Throughput at least 500 rps for the same run.", "",
+    ].join("\n"));
+    const { findings } = planCheck(dir);
+    // Line 1 is anchored by its own path token. Line 2 is a separate,
+    // self-contained threshold statement — it does not inherit line 1's
+    // anchor just for being adjacent, so it (and only it) gets flagged.
+    expect(findings).toHaveLength(1);
+    expect(findings[0].type).toBe("unanchored-threshold");
+    expect(findings[0].line).toBe(2);
+  });
+});
+
+describe("planCheck — determinism", () => {
+  it("multi-producer drift onto one consumer is deterministically ordered", () => {
+    const dir = fresh();
+    plan(dir, "01-alpha", [
+      "# Phase 1", "",
+      "- Produces: `foo(x: number): string`", "",
+    ].join("\n"));
+    plan(dir, "02-beta", [
+      "# Phase 2", "",
+      "- Produces: `bar(y: number): boolean`", "",
+    ].join("\n"));
+    plan(dir, "03-gamma", [
+      "# Phase 3", "",
+      "- Consumes: `foo(x: number, extra: string): string` and `bar(y: number): string`", "",
+    ].join("\n"));
+
+    const { findings } = planCheck(dir);
+    expect(findings).toHaveLength(2);
+    expect(findings.every((f) => f.type === "contract-drift")).toBe(true);
+    expect(findings.every((f) => f.plan.includes("03-gamma"))).toBe(true);
+
+    // Same consumer plan/line for both findings — the tie-break must fall
+    // through to counterpart.plan, and it must land in sorted order.
+    expect(findings[0].counterpart?.plan).toContain("01-alpha");
+    expect(findings[1].counterpart?.plan).toContain("02-beta");
+
+    const first = JSON.stringify(planCheck(dir));
+    const second = JSON.stringify(planCheck(dir));
+    expect(first).toBe(second);
+  });
 });
