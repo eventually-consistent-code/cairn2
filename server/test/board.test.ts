@@ -119,6 +119,26 @@ describe("boardUpdate", () => {
     expect(existsSync(join(root, ".cairn", "basecamp", "board.json"))).toBe(true);
     expect(existsSync(join(root, ".cairn", "basecamp", "board.json.tmp"))).toBe(false);
   });
+
+  it("rejects an empty title on create, naming the id", () => {
+    const root = freshWorkspace();
+    expect(() => boardUpdate(root, { "ws-1": { title: "", project: "api", status: "queued" } })).toThrow(/ws-1/);
+  });
+
+  it("rejects a whitespace-only title on update, leaving store untouched", () => {
+    const root = freshWorkspace();
+    boardUpdate(root, { "ws-1": { title: "migrate api auth", project: "api", status: "queued" } });
+    expect(() => boardUpdate(root, { "ws-1": { title: "   " } })).toThrow(/ws-1/);
+    const board = boardGet(root);
+    expect(board.workstreams["ws-1"].title).toBe("migrate api auth");
+  });
+
+  it("defaults status to queued when omitted on create", () => {
+    const root = freshWorkspace();
+    boardUpdate(root, { "ws-1": { title: "migrate api auth", project: "api" } });
+    const board = boardGet(root);
+    expect(board.workstreams["ws-1"].status).toBe("queued");
+  });
 });
 
 describe("boardGet", () => {

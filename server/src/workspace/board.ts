@@ -79,6 +79,11 @@ export function boardUpdate(launchDir: string, patch: Record<string, Partial<Wor
         `workstream '${id}' requires 'title' and 'project' on create`,
         "pass both fields when creating a new workstream");
     }
+    if (typeof title === "string" && title.trim() === "") {
+      throw new CairnError("UNSUPPORTED",
+        `workstream '${id}' requires a non-empty title`,
+        "give the workstream a real title");
+    }
     const status = value.status ?? existing?.status ?? "queued";
     const parsedStatus = StatusSchema.safeParse(status);
     if (!parsedStatus.success) {
