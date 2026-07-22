@@ -1671,3 +1671,295 @@ orchestrations of already-drilled tools (`plan_*`, `audit_record`,
 `issue_list`, `mem_stats`, `session_landscape`) — covered by review of
 the verb docs plus those tools' own rings, same treatment as prior
 tiers' prompt-level surfaces.
+
+## Tier F1 — Basecamp (Workspace Awareness + Workstreams) (2026-07-22)
+
+### Surface conformance
+- `node scripts/check-surface.mjs` → clean: **35 live, 0 reserved, 60
+  server tools** (`basecamp` flips `reserved-F` → live; the reserved set is
+  now **empty** — `SPEC_RESERVED = {}` in `scripts/check-surface.mjs`, the
+  routing table's last row filled). `TOOL_PREFIXES` gains `workspace|board`
+  per this spec's §1.
+- Server: `cd server && npx vitest run` → **459 passed / 6 skipped** (465
+  total; same env-gated `*.live.test.ts` skips as every prior tier —
+  gitlab, jira, asana, azure-boards, clickup, github). `npx tsc --noEmit`
+  clean. `npm run build` clean; `server/dist/` already matched the rebuilt
+  output — nothing dirtied, nothing to commit this tier.
+
+### Unit evidence summary
+
+**Workspace discovery + focus resolution** (`test/workspace-context.test.ts`,
+16/16, `describe("findWorkspace")` + `describe("setFocus +
+resolveProjectDir")`):
+- `"finds a workspace at the launch dir itself"` / `"walks up two levels to
+  find the workspace root"` — the parent-dir walk, no `.git` requirement.
+- `"returns null when no workspace file exists up to the filesystem root"`
+  — the compatibility path's discovery half.
+- `"lists a member without cairn.json as unconfigured"` — the
+  configured/unconfigured split spec §2 calls for.
+- `"throws CONFIG_INVALID for malformed workspace JSON rather than falling
+  back to no-workspace"` / `"...when workspace JSON is missing required
+  fields"` — a typo'd workspace file is a loud error, never a silent
+  single-project fallback (the trap the spec explicitly calls out).
+- `"round-trips: setFocus writes focus, resolveProjectDir follows it"` —
+  the core focus-switch mechanism.
+- `"rejects focusing an unconfigured member, naming it and the fix"` /
+  `"rejects focusing a name that is not a member"` — both `workspace_focus`
+  validation rails.
+- `"clears focus with null; resolution falls back to the launch dir"`.
+- `"resolves to the launch dir when there is no workspace at all (compat
+  path)"` / `"...when a workspace exists but no focus is set"` — spec
+  success criterion 2's two compatibility branches, directly unit-proven.
+- `"resolves to the exact launch dir (not the workspace root) when
+  unfocused, even nested inside a member"` — a session opened inside a
+  member directory stays on that exact dir until it explicitly switches,
+  per spec §2's discovery note.
+- `"throws CONFIG_INVALID when the focused member is removed from the
+  workspace file (stale focus)"` / `"...when the focused member becomes
+  unconfigured (cairn.json removed)"` — a stale focus is a named error,
+  never a silent fallback to the launch dir.
+- `"writes the focus file atomically under .cairn/basecamp/focus.json at
+  the workspace root"` — tmp + rename, workspace-root-scoped (never
+  per-member).
+
+**Board — merge, validation, atomicity, determinism** (`test/board.test.ts`,
+17/17, `describe("boardUpdate")` + `describe("boardGet")`):
+- `"creates a new workstream, stamping 'updated' server-side"` — `updated`
+  is never taken from the patch.
+- `"merges a patch's fields over an existing workstream, leaving other
+  fields intact"` / `"null deletes a workstream"` — the `config_set`-style
+  merge-patch discipline spec §3 calls for.
+- `"requires title and project on create, naming the id"` /
+  `"does not require title or project again on update"` — required-on-
+  create-only, per spec.
+- `"rejects an invalid status"` / `"rejects a project that is not a
+  workspace member"` — both validation rails.
+- `"rejects an empty title on create, naming the id"` / `"rejects a
+  whitespace-only title on update, leaving store untouched"`.
+- `"defaults status to queued when omitted on create"`.
+- `"rejects with PRECONDITION_FAILED when no workspace exists, hinting
+  basecamp init"` (on both `boardUpdate` and `boardGet`) — the board
+  requires a workspace, per spec §3.
+- `"leaves the store untouched when a patch is rejected
+  (validate-before-write)"` — atomicity under rejection, the same
+  discipline `config_set`/`map_set` already carry.
+- `"writes atomically -- no leftover .tmp file after a successful write"`.
+- `"returns an empty board with zeroed counts when no board file exists
+  yet"` — never an error.
+- `"sorts workstream ids deterministically and is byte-stable across
+  reads"` / `"derives counts by status"` — the deterministic-read half of
+  spec §3.
+
+**MCP ring: five new tools + focus-redirect + per-member isolation**
+(`test/mcp.test.ts`, 43/43 in the file, 10 new tests over the pre-Tier-F1
+33):
+- `"lists the expected tools"` (registry assertion, pre-existing test
+  widened) — the 60-name list now includes `workspace_list`,
+  `workspace_focus`, `workspace_status`, `board_get`, `board_update` —
+  the same structural list `check-surface.mjs` verifies against
+  `server/src/index.ts`.
+- `"pins the tool count at 60"` — a direct count assertion, the mechanical
+  half of spec success criterion 5 (routing table complete, reserved set
+  empty) mirrored on the server-tool surface.
+- `"workspace_list without a workspace returns { workspace: null }, not an
+  error"` / `"workspace_focus without a workspace is a PRECONDITION_FAILED
+  error"` / `"board_get without a workspace is a PRECONDITION_FAILED
+  error"` — the no-workspace behavior of all three workspace-aware tools,
+  through the protocol layer.
+- `describe("workspace: focus redirect + board (two-member fixture)")`
+  (5 tests, real two-member `cairn-workspace.json` + `cairn.json` fixture
+  on disk): `"workspace_list reports the workspace, members, and null
+  focus"`; `"workspace_focus rejects an unknown member"`; **`"focus on b
+  redirects context_set into member b's .cairn/ only"`** — the direct
+  mechanical proof of spec success criterion 1: `workspace_focus(project:
+  "b")` then `context_set`/`context_get` lands the state file at
+  `member-b/.cairn/state/active-context.json` and confirms it does NOT
+  exist under `member-a/` or the workspace root, then clearing focus
+  (`project: null`) reads back an empty context at the launch dir — an
+  *existing* tool (`context_set`) demonstrably follows the focus with zero
+  schema changes; `"board round-trips through board_update / board_get"`;
+  `"board_update rejects a workstream naming a non-member project"`.
+- `describe("workspace_status: per-member isolation")` (1 test): `"one
+  erroring member yields { name, error } without failing the call"` — a
+  workspace with a healthy member (real issue created, phase set) and a
+  member whose `cairn.json` fails tracker-adapter validation
+  (`makeTracker` throws fast, no network) — `workspace_status()` returns
+  the healthy member's real `{ phase, openIssues, openSessions }` AND the
+  broken member's `{ error }`, the whole call succeeding — the direct
+  mechanical proof of spec success criterion 4 (a mixed workspace degrades
+  member-by-member, never call-wide).
+
+**Suite totals:** 459 passed / 6 skipped, `tsc --noEmit` clean.
+
+### Compatibility gate (spec success criterion 2, this tier's hard gate)
+
+The spec's compatibility ring requires the ENTIRE pre-existing suite to
+run with no workspace present and pass **unedited** — that IS the
+single-project byte-compatibility proof. Evidence, grep-before-cite:
+
+- `git diff --stat main -- server/test/` shows exactly three files:
+  `server/test/board.test.ts` (new, 186 lines) and
+  `server/test/workspace-context.test.ts` (new, 189 lines) — both entirely
+  new files, zero pre-existing test content touched — plus
+  `server/test/mcp.test.ts` (172 lines changed).
+- Within `mcp.test.ts`, the diff against `main` is: **(1)** the import
+  line — `import { mkdtempSync, writeFileSync, rmSync } from "node:fs"`
+  widened to `import { existsSync, mkdirSync, mkdtempSync, writeFileSync,
+  rmSync } from "node:fs"` (the two added names are used only by the new
+  workspace fixtures below) — and **(2)** the pre-existing `"lists the
+  expected tools"` test's sorted-name array gaining the five new tool
+  names (`workspace_list`, `workspace_focus`, `workspace_status`,
+  `board_get`, `board_update`) — the tool-count pin this tier's surface
+  growth requires. Every other line in the file's pre-Tier-F1 test cases
+  is byte-identical (confirmed by `git diff`, not inferred); all 10 new
+  tests (the tool-count pin, three no-workspace-error tests, and the two
+  new `describe` blocks) are pure appends after the file's existing
+  content. No other file under `server/test/` — and no file under
+  `server/src/` outside the new `server/src/workspace/` directory — was
+  edited by this tier: `git diff --stat main -- server/src/` shows
+  `server/src/index.ts` (the resolveProjectDir/getTracker threading
+  through every pre-existing handler — no tool name or schema changed —
+  plus registrations for the five new tools) and the two new
+  `server/src/workspace/{context, board}.ts` files, nothing else touched.
+- Every pre-existing test file (`trace-store.test.ts`, `sessions-
+  store.test.ts`, `banner.test.ts`, `config.test.ts`, `cards.test.ts`,
+  `plan-check.test.ts`, `audit-record.test.ts`, all adapter unit/live
+  suites, and the rest of the 39 test files) is untouched and green in
+  the 459-pass total above — run with no `cairn-workspace.json` anywhere
+  in the repo tree (there is none, and none is created by any non-
+  workspace test), so every one of those runs IS the compatibility ring
+  the spec's success criterion 2 calls for: no workspace present, existing
+  suite unedited, all green.
+
+### Spec success criteria 1–6 mapped
+
+1. **A session in a workspace switches focus and EVERY tool follows —
+   proven by an issue landing in the focused member's tracker and its
+   session/banner files landing under the member's paths.** Directly
+   unit-verified for the mechanical core — `mcp.test.ts`'s `"focus on b
+   redirects context_set into member b's .cairn/ only"` above proves an
+   *existing* tool (`context_set`, zero schema changes) redirects through
+   `resolveProjectDir` the moment focus changes, landing state under the
+   focused member's own `.cairn/` and nowhere else. The full claim (an
+   `issue_create` landing in the focused member's real tracker, and the
+   session/banner path-hash following too) needs a real tracker and a
+   real per-member handoff/banner write — that end-to-end proof is the
+   **basecamp drill**'s pass condition, below (PENDING).
+2. **No workspace → byte-identical single-project behavior (existing suite
+   unedited + the compat drill).** Directly verified for the "existing
+   suite unedited" half — see "Compatibility gate" above (grep-before-cite
+   evidence: exactly one pre-existing test file touched, and only for an
+   import widen + a tool-name-list append). The live byte-identical
+   behavior claim against a real pre-F1 baseline capture (session file,
+   banner, record paths) is the **focus-compat drill**'s pass condition,
+   below (PENDING).
+3. **The dispatch board runs the full workstream lifecycle with
+   tracker-first evidence (claim creates the member issue, done closes it
+   with a plain note), and two parallel claims on one workstream are
+   impossible to record as both-active (single-writer board, verb
+   rule).** Directly unit-verified for the board mechanics —
+   `board.test.ts`'s merge/validation/atomicity matrix above proves the
+   single-writer, validate-before-write discipline the "impossible to
+   record as both-active" claim depends on (a second `board_update`
+   claiming the same workstream id simply overwrites the merged record,
+   never forks it). The claim→member-issue-creation and done→close-with-
+   plain-note lifecycle is verb-level (`verbs/basecamp.md` §`claim`/
+   `done`) riding tools already proven in prior tiers (`issue_create`,
+   `issue_close`) — live proof of the full lifecycle against a real
+   tracker is the **basecamp drill**'s pass condition, below (PENDING).
+4. **A mixed workspace (configured + unconfigured members) degrades
+   member-by-member, never call-wide.** Directly unit-verified —
+   `mcp.test.ts`'s `"one erroring member yields { name, error } without
+   failing the call"` above: a member whose tracker config fails adapter
+   validation reports `{ error }` while a healthy sibling member's real
+   `{ phase, openIssues, openSessions }` comes back in the same
+   `workspace_status()` call, which itself returns `isError: false`.
+5. **Reserved verb set is EMPTY — the routing table is complete.**
+   Directly verified — "Surface conformance" above: `check-surface.mjs`
+   reports `0 reserved`, and `SPEC_RESERVED = {}` in the script itself
+   (not a count that happens to be zero — the constant is the empty
+   object the spec calls for).
+6. **All 55 existing tools untouched in name and schema.** Directly
+   verified — `mcp.test.ts`'s widened `"lists the expected tools"`
+   assertion carries every pre-Tier-F1 tool name forward unchanged (only
+   the five new names are appended to the sorted list; none removed,
+   none renamed) and `"pins the tool count at 60"` confirms 55 + 5 exactly;
+   `git diff --stat main -- server/src/` (above) shows no pre-existing
+   tool's registration block edited — the five new `registerTool(...)`
+   calls for `workspace_*`/`board_*` are pure additions in
+   `server/src/index.ts`.
+
+### Dogfood drill procedures (spec §6)
+
+Per spec §6, two drills, to be run in a scratch workspace with cairn2
+installed as a local plugin and recorded here once run — same
+`server/drills/drill-{basecamp,focus-compat}.mjs` harness and format as
+every prior tier's drills (real `dist/index.js` over stdio, real GitHub
+tracker where a tracker is touched). Neither driver exists yet; per this
+tier's convention (see bottom of this file), both are authored post-merge.
+
+**Basecamp drill — PENDING, run post-merge.**
+1. Scratch workspace root with two member directories: one GitHub-
+   configured (`cairn.json` pointing at a real scratch repo), one left
+   unconfigured (no `cairn.json`). Write `cairn-workspace.json` naming
+   both.
+2. `workspace_list()` → expect both members listed, the unconfigured one
+   flagged `configured: false`, `focus: null`.
+3. `workspace_focus(project: "<unconfigured member>")` → expect
+   `CONFIG_INVALID` naming the member and the fix (add a `cairn.json`);
+   `workspace_focus(project: "<configured member>")` → expect success,
+   `{ focus, projectDir }` pointing at that member's absolute path.
+4. With focus set, `issue_create` (via the existing tool, no new params)
+   → expect the issue lands in the FOCUSED member's real tracker, and its
+   `.cairn/` state (context, handoff, banner) lands under that member's
+   own directory — never the workspace root, never the other member.
+5. Board lifecycle: `board_update` a `queued` workstream naming the
+   configured member as `project` → `board_update(status: "active",
+   session: "<tag>")` (claim) → `board_update(status: "blocked", note:
+   "<why>")` → `board_update(status: "done")`. Expect each transition to
+   read back via `board_get`, and — per the verb's claim discipline —
+   the claim step to have created/linked a real member-project tracker
+   issue, the done step to close it with a plain-language close note
+   (`verbs/basecamp.md` §`claim`/`update`/`done`).
+6. `workspace_status()` → expect the configured member's real
+   `{ phase, openIssues, openSessions }` and the unconfigured member
+   marked (not silently dropped from the response).
+7. `board_get()` called twice with no mutation between → byte-equal JSON.
+8. `leak-patterns.mjs` scan over every comment/issue body written to the
+   tracker in this drill → zero hits.
+9. Pass condition: focus redirects `issue_create` and all `.cairn/` state
+   to the focused member (criterion 1); the full claim → blocked → done
+   lifecycle lands on the real member tracker with tracker-first evidence
+   (criterion 3); the unconfigured member refuses focus but still lists,
+   and `workspace_status` degrades it without failing the call
+   (criterion 4); the board reads are byte-equal (criterion 3's
+   determinism half); the leak scan is clean.
+
+**Focus-compat drill — PENDING, run post-merge.**
+1. A scratch project with NO `cairn-workspace.json` anywhere in its parent
+   chain (the ordinary single-project case every pre-F1 cairn project
+   already is).
+2. Capture a pre-F1 baseline: run a short real session (`new` → `plan` →
+   `work` on one issue) against the `dist/index.js` build from BEFORE this
+   tier's commits (or an equivalent known-good baseline capture), and
+   record the exact session file, handoff file, and banner file bytes/
+   paths it produces.
+3. Re-run the identical sequence against this tier's `dist/index.js` in a
+   fresh copy of the same scratch project.
+4. `workspace_list()` → expect `{ workspace: null }`, not an error.
+5. Diff every stateful artifact from step 2 against step 3: the session
+   handoff (`~/.cairn/handoff/<project>-<hash>.json`), the recall banner
+   (`~/.cairn/banner/<project>-<hash>.md`), and the record paths
+   (`.cairn/plans/...`, `LEDGER.md`, memory cards) — expect byte-identical
+   content and identical paths (same `<hash>` — `resolveProjectDir`
+   returning the exact launch dir, not a workspace-relative path, is what
+   keeps the path-hash scheme unchanged).
+6. Pass condition: every stateful tool behaves byte-identically to the
+   pre-F1 baseline capture with no workspace anywhere in the tree — the
+   live confirmation of spec success criterion 2, completing the
+   "existing suite unedited" evidence already proven above with a real,
+   driven session.
+
+Post-merge convention (same as Tiers D/E): author + run
+`server/drills/drill-{basecamp,focus-compat}.mjs`, then commit the
+drills-run record here.

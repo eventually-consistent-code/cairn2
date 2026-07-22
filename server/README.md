@@ -2,7 +2,7 @@
 
 MCP server for cairn 2.0. See `docs/superpowers/specs/2026-07-12-cairn-2-design.md`.
 
-55 tools total across planning, memory, continuity, collaboration, milestones, config, sessions (trace, probe, draft, thread), audits (plan_check, audit_record), and the project knowledge graph (map_set, map_get).
+60 tools total across planning, memory, continuity, collaboration, milestones, config, sessions (trace, probe, draft, thread), audits (plan_check, audit_record), the project knowledge graph (map_set, map_get), and workspace/board (workspace_list, workspace_focus, workspace_status, board_get, board_update).
 
 ## Test rings
 
@@ -484,6 +484,126 @@ paragraph. A `pass` verdict carries zero finding blocks — the file itself
 is still the evidence the audit ran. `review` verbs write the same shape
 under `scope: review-<target>` (target slugged to
 `[a-z0-9]`-plus-hyphens first).
+
+## Workspace (multi-project) and the dispatch board
+
+Tier F1's full workspace awareness: a `cairn-workspace.json` at a workspace
+root names member projects, and `resolveProjectDir()` is the ONE function
+every existing tool's `deps.projectDir` now resolves through. **The
+compatibility guarantee, stated plainly: with no `cairn-workspace.json`
+anywhere above the launch dir, resolution returns the launch dir and
+NOTHING changes — every single-project cairn project today behaves
+byte-identically.** All 55 pre-F1 tools keep their exact names and
+schemas; workspace awareness is additive, never a rewire.
+
+### Discovery
+
+`findWorkspace(launchDir)` walks parent directories from the server's
+launch dir looking for `cairn-workspace.json`, stopping at the filesystem
+root (`.git` is NOT required — discovery is workspace-file-only):
+
+```jsonc
+// cairn-workspace.json at the workspace root
+{
+  "workspace": "acme-platform",
+  "members": [
+    { "name": "api",   "path": "services/api" },
+    { "name": "web",   "path": "apps/web" },
+    { "name": "infra", "path": "infra" }
+  ]
+}
+```
+
+No workspace file anywhere up the tree → `findWorkspace` returns `null` —
+the compatibility path. A workspace file that exists but is malformed (bad
+JSON, missing `workspace`/`members`) is never silently treated as "no
+workspace" — it throws `CONFIG_INVALID` naming the file, so a typo can't
+quietly fall back to single-project behavior. Each member path resolves
+relative to the workspace root; a member directory without its own
+`cairn.json` is listed as `configured: false` (`unconfigured`) and refuses
+focus with a pointed hint rather than failing silently.
+
+### Focus file
+
+`.cairn/basecamp/focus.json` at the **workspace root** (never per-member),
+single-writer, atomic (tmp + rename):
+
+```json
+{ "focus": "api" }
+```
+
+No workspace → no focus file → resolution is the launch dir. A workspace
+that exists but has no focus set *also* resolves to the launch dir — a
+session opened inside `services/api` works on `api` until it explicitly
+switches. `workspace_focus(project: null)` clears focus back to the launch
+dir. A focus naming a member that has since been removed or lost its
+`cairn.json` (a stale focus) throws `CONFIG_INVALID` rather than silently
+falling back — clear it or restore the member.
+
+### Resolution rules
+
+`resolveProjectDir(launchDir)` is the single choke point:
+
+1. No workspace found → `launchDir` (compatibility path).
+2. Workspace found, no focus set → `launchDir`.
+3. Workspace found, focus set to a member that is still a configured
+   member → that member's absolute path.
+4. Workspace found, focus set to a member that is no longer a member or no
+   longer configured → `CONFIG_INVALID` naming the stale focus and the fix
+   (never a silent fallback to the launch dir).
+
+Per-project state that already keyed off the resolved directory (the
+`getTracker()` cache, the handoff/banner path-hash) needed zero changes —
+`getTracker()` became `getTracker(resolvedDir)` memoized per dir, and the
+handoff/banner scheme already hashes `resolve(projectDir)`, so a focused
+member's state lands under its own hash automatically.
+
+### Concurrency caveat
+
+Focus is workspace-global shared state, one file, single-writer, last write
+wins — it is not scoped per session. In the #3256 parallel-dispatch
+topology, several sessions run against the same workspace root at once, and
+one session calling `workspace_focus` redirects every other session's
+*subsequent* `resolveProjectDir()` calls to the new member, silently, with
+no error and no signal to the sessions that just got moved. Each individual
+tool call still resolves against a single, consistent snapshot of the focus
+file taken at the start of that handler — a flip mid-call can never cause
+one tool call to operate on two different members. But a multi-call flow
+(claim a workstream, create an issue, update the board) spans several
+handler invocations, and nothing above `resolveProjectDir()` re-checks that
+focus still points where the flow expects between those calls. Callers
+driving multi-call flows must re-confirm focus themselves before each write
+— see the focus-discipline rule in `skills/cairn-trailhead/verbs/basecamp.md`.
+
+### Board shapes
+
+`.cairn/basecamp/board.json` at the workspace root — a single-writer,
+`config_set`-style merge-patch board for parallel workstreams (the #3256
+dispatch pattern), one level up from any one session's own continuity:
+
+```jsonc
+{
+  "workstreams": {
+    "<id>": {
+      "title": "migrate api auth",
+      "project": "api",              // member name
+      "status": "queued|active|blocked|done",
+      "issue": "GH-12",              // once claimed — the member-project issue
+      "session": "…",                // free-text claim tag (who/where)
+      "note": "…",                   // one-liner, latest state
+      "updated": "YYYY-MM-DD"
+    }
+  }
+}
+```
+
+| tool | purpose |
+|---|---|
+| `workspace_list` | Workspace name, root, members (name/path/configured/focusable), current focus. No workspace → `{ workspace: null }` — not an error |
+| `workspace_focus` | Validates the target is a configured member, writes the focus file, returns the resolution (`{ focus, projectDir }`). `project: null` clears focus |
+| `workspace_status` | Curated cross-project read: per configured member, `{ name, phase, openIssues, openSessions }` pulled from that member's own stores/tracker — read-only, never switches focus. A member whose tracker errors reports `{ name, error }` rather than failing the whole call |
+| `board_get` | Deterministic read: workstream ids sorted, plus derived counts by status. Missing board file reads as an empty board with zeroed counts, never an error |
+| `board_update` | Single-writer merge-patch by workstream id (`null` deletes); validates `status` enum, `project` names a real workspace member, and `title`+`project` are required on create — all before any write, so a rejected patch leaves the file untouched. Requires a workspace; no workspace → `PRECONDITION_FAILED` ("run basecamp init") |
 
 ## Hooks
 
