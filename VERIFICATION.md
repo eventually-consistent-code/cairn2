@@ -910,7 +910,7 @@ installed as a local plugin and recorded here once run — same
 `server/drills/drill-{probe,draft,landscape}.mjs` harness and format as the
 Tier A/B/C1 drills above.
 
-**Probe drill — PENDING (run live post-merge).**
+**Probe drill — RUN 2026-07-22, see results below.**
 1. Real tracker: `/cairn probe "<question>"` → expect `probe_start` creates
    the `cairn:spike` issue and posts mirror comment #1 ("Investigation
    started: <plain summary>").
@@ -933,7 +933,7 @@ Tier A/B/C1 drills above.
    provenance (session id, tracker issue, artifact files) (spec success
    criterion 4).
 
-**Draft drill — PENDING (run live post-merge).**
+**Draft drill — RUN 2026-07-22, see results below.**
 1. Real tracker: `/cairn draft "<design question>"` → expect `draft_start`
    creates the `cairn:sketch` issue and posts mirror comment #1; the FIRST
    session in the project creates `.cairn/draft/themes/default.css`
@@ -954,7 +954,7 @@ Tier A/B/C1 drills above.
    package's synthesis section references real custom properties pulled
    from `default.css`, not placeholder text.
 
-**Landscape drill — PENDING (run live post-merge).**
+**Landscape drill — RUN 2026-07-22, see results below.**
 1. Run a probe session to a `stop` resolution against the real tracker and
    archive it via `probe_close`.
 2. Call `session_landscape` → expect the archived probe to appear with
@@ -972,3 +972,50 @@ Tier A/B/C1 drills above.
    resolution text survives the archive round-trip unmodified, and the
    frontier-mode proposal list mechanically excludes the settled `stop`
    session (spec success criterion 3, end to end).
+
+### Drill results — RUN 2026-07-22 (mechanical, real tracker) — PASS 27/27
+
+Same harness as the Tier A/B/C1 drills: real `dist/index.js` over stdio,
+real GitHub tracker (`eventually-consistent-code/cairn-drill-scratch`).
+Repeatable drivers at `server/drills/drill-{probe,draft,landscape}.mjs`
+(run from `server/`: `node drills/drill-<name>.mjs <projectDir>
+$PWD/dist/index.js`; fresh scratch `<projectDir>` per run — session ids are
+description-derived, so a rerun against the same dir hits the already-open
+guard by design; probe and draft drills can share one scratch dir,
+landscape builds on their leftovers cleanly since it stages its own
+sessions).
+
+**Probe drill — PASS 12/12.** `probe_start` created a real `cairn:spike`
+issue; mirror comment #1 posted. Full spike loop logged riskiest-first:
+experiment (throwaway `stream-poc.mjs` in the artifact dir) → result
+(investigation trail with a surprise, never verdict-only) → requirement
+(captured as a non-negotiable for the real build). Client cold-killed
+mid-spike; a FRESH client resumed purely from the session file — counts
+intact (1/1/1/0), last entry exactly where the kill landed, zero
+re-derived results. Close before any verdict was refused (gate held);
+after `VALIDATED` verdict, close resolved `proceed — …`, commented the
+resolution, closed the issue, archived the session. Wrap mechanics
+produced a real `.claude/skills/streaming-export/SKILL.md` with
+provenance (session id + tracker issue + artifact files). The three
+tracker comments read back in order (started → key finding → resolved)
+in plain language; `leak-patterns` scan over all comment text: zero hits
+(spec success criteria 1, 2, 4).
+
+**Draft drill — PASS 9/9.** `draft_start` created a real `cairn:sketch`
+issue. First-session theme landed at `.cairn/draft/themes/default.css`
+and passed the custom-properties-only check (no selectors beyond
+`:root`, no layout rules). Two variants (`001-cards.html`,
+`002-table.html`) each assert the `../themes/default.css` link in their
+HTML — one design question, structure the only difference. Close before
+any decision was refused (gate held); after the decision entry, close
+resolved and archived. Wrap synthesis produced
+`references/css-patterns.md` carrying the theme's custom properties and
+full provenance (spec success criteria 4, 5).
+
+**Landscape drill — PASS 6/6.** A probe started under active phase 2 was
+closed with a `stop — …` resolution; `session_landscape` then carried
+that archived session WITH its resolution text — the exact input
+frontier mode needs to never re-propose it — grouped it under phase 2,
+counted the one open draft (and zero open probes) in `openByKind`, and
+returned byte-equal output across two calls against the unchanged store
+(spec success criterion 3).
