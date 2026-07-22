@@ -28,6 +28,8 @@ import { appendLedger } from "./planning/ledger.js";
 import { writeBanner, bannerStats } from "./memory/banner.js";
 import { startTrace, appendTrace, listTraces, closeTrace } from "./trace/store.js";
 import { KIND_SPECS, appendSession, closeSession, sessionLandscape, startSession } from "./sessions/store.js";
+import { planCheck } from "./planning/check.js";
+import { writeAuditRecord, type AuditFinding } from "./audit/record.js";
 
 const StateEnum = z.enum(["open", "in_progress", "closed"]);
 const HandoffSourceEnum = z.enum(["tool", "posttooluse", "precompact", "waypoint"]);
@@ -636,6 +638,24 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
         + "an archived stop-verdict probe",
       inputSchema: {} },
     wrap(() => sessionLandscape(deps.projectDir)));
+
+  server.registerTool("plan_check",
+    { description: "Deterministic plan-quality scan (#2891): cross-plan contract drift "
+        + "(Produces/Consumes without a shared fixture) and unanchored quantitative thresholds",
+      inputSchema: { phase: z.number().int().positive().optional() } },
+    wrap((a: { phase?: number }) => planCheck(deps.projectDir, a.phase)));
+
+  server.registerTool("audit_record",
+    { description: "Write the audit record file (.cairn/audit/<scope>-<date>.md) — single writer; "
+        + "same scope+date supersedes, prior dates immutable",
+      inputSchema: { scope: z.string(), verdict: z.enum(["pass", "findings"]),
+        findings: z.array(z.object({
+          severity: z.enum(["critical", "important", "minor"]),
+          title: z.string().min(1),
+          detail: z.string().optional(), issue: z.string().optional(),
+        })).default([]) } },
+    wrap((a: { scope: string; verdict: "pass" | "findings"; findings: AuditFinding[] }) =>
+      writeAuditRecord(deps.projectDir, a.scope, a.verdict, a.findings)));
 
   return server;
 }

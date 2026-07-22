@@ -26,4 +26,10 @@ Show project status:
   language beside the trace detail above (e.g. "open sessions: 1 trace, 2
   probes, 0 drafts"). An open probe or draft is unfinished spike/sketch
   work — surface it every time, same as an open trace.
+- Open audit/review findings: `issue_list` filtered by label `cairn:audit`
+  and again by `cairn:review`, reported in plain language beside the
+  session detail above (e.g. "open audit findings: 2 · open review
+  findings: 0"). These are outstanding Critical/Important findings still
+  waiting on a fix or a trace — surface them every time, same as an open
+  trace.
 6. Keep it to one screen; end with the obvious next `/cairn` step.

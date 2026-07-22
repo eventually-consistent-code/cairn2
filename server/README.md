@@ -2,7 +2,7 @@
 
 MCP server for cairn 2.0. See `docs/superpowers/specs/2026-07-12-cairn-2-design.md`.
 
-48 tools total across planning, memory, continuity, collaboration, milestones, config, and sessions (trace, probe, draft).
+50 tools total across planning, memory, continuity, collaboration, milestones, config, sessions (trace, probe, draft), and audits (plan_check, audit_record).
 
 ## Test rings
 
@@ -397,6 +397,57 @@ across all three kinds. `*_start`/`*_log` refresh the session handoff
 (`source: "tool"`) the same write-through way every other state-changing
 tool does, so a killed session resumes into it via the continuity
 machinery above.
+
+## Plan checks / Audit records
+
+Two read-only/single-writer tools backing the `audit` and `review` verbs
+(Tier C3, GSD's audit-uat/audit-milestone/ui-review/eval-review/
+validate-phase/add-tests/code-review/code-review-fix folded into one
+discipline). Deterministic, no tracker calls of their own — the verb
+layer does the tracker mirroring on top.
+
+### Tools
+
+| tool | purpose |
+|---|---|
+| `plan_check` | Read-only scan of a phase's (or the whole project's) `PLAN.md` files for two detector classes: `contract-drift` and `unanchored-threshold`. Returns `{ findings, scanned }`, deterministically ordered (plan path, then line) and byte-equal across calls on an unchanged tree |
+| `audit_record` | Single-writer: `audit_record(scope, verdict, findings)` writes `.cairn/audit/<scope>-<YYYY-MM-DD>.md`. `verdict` must be `pass` (zero findings) or `findings` (one or more) — a mismatch throws. Re-running the same scope on the same day overwrites that file; prior dates are untouched. Returns `{ path, findings: <count> }` |
+
+### `plan_check` detector rules
+
+- **Contract drift** — collects every `- Produces:`/`- Consumes:` bullet
+  (plus its continuation lines, including inside a code fence) across a
+  phase's plans. A consumer whose contract text shares a named symbol with
+  a producer's, but doesn't match it after whitespace normalization,
+  is a `contract-drift` finding on the consumer's line, naming the
+  producer's plan+line as `counterpart` — unless both plans reference the
+  same path-like fixture token (e.g. `test/fixtures/export-contract.json`),
+  which silences it.
+- **Unanchored thresholds** — a quantitative threshold pattern
+  (comparison/bound word + number + unit: `< 100ms`, `>= 500 rps`, `at
+  least 99.9%`, …) with no anchor — a path-like token or one of
+  `benchmark|fixture|measured|per spec|spec §|source:` — on its own line or
+  an immediately adjacent line (that isn't itself a separate threshold
+  statement) is an `unanchored-threshold` finding with the plan, line, and
+  matched text.
+- Findings are sorted by plan path, then line, then type, then
+  counterpart, then detail — never filesystem/readdir order — so two calls
+  against an unchanged tree are byte-equal JSON.
+
+### Audit record file shape
+
+```
+.cairn/audit/<scope>-<YYYY-MM-DD>.md
+```
+
+Frontmatter: `scope`, `verdict: pass|findings`, `created`. Body: one
+`## finding — <severity>` block per finding (`critical`|`important`|
+`minor`), the plain-language title on the next line, an `issue: <id>` line
+when the finding was mirrored to the tracker, and an optional detail
+paragraph. A `pass` verdict carries zero finding blocks — the file itself
+is still the evidence the audit ran. `review` verbs write the same shape
+under `scope: review-<target>` (target slugged to
+`[a-z0-9]`-plus-hyphens first).
 
 ## Hooks
 

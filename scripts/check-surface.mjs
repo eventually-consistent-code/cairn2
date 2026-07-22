@@ -21,7 +21,7 @@ const failures = [];
 const SPEC_RESERVED = {
   triage: "D", basecamp: "F",
 };
-const TOOL_PREFIXES = /^(context|issue|plan|mem|continuity|ledger|milestone|config|trace|probe|draft|session)_/;
+const TOOL_PREFIXES = /^(context|issue|plan|mem|continuity|ledger|milestone|config|trace|probe|draft|session|audit)_/;
 
 const skillMd = readFileSync(
   join(root, "skills/cairn-trailhead/SKILL.md"), "utf8");

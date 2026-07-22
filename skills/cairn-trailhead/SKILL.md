@@ -39,6 +39,8 @@ canonical registry — `help` renders from it and CI enforces it.
 | `brief` | Onboarding briefing from cards + plans | `[--stdout]` | verbs/brief.md | live |
 | `tune` | Configure cairn.json — models, continuity, leak guard | `[key] [value]` | verbs/tune.md | live |
 | `trace` | Persistent debugging session — evidence→hypothesis→test, tracker-mirrored | `["<bug>" \| <id> \| close <id>]` | verbs/trace.md | live |
+| `audit` | Cross-phase quality audits — uat/milestone/security/ui/eval/validation/tests/plans | `<mode> [target]` \| `--fix` | verbs/audit.md | live |
+| `review` | Five-axis code review of a diff, branch, or phase | `[target]` \| `--fix` | verbs/review.md | live |
 | `triage` | Open issue/PR triage against project templates | | verbs/triage.md | reserved-D |
 | `basecamp` | Multi-project workspaces and parallel workstreams | | verbs/basecamp.md | reserved-F |
 

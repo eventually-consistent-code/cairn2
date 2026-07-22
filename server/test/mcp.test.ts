@@ -72,6 +72,7 @@ describe("cairn MCP server", () => {
       "probe_start", "probe_log", "probe_close",
       "draft_start", "draft_log", "draft_close",
       "session_landscape",
+      "plan_check", "audit_record",
     ].sort());
   });
 
@@ -79,6 +80,20 @@ describe("cairn MCP server", () => {
     const names = await listToolNames();
     for (const n of ["milestone_create", "milestone_list", "milestone_complete",
       "plan_resync", "plan_meta_set"]) expect(names).toContain(n);
+  });
+
+  it("plan_check runs clean on an empty project", async () => {
+    const out = await call("plan_check", {});
+    expect(out.json).toEqual({ findings: [], scanned: 0 });
+  });
+
+  it("audit_record writes and validates", async () => {
+    const out = await call("audit_record", { scope: "drill-scope", verdict: "findings",
+      findings: [{ severity: "important", title: "t" }] });
+    expect(out.json.findings).toBe(1);
+    const bad = await call("audit_record", { scope: "drill-scope", verdict: "pass",
+      findings: [{ severity: "critical", title: "boom" }] });
+    expect(bad.isError).toBe(true);
   });
 
   it("plan lifecycle through tools: scaffold → ensure → issues_set → status → drift", async () => {
