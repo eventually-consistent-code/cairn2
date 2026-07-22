@@ -581,3 +581,141 @@ commit sha only. Spec success criterion 4 demonstrated.
 tracker call the flows touch, following the verb docs step-by-step;
 agent-side judgment (batched approval questions, lesson wording) is
 simulated by the driver, verified by review.
+
+## Tier C1 — Trace (Persistent Debugging Sessions) (2026-07-21)
+
+### Surface conformance
+- `node scripts/check-surface.mjs` → clean: **24 live, 4 reserved, 41 server
+  tools** (`trace` flips reserved → live; reserved shrinks to `probe`/`draft`
+  (C2), `triage`(D), `basecamp`(F) per this spec's re-tiering).
+- Server: `cd server && npx vitest run` → **370 passed / 6 skipped** (376
+  total; same env-gated `*.live.test.ts` skips as prior tiers — gitlab,
+  jira, asana, azure-boards, clickup, github). `npx tsc --noEmit` clean.
+  `npm run build` clean; `server/dist/` rebuilt and committed alongside this
+  record.
+
+### Unit evidence summary
+
+**Comment mapping fixtures per adapter + `hasComments` contract**
+(`test/*.unit.test.ts`, one `commentIssue` fixture per backend):
+- `github.unit.test.ts` — POSTs to `/repos/{repo}/issues/{n}/comments`.
+- `gitlab.unit.test.ts` — POSTs a note to `/issues/{iid}/notes`.
+- `jira.unit.test.ts` — POSTs to `/rest/api/3/issue/{key}/comment`,
+  ADF-wrapped through the adapter's existing `adf()` helper (asserts the
+  wrapped body shape, not just the URL).
+- `azure-boards.unit.test.ts` — POSTs a work-item comment to
+  `/workItems/{id}/comments` with the `api-version=7.1-preview.4` querystring.
+- `asana.unit.test.ts` — POSTs a comment story to `/tasks/{gid}/stories`.
+- `clickup.unit.test.ts` — POSTs to `/task/{id}/comment`.
+- Each fixture asserts URL, method, request body shape, and the returned
+  `{ id }` — same fixture-HTTP pattern the Tier A milestone mapping fixtures
+  established.
+- **`hasComments` contract** (`test/contract.ts`, `"commentIssue posts and
+  is UNSUPPORTED when hasComments is false"`) — the same shared
+  `trackerContract` suite run against `FakeTracker`/`CachedTracker`: posts
+  and asserts a truthy id when `hasComments` is true (all six adapters this
+  tier); asserts `code: "UNSUPPORTED"` rather than a silent no-op on the
+  false branch (exercised structurally — no adapter currently sets it
+  false — pinning the fallback contract for a future backend). Cache test
+  (`test/cache.test.ts`, `"commentIssue invalidates the cache"`) confirms
+  the whole-cache invalidation the spec calls for (comments can touch issue
+  `updatedAt`).
+
+**Trace store append-only / dup-refusal / verdict-gate / archive matrix**
+(`test/trace-store.test.ts`, 6/6):
+- `"start writes frontmatter + title; id is description-hashed"` —
+  `trace-<sha256(description)[:8]>`, same hashed-content id convention
+  memory cards use.
+- `"duplicate open start is refused"` — starting the same description twice
+  while the first session is still open throws (`PRECONDITION_FAILED`,
+  "already open").
+- `"append is append-only: prior bytes untouched, blocks accumulate"` — two
+  `trace_log` calls; asserts the second read starts with the first read's
+  exact bytes (`after2.startsWith(after1)`), not just that both blocks exist.
+- `"list reports counts and both statuses"` — entry counts per kind,
+  filterable by `open`/`resolved`.
+- `"close without a verdict is refused; with one it archives + stamps"` —
+  `closeTrace` throws (`/verdict/`) with zero verdict entries; after logging
+  one, archives the file (`existsSync(archivePath)`), stamps
+  `status: resolved`, and the session moves out of the open list into the
+  resolved list.
+- `"append to resolved or unknown trace is refused"` — logging to an
+  archived session throws (`/resolved/`, immutable-once-closed); logging to
+  an id that never existed throws `NOT_FOUND`.
+
+**Handoff write-through on `trace_start`/`trace_log`**
+(`src/index.ts`): both handlers call `refreshHandoff({ source: "tool", ...
+})` inline, the same write-through pattern every other state-changing tool
+uses (`context_set`, `issue_update`, `mem_card_create`, `ledger_append`,
+…) — source-verified, same category as the Tier A0 waypoint trust-order
+call-out (mechanism wiring, not independently asserted by a dedicated
+continuity test this tier). `test/mcp.test.ts`'s `"trace lifecycle
+round-trips against the fake tracker"` (24/24 in the file) exercises the
+full `trace_start` → `trace_log` (evidence, then verdict) → `trace_list` →
+`trace_close` path through the live MCP tool-call layer end to end,
+confirming `issueClosed: true` on close and the session leaving the open
+list.
+
+**Banner open-traces line: byte-stability + enabled-false-first**
+(`test/banner.test.ts`, 19/19 in the file):
+- `"banner lists open traces and stays byte-stable"` — after `trace_start` +
+  one `trace_log`, the rendered banner contains `"open traces:"`, `"issue
+  GH-12"`, and `"last: hypothesis"`; a second render against the unchanged
+  store is byte-identical (`Buffer`-level, carrying forward the Tier A0/B
+  byte-stability guarantee into the new line).
+- `"banner renders traces even with zero cards"` — the open-traces line
+  surfaces on its own; it does not depend on any memory card existing.
+- `"returns null when recallIndex.enabled is false, even with open traces"`
+  — the recall-index kill switch wins outright: an open trace never forces
+  a banner render past a disabled config, and no banner file is written.
+
+**Suite totals:** 370 passed / 6 skipped, `tsc --noEmit` clean.
+
+### Dogfood drill procedures (spec §5.3)
+
+Per spec §5.3, two drills, to be run in a scratch project with cairn2
+installed as a local plugin and recorded here once run, same format as the
+Tier 0 dogfood drill and the Tier A0/A/B drills above.
+
+**Trace drill — PENDING (run live).**
+1. Real tracker: `/cairn trace "<bug description>"` → expect `trace_start`
+   creates the `cairn:bug` issue and posts mirror comment #1
+   ("Investigation started: <plain summary>").
+2. Loop the evidence → hypothesis → test discipline (reproduce before any
+   hypothesis; an experiment that can disprove it before logging a new
+   one) via `trace_log`, each entry landing in the session file.
+3. Mid-investigation, `SIGKILL` the session. Start a new session in the same
+   repo. Expect: `/cairn waypoint resume` (or the `SessionStart` resume
+   offer) picks up the trace via the handoff written by `trace_start`/
+   `trace_log`; re-reading the session file continues from the exact last
+   entry with zero re-derived evidence.
+4. Confirm the cause → mirror comment #2 ("Cause identified: <plain
+   language>").
+5. Fix lands with tests passing → log a `verdict` entry (cause + fix +
+   commit sha) → `trace_close(resolution)`. Expect: the tracker issue is
+   closed with the resolution as the close note (mirror touch #3), the
+   session file is archived (`.cairn/trace/archive/<id>.md`), and a gotcha
+   card is written (`mem_card_create`, provenance = files/commits involved,
+   confidence `high`).
+6. Pass condition: reading the three tracker comments back in order tells
+   the whole story in plain language with zero leak-pattern hits
+   (`leak-patterns.mjs` scan of the comment text); the gotcha card recalls
+   in a later session with its provenance intact (spec success criteria 1,
+   2, 5).
+
+**Routing drill — PENDING (run live).**
+1. Rig a failing `verify` on a task in a scratch phase.
+2. Run `/cairn verify` → expect: `verify.md`'s routing edit fires — the
+   failure MUST open a trace with the failure itself as evidence entry #1;
+   no inline patch-and-rerun happens (spec success criterion 3, the #726
+   hard route).
+3. Separately, rig a trivial, proven-obvious ≤3-line-fix failure → expect
+   the fast lane: one motion (`trace_start` → one `evidence` → one
+   `verdict` → fix → `trace_close`), both mirror comments present
+   (started + resolved-as-close-note), full paper trail still recorded
+   despite the single motion.
+4. Pass condition: the hard-route leg never produces an improvised inline
+   fix outside a trace session; the fast-lane leg produces a complete
+   session (evidence + verdict, both mirror touches) in one motion, proving
+   the "never improvised, but no typo-class friction" balance the spec's
+   Why section calls for.
