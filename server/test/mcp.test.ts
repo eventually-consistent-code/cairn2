@@ -71,6 +71,7 @@ describe("cairn MCP server", () => {
       "issue_comment", "trace_start", "trace_log", "trace_list", "trace_close",
       "probe_start", "probe_log", "probe_close",
       "draft_start", "draft_log", "draft_close",
+      "session_landscape",
     ].sort());
   });
 
@@ -217,6 +218,16 @@ describe("cairn MCP server", () => {
     await call("draft_log", { id: started.json.id, kind: "decision", text: "card grid" });
     expect((await call("draft_close", { id: started.json.id, resolution: "card grid locked" })).json.issueClosed)
       .toBe(true);
+  });
+
+  it("session_landscape's openByKind reflects an open probe created via probe_start", async () => {
+    const started = await call("probe_start", { description: "landscape check" });
+    const scape = await call("session_landscape", {});
+    expect(Object.keys(scape.json.openByKind).sort()).toEqual(["draft", "probe", "trace"]);
+    expect(scape.json.openByKind.probe).toBeGreaterThanOrEqual(1);
+    const found = scape.json.sessions.find((s: { id: string }) => s.id === started.json.id);
+    expect(found?.kind).toBe("probe");
+    expect(found?.status).toBe("open");
   });
 
   it("memory lifecycle: index -> search -> stats -> card create -> list -> recall (fresh)", async () => {

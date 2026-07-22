@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   KIND_SPECS, appendSession, closeSession, lastSessionEntry, listSessions,
-  sessionId, sessionResolution, startSession,
+  sessionId, sessionLandscape, sessionResolution, startSession,
 } from "../src/sessions/store.js";
 
 const fresh = () => mkdtempSync(join(tmpdir(), "cairn-sessions-"));
@@ -73,5 +73,26 @@ describe("sessions store — draft kind", () => {
     startSession(dir, "draft", "isolated", "GH-6");
     expect(listSessions(dir, "probe")).toEqual([]);
     expect(listSessions(dir, "draft")).toHaveLength(1);
+  });
+});
+
+describe("sessionLandscape", () => {
+  it("joins all kinds, carries archived resolutions, groups phases, deterministic", () => {
+    const dir = fresh();
+    const p = startSession(dir, "probe", "dead end", "GH-10", "2");
+    appendSession(dir, "probe", p.id, "verdict", "INVALIDATED");
+    closeSession(dir, "probe", p.id, "stop — SDK cannot stream");
+    startSession(dir, "draft", "layout", "GH-11", "2");
+    startSession(dir, "trace", "bug", "GH-12");
+
+    const scape = sessionLandscape(dir);
+    expect(scape.openByKind).toEqual({ trace: 1, probe: 0, draft: 1 });
+    const stopped = scape.sessions.find((s) => s.id === p.id);
+    expect(stopped?.status).toBe("resolved");
+    expect(stopped?.resolution).toBe("stop — SDK cannot stream");
+    expect(scape.phases).toEqual([{ phase: "2", sessions: expect.arrayContaining([p.id]) }]);
+    // deterministic: kind order trace,probe,draft then id
+    expect(JSON.stringify(sessionLandscape(dir))).toBe(JSON.stringify(scape));
+    expect(scape.sessions.map((s) => s.kind)).toEqual(["trace", "probe", "draft"]);
   });
 });

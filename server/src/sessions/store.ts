@@ -162,3 +162,42 @@ export function sessionResolution(projectDir: string, kind: SessionKind, id: str
   const m = /^## resolution — .*\n([\s\S]*?)(?=\n## |\n*$)/m.exec(body);
   return m ? m[1].trim() : null;
 }
+
+const KIND_ORDER: SessionKind[] = ["trace", "probe", "draft"];
+
+export interface Landscape {
+  sessions: Array<SessionInfo & { resolution?: string }>;
+  openByKind: Record<SessionKind, number>;
+  phases: Array<{ phase: string; sessions: string[] }>;
+}
+
+/**
+ * Deterministic cross-kind session join: sorted kind (trace, probe, draft)
+ * then id; archived sessions carry their resolution text -- this is the
+ * "already probed, verdict was stop" memory frontier mode must never lose.
+ */
+export function sessionLandscape(projectDir: string): Landscape {
+  const sessions: Landscape["sessions"] = [];
+  const openByKind = { trace: 0, probe: 0, draft: 0 } as Record<SessionKind, number>;
+  for (const kind of KIND_ORDER) {
+    for (const s of listSessions(projectDir, kind)) {
+      const entry: Landscape["sessions"][number] = { ...s };
+      if (s.status === "resolved") {
+        const res = sessionResolution(projectDir, kind, s.id);
+        if (res !== null) entry.resolution = res;
+      } else {
+        openByKind[kind]++;
+      }
+      sessions.push(entry);
+    }
+  }
+  const byPhase = new Map<string, string[]>();
+  for (const s of sessions) {
+    if (s.phase === undefined) continue;
+    byPhase.set(s.phase, [...(byPhase.get(s.phase) ?? []), s.id]);
+  }
+  const phases = [...byPhase.entries()]
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([phase, ids]) => ({ phase, sessions: ids }));
+  return { sessions, openByKind, phases };
+}

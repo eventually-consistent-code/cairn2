@@ -27,7 +27,7 @@ import type { Handoff } from "./core/continuity.js";
 import { appendLedger } from "./planning/ledger.js";
 import { writeBanner, bannerStats } from "./memory/banner.js";
 import { startTrace, appendTrace, listTraces, closeTrace } from "./trace/store.js";
-import { KIND_SPECS, appendSession, closeSession, startSession } from "./sessions/store.js";
+import { KIND_SPECS, appendSession, closeSession, sessionLandscape, startSession } from "./sessions/store.js";
 
 const StateEnum = z.enum(["open", "in_progress", "closed"]);
 const HandoffSourceEnum = z.enum(["tool", "posttooluse", "precompact", "waypoint"]);
@@ -629,6 +629,13 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
   };
   registerSessionTools("probe", "cairn:spike");
   registerSessionTools("draft", "cairn:sketch");
+
+  server.registerTool("session_landscape",
+    { description: "Deterministic join over trace/probe/draft sessions — open + resolved with "
+        + "resolutions, counts by kind, phase linkage. Frontier-mode grounding: never re-propose "
+        + "an archived stop-verdict probe",
+      inputSchema: {} },
+    wrap(() => sessionLandscape(deps.projectDir)));
 
   return server;
 }
