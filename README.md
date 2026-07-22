@@ -55,13 +55,14 @@ unplanned-work surfacing (tracker issues no plan references), `import`
 assignee-aware claiming, and plans/cards that collaborate through ordinary
 git PRs.
 
-**Verbs (26 live):** `plan` `work` `verify` `ship` `status` `new` `import`
+**Verbs (28 live):** `plan` `work` `verify` `ship` `status` `new` `import`
 `remember` `recall` `help` `do` `waypoint` `scout` `route` `summit` `auto`
 `fast` `resync` `mark` `retro` `distill` `brief` `tune` `trace` `probe`
-`draft` — behind a single `/cairn <verb>` entrypoint. Two more verbs are
-reserved (mapped in the routing skill, not yet built): `triage` `basecamp`.
+`draft` `audit` `review` — behind a single `/cairn <verb>` entrypoint. Two
+more verbs are reserved (mapped in the routing skill, not yet built):
+`triage` `basecamp`.
 
-**Server:** 48 typed MCP tools, 384 passing tests (6 skipped — env-gated
+**Server:** 50 typed MCP tools, 398 passing tests (6 skipped — env-gated
 live-backend suites), three dependencies (`@modelcontextprotocol/sdk`,
 `better-sqlite3`, `zod`). Fail loud, never fake state.
 
@@ -83,7 +84,7 @@ and [gap analysis](docs/superpowers/research/2026-07-15-competitor-gap-analysis.
 | Tier B | `mark` `waypoint` `retro` `distill` `brief` `tune`, leak guard | planned |
 | Tier C1 | `trace` — persistent debugging sessions | ✅ shipped |
 | Tier C2 | `probe` `draft` — spike/sketch sessions, `session_landscape` | ✅ shipped |
-| Tier C3 | Audits & review governance | planned |
+| Tier C3 | Audits & review governance — `audit` `review`, `plan_check`, `audit_record` | ✅ shipped |
 | Tier D | `triage` — tracker-loop triage | planned |
 | Tier E | Knowledge graph, diagnostics | planned |
 | Tier F | `basecamp` multi-project, cross-AI review, frontend quality loop | planned |

@@ -1019,3 +1019,171 @@ frontier mode needs to never re-propose it — grouped it under phase 2,
 counted the one open draft (and zero open probes) in `openByKind`, and
 returned byte-equal output across two calls against the unchanged store
 (spec success criterion 3).
+
+## Tier C3 — Audits & Review Governance (2026-07-22)
+
+### Surface conformance
+- `node scripts/check-surface.mjs` → clean: **28 live, 2 reserved, 50 server
+  tools** (`audit`/`review` flip reserved → live; reserved shrinks to
+  `triage`(D), `basecamp`(F) — the two remaining per this spec's
+  re-tiering).
+- Server: `cd server && npx vitest run` → **398 passed / 6 skipped** (404
+  total; same env-gated `*.live.test.ts` skips as prior tiers — gitlab,
+  jira, asana, azure-boards, clickup, github). `npx tsc --noEmit` clean.
+  `npm run build` clean; `server/dist/` already matched the rebuilt output
+  — nothing dirtied, nothing to commit this tier.
+
+### Unit evidence summary
+
+**`plan_check` — contract drift + unanchored thresholds (#2891)**
+(`test/plan-check.test.ts`, 8/8):
+- `"flags a consumer whose contract text differs from the producer, naming
+  both ends"` — a `Produces: exportRows(filter: Filter): Stream` in one
+  plan and a `Consumes: exportRows(filter: Filter, limit: number): Stream`
+  in another produce exactly one `contract-drift` finding on the
+  consumer's plan+line, with `counterpart` pointing at the producer's
+  plan+line (spec success criterion 1).
+- `"is silent when both plans reference a shared fixture"` — the same
+  drifted pair produces zero findings once both plans cite the identical
+  path-like fixture token (`test/fixtures/export-contract.json`) — the
+  shared-fixture escape hatch spec §2 calls for.
+- `"is silent when contract texts match after whitespace normalization"` —
+  reformatted whitespace alone (`Consumes:   \`run(x: number): void\``) is
+  not drift.
+- `"flags a bare threshold and stays silent on an anchored one"` — `<
+  100ms` with no anchor on its line is an `unanchored-threshold` finding
+  at line 1 with the matched text; `>= 500 rps` anchored by "per benchmark
+  results in perf/baseline.json" on the next line is silent (spec success
+  criterion 2).
+- `"phase filter narrows the scan and output is byte-stable"` —
+  `planCheck(dir, 1)` scans only the `01-*` phase directory (`scanned:
+  1`); two full-project calls against the unchanged tree are
+  `JSON.stringify`-equal.
+- `"empty project: zero findings, zero scanned"` — no
+  `.cairn/plans/phases` directory at all is a clean `{ findings: [],
+  scanned: 0 }`, not an error.
+- `"adjacent independent thresholds do not anchor each other"` — two
+  separate threshold statements on adjacent lines, only one carrying its
+  own anchor, flag only the unanchored one — a neighbor's anchor doesn't
+  leak onto an unrelated requirement.
+- `"multi-producer drift onto one consumer is deterministically ordered"` —
+  one consumer plan drifting against two different producer plans yields
+  two findings, both on the consumer, tie-broken by `counterpart.plan` in
+  sorted order; a second call against the unchanged tree is byte-equal —
+  the explicit tie-break spec §2's "deterministic ordering" clause
+  requires.
+
+**`audit_record` — single-writer scope-date files**
+(`test/audit-record.test.ts`, 4/4):
+- `"writes scope-date file with frontmatter and finding blocks"` —
+  `writeAuditRecord` lands `.cairn/audit/uat-phase-1-<today>.md` with
+  `scope:`/`verdict: findings` frontmatter and one `## finding —
+  <severity>` block per finding, an `issue:` line present when a finding
+  carries one.
+- `"same scope+date overwrites; a different date is never touched"` — a
+  second same-day run on the same scope replaces the file's contents (no
+  stale `verdict: pass` left behind); a differently-dated file for the
+  same scope is untouched byte-for-byte (spec success criterion 5).
+- `"rejects an empty scope and a verdict/findings mismatch"` — an empty
+  scope throws `/scope/`; a `pass` verdict carrying a finding throws
+  `/verdict/` — the two guard rails spec §3 states in prose are
+  load-bearing, not advisory.
+- `"listAuditRecords returns scope/date/verdict sorted by path"` — the
+  list read surface returns scope and verdict fields, sorted by path — the
+  read-back a future audit-history tool would use.
+
+**MCP ring: both new tools registered and reachable** (`test/mcp.test.ts`):
+- `"lists the expected tools"` (registry assertion) lists all 50 tool
+  names including `plan_check` and `audit_record` — the same structural
+  list `check-surface.mjs` verifies against `server/src/index.ts`.
+- `"plan_check runs clean on an empty project"` — calling the tool (not
+  the bare function) on a project with no plans returns `{ findings: [],
+  scanned: 0 }` through the actual MCP tool-call layer.
+- `"audit_record writes and validates"` — a `findings`-verdict call with
+  one `important` finding returns `{ path, findings: 1 }`; a
+  `pass`-verdict call carrying a `critical` finding comes back `isError:
+  true` — the same guard rail proven at the unit layer above, now proven
+  through the protocol layer.
+
+**Suite totals:** 398 passed / 6 skipped, `tsc --noEmit` clean.
+
+### Spec success criteria 1–6 mapped
+
+1. **A drifted producer/consumer contract across two plans in a phase is
+   detected mechanically with both endpoints named; adding the shared
+   fixture reference silences it (#2891 leg one).** Directly
+   unit-verified — `plan-check.test.ts`'s `"flags a consumer whose
+   contract text differs..."` and `"is silent when both plans reference a
+   shared fixture"` above.
+2. **An unanchored quantitative threshold in a plan warns; anchoring it to
+   a named source silences it (#2891 leg two).** Directly unit-verified —
+   `"flags a bare threshold and stays silent on an anchored one"` above.
+3. **Every Critical/Important audit/review finding is visible on the
+   tracker as a labeled issue in plain language, leak-clean; Minors stay
+   in the record file.** Verb-level behavior only (`verbs/audit.md`
+   §"Closing discipline", `verbs/review.md` §"Closing discipline") —
+   `issue_create` with label `cairn:audit`/`cairn:review` and the
+   severity-first-line body rule are prompt-layer contracts riding the
+   `issue_create`/`audit_record` tools proven above; there is no dedicated
+   server tool that itself decides severity routing. The leak-pattern scan
+   against real tracker prose is the **audit drill**'s and **review
+   drill**'s pass condition, below (PENDING).
+4. **`--fix` closes mechanical findings with commits + close notes;
+   investigation-shaped findings open traces — zero improvised inline
+   fixes (#726 held).** Verb-level (`audit.md`/`review.md` §`--fix`) — the
+   mechanical/investigation-shaped split and the "never an improvised
+   inline fix" rule are prompt discipline mirroring #726's established
+   trace routing (C1); the mechanics themselves (`issue_comment` →
+   `issue_close` for mechanical, `trace_start` for investigation-shaped)
+   reuse tools already unit-proven in Tier A/C1. Live proof of the split
+   holding is the **audit drill**'s `--fix` step, below (PENDING).
+5. **Audit records are reproducible history: same-day re-run supersedes,
+   prior dates immutable.** Directly unit-verified —
+   `audit-record.test.ts`'s `"same scope+date overwrites; a different date
+   is never touched"` above.
+6. **C1/C2 surfaces bit-for-bit unaffected (sessions store, trace/probe/
+   draft tools, banner) — their test files pass unedited.** Directly
+   verified — `test/trace-store.test.ts`, `test/sessions-store.test.ts`,
+   and `test/banner.test.ts` are untouched by this tier's commits
+   (confirmed by `git diff --stat` against the pre-tier commit: zero lines
+   changed in any of the three files) and all three are green in the
+   398-pass total above.
+
+### Dogfood drill procedures (spec §5)
+
+Per spec §5, three drills, to be run in a scratch project with cairn2
+installed as a local plugin and recorded here once run — same
+`server/drills/drill-{plan-check,audit,review}.mjs` harness and format as
+the Tier A/B/C1/C2 drills above.
+
+**Plan-check drill — PENDING (run live post-merge).**
+1. Seed a scratch phase with one drifted producer/consumer pair and one
+   unanchored threshold → `plan_check` returns exactly two findings, with
+   correct lines and `counterpart` (spec success criteria 1, 2).
+2. Add the shared fixture reference and an anchor for the threshold →
+   `plan_check` returns zero findings.
+3. Two calls against the unchanged (fixed) tree are byte-equal.
+
+**Audit drill — PENDING (run live post-merge).**
+1. Run an audit mode against a seeded target with two Critical/Important-
+   shaped findings and one Minor; confirm the audit run writes the
+   `audit_record` file.
+2. Confirm both Critical/Important findings mirror as real `cairn:audit`
+   tracker issues — severity as the literal first line, `leak-
+   patterns.mjs` scan of the issue bodies zero hits — and the Minor stays
+   in the record only.
+3. `--fix` mechanics close one finding with a commit + a plain-language
+   close note; the investigation-shaped finding opens a real `trace`
+   instead of an inline fix (#726 leg).
+4. Re-run the same audit the same day → confirm the record supersedes
+   itself (criteria 3, 4, 5).
+
+**Review drill — PENDING (run live post-merge).**
+1. Seed a diff review with one Critical/Important-shaped finding and one
+   Minor.
+2. Run the review → confirm it mirrors one `cairn:review` issue (severity
+   first line, plain language) plus an `audit_record(scope:
+   "review-<target>")` record carrying both findings, the Minor only in
+   the record.
+3. Close-note discipline on `--fix`; `leak-patterns.mjs` scan over the
+   issue body and close note: zero hits (criterion 3).
