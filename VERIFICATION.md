@@ -1223,3 +1223,118 @@ mirrored as a `cairn:review` issue (severity first line); the record —
 not the issue — carried the `file:line` + failure scenario, and the minor
 stayed record-only (audience split held). `--fix` closed the finding with
 a plain-language note; leak scan zero hits (spec success criterion 3).
+
+## Tier D — Triage (2026-07-22)
+
+### Surface conformance
+- `node scripts/check-surface.mjs` → clean: **29 live, 1 reserved, 50
+  server tools** (`triage` flips reserved → live; reserved shrinks to
+  `basecamp`(F) alone — the last verb left per the parity roadmap).
+  `SPEC_RESERVED` in `scripts/check-surface.mjs` drops `triage`;
+  `TOOL_PREFIXES` unchanged (no new tool namespace).
+- Server: `cd server && npx vitest run` → **398 passed / 6 skipped** (404
+  total; same env-gated `*.live.test.ts` skips as every prior tier —
+  gitlab, jira, asana, azure-boards, clickup, github). `npx tsc --noEmit`
+  clean. Identical totals to the Tier C3 record above — expected, since
+  this tier adds zero server tools and edits zero server files (see
+  "Server untouched" below).
+
+### Suite totals
+No new unit ring this tier — the spec is explicit that Tier D is
+zero-server-work ("P1's adapters already carry everything triage needs");
+there is no `test/triage.test.ts` because there is no new server code to
+unit-test. The verb rides tools already proven in prior tiers:
+`issue_list`/`issue_update`/`issue_comment`/`issue_close` (P1),
+`session_landscape` (C2), `audit_record` (C3). **Suite totals:** 398
+passed / 6 skipped, `tsc --noEmit` clean — unchanged from Tier C3.
+
+### Server untouched
+Evidence command: `git diff --stat main -- server/` → **empty output,
+zero lines**. This tier's entire diff against `main` is three files, none
+under `server/`:
+
+```
+ scripts/check-surface.mjs              |  2 +-
+ skills/cairn-trailhead/SKILL.md        |  2 +-
+ skills/cairn-trailhead/verbs/triage.md | 90 ++++++++++++++++++++++++++++++++++
+ 3 files changed, 92 insertions(+), 2 deletions(-)
+```
+
+`check-surface.mjs` drops `triage` from `SPEC_RESERVED`; `SKILL.md` flips
+the routing table's `triage` row from `reserved-D` to `live` and fills in
+its args/status; `verbs/triage.md` is the new subroutine file. No file
+under `server/` appears in the diff — confirmed directly, not inferred
+from an unchanged test count.
+
+### Spec success criteria 1–6 mapped
+
+1. **A resolved-but-open cairn artifact is detected via its trace/record
+   evidence and — only under `--apply` — closed with the evidence quoted
+   in plain language.** Verb-level contract (`verbs/triage.md` §"The
+   sweep" resolved-but-open row + §"`--apply`" table) riding
+   `session_landscape` (C2, unit-proven) and `.cairn/audit/` record reads
+   (C3, unit-proven) for evidence, and `issue_comment`/`issue_close` (P1,
+   unit-proven) for the mechanics. No dedicated server tool decides this
+   — it's prompt-layer classification over already-proven reads. Live
+   proof is the **triage drill**'s apply leg, below (PENDING).
+2. **Duplicates are cross-linked, never closed.** Verb-level
+   (`verbs/triage.md` §"`--apply`" possible-duplicate row +
+   "Never-rules"): cross-linking `issue_comment` on both issues, no
+   `issue_close` call in that branch, full stop. Live proof is the
+   **triage drill**'s duplicate leg, below (PENDING).
+3. **Report-only default: a bare `triage` run mutates nothing on the
+   tracker and still writes the record.** Verb-level (`verbs/triage.md`
+   §"Bare vs. `--apply`") — only `issue_list` (a read) runs without
+   `--apply`; `audit_record` (C3, unit-proven) still writes the report.
+   Live proof is the **triage drill**'s report leg, below (PENDING).
+4. **Labels added under `--apply` come only from the project's existing
+   label set.** Verb-level (`verbs/triage.md` §"`--apply`" unlabeled row +
+   "Never-rules": "Labels come only from the vocabulary already in use").
+   The vocabulary read is `issue_list` (P1, unit-proven); no new label
+   name is ever synthesized. Live proof is the **triage drill**'s
+   unlabeled leg, below (PENDING).
+5. **Leak scan zero hits on every comment; same-day re-run supersedes the
+   record.** Leak-pattern scanning (`leak-patterns.mjs`, unit-proven in
+   `test/leak-patterns.test.ts`) and same-day supersession
+   (`audit_record`, unit-proven in `test/audit-record.test.ts`'s "same
+   scope+date overwrites" case) are both reused mechanisms, not new code.
+   Live proof over real tracker prose is the **triage drill**'s leak-scan
+   and re-run legs, below (PENDING).
+6. **Server surface untouched: 50 tools, all server test files
+   unedited.** Directly verified — `git diff --stat main -- server/`
+   above is empty (zero files, zero lines) and `check-surface.mjs`
+   confirms 50 server tools, unchanged. This criterion **is** the
+   "Server untouched" evidence above, not a separate check.
+
+### Dogfood drill procedure (spec §3)
+
+**Triage drill — PENDING (run live post-merge).** Per spec §3, one drill,
+to be run in a scratch project with cairn2 installed as a local plugin
+and recorded here once run — same `server/drills/drill-{name}.mjs`
+harness and format as every prior tier's drills (real `dist/index.js`
+over stdio, real GitHub tracker). No `server/drills/drill-triage.mjs`
+exists yet; it is authored post-merge per this tier's convention (see
+bottom of this file).
+
+1. **Stage** on the scratch tracker: one unlabeled issue, one bodiless
+   issue, one `cairn:bug` issue whose trace is archived-resolved, and a
+   near-duplicate pair (two open issues with near-match titles).
+2. **Report leg** — run bare `triage` (the tool-call sequence
+   `triage.md` prescribes): confirm the record is written with one
+   `important` finding (the resolved-but-open issue) and the remaining
+   findings `minor`, every finding's `issue:` field linking a real issue
+   id, and zero mutations on the tracker (no comment, no label, no close
+   — `issue_list` is the only call that ran).
+3. **Apply leg** — re-run with `--apply`: confirm the unlabeled issue
+   gets a label pulled from the project's existing label set (never an
+   invented name); the resolved-but-open issue is closed, but only after
+   an `issue_comment` quoting the evidence (trace id / record scope +
+   resolution text) lands first; both near-duplicate issues get a
+   cross-linking comment and **both remain open** (neither is closed);
+   the bodiless issue is untouched (report-only, confirmed by its body
+   still empty and no comment posted).
+4. **Leak scan** — `leak-patterns.mjs` over every comment body written in
+   step 3: zero hits.
+5. **Same-day supersede** — re-run `triage` again the same day: confirm
+   the record file's content is replaced (not appended), same semantics
+   as `audit`/`review`'s same-day supersession.
