@@ -18,6 +18,10 @@ exactly what will run before anything runs.
 3. HARD STOPS — halt the run, report, hand back: failed verify;
    `plan_drift` flags; any tracker error; any security-relevant decision
    (auth, secrets, data exposure, dependency trust).
+   On a failed-verify stop, the report includes the ready-made trace
+   handoff: the exact `trace_start` description + first-evidence text.
+   auto never starts the trace itself — no self-repair; that is the
+   user's move next session.
 4. Unattended decisions resolve against these principles, in order: prefer
    completeness over shortcuts; match existing patterns; choose reversible
    options; mirror the user's past choices; defer ambiguity (pick the

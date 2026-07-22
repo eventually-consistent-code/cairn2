@@ -34,6 +34,9 @@ Execute the given phase per the `cairn-planning` skill.
    RED and GREEN shas — `ledger_append` takes them as `redCommit` /
    `greenCommit` at close. Skipping RED on an eligible task: stop and
    restart the task; verify fails the phase on a missing pair regardless.
+   A bug surfacing mid-issue that is NOT this issue's scope routes to
+   `trace` (fast lane allowed) — never an inline detour; the trace's
+   tracker issue keeps the discovery visible.
 6. On completion **with tests passing**: `issue_close(id)`. On stopping early:
    leave in_progress and report why.
 7. On `issue_close`: `ledger_append(phaseDir: <NN-slug>, taskRef: id, summary:
