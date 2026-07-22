@@ -22,4 +22,8 @@ Show project status:
 - Open traces: `trace_list(status: "open")` — report id, description, age
   (from created), linked issue, and last entry kind. An open trace is
   unfinished debugging — surface it every time.
+- Open sessions: `session_landscape()` — report `openByKind` in plain
+  language beside the trace detail above (e.g. "open sessions: 1 trace, 2
+  probes, 0 drafts"). An open probe or draft is unfinished spike/sketch
+  work — surface it every time, same as an open trace.
 6. Keep it to one screen; end with the obvious next `/cairn` step.

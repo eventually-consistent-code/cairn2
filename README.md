@@ -55,13 +55,13 @@ unplanned-work surfacing (tracker issues no plan references), `import`
 assignee-aware claiming, and plans/cards that collaborate through ordinary
 git PRs.
 
-**Verbs (24 live):** `plan` `work` `verify` `ship` `status` `new` `import`
+**Verbs (26 live):** `plan` `work` `verify` `ship` `status` `new` `import`
 `remember` `recall` `help` `do` `waypoint` `scout` `route` `summit` `auto`
-`fast` `resync` `mark` `retro` `distill` `brief` `tune` `trace` — behind a
-single `/cairn <verb>` entrypoint. Four more verbs are reserved (mapped in
-the routing skill, not yet built): `probe` `draft` `triage` `basecamp`.
+`fast` `resync` `mark` `retro` `distill` `brief` `tune` `trace` `probe`
+`draft` — behind a single `/cairn <verb>` entrypoint. Two more verbs are
+reserved (mapped in the routing skill, not yet built): `triage` `basecamp`.
 
-**Server:** 41 typed MCP tools, 370 passing tests (6 skipped — env-gated
+**Server:** 48 typed MCP tools, 384 passing tests (6 skipped — env-gated
 live-backend suites), three dependencies (`@modelcontextprotocol/sdk`,
 `better-sqlite3`, `zod`). Fail loud, never fake state.
 
@@ -81,7 +81,9 @@ and [gap analysis](docs/superpowers/research/2026-07-15-competitor-gap-analysis.
 | Tier A0 | Continuity — crash-proof auto-resume + recall index/timeline | 📐 specced |
 | Tier A | Planning depth — `scout` `auto` `fast` `resync` `route` `summit`, TDD gates, stage-aware model routing | planned |
 | Tier B | `mark` `waypoint` `retro` `distill` `brief` `tune`, leak guard | planned |
-| Tier C | `trace` `probe` `draft`, audits & review governance | planned |
+| Tier C1 | `trace` — persistent debugging sessions | ✅ shipped |
+| Tier C2 | `probe` `draft` — spike/sketch sessions, `session_landscape` | ✅ shipped |
+| Tier C3 | Audits & review governance | planned |
 | Tier D | `triage` — tracker-loop triage | planned |
 | Tier E | Knowledge graph, diagnostics | planned |
 | Tier F | `basecamp` multi-project, cross-AI review, frontend quality loop | planned |

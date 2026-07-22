@@ -757,3 +757,218 @@ an off-by-one class bug went start → evidence → verdict → close in one
 motion with both mirror touches present (started + resolved-as-close-
 note) and a complete archived session — the "never improvised, but no
 typo-class friction" balance holds.
+
+## Tier C2 — Probe & Draft (Spike and Sketch Sessions) (2026-07-22)
+
+### Surface conformance
+- `node scripts/check-surface.mjs` → clean: **26 live, 2 reserved, 48 server
+  tools** (`probe`/`draft` flip reserved → live; reserved shrinks to
+  `triage` (D), `basecamp` (F) — the two remaining per this spec's
+  re-tiering).
+- Server: `cd server && npx vitest run` → **384 passed / 6 skipped** (390
+  total; same env-gated `*.live.test.ts` skips as prior tiers — gitlab,
+  jira, asana, azure-boards, clickup, github). `npx tsc --noEmit` clean.
+  `npm run build` clean; `server/dist/` rebuilt and committed alongside this
+  record.
+
+### Unit evidence summary
+
+**Session store generalization: probe/draft kinds + landscape join**
+(`test/sessions-store.test.ts`, 6/6):
+- `"starts, appends the probe entry kinds, lists with counts and phase"` —
+  `startSession(dir, "probe", ...)` produces a `probe-<sha8>` id; the four
+  probe entry kinds (`experiment`/`result`/`requirement`/`verdict`) append
+  and roll up into `entryCounts`; the optional `phase` field round-trips.
+- `"rejects entry kinds outside the probe vocabulary"` — logging
+  `hypothesis` (a trace-only kind) against a probe session throws — the
+  per-kind `z.enum` vocabulary is a hard boundary, not convention.
+- `"close gate: refuses without a verdict, closes with one, archives
+  immutably"` — `closeSession` throws `/verdict/` with zero verdict
+  entries logged; after one, archives the file, and a further `appendSession`
+  against the archived id throws `/immutable|resolved/`.
+- `"resolution text is readable from the archive"` — `sessionResolution`
+  returns the exact close-time resolution string off the archived file —
+  the mechanism the landscape join (below) depends on.
+- `"draft vocabulary and decision gate"` — draft's three kinds
+  (`variant`/`decision`/`note`) enforce the `decision`-gated close (spec
+  §2's per-kind table, draft row).
+- `"kinds are isolated: a draft id never lists under probe"` — `listSessions`
+  scoped to one kind never leaks another kind's sessions, confirming the
+  three kinds share the store core without cross-contaminating state.
+- `"joins all kinds, carries archived resolutions, groups phases,
+  deterministic"` — `sessionLandscape` over a mixed store (one archived
+  `stop`-resolution probe, one open draft, one open trace) returns
+  `openByKind: { trace: 1, probe: 0, draft: 1 }`, the archived probe's
+  `resolution` field intact (`"stop — SDK cannot stream"`), a `phases`
+  grouping keyed by the stamped phase, kind-ordered output
+  (`trace`, `probe`, `draft`), and **byte-identical JSON on a second call
+  against the unchanged store** (`JSON.stringify` equality) — this is the
+  direct mechanical proof spec success criterion 3 asks for (see mapping
+  below).
+
+**MCP ring: all seven new tools against the fake tracker**
+(`test/mcp.test.ts`):
+- `"registers the full tool set"` (registry assertion) lists all 48 tool
+  names including `probe_start`/`probe_log`/`probe_close`,
+  `draft_start`/`draft_log`/`draft_close`, and `session_landscape` — the
+  surface the check-surface ratchet also verifies structurally.
+- `"trace lifecycle round-trips against the fake tracker"` — unchanged from
+  C1, still green — trace's tool behavior is bit-for-bit unaffected by the
+  generalization (criterion 6).
+- `"probe_start creates a cairn:spike issue and stamps the active phase"` —
+  `context_set({ phase: 3 })` then `probe_start` stamps `phase: "3"` on the
+  session (asserted via `listSessions` directly) and the created issue
+  carries the `cairn:spike` label.
+- `"probe_log enforces the probe entry vocabulary"` — an out-of-vocabulary
+  kind (`hypothesis`) is rejected at the protocol layer by the input
+  schema's `z.enum`, before `appendSession`'s own check ever runs.
+- `"probe_close gates on verdict then closes the issue"` — close without a
+  verdict is `isError`; after logging one, close comments the resolution,
+  reports `issueClosed: true`, and the fake tracker's issue state flips to
+  `closed`.
+- `"draft tools: cairn:sketch label, decision gate"` — same shape as probe,
+  `cairn:sketch` label on the created issue, close gated on a `decision`
+  entry.
+- `"session_landscape's openByKind reflects an open probe created via
+  probe_start"` — a live probe appears in `openByKind.probe` and in the
+  `sessions` array with `status: "open"` immediately after `probe_start`,
+  through the actual MCP tool-call layer end to end (not just the store
+  unit above).
+
+**Banner: open sessions across kinds, kind-ordered, byte-stable**
+(`test/banner.test.ts`):
+- `"banner lists open sessions across kinds, kind-ordered, byte-stable"` —
+  with one open trace and one open probe, the rendered banner contains
+  `"open sessions:"`, a `- trace trace-<id> — … — last: hypothesis` line
+  and a `- probe probe-<id> — … — issue GH-40 — … — last: experiment`
+  line, trace ordered before probe, and a second render against the
+  unchanged store is `Buffer`-level identical — the C1 byte-stability
+  guarantee (§5) carried into the generalized, multi-kind line.
+- `"banner lists open sessions and stays byte-stable"` /
+  `"banner renders sessions even with zero cards"` /
+  `"returns null when recallIndex.enabled is false, even with open
+  sessions"` — the three C1 banner contracts, now phrased over the
+  generalized "sessions" line and still holding.
+
+**Suite totals:** 384 passed / 6 skipped, `tsc --noEmit` clean.
+
+### Spec success criteria 1–6 mapped
+
+1. **Cold kill mid-experiment resumes with zero re-derived work (new
+   kinds).** Mechanism-verified: `probe_start`/`probe_log`/`draft_start`/
+   `draft_log` each call `refreshHandoff({ source: "tool", ... })` inline in
+   `src/index.ts`'s `registerSessionTools` factory — the identical
+   write-through pattern C1's `trace_start`/`trace_log` use (same
+   mechanism-wiring category as the C1 verification's continuity call-out,
+   not independently re-asserted by a dedicated test this tier either).
+   Live cold-kill + fresh-client resume with entry counts intact is the
+   **probe drill**, below (PENDING).
+2. **Tracker tells each session's story in plain language, zero leak-pattern
+   hits.** Mechanism-verified: `*_start` creates the labeled issue and
+   posts mirror comment #1 (verb-level, `probe.md`/`draft.md`); `*_close`
+   comments `Resolved: <resolution>` and closes the issue
+   (`mcp.test.ts`'s `probe_close`/draft-tools tests assert `issueClosed`
+   and the resolution comment path). The leak-pattern scan itself needs
+   real tracker prose — that assertion is the **probe drill**'s pass
+   condition, below (PENDING).
+3. **Frontier mode never re-proposes an archived `stop`-verdict probe,
+   proven mechanically from `session_landscape` output.** **Directly
+   unit-verified** — `sessions-store.test.ts`'s landscape test carries an
+   archived `stop — SDK cannot stream` probe through to
+   `sessionLandscape`'s output with its resolution text intact and
+   `status: "resolved"`, and proves the output is byte-identical across two
+   calls against an unchanged store. That is the exact mechanical, never-
+   re-propose input the criterion calls for; the prompt-level "never
+   re-propose" behavior itself (reading that output and excluding the
+   session from proposals) is the **landscape drill**'s live end-to-end
+   check, below (PENDING).
+4. **`probe --wrap` / `draft --wrap` produce a working project-local skill
+   with provenance.** Verb-level behavior only (`skills/cairn-trailhead/
+   verbs/probe.md` §`--wrap`, `draft.md` §`--wrap`) — there is no dedicated
+   server tool to unit-test; the package (`SKILL.md` + `references/` +
+   provenance block) only exists once a real session runs. Covered by the
+   **probe drill** and **draft drill**'s wrap steps, below (PENDING).
+5. **All draft variants across sessions share one theme file, custom
+   properties only.** Verb-level file convention (`draft.md` step 2: create
+   `.cairn/draft/themes/default.css` only on the first session in a
+   project; every variant links it). No server-side enforcement by design
+   — asserting the shared link in real HTML is the **draft drill**'s pass
+   condition, below (PENDING).
+6. **Trace's C1 surface is bit-for-bit unaffected.** **Directly verified** —
+   `server/src/trace/store.ts` is now a thin re-export binding
+   `sessions/store.ts`'s core to the `trace` descriptor (confirmed by
+   inspection: `startTrace`/`appendTrace`/`listTraces`/`closeTrace`/
+   `lastEntryKind`/`traceId` all delegate to the generalized core with the
+   same signatures); `test/trace-store.test.ts` is unmodified since before
+   the generalization commit and is green in the 384-pass total above —
+   that file IS the compatibility test, per spec §2.
+
+### Dogfood drill procedures (spec §6)
+
+Per spec §6, three drills, to be run in a scratch project with cairn2
+installed as a local plugin and recorded here once run — same
+`server/drills/drill-{probe,draft,landscape}.mjs` harness and format as the
+Tier A/B/C1 drills above.
+
+**Probe drill — PENDING (run live post-merge).**
+1. Real tracker: `/cairn probe "<question>"` → expect `probe_start` creates
+   the `cairn:spike` issue and posts mirror comment #1 ("Investigation
+   started: <plain summary>").
+2. Loop the experiment → result → requirement → verdict discipline via
+   `probe_log`, risk-ordered highest-uncertainty-first; the moment a hard
+   constraint surfaces mid-loop, log a `requirement` immediately.
+3. Mid-spike, `SIGKILL` the session. Start a fresh client in the same repo.
+   Expect: resume purely from the session file — entry counts intact, last
+   entry exactly where the kill landed, zero re-derived experiment work
+   (spec success criterion 1, new kind).
+4. Key-finding mirror comment #2 when the picture materially changes.
+5. `probe_close(resolution: "proceed|pivot|stop — <reason>")` — archives
+   the session, comments the resolution on the issue (mirror touch #3),
+   and closes it.
+6. Read the three tracker comments back in order: whole story in plain
+   language; `leak-patterns.mjs` scan of the comment text — zero hits
+   (spec success criteria 1, 2).
+7. `probe --wrap` on the resolved session → expect a real
+   `.claude/skills/<name>/SKILL.md` + `references/` package with
+   provenance (session id, tracker issue, artifact files) (spec success
+   criterion 4).
+
+**Draft drill — PENDING (run live post-merge).**
+1. Real tracker: `/cairn draft "<design question>"` → expect `draft_start`
+   creates the `cairn:sketch` issue and posts mirror comment #1; the FIRST
+   session in the project creates `.cairn/draft/themes/default.css`
+   (custom properties only).
+2. Write two variants to `.cairn/draft/<id>/NNN-<name>.html`, each linking
+   `../themes/default.css` — assert the link is present in both files'
+   HTML (spec success criterion 5).
+3. User picks a direction → `draft_log(kind: "decision")` plus a mirror
+   comment ("Went with <direction> for <question>.").
+4. `draft_close(resolution)` — archives the session, comments the chosen
+   direction on the issue, and closes it.
+5. `draft --wrap` on the resolved session → expect a
+   `.claude/skills/<name>/` package whose synthesis section includes the
+   actual CSS custom-property patterns used across the variants, plus the
+   same provenance block as the probe drill (spec success criterion 4).
+6. Pass condition: both variants demonstrably share the one theme file (no
+   forked second theme file), the decision entry is present, and the wrap
+   package's synthesis section references real custom properties pulled
+   from `default.css`, not placeholder text.
+
+**Landscape drill — PENDING (run live post-merge).**
+1. Run a probe session to a `stop` resolution against the real tracker and
+   archive it via `probe_close`.
+2. Call `session_landscape` → expect the archived probe to appear with
+   `status: "resolved"` and the full resolution text intact (the
+   never-re-propose input frontier mode depends on), grouped under its
+   phase when one is stamped.
+3. Call `session_landscape` again with no store mutation between calls →
+   expect byte-equal JSON output (kind-then-id ordering) — the live
+   confirmation of the unit-level proof in criterion 3's mapping above.
+4. Separately, run `/cairn probe` (no arg, frontier mode) against a project
+   containing that archived `stop`-verdict session → expect the proposal
+   list to surface it as "already probed — stop" and never include it as a
+   candidate.
+5. Pass condition: both `session_landscape` calls are byte-identical, the
+   resolution text survives the archive round-trip unmodified, and the
+   frontier-mode proposal list mechanically excludes the settled `stop`
+   session (spec success criterion 3, end to end).
