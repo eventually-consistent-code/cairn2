@@ -18,10 +18,11 @@ mutates the file. It's a file on disk, not workflow state.
    linter/formatter configs, commit message style from recent `git log`,
    test framework choice, and the languages actually in use. This is real
    evidence about conventions — don't overwrite it with a guess.
-2. Read recent session history — `session_landscape`, recent `LEDGER.md`
-   entries, prior probe/trace resolutions — for signal on how detailed
-   this person likes explanations, whether they push back on process, and
-   what they already clearly understand vs. what tripped them up before.
+2. Read recent session activity — the .cairn/ session and audit files,
+   recent `LEDGER.md` entries, prior probe/trace resolutions — for signal
+   on how detailed this person likes explanations, whether they push back
+   on process, and what they already clearly understand vs. what tripped
+   them up before.
 3. Whatever the repo and the session history can't answer, ask — one
    batched `AskUserQuestion`, not a checkbox at a time. Typical gaps:
    preferred verbosity, whether they want the "why" spelled out or just
