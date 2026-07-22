@@ -1156,7 +1156,7 @@ installed as a local plugin and recorded here once run — same
 `server/drills/drill-{plan-check,audit,review}.mjs` harness and format as
 the Tier A/B/C1/C2 drills above.
 
-**Plan-check drill — PENDING (run live post-merge).**
+**Plan-check drill — RUN 2026-07-22, see results below.**
 1. Seed a scratch phase with one drifted producer/consumer pair and one
    unanchored threshold → `plan_check` returns exactly two findings, with
    correct lines and `counterpart` (spec success criteria 1, 2).
@@ -1164,7 +1164,7 @@ the Tier A/B/C1/C2 drills above.
    `plan_check` returns zero findings.
 3. Two calls against the unchanged (fixed) tree are byte-equal.
 
-**Audit drill — PENDING (run live post-merge).**
+**Audit drill — RUN 2026-07-22, see results below.**
 1. Run an audit mode against a seeded target with two Critical/Important-
    shaped findings and one Minor; confirm the audit run writes the
    `audit_record` file.
@@ -1178,7 +1178,7 @@ the Tier A/B/C1/C2 drills above.
 4. Re-run the same audit the same day → confirm the record supersedes
    itself (criteria 3, 4, 5).
 
-**Review drill — PENDING (run live post-merge).**
+**Review drill — RUN 2026-07-22, see results below.**
 1. Seed a diff review with one Critical/Important-shaped finding and one
    Minor.
 2. Run the review → confirm it mirrors one `cairn:review` issue (severity
@@ -1187,3 +1187,39 @@ the Tier A/B/C1/C2 drills above.
    the record.
 3. Close-note discipline on `--fix`; `leak-patterns.mjs` scan over the
    issue body and close note: zero hits (criterion 3).
+
+### Drill results — RUN 2026-07-22 (mechanical, real tracker) — PASS 26/26
+
+Same harness as every prior tier: real `dist/index.js` over stdio, real
+GitHub tracker (`eventually-consistent-code/cairn-drill-scratch`) where a
+tracker is touched (plan-check needs none). Repeatable drivers at
+`server/drills/drill-{plan-check,audit,review}.mjs` (run from `server/`:
+`node drills/drill-<name>.mjs <projectDir> $PWD/dist/index.js`; fresh
+scratch `<projectDir>` per run — the three C3 drills can share one).
+
+**Plan-check drill — PASS 8/8.** Seeded phase pair: one drifted
+producer/consumer contract (`exportRows` signature mismatch) + one bare
+`< 100ms` threshold → exactly two findings, drift landing on the consumer
+line with the producer as counterpart, threshold with the matched text and
+correct line; two calls byte-equal. Adding the shared fixture reference to
+both plans and anchoring the threshold to `perf/baseline.json` → zero
+findings. Phase filter narrowed the scan to one plan (spec success
+criteria 1, 2 — both #2891 legs held).
+
+**Audit drill — PASS 10/10.** Two findings mirrored as real `cairn:audit`
+issues, severity as the body's first line, plain language; the record
+landed with three findings (the minor stayed record-only, issue ids
+linked). `--fix` mechanics: the mechanical finding closed with a
+plain-language note; the investigation-shaped finding opened a REAL trace
+on the finding's own issue — no inline fix path existed (#726 leg held),
+and the trace surfaced in `session_landscape`. A same-day re-run
+superseded the record (prior content gone, new content in). Leak scan
+over every byte sent to the tracker: zero hits (spec success criteria
+3, 4, 5).
+
+**Review drill — PASS 8/8.** A slash-y branch target (`feature/EXPORT-42`)
+slugged clean through `audit_record`'s scope gate. The Critical finding
+mirrored as a `cairn:review` issue (severity first line); the record —
+not the issue — carried the `file:line` + failure scenario, and the minor
+stayed record-only (audience split held). `--fix` closed the finding with
+a plain-language note; leak scan zero hits (spec success criterion 3).
