@@ -8,6 +8,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildServer } from "../src/index.js";
 import { FakeTracker } from "../src/tracker/fake.js";
 import { handoffPath } from "../src/core/continuity.js";
+import { listSessions } from "../src/sessions/store.js";
 
 // Controllable failure injection for the continuity resilience test below.
 // Mocks ONLY writeHandoff (everything else passes through to the real module)
@@ -32,9 +33,10 @@ vi.mock("../src/core/continuity.js", async (importOriginal) => {
 
 describe("cairn MCP server", () => {
   let client: Client;
+  let projectDir: string;
 
   beforeAll(async () => {
-    const projectDir = mkdtempSync(join(tmpdir(), "cairn-"));
+    projectDir = mkdtempSync(join(tmpdir(), "cairn-"));
     writeFileSync(join(projectDir, "cairn.json"),
       JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
     const server = buildServer({ projectDir, tracker: new FakeTracker() });
@@ -67,6 +69,8 @@ describe("cairn MCP server", () => {
       "plan_resync", "plan_meta_set",
       "config_get", "config_set",
       "issue_comment", "trace_start", "trace_log", "trace_list", "trace_close",
+      "probe_start", "probe_log", "probe_close",
+      "draft_start", "draft_log", "draft_close",
     ].sort());
   });
 
@@ -172,6 +176,47 @@ describe("cairn MCP server", () => {
     expect(closed.json.issueClosed).toBe(true);
     const gone = await call("trace_list", { status: "open" });
     expect(gone.json.some((t: { id: string }) => t.id === started.json.id)).toBe(false);
+  });
+
+  it("probe_start creates a cairn:spike issue and stamps the active phase", async () => {
+    await call("context_set", { phase: 3 });
+    const out = await call("probe_start", { description: "can the SDK stream?" });
+    expect(out.json.id).toMatch(/^probe-[0-9a-f]{8}$/);
+    const issue = await call("issue_get", { id: out.json.issue });
+    expect(issue.json.labels).toContain("cairn:spike");
+    // phase stamp: assert via the store directly (session_landscape arrives in Task 3)
+    expect(listSessions(projectDir, "probe")[0].phase).toBe("3");
+  });
+
+  it("probe_log enforces the probe entry vocabulary", async () => {
+    const started = await call("probe_start", { description: "vocab" });
+    await call("probe_log", { id: started.json.id, kind: "experiment", text: "ran it" });
+    // "hypothesis" isn't a probe entry kind -- the input schema's z.enum rejects
+    // it at the protocol layer before appendSession's UNSUPPORTED check ever runs
+    // (same shape as the mem_search negative-limit boundary test above).
+    await expect(call("probe_log", { id: started.json.id, kind: "hypothesis", text: "nope" }))
+      .rejects.toThrow();
+  });
+
+  it("probe_close gates on verdict then closes the issue", async () => {
+    const started = await call("probe_start", { description: "gate" });
+    const early = await call("probe_close", { id: started.json.id, resolution: "stop" });
+    expect(early.isError).toBe(true);
+    await call("probe_log", { id: started.json.id, kind: "verdict", text: "VALIDATED" });
+    const out = await call("probe_close", { id: started.json.id, resolution: "proceed — holds up" });
+    expect(out.json.issueClosed).toBe(true);
+    expect((await call("issue_get", { id: started.json.issue })).json.state).toBe("closed");
+  });
+
+  it("draft tools: cairn:sketch label, decision gate", async () => {
+    const started = await call("draft_start", { description: "dashboard layout" });
+    expect((await call("issue_get", { id: started.json.issue })).json.labels).toContain("cairn:sketch");
+    await call("draft_log", { id: started.json.id, kind: "variant", text: "001-cards.html" });
+    const early = await call("draft_close", { id: started.json.id, resolution: "cards" });
+    expect(early.isError).toBe(true);
+    await call("draft_log", { id: started.json.id, kind: "decision", text: "card grid" });
+    expect((await call("draft_close", { id: started.json.id, resolution: "card grid locked" })).json.issueClosed)
+      .toBe(true);
   });
 
   it("memory lifecycle: index -> search -> stats -> card create -> list -> recall (fresh)", async () => {
