@@ -2457,8 +2457,9 @@ tools) verified in review with registry line numbers cited above.
   shims (`import new plan ship status verify work`) deleted per the
   Tier 0 spec's schedule ("removed at P5′"). Always-present token cost
   per Tier 0's method: ~213 tok (entrypoint + 7 shims) → ~23 tok
-  (entrypoint only) — the 86% reduction recorded in the Tier 0 table,
-  now landed.
+  (entrypoint only), a ~89% drop from the transition-era cost (the
+  Tier 0 table's 86% figure is the 172 → 23 pre-shim baseline — both
+  land with this change).
 - `plugin.json` version: `2.0.0-alpha.0` → `2.0.0-rc.1` (cutover
   complete, publish pending).
 - Gate at the cutover commit: full suite 479 passed / 6 skipped,
@@ -2472,7 +2473,7 @@ a real tracker in `cairn.json`, then: `/cairn new` → `/cairn plan 1` →
 the status"` (expect: routes without confirmation); `/cairn wrok`
 (expect: help + "did you mean work?"); kill the session mid-`work` and
 confirm the waypoint resume lands on the exact task. Record results
-here. The 46 mechanical drill drivers (216/216 checks, Tiers 0–F3) are
+here. The 25 mechanical drill drivers (255/255 checks across the eleven per-tier runs, Tiers A0–F3) are
 the necessary half; this live pass is the sufficient half.
 
 ### Human gate 2 — publish — PENDING (owner)
