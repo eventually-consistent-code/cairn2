@@ -2522,3 +2522,24 @@ command registration, hooks.json wiring, MCP server startup from
 `.mcp.json`. One fresh session with cairn2 installed, run
 `/cairn status` and one `/cairn wrok`, confirm the SessionStart banner
 appears — that closes gate 1.
+
+## Tracker-mirror fidelity — dogfood checklist (pending live pass)
+
+Inbound:
+- [ ] PM-side: add one issue and edit one existing issue's title directly
+      on the tracker mid-phase.
+- [ ] Next `/cairn:status` prints the one-line delta nudge.
+- [ ] `/cairn:resync` renders both, adoption folds the new issue into a
+      phase and the title edit into PLAN.md; cursor acks; re-run reports
+      clean.
+- [ ] Declining an item labels it `cairn:backlog` and it re-surfaces in
+      `status` marks.
+
+Outbound (one full `work` issue):
+- [ ] Claim comment present on the tracker at in_progress.
+- [ ] At least one milestone progress comment.
+- [ ] Close comment with shipped summary, short commit refs, test
+      evidence, approximate time.
+- [ ] Jira: worklog entry exists with matching minutes. Non-worklog
+      backend: time line present in the close comment instead.
+- [ ] New session after >12h idle: SessionStart nudge line appears.
