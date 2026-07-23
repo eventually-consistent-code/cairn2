@@ -75,8 +75,10 @@ Role: turn a design question into decided direction with artifacts.
 - Hard rules: never edits `map.json`/board directly (tools only); tokens
   and CSS never diverge (both files in every token change); leak rules on
   tracker text; variants stay throwaway until `--wrap`.
-- Tools it may reference: `draft_start/log/close`, `issue_comment`,
-  `map_set`, `map_get`, `session_landscape`.
+- Tools it may reference: `draft_log` (session lifecycle belongs to the
+  draft verb — amended 2026-07-22 to resolve §2/§4 conflict; the shipped
+  agents reflect this), `issue_comment`, `map_set`, `map_get`,
+  `session_landscape`.
 
 ## 3. `agents/cairn-uat.md`
 

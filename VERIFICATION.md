@@ -2216,3 +2216,212 @@ as a real `cairn:review` issue with peer provenance in the body and
 install hint and detection reflected the loss — proceed-without is the
 verb's documented next move (criteria 1, 4's degrade half; the two-round
 cap is doc-pinned and observed in the convergence leg's single round).
+
+## Tier F3 — Frontend Quality Loop (2026-07-22)
+
+### Zero-server-change statement
+
+Per spec §1: "Zero server changes: tools stay 62; verbs stay 36." This tier
+ships two plugin AGENT definitions and additive verb-doc wiring only —
+`agents/cairn-designer.md`, `agents/cairn-uat.md`, plus additive edits to
+`skills/cairn-trailhead/verbs/{draft,audit,map}.md`. No `server/` file is
+touched.
+
+Evidence command (run from repo root, this task's own commit range):
+```
+git diff main -- server/
+```
+Output: **empty** (0 lines) — confirmed. The full tier diff against `main`
+touches only `README.md`, `agents/cairn-designer.md`, `agents/cairn-uat.md`,
+the spec touch-up, and the three `skills/cairn-trailhead/verbs/*.md` files
+(`git diff --stat main`: 7 files changed, 206 insertions(+), 6
+deletions(-) — no `server/` path in the list).
+
+### Surface conformance (unchanged, re-confirmed)
+
+- `node scripts/check-surface.mjs` → clean: **36 live, 0 reserved, 62
+  server tools** — identical to the Tier F2 pin; this tier adds no tool,
+  no verb, no reserved-flip (spec §1's "zero new server tools, zero new
+  verbs" holds).
+- Server: `cd server && npx vitest run` → **479 passed / 6 skipped** (40
+  test files; same env-gated `*.live.test.ts` skips as every prior tier).
+  `npx tsc --noEmit` clean. Both runs are byte-identical in outcome to
+  Tier F2's — expected, since no server source moved.
+
+### Agent verification: frontmatter + tool-list grepped against the registry
+
+Spec success criterion 6: "Both agents carry valid plugin-agent frontmatter
+and reference only real tools." Verified by grepping every
+`registerTool(...)` call site in `server/src/index.ts` (including the
+`registerSessionTools("probe"|"draft"|"thread", ...)` loop that mints
+`draft_start`/`draft_log`/`draft_close` and its two siblings) into a
+53-literal + 9-templated = **62-name registry**, then checking each tool
+named in both agents' frontmatter `tools:` line and body against it:
+
+**`agents/cairn-designer.md`** frontmatter: `tools: draft_log,
+issue_comment, map_set, map_get, session_landscape, Read, Write, Edit,
+Glob, Grep`.
+- `draft_log` — real, minted by the `registerSessionTools("draft", …)`
+  loop at `server/src/index.ts:682` (`${kind}_log`, kind="draft").
+- `issue_comment` — real, `server/src/index.ts:600`.
+- `map_set` — real, `server/src/index.ts:741`.
+- `map_get` — real, `server/src/index.ts:752`.
+- `session_landscape` — real, `server/src/index.ts:716`.
+- `Read`/`Write`/`Edit`/`Glob`/`Grep` are Claude Code built-ins, not
+  server MCP tools — correctly outside the registry check.
+- Notably ABSENT from the tool list: `draft_start`/`draft_close`, even
+  though both are real registered tools — this is deliberate (the
+  735bbd5 fix commit: "verb owns draft sessions"), matching the spec
+  touch-up above. Zero fabricated tool names.
+
+**`agents/cairn-uat.md`** frontmatter: `tools: issue_list, issue_get,
+issue_create, issue_comment, issue_close, map_get, audit_record,
+trace_start, plan_status, Read, Glob, Grep, Bash`.
+- `issue_list` — real, `server/src/index.ts:224`.
+- `issue_get` — real, `server/src/index.ts:196`.
+- `issue_create` — real, `server/src/index.ts:188`.
+- `issue_comment` — real, `server/src/index.ts:600`.
+- `issue_close` — real, `server/src/index.ts:215`.
+- `map_get` — real, `server/src/index.ts:752`.
+- `audit_record` — real, `server/src/index.ts:729`.
+- `trace_start` — real, `server/src/index.ts:606`.
+- `plan_status` — real, `server/src/index.ts:250`.
+- `Read`/`Glob`/`Grep`/`Bash` are Claude Code built-ins, correctly outside
+  the registry check.
+
+Result: **13 of 13** server-tool references across both agents resolve to
+a real `registerTool` call site; **0** fabricated or stale tool names.
+Both files carry valid frontmatter (`name`/`description`/`tools` fields
+per the Claude plugin agent format) — this satisfies spec success
+criterion 6 directly (stated in spec §5 as "verified in Task review, not
+scripted," which is exactly the check performed here).
+
+### Verb-doc wiring evidence
+
+Spec §4's three wiring points, confirmed present in the working tree (not
+merely described in a commit message):
+
+- **`draft.md`** — a "Designer dispatch" section (lines 80–88): non-trivial
+  design questions go to the `cairn-designer` agent (Task tool) with the
+  session id + question; `draft` keeps session lifecycle
+  (`draft_start`/`draft_close`) and the tracker mirror. The tokens.json
+  both-files discipline is stated in the theme step (lines 22–27): every
+  token change touches BOTH `themes/default.css` and `themes/tokens.json`,
+  drift is named as an `audit ui` finding.
+- **`audit.md`** — the `uat` mode row gains the platform-matrix +
+  traceability-sweep sentence (named `cairn-uat` as the dispatchable
+  specialist); the `ui` mode row gains the fidelity-contract sentence
+  (compares shipped UI against the draft session's decided direction +
+  `tokens.json`, divergence cites the decision entry it violates).
+- **`map.md`** — one line under the build walk: requirement → decision
+  `implements` edges AND decision → module `decided-in` edges (both
+  sourced from draft sessions) are first-class citizens of `map build`,
+  since the `cairn-uat` traceability sweep depends on them staying
+  current.
+
+All three edits are additive (no rewrite of shipped verb text) — matches
+the "additively" claim in commit 5b780e1.
+
+### Spec success criteria 1–6 mapped
+
+1. **Designer flow: wireframe → tokens (both files, never divergent) →
+   prototype, every stage a decision entry with mirror discipline.**
+   Prompt-level (agent body), confirmed present by direct read of
+   `agents/cairn-designer.md`'s "The three-stage flow" section — not
+   server-verifiable. Live proof that the flow actually produces synced
+   `default.css`/`tokens.json` and decision entries is the **frontend-loop
+   drill**'s pass condition, below (PENDING).
+2. **Traceability: requirement issues trace through map edges to decided
+   designs and walked flows; a seeded untraced requirement is named as a
+   finding (drilled).** Prompt-level (`cairn-designer`'s "Traceability as
+   you go" + `cairn-uat`'s "Traceability sweep" sections) riding the real
+   `map_set`/`map_get` tools (confirmed real, above) — no server mechanism
+   computes the sweep itself. Live proof that a seeded untraced
+   requirement is actually named is the **frontend-loop drill**'s pass
+   condition, below (PENDING).
+3. **Fidelity: divergence from a decided direction lands as a
+   `cairn:audit` finding citing the decision entry it violates
+   (drilled).** Prompt-level (`cairn-uat`'s "Fidelity handoff" section) —
+   the mechanism it rides (`issue_create` with label `cairn:audit`,
+   `audit_record`) is real and tool-verified above; the judgment of
+   *which* divergence counts and *which* decision it cites is agent-level.
+   Live proof is the **frontend-loop drill**'s pass condition, below
+   (PENDING).
+4. **tokens.json ↔ default.css drift is detectable and IS an audit ui
+   finding (drilled mechanically).** Stated as a hard rule in both
+   `agents/cairn-designer.md` ("Tokens and CSS never diverge") and
+   `draft.md`'s tokens.json paragraph. No unit test exercises this (it's
+   a file-pair comparison an audit-mode walk performs, not a server
+   function) — live proof that a seeded drift is actually caught is the
+   **frontend-loop drill**'s pass condition, below (PENDING).
+5. **Server surface untouched: 62 tools, 36 verbs, suite green.**
+   Directly verified now, no drill needed — see "Zero-server-change
+   statement" and "Surface conformance" above: `check-surface.mjs` clean
+   (36/0/62), `git diff main -- server/` empty, `vitest run` 479/6
+   skipped, `tsc --noEmit` clean.
+6. **Both agents carry valid plugin-agent frontmatter and reference only
+   real tools.** Directly verified now, no drill needed — see "Agent
+   verification" above: 13/13 real tool references, 0 fabricated, valid
+   `name`/`description`/`tools` frontmatter on both files.
+
+**Verifiable now: criteria 5 and 6 (server untouched + suite green; the
+frontmatter/tool-grep evidence). Criteria 1–4 require the live
+frontend-loop drill (below, PENDING) — they are agent-level judgment
+riding real tools, not server-side mechanisms a unit test can pin.**
+
+### Dogfood drill procedure (spec §5) — PENDING, not yet run
+
+Per spec §5's drill ring, `drill-frontend-loop.mjs` — mechanical,
+post-merge, same harness convention as every prior tier
+(`server/drills/drill-<name>.mjs`, run against the real `dist/index.js`
+over stdio). **Does not exist yet** (confirmed: no `drill-frontend-loop.mjs`
+in `server/drills/`); per this tier's convention (see bottom of this
+file), it is authored post-merge and its results recorded here once run.
+Itemized per the spec:
+
+1. **Draft session decides a direction.** Open a `draft` session
+   (`draft_start`), log a `variant` entry, then a `decision` entry
+   (`draft_log`) — write `.cairn/draft/themes/default.css` and
+   `.cairn/draft/themes/tokens.json` in the SAME change, both files
+   present and in sync.
+2. **`map_set` records requirement→decision `implements` edges.** Seed a
+   requirement `issue` node and a `decision` node via `map_set`, with an
+   `implements` edge between them, plus a `decided-in` edge from the
+   decision node to a `module` node.
+3. **Traceability sweep computed from `map_get`.** Seed a SECOND
+   requirement issue node with NO edges at all (deliberately untraced).
+   Compute the sweep against `map_get`'s full edge set → expect exactly
+   ONE gap named (the untraced requirement), zero false positives against
+   the traced one. This is spec success criterion 2's live proof.
+4. **A fidelity divergence lands as a real `cairn:audit` issue.** Seed a
+   deliberate visual divergence from the decided direction; drive the
+   `cairn-uat` fidelity-handoff path → expect `issue_create(label:
+   "cairn:audit")` with the violated decision entry's id cited in the
+   body, plus `audit_record` carrying the same citation. This is spec
+   success criterion 3's live proof.
+5. **tokens/CSS drift seeded → detected by comparing the pair.** Seed a
+   token added to `tokens.json` and NOT to `default.css` (or vice versa)
+   → expect the pair-comparison check to name the specific token and
+   which file it's missing from, and for this to be recorded as an
+   `audit ui` finding. This is spec success criterion 4's live proof.
+6. **Leak scan on tracker text.** Seed a mirror comment (the
+   `draft`/`audit uat` plain-language comments) with an internal ref (a
+   file path or code block) → expect the leak-pattern scan (reused from
+   `hooks/scripts/leak-patterns.mjs`, same posture as the Tier F2 outbound
+   gate) to catch it before it reaches the tracker.
+7. Pass condition: draft session's tokens/CSS land in sync (criterion 1);
+   the seeded untraced requirement is the ONLY gap named, traced one is
+   silent (criterion 2); the seeded fidelity divergence produces a real
+   `cairn:audit` issue citing the correct decision entry (criterion 3);
+   the seeded tokens/CSS drift is named with the specific token and
+   missing file (criterion 4); server surface stays at 62/36 throughout
+   (criterion 5, re-confirmed live); both agent files' tool lists still
+   resolve 100% against the registry at drill time (criterion 6,
+   re-confirmed live); the leak scan blocks the seeded internal ref.
+
+Post-merge convention (same as Tiers D/E/F1/F2): author + run
+`server/drills/drill-frontend-loop.mjs` against a real tracker, then
+commit the drills-run record here.
+
+**Drill status: PENDING — not yet authored, not yet run.** Criteria 1–4
+above remain unproven against live behavior until this drill lands.
