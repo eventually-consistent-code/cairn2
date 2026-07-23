@@ -2466,7 +2466,7 @@ tools) verified in review with registry line numbers cited above.
   `tsc --noEmit` clean, `check-surface: clean — 36 live, 0 reserved,
   62 server tools`. Zero server changes.
 
-### Human gate 1 — live dogfood pass — PENDING (owner)
+### Human gate 1 — live dogfood pass — SEMI-LIVE HALF RUN 2026-07-23; plugin-load smoke test remains (owner)
 Install cairn2 as the local plugin in a fresh session, scratch repo with
 a real tracker in `cairn.json`, then: `/cairn new` → `/cairn plan 1` →
 `/cairn work 1` → `/cairn verify 1` → `/cairn ship`; `/cairn do "what's
@@ -2480,3 +2480,45 @@ the necessary half; this live pass is the sufficient half.
 Swap cairn 1.x → cairn2 in the plugin marketplace (this also retires the
 1.x `/cairn:gsd` parity passthrough, which per the roadmap survives
 until exactly this moment). Bump to `2.0.0` when both gates close.
+
+### Semi-live dogfood results — RUN 2026-07-23 — PASS 17/17
+
+Repeatable driver at `server/drills/drill-dogfood.mjs` (run from
+`server/`: `node drills/drill-dogfood.mjs <scratchDir>
+$PWD/dist/index.js`; fresh scratch per run). It walks the Tier 0 dogfood
+procedure THROUGH THE VERB DOCS' OWN TOOL SEQUENCES against the real
+dist server, real GitHub tracker, real hook scripts, in a scratch git
+repo:
+
+- **new → plan 1:** cairn.json gate, project + phase scaffold, tracker
+  phase, requirement issued and linked to the plan.
+- **work 1, killed mid-issue:** claim → in_progress → context +
+  checkpoint → real commit → SIGKILL. The PostToolUse breadcrumb and
+  SessionStart hooks fired exactly as the plugin wires them
+  (`hooks/hooks.json` commands, run verbatim): the resume block named
+  the exact task, `continuity_get` landed on it, and the tracker
+  cross-check showed in_progress with no contradiction. The issue then
+  closed and ledgered with real shas.
+- **verify 1:** drift correctly FLAGGED the closed issue while the phase
+  was unverified (the drift math doing its job), no open stragglers,
+  VERIFICATION.md written.
+- **ship gate:** post-verification drift clean + phase verified;
+  continuity cleared.
+- **do-routing + typo:** `status` resolves live from the routing table
+  and renders from live reads; `wrok` is not a verb, the nearest-match
+  computation over the actual table resolves to exactly `work`, and
+  help.md carries the "did you mean `work`?" rule verbatim.
+
+**Install-readiness also verified 2026-07-23:** `plugin.json`,
+`hooks/hooks.json`, and `.mcp.json` all parse; `.mcp.json` points at the
+committed `server/dist/index.js`; `commands/` contains exactly
+`cairn.md`; `agents/` and `skills/` present.
+
+**Honest residue — the remaining owner step is a plugin-load smoke
+test, not a workflow test:** everything ABOVE the plugin loader is now
+exercised (tool sequences, routing table, hooks, continuity, tracker).
+What no driver can reach is Claude Code loading the plugin itself:
+command registration, hooks.json wiring, MCP server startup from
+`.mcp.json`. One fresh session with cairn2 installed, run
+`/cairn status` and one `/cairn wrok`, confirm the SessionStart banner
+appears — that closes gate 1.
