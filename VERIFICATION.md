@@ -2234,8 +2234,9 @@ git diff main -- server/
 Output: **empty** (0 lines) — confirmed. The full tier diff against `main`
 touches only `README.md`, `agents/cairn-designer.md`, `agents/cairn-uat.md`,
 the spec touch-up, and the three `skills/cairn-trailhead/verbs/*.md` files
-(`git diff --stat main`: 7 files changed, 206 insertions(+), 6
-deletions(-) — no `server/` path in the list).
+(`git diff --stat main` excluding this verification-record commit: 7
+files, no `server/` path in the list — the load-bearing check is
+`git diff main -- server/` → empty, rerun at every gate).
 
 ### Surface conformance (unchanged, re-confirmed)
 
