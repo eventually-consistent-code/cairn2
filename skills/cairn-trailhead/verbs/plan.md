@@ -6,6 +6,10 @@ status: live
 
 Plan the given phase per the `cairn-planning` skill's depth dial.
 
+0. `plan_tracker_delta()` — peek. Anything in the delta → say so in one
+   line ("tracker delta: 2 new, 1 edited — `/cairn:resync` to integrate")
+   and continue; a non-empty delta never blocks this verb. First run:
+   the tool initializes silently, don't mention it.
 1. `plan_status()` — confirm the phase dir exists (else `plan_scaffold_phase` first;
    deep depth passes `research: true`).
 2. Depth (flag > PLAN.md frontmatter `depth:` > cairn.json default > standard):

@@ -6,6 +6,10 @@ status: live
 
 Execute the given phase per the `cairn-planning` skill.
 
+0. `plan_tracker_delta()` — peek. Anything in the delta → say so in one
+   line ("tracker delta: 2 new, 1 edited — `/cairn:resync` to integrate")
+   and continue; a non-empty delta never blocks this verb. First run:
+   the tool initializes silently, don't mention it.
 1. `plan_status()` → this phase's `issues` list. Empty → stop and point at
    `/cairn:plan <N>`.
 2. `--wave` (only when PLAN.md has `wave_N` frontmatter — else say so and
