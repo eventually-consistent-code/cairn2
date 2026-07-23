@@ -31,6 +31,7 @@ import { writeAuditRecord } from "./audit/record.js";
 import { mapGet, mapSet } from "./map/store.js";
 import { findWorkspace, resolveProjectDir, setFocus } from "./workspace/context.js";
 import { boardGet, boardUpdate } from "./workspace/board.js";
+import { PROVIDERS, peerList, peerRun } from "./peers/run.js";
 const StateEnum = z.enum(["open", "in_progress", "closed"]);
 const HandoffSourceEnum = z.enum(["tool", "posttooluse", "precompact", "waypoint"]);
 const HandoffPhaseRefSchema = z.object({ number: z.number().int(), slug: z.string() });
@@ -625,6 +626,16 @@ export function buildServer(deps) {
             + "title+project required on create; project must name a workspace member. Rejected "
             + "patches leave the board untouched",
         inputSchema: { patch: z.record(z.union([WorkstreamPatchSchema, z.null()])) } }, wrap((a) => boardUpdate(launchDir, a.patch)));
+    server.registerTool("peer_list", { description: "Detected external AI peer CLIs (codex/opencode/gemini/grok) — on PATH, enabled, input cap",
+        inputSchema: {} }, wrap(() => peerList(dir())));
+    server.registerTool("peer_run", { description: "Run one external peer CLI with capped stdin input — advisory output, non-zero exit is a result. "
+            + "Outbound content leaves the machine; the peers verb leak-scans before calling",
+        inputSchema: { provider: z.enum(PROVIDERS),
+            input: z.string().min(1),
+            timeoutMs: z.number().int().positive().optional() } }, wrap(async (a) => {
+        const d = dir();
+        return peerRun(d, a.provider, a.input, a.timeoutMs);
+    }));
     return server;
 }
 // CLI entry — stdio transport; config loads lazily per tool call.
