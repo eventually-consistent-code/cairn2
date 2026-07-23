@@ -12,10 +12,10 @@ same way: a record, then tracker issues for anything that matters.
 
 | mode | scope | how |
 |---|---|---|
-| `uat [phase]` | walk shipped flows as a user would | pick the flows a user actually runs, walk each one end to end, capture evidence (what you did, what came back) and a pass/fail verdict per flow |
+| `uat [phase]` | walk shipped flows as a user would | pick the flows a user actually runs, walk each one end to end on a named platform matrix (desktop + mobile viewport at minimum), capture evidence and a pass/fail verdict per flow; sweep requirement traceability (map edges) and name any untraced requirement as an important finding — dispatch to the `cairn-uat` agent as the specialist |
 | `milestone [n]` | every phase in the milestone | goals vs delivered, phase by phase: `plan_status` for what was planned and what artifacts exist, `issue_list` for what's still open, ledger entries for what's actually verified |
 | `security [phase]` | retro-audit against the phase's own bar | re-check the phase's stated security criteria against what shipped — not a generic scan, the criteria the phase itself committed to |
-| `ui [phase]` | same, against the phase's UI criteria | |
+| `ui [phase]` | same, against the phase's UI criteria | includes the fidelity contract: compare shipped UI against the draft session's decided direction and `tokens.json`; a divergence is a finding citing the specific decision entry it violates — the `cairn-uat` agent hands these off when its walk turns one up |
 | `eval [phase]` | same, against the phase's eval criteria | |
 | `validation [phase]` | same, against the phase's validation criteria | |
 | `tests [phase]` | find untested requirements | walk the phase's requirements against what's actually covered, and where a requirement has no test, WRITE it — don't just flag the gap — then `ledger_append` the evidence |

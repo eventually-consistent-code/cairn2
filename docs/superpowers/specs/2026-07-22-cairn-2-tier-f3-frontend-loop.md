@@ -64,7 +64,7 @@ E (map edges); F3 ships the two agents and wires the loop.
 ## 2. `agents/cairn-designer.md`
 
 Role: turn a design question into decided direction with artifacts.
-- Works INSIDE a draft session (starts one if none): wireframes first
+- Works INSIDE a draft session (the draft verb opens it): wireframes first
   (low-fi HTML variants, structure only), then tokens (create/update
   `themes/default.css` + `tokens.json` in the same change, always both),
   then coded prototypes (hi-fi variants on the tokens) — each stage's
@@ -75,8 +75,10 @@ Role: turn a design question into decided direction with artifacts.
 - Hard rules: never edits `map.json`/board directly (tools only); tokens
   and CSS never diverge (both files in every token change); leak rules on
   tracker text; variants stay throwaway until `--wrap`.
-- Tools it may reference: `draft_start/log/close`, `issue_comment`,
-  `map_set`, `map_get`, `session_landscape`.
+- Tools it may reference: `draft_log` (session lifecycle belongs to the
+  draft verb — amended 2026-07-22 to resolve §2/§4 conflict; the shipped
+  agents reflect this), `issue_comment`, `map_set`, `map_get`,
+  `session_landscape`.
 
 ## 3. `agents/cairn-uat.md`
 

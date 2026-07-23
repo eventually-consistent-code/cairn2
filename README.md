@@ -66,6 +66,14 @@ The routing table is complete: the reserved verb set is now empty.
 live-backend suites), three dependencies (`@modelcontextprotocol/sdk`,
 `better-sqlite3`, `zod`). Fail loud, never fake state.
 
+**Agents (2 live):** the plugin's first `agents/` dir — specialist roles
+dispatched by existing verbs, zero new tools or verbs.
+
+| Agent | Role | Dispatched by |
+|---|---|---|
+| `cairn-designer` | Turns a design question into a decided direction with artifacts — wireframes, design tokens (`themes/default.css` + `tokens.json`, always both), coded prototypes — inside a `draft` session, recording `implements`/`decided-in` map edges as it goes | `draft` (non-trivial design questions) |
+| `cairn-uat` | Proves shipped flows meet requirements, platform-aware — walks each flow as a user on a named viewport matrix, sweeps requirement traceability via map edges, hands fidelity divergence off to `audit ui` | `audit uat` (acceptance walks), `audit ui` (fidelity checks) |
+
 ## Roadmap
 
 Full parity with GSD's ~60-command surface, restructured behind a single
@@ -89,7 +97,7 @@ and [gap analysis](docs/superpowers/research/2026-07-15-competitor-gap-analysis.
 | Tier E | `map` `thread` `profile` `medic` `backtrack`, `audit docs`, `status --stats` | ✅ shipped |
 | Tier F1 | `basecamp` — workspace awareness, focus switch, dispatch board | ✅ shipped |
 | Tier F2 | `peers` — cross-AI review/plan convergence, adversarial judgment, outbound leak gate | ✅ shipped |
-| Tier F3 | Frontend quality loop | planned |
+| Tier F3 | Frontend quality loop — `cairn-designer` + `cairn-uat` agents, design-token discipline, requirements traceability | ✅ shipped |
 | P5′ | Dogfood gate → 1.x cutover → publish | planned |
 
 ## Development
