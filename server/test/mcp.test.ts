@@ -379,12 +379,20 @@ describe("cairn MCP server", () => {
   });
 
   it("peer_list reports all four providers, onPath false in the bare harness", async () => {
-    const out = await call("peer_list", {});
-    expect(out.isError).toBeFalsy();
-    expect(out.json).toHaveLength(4);
-    expect(out.json.map((p: { provider: string }) => p.provider).sort())
-      .toEqual([...PROVIDERS].sort());
-    for (const entry of out.json) expect(entry.onPath).toBe(false);
+    const ORIGINAL_PATH = process.env.PATH;
+    const emptyDir = mkdtempSync(join(tmpdir(), "cairn-mcp-empty-path-"));
+    process.env.PATH = emptyDir;
+    try {
+      const out = await call("peer_list", {});
+      expect(out.isError).toBeFalsy();
+      expect(out.json).toHaveLength(4);
+      expect(out.json.map((p: { provider: string }) => p.provider).sort())
+        .toEqual([...PROVIDERS].sort());
+      for (const entry of out.json) expect(entry.onPath).toBe(false);
+    } finally {
+      process.env.PATH = ORIGINAL_PATH;
+      rmSync(emptyDir, { recursive: true, force: true });
+    }
   });
 
   // peer_run spawns a real child process via execFile, which inherits
