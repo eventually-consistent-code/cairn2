@@ -6,6 +6,32 @@ status: live
 
 Execute the given phase per the `cairn-planning` skill.
 
+**Mode check:** read `user.mode` from cairn.json (`config_get`). Absent or
+`vibe` → the procedure below runs exactly as written. `engineer` → the
+pairing overlay applies:
+
+- After step 1's issue list, ask "mine or yours?" ONCE for the whole
+  wave/phase — one AskUserQuestion listing the issues, the user marks
+  which they're taking. Never per-issue friction.
+- **cairn-claimed** issues run the unchanged lifecycle below, except the
+  finished work lands as a branch/PR and does NOT merge — the close
+  comment links the PR and names the human as reviewer (no-self-merge
+  gate; `ship` enforces it).
+- **human-claimed** issues: cairn scaffolds and steps back — create the
+  branch, move the issue to in_progress with `assignee: <user.handle>`,
+  and post the claim comment carrying the context: the PLAN.md task text,
+  files likely touched, and (for `tdd:` issues) the failing test written
+  first. Then wait — do not write further code for that issue.
+- **Human says done** (or `resync`/`plan_tracker_delta` shows their
+  commits landed): run the tests and the phase's verify posture against
+  their work, then the standard close — close comment with evidence and
+  approximate time ("logged by cairn for <handle>"),
+  `issue_close(timeSpentMinutes: ...)`, ledger entry with their commit
+  range. Offer `/cairn:review` on their diff — offer, not force; a
+  decline is recorded in the close comment as "review declined".
+- Wave ordering, TDD gates, and the failed-issue stop rule apply
+  identically regardless of who holds an issue.
+
 0. `plan_tracker_delta()` — peek. Anything in the delta → say so in one
    line ("tracker delta: 2 new, 1 edited — `/cairn:resync` to integrate")
    and continue; a non-empty delta never blocks this verb. First run:
