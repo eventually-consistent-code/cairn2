@@ -22,6 +22,10 @@ exactly what will run before anything runs.
    handoff: the exact `trace_start` description + first-evidence text.
    auto never starts the trace itself — no self-repair; that is the
    user's move next session.
+   Engineer mode (`user.mode: engineer`) adds one more: a completed
+   cairn-authored issue whose PR awaits human review is a natural stop —
+   auto never merges its own work past a human gate. The run report
+   lists the waiting PRs.
 4. Unattended decisions resolve against these principles, in order: prefer
    completeness over shortcuts; match existing patterns; choose reversible
    options; mirror the user's past choices; defer ambiguity (pick the
