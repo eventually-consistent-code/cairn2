@@ -2127,7 +2127,7 @@ suite).
    `mcp.test.ts` (above) carries every pre-F2 tool name forward unchanged;
    only `peer_list` and `peer_run` are appended.
 
-### Dogfood drill procedure (spec §5, PENDING)
+### Dogfood drill procedure (spec §5) — RUN 2026-07-22, results below
 
 Per spec §5's drill ring, `drill-peers.mjs` — mechanical, post-merge, same
 harness convention as every prior tier (`server/drills/drill-<name>.mjs`,
@@ -2188,3 +2188,31 @@ and its results recorded here once run. Itemized per the spec:
 Post-merge convention (same as Tiers D/E/F1): author + run
 `server/drills/drill-peers.mjs` against a real tracker for the finding
 mirror leg, then commit the drills-run record here.
+
+### Drill results — RUN 2026-07-22 (mechanical, stub CLIs + real tracker) — PASS 14/14
+
+Same harness as every prior tier: real `dist/index.js` over stdio. All four
+provider CLIs are STUBS staged on a drill-owned PATH prefix (each stub
+captures its received stdin to a file — that capture is what makes the
+outbound-block leg provable); the finding mirror uses the real GitHub
+tracker (`eventually-consistent-code/cairn-drill-scratch`). Repeatable
+driver at `server/drills/drill-peers.mjs` (run from `server/`:
+`node drills/drill-peers.mjs <scratchDir> $PWD/dist/index.js`).
+
+**Peers drill — PASS 14/14.** Detection listed all four stubs on PATH with
+gemini carrying its configured 60-char cap. The outbound leak gate held on
+both legs: the built-in patterns caught a seeded planning leak
+(`.cairn/plans/...` in a diff) and a configured
+`leakGuard.extraPatterns` entry caught a seeded AWS-style credential —
+and the stubs' capture files prove NOTHING was sent on a scan hit
+(criterion 3; note recorded: credential-class patterns are deliberately
+the user's `extraPatterns`, the built-ins own planning leaks). The clean
+run hit all four peers (exit 0, findings back); gemini's input arrived
+truncated WITH the exact marker while an uncapped peer received the full
+text (criteria 1, 5). Convergence mechanics landed the verified finding
+as a real `cairn:review` issue with peer provenance in the body and
+`codex round 1` credited in the record, closed with a plain note
+(criterion 2). Removing a stub mid-run: `peer_run` failed soft with the
+install hint and detection reflected the loss — proceed-without is the
+verb's documented next move (criteria 1, 4's degrade half; the two-round
+cap is doc-pinned and observed in the convergence leg's single round).
