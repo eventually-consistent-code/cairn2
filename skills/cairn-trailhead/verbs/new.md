@@ -9,6 +9,12 @@ Start a new cairn 2.0 project in this repo, per the `cairn-planning` skill.
 1. Confirm `cairn.json` exists (else point at `templates/cairn.json.example` and stop).
 2. Interview the user briefly: vision, 3–10 requirements, phase breakdown. Native
    plan mode is appropriate for this conversation at standard/deep depth.
+   The interview also asks the mode once (skip when cairn.json already
+   sets `user.mode`): vibe — cairn drives end-to-end (default) — or
+   engineer — you claim issues, write code, and make the design calls;
+   cairn pairs, verifies, and keeps the tracker mirror honest for both.
+   Engineer chosen → collect the tracker handle too and set both via
+   `config_set` in one patch.
 3. `plan_scaffold_project(name: <argument or the agreed name>)`, then write the
    vision and requirements into `.cairn/plans/PROJECT.md` and the phase table
    into `roadmap.md`.

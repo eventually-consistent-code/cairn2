@@ -21,6 +21,10 @@ hand-edits (single-writer rule).
   so a wrong guess is safe but report it plainly.
 - `tune leakguard off|on` = `config_set({leakGuard: {enabled: false|true}})`
   — the guard's front door.
+- `tune mode vibe|engineer` = `config_set({user: {mode: <value>}})` — the
+  collaboration posture switch. Engineer mode requires `user.handle`
+  (assignment identity); the server rejects the combination without it —
+  when that happens, ask for the handle and set both in one patch.
 - Secrets: the server refuses credential-looking keys/values. When that
   happens, point at the env vars the backend actually reads (the adapter's
   *Env config keys name them).
