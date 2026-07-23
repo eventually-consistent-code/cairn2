@@ -19,6 +19,7 @@ import { unplannedReport } from "./planning/collab.js";
 import { importPhase } from "./planning/import.js";
 import { milestoneCreate, milestoneList, milestoneComplete } from "./planning/milestones.js";
 import { resyncReport } from "./planning/resync.js";
+import { snapshotNote, trackerDelta } from "./planning/tracker-delta.js";
 import { MemoryIndex, indexDbPath, type SearchResult } from "./memory/index-store.js";
 import { createCard, listCards, readCard, updateCardConfidence } from "./memory/cards.js";
 import { checkCardStaleness } from "./memory/staleness.js";
@@ -190,8 +191,12 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       inputSchema: { title: z.string(), body: z.string().optional(),
                      labels: z.array(z.string()).optional(),
                      phase: z.string().optional() } },
-    wrap(async (a: { title: string; body?: string; labels?: string[]; phase?: string }) =>
-      (await getTracker()).createIssue(a)));
+    wrap(async (a: { title: string; body?: string; labels?: string[]; phase?: string }) => {
+      const d = dir();
+      const result = await (await getTracker(d)).createIssue(a);
+      snapshotNote(d, result);
+      return result;
+    }));
 
   server.registerTool("issue_get",
     { description: "Fetch one issue", inputSchema: { id: z.string() } },
@@ -208,6 +213,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       const d = dir();
       const { id, ...patch } = a;
       const result = await (await getTracker(d)).updateIssue(id, patch);
+      snapshotNote(d, result);
       refreshHandoff({ source: "tool", issue: id }, d);
       return result;
     }));
@@ -217,6 +223,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
     wrap(async (a: { id: string }) => {
       const d = dir();
       const result = await (await getTracker(d)).closeIssue(a.id);
+      snapshotNote(d, result);
       refreshHandoff({ source: "tool", issue: a.id }, d);
       return result;
     }));
@@ -565,6 +572,16 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
         + "advances the marker. First run initializes the marker and reports nothing",
       inputSchema: {} },
     wrap(() => resyncReport(dir())));
+
+  server.registerTool("plan_tracker_delta",
+    { description: "Diff the live tracker against the last-seen snapshot cursor: new issues/phases, "
+        + "field edits, external state changes. Peek by default; ack: true advances the cursor. "
+        + "First run initializes the cursor and reports nothing",
+      inputSchema: { ack: z.boolean().optional() } },
+    wrap(async (a: { ack?: boolean }) => {
+      const d = dir();
+      return trackerDelta(d, await getTracker(d), { ack: a.ack });
+    }));
 
   server.registerTool("plan_meta_set",
     { description: "Set wave grouping (wave_N frontmatter) and/or the TDD-eligible task list on a phase's PLAN.md",

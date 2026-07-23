@@ -67,7 +67,7 @@ describe("cairn MCP server", () => {
       "continuity_checkpoint", "continuity_get", "continuity_clear",
       "ledger_append",
       "milestone_create", "milestone_list", "milestone_complete",
-      "plan_resync", "plan_meta_set",
+      "plan_resync", "plan_tracker_delta", "plan_meta_set",
       "config_get", "config_set",
       "issue_comment", "trace_start", "trace_log", "trace_list", "trace_close",
       "probe_start", "probe_log", "probe_close",
@@ -82,8 +82,8 @@ describe("cairn MCP server", () => {
     ].sort());
   });
 
-  it("pins the tool count at 62", async () => {
-    expect((await listToolNames()).length).toBe(62);
+  it("pins the tool count at 63", async () => {
+    expect((await listToolNames()).length).toBe(63);
   });
 
   it("workspace_list without a workspace returns { workspace: null }, not an error", async () => {
