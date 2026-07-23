@@ -61,7 +61,7 @@ export class JiraTracker {
     authProvider;
     capabilities = {
         hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-        hasMilestones: true, hasPhaseClose: true, hasComments: true,
+        hasMilestones: true, hasPhaseClose: true, hasComments: true, hasWorklog: true,
     };
     projectId;
     constructor(cfg, fetchImpl = fetch, authProvider = () => resolveJiraAuth(cfg)) {
@@ -253,5 +253,9 @@ export class JiraTracker {
         this.assertId(id);
         const raw = (await this.api("POST", `/rest/api/3/issue/${id}/comment`, { body: adf(text) }, "jira issue_comment"));
         return { id: raw.id };
+    }
+    async logWork(id, minutes) {
+        this.assertId(id);
+        await this.api("POST", `/rest/api/3/issue/${id}/worklog`, { timeSpentSeconds: minutes * 60 }, "jira worklog");
     }
 }

@@ -2,7 +2,7 @@ import { CairnError } from "../errors.js";
 export class FakeTracker {
     capabilities = {
         hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-        hasMilestones: true, hasPhaseClose: true, hasComments: true,
+        hasMilestones: true, hasPhaseClose: true, hasComments: true, hasWorklog: false,
     };
     issues = new Map();
     phases = new Map();

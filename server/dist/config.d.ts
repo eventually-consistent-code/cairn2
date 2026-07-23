@@ -26,10 +26,13 @@ export declare const ConfigSchema: z.ZodObject<{
     }>>;
     user: z.ZodOptional<z.ZodObject<{
         handle: z.ZodString;
+        mode: z.ZodOptional<z.ZodEnum<["vibe", "engineer"]>>;
     }, "strip", z.ZodTypeAny, {
         handle: string;
+        mode?: "vibe" | "engineer" | undefined;
     }, {
         handle: string;
+        mode?: "vibe" | "engineer" | undefined;
     }>>;
     continuity: z.ZodDefault<z.ZodObject<{
         resume: z.ZodDefault<z.ZodEnum<["prompt", "auto", "off"]>>;
@@ -112,6 +115,7 @@ export declare const ConfigSchema: z.ZodObject<{
     };
     user?: {
         handle: string;
+        mode?: "vibe" | "engineer" | undefined;
     } | undefined;
     peers?: Partial<Record<"codex" | "opencode" | "gemini" | "grok", {
         enabled?: boolean | undefined;
@@ -130,6 +134,7 @@ export declare const ConfigSchema: z.ZodObject<{
     } | undefined;
     user?: {
         handle: string;
+        mode?: "vibe" | "engineer" | undefined;
     } | undefined;
     continuity?: {
         resume?: "auto" | "prompt" | "off" | undefined;

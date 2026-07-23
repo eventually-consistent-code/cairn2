@@ -330,22 +330,13 @@ Apply the same one-line `snapshotNote(d, result)` after the adapter call in
 `issue_create` and `issue_update` (both already bind `const d = dir()`; if a
 handler currently calls `getTracker()` without `d`, bind `d` first).
 
-- [ ] **Step 3: Extend the test file with a registration smoke test**
+- [ ] **Step 3: No new test** (decided in pre-flight review)
 
-The repo's convention is implementation-level tests, so assert the
-write-through contract rather than driving MCP stdio: the Task 1 test
-"snapshotNote absorbs cairn-side mutations" already covers the behavior.
-Add one build-level assertion that the tool name is registered:
-
-```ts
-it("plan_tracker_delta is registered in the server source", () => {
-  const src = readFileSync(
-    join(__dirname, "..", "src", "index.ts"), "utf8");
-  expect(src).toContain('registerTool("plan_tracker_delta"');
-});
-```
-
-(`readFileSync`/`join` are already imported in this test file.)
+The write-through behavior is covered by Task 1's "snapshotNote absorbs
+cairn-side mutations" test, and check-surface check (d) validates the
+registered tool name at CI once verb docs reference it (Task 5). A
+source-grep smoke test was considered and dropped as a non-behavioral
+assertion.
 
 - [ ] **Step 4: Build + full test run**
 
