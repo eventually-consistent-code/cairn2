@@ -120,7 +120,7 @@ export async function peerRun(projectDir: string, provider: Provider,
   const start = Date.now();
   return new Promise<PeerResult>((resolve, reject) => {
     const child = execFile(bin, args,
-      { timeout: timeoutMs, maxBuffer: MAX_BUFFER },
+      { timeout: timeoutMs, maxBuffer: MAX_BUFFER, killSignal: "SIGKILL" },
       (error, stdout, stderr) => {
         const durationMs = Date.now() - start;
 
@@ -139,11 +139,28 @@ export async function peerRun(projectDir: string, provider: Provider,
 
         // Non-zero exit is a passthrough result, never a throw — the
         // caller (the peers verb) judges peer output, this layer doesn't.
+        // But only a genuine child exit code counts as a result: anything
+        // else (string errnos like EACCES/EMFILE, maxBuffer overruns) means
+        // the process never really ran, so that's a precondition failure,
+        // not advisory peer output.
         const rawCode = error ? (error as { code?: unknown }).code : 0;
-        const exitCode = typeof rawCode === "number" ? rawCode : (error ? 1 : 0);
+        if (error && typeof rawCode !== "number") {
+          reject(new CairnError("PRECONDITION_FAILED",
+            `peer '${provider}' failed to run (${String(rawCode)})`,
+            "check the peer CLI installation/environment"));
+          return;
+        }
+        const exitCode = typeof rawCode === "number" ? rawCode : 0;
         const output = stderr ? `${stdout}\n--- stderr ---\n${stderr}` : stdout;
         resolve({ provider, output, exitCode, truncatedInput, durationMs });
       });
+    // Swallow stdin write errors (EPIPE and friends) — if the peer exits
+    // without draining stdin, or the timeout SIGKILLs it mid-write, Node
+    // fires an uncaught 'error' event on the stream unless something is
+    // listening. The exec callback above already handles the process-level
+    // outcome; a broken pipe here isn't a new failure, just a side effect
+    // of one we're already reporting.
+    child.stdin?.on("error", () => {});
     child.stdin?.write(sendInput);
     child.stdin?.end();
   });

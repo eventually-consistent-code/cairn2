@@ -158,4 +158,39 @@ describe("peerRun", () => {
     const result = await peerRun(d, "codex", "hello");
     expect(result.output).not.toContain("--- stderr ---");
   });
+
+  // A peer that exits without ever reading stdin leaves the write-side pipe
+  // with nowhere to drain. Push enough bytes past the OS pipe buffer and
+  // Node's child.stdin emits an uncaught 'error' (EPIPE) unless something
+  // is listening for it. This must resolve cleanly, not crash the process.
+  it("survives EPIPE when a peer exits without draining a large stdin write", async () => {
+    runnableStubPath({ codex: "#!/bin/sh\nexit 0\n" });
+    const d = projectDir();
+    const bigInput = "x".repeat(140_000); // > 128KB, past typical pipe buffer
+    const result = await peerRun(d, "codex", bigInput);
+    expect(result.exitCode).toBe(0);
+  });
+
+  // A staged binary that exists on PATH but isn't executable fails at
+  // exec-time with a string errno (EACCES), not a numeric exit code. That's
+  // not a genuine peer exit, so it must throw PRECONDITION_FAILED naming
+  // the provider — never fall back to an advisory { exitCode: 1 } result.
+  it("throws PRECONDITION_FAILED naming the provider on EACCES (non-executable staged binary)", async () => {
+    const d = projectDir();
+    const stubDir = mkdtempSync(join(tmpdir(), "cairn-stub-noexec-"));
+    const p = join(stubDir, "grok");
+    writeFileSync(p, "#!/bin/sh\nexit 0\n");
+    chmodSync(p, 0o644); // no execute bit
+    process.env.PATH = `${stubDir}${delimiter}${ORIGINAL_PATH}`;
+
+    let caught: unknown;
+    try {
+      await peerRun(d, "grok", "hello");
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toMatchObject({ code: "PRECONDITION_FAILED" });
+    expect((caught as Error).message).toMatch(/grok/);
+    expect(caught).not.toMatchObject({ exitCode: expect.anything() });
+  });
 });
