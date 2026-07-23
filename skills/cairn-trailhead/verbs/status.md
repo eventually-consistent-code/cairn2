@@ -6,6 +6,10 @@ status: live
 
 Show project status:
 
+0. `plan_tracker_delta()` — peek. Anything in the delta → say so in one
+   line ("tracker delta: 2 new, 1 edited — `/cairn:resync` to integrate")
+   and continue; a non-empty delta never blocks this verb. First run:
+   the tool initializes silently, don't mention it.
 1. `plan_status()` — phase table: number, name, artifacts present
    (C/R/P/V), issue count.
 2. For the active phase (`context_get`), `issue_get` each referenced issue and

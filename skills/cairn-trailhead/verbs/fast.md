@@ -17,3 +17,12 @@ tracker-first: every change is visible where the team looks.
    (conventional message).
 5. `issue_close(id)` — close note carries the commit sha. No ledger entry
    (no phase). Report: issue, files, sha.
+
+## Paper trail
+
+Every tracker state transition this verb makes carries a comment — claim
+("starting: <one line of intent>"), close (what shipped, evidence, "time
+spent: ~Xm (approximate)" from claim to close, passed to `issue_close` as
+`timeSpentMinutes`), or parked (why, what remains). Milestone progress
+comments where the work is long enough to have milestones; batch small
+steps into one comment. Leak-guard discipline applies to every comment.

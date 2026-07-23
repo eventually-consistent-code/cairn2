@@ -28,6 +28,9 @@ mutates the file. It's a file on disk, not workflow state.
    preferred verbosity, whether they want the "why" spelled out or just
    the "what," and any hard no-gos (a library they won't use, a pattern
    they're tired of seeing suggested).
+   When `user.mode` is unset in cairn.json, fold the vibe/engineer mode
+   choice into the same batch (writes via `config_set`, not the profile
+   file — mode is workflow state, not tone calibration).
 4. Never ask something the repo already answered. If the commit history
    is clearly terse and lowercase, that's the convention — confirming it
    out loud just spends a question the interview didn't need to spend.

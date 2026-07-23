@@ -29,3 +29,12 @@ plain language a manager reads (#726). Never debug a routed failure inline.
 - **Mirror rules:** plain language; no code blocks, no file paths, no
   internal refs; comments at milestones only (started / cause identified) —
   the resolution rides the close.
+
+## Paper trail
+
+Every tracker state transition this verb makes carries a comment — claim
+("starting: <one line of intent>"), close (what shipped, evidence, "time
+spent: ~Xm (approximate)" from claim to close, passed to `issue_close` as
+`timeSpentMinutes`), or parked (why, what remains). Milestone progress
+comments where the work is long enough to have milestones; batch small
+steps into one comment. Leak-guard discipline applies to every comment.

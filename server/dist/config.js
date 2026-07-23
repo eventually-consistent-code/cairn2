@@ -14,7 +14,10 @@ export const ConfigSchema = z.object({
     memory: z
         .object({ tokenThreshold: z.number().int().positive() })
         .default({ tokenThreshold: 150000 }),
-    user: z.object({ handle: z.string().min(1) }).optional(),
+    user: z.object({
+        handle: z.string().min(1),
+        mode: z.enum(["vibe", "engineer"]).optional(),
+    }).optional(),
     continuity: z
         .object({
         resume: z.enum(["prompt", "auto", "off"]).default("prompt"),

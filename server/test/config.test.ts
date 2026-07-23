@@ -70,6 +70,29 @@ describe("loadConfig", () => {
     expect(loadConfig(d).user).toEqual({ handle: "jsreed" });
   });
 
+  it("accepts user.mode engineer and vibe, rejects others", () => {
+    const d = dir();
+    const base = { tracker: { type: "github", config: { repo: "o/r" } }, user: { handle: "jr", mode: "engineer" } };
+    writeFileSync(join(d, "cairn.json"), JSON.stringify(base));
+    expect(loadConfig(d).user?.mode).toBe("engineer");
+    base.user.mode = "vibe";
+    writeFileSync(join(d, "cairn.json"), JSON.stringify(base));
+    expect(loadConfig(d).user?.mode).toBe("vibe");
+    base.user.mode = "yolo" as never;
+    writeFileSync(join(d, "cairn.json"), JSON.stringify(base));
+    expect(() => loadConfig(d)).toThrowError(
+      expect.objectContaining({ code: "CONFIG_INVALID" }));
+  });
+
+  it("user.mode is optional", () => {
+    const d = dir();
+    writeFileSync(join(d, "cairn.json"), JSON.stringify({
+      tracker: { type: "github", config: { repo: "o/r" } },
+      user: { handle: "jr" },
+    }));
+    expect(loadConfig(d).user?.mode).toBeUndefined();
+  });
+
   it("continuity defaults apply when omitted", () => {
     const d = dir();
     writeFileSync(join(d, "cairn.json"),

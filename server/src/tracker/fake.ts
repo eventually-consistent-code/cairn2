@@ -6,7 +6,7 @@ import type {
 export class FakeTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-    hasMilestones: true, hasPhaseClose: true, hasComments: true,
+    hasMilestones: true, hasPhaseClose: true, hasComments: true, hasWorklog: false,
   };
   private issues = new Map<string, Issue>();
   private phases = new Map<string, Phase>();

@@ -73,6 +73,15 @@ Never an improvised inline fix for anything in between. If it's not
 clearly mechanical, it's investigation-shaped by default — that's the
 safe side to be wrong on.
 
+## Paper trail
+
+Every tracker state transition this verb makes carries a comment — claim
+("starting: <one line of intent>"), close (what shipped, evidence, "time
+spent: ~Xm (approximate)" from claim to close, passed to `issue_close` as
+`timeSpentMinutes`), or parked (why, what remains). Milestone progress
+comments where the work is long enough to have milestones; batch small
+steps into one comment. Leak-guard discipline applies to every comment.
+
 ## Mirror rules
 
 Same discipline as `trace` and `probe`: plain language, no code blocks, no

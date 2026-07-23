@@ -30,7 +30,7 @@ export class AzureBoardsTracker {
     tokenProvider;
     capabilities = {
         hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-        hasMilestones: true, hasPhaseClose: false, hasComments: true,
+        hasMilestones: true, hasPhaseClose: false, hasComments: true, hasWorklog: false,
     };
     /** id (GUID) -> full iteration path, refreshed from listPhases() when an unknown id shows up. */
     phasePaths = new Map();

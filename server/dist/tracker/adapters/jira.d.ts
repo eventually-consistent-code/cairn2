@@ -82,5 +82,6 @@ export declare class JiraTracker implements Tracker {
         id: string;
         url?: string;
     }>;
+    logWork(id: string, minutes: number): Promise<void>;
 }
 export {};

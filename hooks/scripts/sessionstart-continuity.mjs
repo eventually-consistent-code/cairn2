@@ -10,6 +10,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   handoffPath, bannerPath, mtimeMs, readJson, resumeMode, humanizeAge, existsSync,
 } from "./lib.mjs";
@@ -49,6 +50,17 @@ function main() {
     const handoff = readJson(hp);
     parts.push(buildResumeBlock(handoff, mode));
   }
+
+  // Tracker-delta staleness nudge — local read only, never network.
+  try {
+    const marker = JSON.parse(readFileSync(
+      join(projectDir, ".cairn", "tracker-marker.json"), "utf8"));
+    const ageMs = Date.now() - Date.parse(marker.lastScan);
+    if (ageMs > 12 * 60 * 60 * 1000) {
+      parts.push("tracker delta unchecked since " + marker.lastScan +
+        " — the next /cairn:status, /cairn:plan, or /cairn:work scans it.");
+    }
+  } catch { /* no marker or unreadable: no nudge */ }
 
   if (parts.length === 0) return;
 

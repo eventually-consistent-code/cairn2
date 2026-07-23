@@ -32,7 +32,7 @@ export class ClickUpTracker {
     tokenProvider;
     capabilities = {
         hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-        hasMilestones: false, hasPhaseClose: false, hasComments: true,
+        hasMilestones: false, hasPhaseClose: false, hasComments: true, hasWorklog: false,
     };
     constructor(cfg, fetchImpl = fetch, tokenProvider = () => resolveClickUpToken(cfg.tokenEnv)) {
         this.cfg = cfg;

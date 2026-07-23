@@ -42,7 +42,7 @@ export class GitHubTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, // via label convention
     hasPhases: true, hasDependencies: false, hasLabels: true,
-    hasMilestones: false, hasPhaseClose: true, hasComments: true,
+    hasMilestones: false, hasPhaseClose: true, hasComments: true, hasWorklog: false,
   };
 
   constructor(

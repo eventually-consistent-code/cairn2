@@ -19,6 +19,7 @@ import { unplannedReport } from "./planning/collab.js";
 import { importPhase } from "./planning/import.js";
 import { milestoneCreate, milestoneList, milestoneComplete } from "./planning/milestones.js";
 import { resyncReport } from "./planning/resync.js";
+import { snapshotNote, trackerDelta } from "./planning/tracker-delta.js";
 import { MemoryIndex, indexDbPath, type SearchResult } from "./memory/index-store.js";
 import { createCard, listCards, readCard, updateCardConfidence } from "./memory/cards.js";
 import { checkCardStaleness } from "./memory/staleness.js";
@@ -190,8 +191,12 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       inputSchema: { title: z.string(), body: z.string().optional(),
                      labels: z.array(z.string()).optional(),
                      phase: z.string().optional() } },
-    wrap(async (a: { title: string; body?: string; labels?: string[]; phase?: string }) =>
-      (await getTracker()).createIssue(a)));
+    wrap(async (a: { title: string; body?: string; labels?: string[]; phase?: string }) => {
+      const d = dir();
+      const result = await (await getTracker(d)).createIssue(a);
+      snapshotNote(d, result);
+      return result;
+    }));
 
   server.registerTool("issue_get",
     { description: "Fetch one issue", inputSchema: { id: z.string() } },
@@ -208,17 +213,34 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       const d = dir();
       const { id, ...patch } = a;
       const result = await (await getTracker(d)).updateIssue(id, patch);
+      snapshotNote(d, result);
       refreshHandoff({ source: "tool", issue: id }, d);
       return result;
     }));
 
   server.registerTool("issue_close",
-    { description: "Close an issue", inputSchema: { id: z.string() } },
-    wrap(async (a: { id: string }) => {
+    { description: "Close an issue; optionally log time spent (worklog on supporting "
+        + "backends, otherwise the caller folds time into the close comment)",
+      inputSchema: { id: z.string(), timeSpentMinutes: z.number().int().positive().optional() } },
+    wrap(async (a: { id: string; timeSpentMinutes?: number }) => {
       const d = dir();
-      const result = await (await getTracker(d)).closeIssue(a.id);
+      const tracker = await getTracker(d);
+      const result = await tracker.closeIssue(a.id);
+      snapshotNote(d, result);
+      let worklogLogged = false;
+      let worklogError: string | undefined;
+      if (a.timeSpentMinutes && tracker.capabilities.hasWorklog && tracker.logWork) {
+        try {
+          await tracker.logWork(a.id, a.timeSpentMinutes);
+          worklogLogged = true;
+        } catch (e) {
+          // worklog is best-effort — the close comment already carries the time
+          // line as fallback, so a worklog failure must never fail the close.
+          worklogError = e instanceof Error ? e.message : String(e);
+        }
+      }
       refreshHandoff({ source: "tool", issue: a.id }, d);
-      return result;
+      return { ...result, worklogLogged, ...(worklogError ? { worklogError } : {}) };
     }));
 
   server.registerTool("issue_list",
@@ -566,6 +588,16 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       inputSchema: {} },
     wrap(() => resyncReport(dir())));
 
+  server.registerTool("plan_tracker_delta",
+    { description: "Diff the live tracker against the last-seen snapshot cursor: new issues/phases, "
+        + "field edits, external state changes. Peek by default; ack: true advances the cursor. "
+        + "First run initializes the cursor and reports nothing",
+      inputSchema: { ack: z.boolean().optional() } },
+    wrap(async (a: { ack?: boolean }) => {
+      const d = dir();
+      return trackerDelta(d, await getTracker(d), { ack: a.ack });
+    }));
+
   server.registerTool("plan_meta_set",
     { description: "Set wave grouping (wave_N frontmatter) and/or the TDD-eligible task list on a phase's PLAN.md",
       inputSchema: { phaseDir: z.string(),
@@ -613,6 +645,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       if (!issueId) {
         const issue = await (await getTracker(d)).createIssue({
           title: a.description, labels: ["cairn:bug"] });
+        snapshotNote(d, issue);
         issueId = issue.id;
       }
       const { id } = startTrace(d, a.description, issueId);
@@ -652,7 +685,8 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
         } catch {
           // comment is best-effort mirror; close is the state change that matters
         }
-        await tracker.closeIssue(out.issue);
+        const closed = await tracker.closeIssue(out.issue);
+        snapshotNote(d, closed);
         issueClosed = true;
       }
       return { ...out, issueClosed };
@@ -670,6 +704,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
         if (!issueId) {
           const issue = await (await getTracker(d)).createIssue({
             title: a.description, labels: [label] });
+          snapshotNote(d, issue);
           issueId = issue.id;
         }
         const active = getCtx(d).get();
@@ -703,7 +738,8 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
           const tracker = await getTracker(d);
           try { await tracker.commentIssue(out.issue, `Resolved: ${a.resolution}`); }
           catch { /* best-effort mirror; close is the state change that matters */ }
-          await tracker.closeIssue(out.issue);
+          const closed = await tracker.closeIssue(out.issue);
+          snapshotNote(d, closed);
           issueClosed = true;
         }
         return { ...out, issueClosed };

@@ -12,7 +12,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
-const SENTINEL = ""; // stand-in for escaped pipes while cell-splitting
+const SENTINEL = "\u0001"; // stand-in for escaped pipes while cell-splitting
 
 console.log("generating command shims...");
 

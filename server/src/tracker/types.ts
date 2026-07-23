@@ -27,6 +27,7 @@ export interface Capability {
   hasMilestones: boolean;
   hasPhaseClose: boolean;
   hasComments: boolean;
+  hasWorklog: boolean;
 }
 
 export interface Milestone {
@@ -65,4 +66,6 @@ export interface Tracker {
   listMilestones(): Promise<Milestone[]>;
   completeMilestone(id: string): Promise<Milestone>;
   commentIssue(id: string, text: string): Promise<{ id: string; url?: string }>;
+  /** Log time against an issue. Present only on adapters with hasWorklog. */
+  logWork?(id: string, minutes: number): Promise<void>;
 }

@@ -63,8 +63,8 @@ git PRs.
 from the routing table.
 The routing table is complete: the reserved verb set is now empty.
 
-**Server:** 62 typed MCP tools, 479 passing tests (6 skipped — env-gated
-live-backend suites), three dependencies (`@modelcontextprotocol/sdk`,
+**Server:** 63 typed MCP tools, 495 passing tests (env-gated live-backend
+suites skip without creds), three dependencies (`@modelcontextprotocol/sdk`,
 `better-sqlite3`, `zod`). Fail loud, never fake state.
 
 **Agents (2 live):** the plugin's first `agents/` dir — specialist roles
@@ -87,10 +87,10 @@ and [gap analysis](docs/superpowers/research/2026-07-15-competitor-gap-analysis.
 | Stage | Scope | Status |
 |---|---|---|
 | P0–P4 | Server core: tracker, planning, memory, collaboration | ✅ shipped |
-| Tier 0 | Trailhead — single `/cairn` entrypoint + routing skill | 📐 specced |
-| Tier A0 | Continuity — crash-proof auto-resume + recall index/timeline | 📐 specced |
-| Tier A | Planning depth — `scout` `auto` `fast` `resync` `route` `summit`, TDD gates, stage-aware model routing | planned |
-| Tier B | `mark` `waypoint` `retro` `distill` `brief` `tune`, leak guard | planned |
+| Tier 0 | Trailhead — `/cairn` entrypoint + routing skill | ✅ shipped |
+| Tier A0 | Continuity — crash-proof auto-resume + recall index/timeline | ✅ shipped |
+| Tier A | Planning depth — `scout` `auto` `fast` `resync` `route` `summit`, TDD gates, stage-aware model routing | ✅ shipped |
+| Tier B | `mark` `waypoint` `retro` `distill` `brief` `tune`, leak guard | ✅ shipped |
 | Tier C1 | `trace` — persistent debugging sessions | ✅ shipped |
 | Tier C2 | `probe` `draft` — spike/sketch sessions, `session_landscape` | ✅ shipped |
 | Tier C3 | Audits & review governance — `audit` `review`, `plan_check`, `audit_record` | ✅ shipped |
@@ -99,16 +99,21 @@ and [gap analysis](docs/superpowers/research/2026-07-15-competitor-gap-analysis.
 | Tier F1 | `basecamp` — workspace awareness, focus switch, dispatch board | ✅ shipped |
 | Tier F2 | `peers` — cross-AI review/plan convergence, adversarial judgment, outbound leak gate | ✅ shipped |
 | Tier F3 | Frontend quality loop — `cairn-designer` + `cairn-uat` agents, design-token discipline, requirements traceability | ✅ shipped |
-| P5′ | Dogfood gate → 1.x cutover → publish | 🚧 cutover shipped (`2.0.0-rc.1`) — two gates open |
+| P5′ | Dogfood gate → 1.x cutover → publish | 🚧 cutover shipped — dogfood + publish gates open |
+| P5″ | Per-verb surface — plugin `cairn`, 36 generated `/cairn:<verb>` shims, conformance check (f) | ✅ shipped (`2.0.0-rc.2`) |
+| Fidelity | Tracker-mirror fidelity — inbound PM-delta ingest (`plan_tracker_delta`), outbound paper trail + Jira worklog | ✅ shipped |
+| Eng. mode | `user.mode` vibe/engineer — work pairing, no-self-merge gate, decision surfacing | ✅ shipped |
 
-**P5′ status:** the seven transition shims are gone, and P5″ replaced the
+**P5′ status:** the seven transition shims are gone, P5″ replaced the
 single `/cairn2:cairn` router with per-verb commands — the plugin is named
 `cairn` and each live verb is a generated `/cairn:<verb>` shim
-(`scripts/gen-commands.mjs`, enforced by check-surface). Two gates remain,
-both owner actions: (1) the **live dogfood pass** — a real session with the
-plugin installed, running the Tier 0 drill
-(`/cairn:new → plan → work → verify → ship`, `/cairn:do`, a typo'd verb, one
-waypoint resume), recorded in VERIFICATION.md; (2) **publish** — swapping
+(`scripts/gen-commands.mjs`, enforced by check-surface) — and the
+tracker-mirror fidelity + engineer-mode features are in (semi-live drill
+records in VERIFICATION.md). Two gates remain, both owner actions:
+(1) the **live dogfood pass** — a real session with the plugin installed,
+running the Tier 0 drill (`/cairn:new → plan → work → verify → ship`,
+`/cairn:do`, a typo'd verb, one waypoint resume) plus the fidelity and
+engineer-mode checklists in VERIFICATION.md; (2) **publish** — swapping
 cairn 1.x (and its `/cairn:gsd` passthrough) for cairn 2.0 in the plugin
 marketplace. `2.0.0` follows both.
 

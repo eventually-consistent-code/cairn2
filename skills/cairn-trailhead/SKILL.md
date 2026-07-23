@@ -76,3 +76,10 @@ show `/cairn:help`.
   not restate policy.
 - **Continuity.** State-changing verbs refresh the handoff via their tools
   automatically; `ship`/`summit` clear it.
+- **Decision surfacing (engineer mode).** When `user.mode: engineer`, a
+  genuine design fork — multiple defensible shapes with meaningful
+  trade-offs — stops for the user: one AskUserQuestion per fork, options
+  with trade-offs, cairn's recommendation first. Boilerplate, mechanical
+  edits, and obvious implementations stay automatic; the bar is "would a
+  peer have wanted a say," not "is this a decision." Vibe mode (default):
+  unchanged — judgment calls resolve silently.

@@ -2522,3 +2522,65 @@ command registration, hooks.json wiring, MCP server startup from
 `.mcp.json`. One fresh session with cairn2 installed, run
 `/cairn status` and one `/cairn wrok`, confirm the SessionStart banner
 appears — that closes gate 1.
+
+## Tracker-mirror fidelity — dogfood checklist — SEMI-LIVE RUN 2026-07-23 — PASS 21/21
+
+Repeatable driver at `server/drills/drill-fidelity.mjs` (run from `server/`:
+`node drills/drill-fidelity.mjs <scratchDir> $PWD/dist/index.js
+<owner/scratch-repo>`; fresh scratch per run). Real dist server, real GitHub
+tracker (`eventually-consistent-code/cairn-dogfood-scratch`), real
+SessionStart hook script — PM-side actions injected out-of-band via the gh
+CLI so they are genuinely external to the server. Paper-trail evidence
+verified by independent gh reads, not by trusting the server's own return
+values.
+
+Inbound:
+- [x] PM-side: add one issue and edit one existing issue's title directly
+      on the tracker mid-phase — both detected (`new` + `edited` with exact
+      from/to on the title); cairn-side mutations produced zero echo.
+- [x] Delta nudge — mechanized as: stale cursor → the real
+      `sessionstart-continuity.mjs` emits the nudge line; the verb-render
+      half ("status prints one line") is conversational residue below.
+- [x] Cursor semantics — un-acked delta re-surfaced on a second peek;
+      `ack: true` advanced the cursor; re-run reported clean. (Adoption
+      folding into PLAN.md is conversational residue below.)
+- [x] Declining an item labels it `cairn:backlog` and it lists open with
+      the label for `status` marks.
+
+Outbound (one full `work`-lifecycle issue):
+- [x] Claim comment present on the tracker at in_progress (gh-verified).
+- [x] One milestone progress comment (gh-verified).
+- [x] Close comment with shipped summary, short commit refs, test
+      evidence, approximate time (gh-verified).
+- [x] Non-worklog backend (GitHub): `issue_close(timeSpentMinutes)`
+      returned `worklogLogged: false`, time line present in the close
+      comment. Jira live worklog: residue below (no Jira creds in this
+      environment; the endpoint mapping is unit-tested).
+- [x] Stale-cursor SessionStart nudge appears (>12h simulated by marker
+      edit); fresh cursor → no nudge.
+
+## Engineer mode — dogfood checklist — SEMI-LIVE RUN 2026-07-23 (same driver)
+
+- [x] Mode without handle fails `CONFIG_INVALID` (`user.handle: Required`);
+      handle+mode together loads with `mode=engineer` effective.
+- [ ] `work` "mine or yours?" single batched ask — conversational
+      (AskUserQuestion), residue below.
+- [x] Human-claimed issue tool sequence: in_progress + assignee, claim
+      comment with task context, human's out-of-band commit, cairn close
+      on their behalf with "logged by cairn for <handle>" + time — all
+      gh-verified. (The offer-review conversational beat: residue.)
+- [ ] cairn-claimed PR + `ship` no-self-merge gate — needs a real PR flow
+      in a live session, residue below.
+- [x] Config without `user.mode` loads clean; mode undefined ≡ vibe;
+      all tool behavior unchanged.
+
+**Honest residue — the conversational halves are the remaining owner
+steps:** the drill exercises every tool sequence, the cursor semantics, the
+real hook, and the tracker-visible paper trail. What no driver can reach:
+(1) verb renders — `status` printing the one-line delta nudge, `resync`'s
+adoption AskUserQuestion folding items into PLAN.md/CONTEXT.md; (2) the
+engineer-mode "mine or yours?" ask and the offer-review beat; (3) the
+`ship` no-self-merge gate on a real PR; (4) a live Jira worklog entry
+(needs Jira creds; unit tests cover the endpoint + seconds mapping). One
+live session with the plugin installed walking those four closes both
+checklists fully.
