@@ -373,6 +373,13 @@ describe("JiraTracker mapping", () => {
     expect(call!.body).toEqual({ timeSpentSeconds: 5400 });
   });
 
+  it("logWork rejects malformed issue ids before any HTTP call", async () => {
+    const { f, calls } = fixtureFetch([]);
+    const t = makeJira(f);
+    await expect(t.logWork!("not-a-key!!", 90)).rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(calls.length).toBe(0);
+  });
+
   it("declares hasWorklog", () => {
     const { f } = fixtureFetch([]);
     const t = makeJira(f);

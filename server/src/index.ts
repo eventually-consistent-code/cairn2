@@ -228,12 +228,19 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       const result = await tracker.closeIssue(a.id);
       snapshotNote(d, result);
       let worklogLogged = false;
+      let worklogError: string | undefined;
       if (a.timeSpentMinutes && tracker.capabilities.hasWorklog && tracker.logWork) {
-        await tracker.logWork(a.id, a.timeSpentMinutes);
-        worklogLogged = true;
+        try {
+          await tracker.logWork(a.id, a.timeSpentMinutes);
+          worklogLogged = true;
+        } catch (e) {
+          // worklog is best-effort — the close comment already carries the time
+          // line as fallback, so a worklog failure must never fail the close.
+          worklogError = e instanceof Error ? e.message : String(e);
+        }
       }
       refreshHandoff({ source: "tool", issue: a.id }, d);
-      return { ...result, worklogLogged };
+      return { ...result, worklogLogged, ...(worklogError ? { worklogError } : {}) };
     }));
 
   server.registerTool("issue_list",
@@ -638,6 +645,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       if (!issueId) {
         const issue = await (await getTracker(d)).createIssue({
           title: a.description, labels: ["cairn:bug"] });
+        snapshotNote(d, issue);
         issueId = issue.id;
       }
       const { id } = startTrace(d, a.description, issueId);
@@ -677,7 +685,8 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
         } catch {
           // comment is best-effort mirror; close is the state change that matters
         }
-        await tracker.closeIssue(out.issue);
+        const closed = await tracker.closeIssue(out.issue);
+        snapshotNote(d, closed);
         issueClosed = true;
       }
       return { ...out, issueClosed };
@@ -695,6 +704,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
         if (!issueId) {
           const issue = await (await getTracker(d)).createIssue({
             title: a.description, labels: [label] });
+          snapshotNote(d, issue);
           issueId = issue.id;
         }
         const active = getCtx(d).get();
@@ -728,7 +738,8 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
           const tracker = await getTracker(d);
           try { await tracker.commentIssue(out.issue, `Resolved: ${a.resolution}`); }
           catch { /* best-effort mirror; close is the state change that matters */ }
-          await tracker.closeIssue(out.issue);
+          const closed = await tracker.closeIssue(out.issue);
+          snapshotNote(d, closed);
           issueClosed = true;
         }
         return { ...out, issueClosed };

@@ -328,6 +328,7 @@ export class JiraTracker implements Tracker {
   }
 
   async logWork(id: string, minutes: number): Promise<void> {
+    this.assertId(id);
     await this.api("POST", `/rest/api/3/issue/${id}/worklog`,
       { timeSpentSeconds: minutes * 60 }, "jira worklog");
   }
