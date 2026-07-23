@@ -57,10 +57,22 @@ direction-locked edges `cairn-uat`'s sweep expects: an `implements` edge
 from the requirement issue node that motivated it, and a `decided-in` edge
 from that decision node to the `module` node realizing it (map's existing
 node type — create the module node via `map_set` if the walk hasn't placed
-one yet). This is what lets `cairn-uat` walk requirement → decision →
-module → shipped flow later. Don't batch this to the end of the session;
-record both edges at each decision, same moment as the mirror comment. A
-decision missing either edge is a gap the traceability sweep will flag.
+one yet). If the requirement's issue node isn't in the map yet either
+(fresh project, no map build run) — create it in the same patch: type
+`"issue"`, label the issue title, id the tracker issue id — same
+create-if-absent rule as the module node. `map_set` rejects edges to
+missing nodes, so both endpoints have to exist before the edge does. This
+is what lets `cairn-uat` walk requirement → decision → module → shipped
+flow later. Don't batch this to the end of the session; record both edges
+at each decision, same moment as the mirror comment. A decision missing
+either edge is a gap the traceability sweep will flag.
+
+Before writing edges, `map_get` the full current edge list for the nodes
+involved, append your new edges to it, and write the COMPLETE list back —
+`map_set` replaces edges wholesale, not incrementally. A partial `edges`
+array on the write erases every prior edge on that node, not just the ones
+you didn't mention; see `map.md` for the same discipline stated for every
+other verb that touches the map.
 
 ## Hard rules
 

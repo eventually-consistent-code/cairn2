@@ -20,9 +20,12 @@ recently active one," same convention every audit mode uses.
 
 Start from the phase's requirement issues: `issue_list` for what's open and
 closed, `map_get` for the `implements`/`decided-in` edges connecting each
-requirement issue to a design decision and (once walked) a verified flow.
-This is the checklist you walk against — not a checklist you invent from
-the phase name.
+requirement issue to a design decision and on to the module that realizes
+it. Map edges only ever prove requirement → decision → module — there's
+no "verified flow" edge in the map, and none should be invented; whether a
+flow was actually walked lives in your own walk log from this session, not
+in `map_get`. This is the checklist you walk against — not a checklist you
+invent from the phase name.
 
 ## Platform-matrix walks
 

@@ -64,7 +64,7 @@ E (map edges); F3 ships the two agents and wires the loop.
 ## 2. `agents/cairn-designer.md`
 
 Role: turn a design question into decided direction with artifacts.
-- Works INSIDE a draft session (starts one if none): wireframes first
+- Works INSIDE a draft session (the draft verb opens it): wireframes first
   (low-fi HTML variants, structure only), then tokens (create/update
   `themes/default.css` + `tokens.json` in the same change, always both),
   then coded prototypes (hi-fi variants on the tokens) — each stage's
