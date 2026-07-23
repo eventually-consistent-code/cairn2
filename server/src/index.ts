@@ -834,7 +834,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
 
   server.registerTool("peer_run",
     { description: "Run one external peer CLI with capped stdin input — advisory output, non-zero exit is a result. "
-        + "Outbound content leaves the machine; the peers verb leak-scans before calling",
+        + "Outbound content leaves the machine; callers MUST leak-scan the input first — this layer does not scan",
       inputSchema: { provider: z.enum(PROVIDERS),
                      input: z.string().min(1),
                      timeoutMs: z.number().int().positive().optional() } },

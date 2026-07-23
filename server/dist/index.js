@@ -629,7 +629,7 @@ export function buildServer(deps) {
     server.registerTool("peer_list", { description: "Detected external AI peer CLIs (codex/opencode/gemini/grok) — on PATH, enabled, input cap",
         inputSchema: {} }, wrap(() => peerList(dir())));
     server.registerTool("peer_run", { description: "Run one external peer CLI with capped stdin input — advisory output, non-zero exit is a result. "
-            + "Outbound content leaves the machine; the peers verb leak-scans before calling",
+            + "Outbound content leaves the machine; callers MUST leak-scan the input first — this layer does not scan",
         inputSchema: { provider: z.enum(PROVIDERS),
             input: z.string().min(1),
             timeoutMs: z.number().int().positive().optional() } }, wrap(async (a) => {
