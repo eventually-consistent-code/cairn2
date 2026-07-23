@@ -1996,3 +1996,195 @@ paths, with no `.cairn/basecamp/` state ever materializing. The
 workspace layer is invisible until asked for (spec success criterion 2,
 the compatibility guarantee, now proven live as well as by the unedited
 suite).
+
+## Tier F2 — Cross-AI Peer Review (2026-07-22)
+
+### Surface conformance
+- `node scripts/check-surface.mjs` → clean: **36 live, 0 reserved, 62
+  server tools** (`peers` flips `reserved-F` → live, the last reserved
+  verb; the reserved set stays empty. `TOOL_PREFIXES` gains `peer` per
+  this spec's §1).
+- Server: `cd server && npx vitest run` → **479 passed / 6 skipped** (485
+  total; same env-gated `*.live.test.ts` skips as every prior tier —
+  gitlab, jira, asana, azure-boards, clickup, github). `npx tsc --noEmit`
+  clean. `npm run build` clean; `server/dist/` already matched the
+  rebuilt output from the prior two tasks in this tier — nothing dirtied,
+  nothing to commit this task.
+
+### Unit evidence summary
+
+**Peer runner — detection, caps, timeout, exit-code taxonomy**
+(`test/peers-run.test.ts`, 14 tests, `describe("peerList")` +
+`describe("peerRun")`, all against a STUB binary staged on PATH per test
+— no real codex/opencode/gemini/grok assumed anywhere):
+- `"reports onPath: false for every provider when none are on PATH"` /
+  `"reports onPath: true only for the provider whose stub is present"` —
+  the detection half of spec success criterion 1.
+- `"defaults enabled: true and maxInputChars: 200000 when unconfigured"`
+  / `"reflects a configured override for enabled and maxInputChars"` —
+  the `cairn.json` `peers` block's config-vs-default resolution.
+- `"throws PRECONDITION_FAILED when the provider is disabled in config"`
+  / `"throws PRECONDITION_FAILED with an install hint when the binary is
+  missing"` — both degrade-never-block preconditions named in the spec.
+- `"truncates input at the configured cap and appends the exact marker"`
+  / `"does not truncate when input is within the cap"` — spec success
+  criterion 5 (`#997`'s truncation contract), including the exact marker
+  text.
+- `"kills a hung peer at the timeout and reports PRECONDITION_FAILED
+  naming the provider"` — the 120s-default timeout kill path.
+- `"passes through a non-zero exit code as a result, never a throw"` —
+  the advisory-exit-code taxonomy the `peers` verb's judgment depends on.
+- `"appends the stderr divider only when stderr is non-empty"` /
+  `"omits the stderr divider when stderr is empty"` — output-shape
+  determinism around the advisory result.
+- `"survives EPIPE when a peer exits without draining a large stdin
+  write"` / `"throws PRECONDITION_FAILED naming the provider on EACCES
+  (non-executable staged binary)"` — the two hardening cases carried over
+  from the prior task's spawn-error taxonomy work, now exercised against
+  the peer templates specifically.
+
+**Config schema — unknown provider rejected, defaults applied**
+(`test/config.test.ts`, `describe("peers config")`):
+- `"peers is absent by default"` — no `peers` key means every provider
+  resolves to its hardcoded default, not an empty-object surprise.
+- a round-trip test confirms a configured override (`codex.enabled:
+  false`, `gemini.maxInputChars: 900000`) reads back exactly as written.
+- an unknown provider key in the `peers` block throws at config-load time
+  (schema `z.enum(PROVIDERS)` on the record keys) — a typo'd provider name
+  can't silently pass validation.
+- `"config_set-style patching via writeConfigPatch validates the peers
+  block"` — the same merge-patch discipline every other `cairn.json`
+  section already carries (`writeConfigPatch` rejects `notAProvider`,
+  leaving the file untouched on a rejected patch).
+
+**MCP ring: two new tools + tool-count pin** (`test/mcp.test.ts`):
+- the pre-existing `"lists the expected tools"` registry assertion widens
+  to include `peer_list`, `peer_run` (62-name sorted list, the same
+  structural check `check-surface.mjs` verifies against
+  `server/src/index.ts`).
+- `"peer_list reports all four providers, onPath false in the bare
+  harness"` — the protocol-layer proof that `peer_list` never throws and
+  reports all four `PROVIDERS` even with nothing on PATH.
+- `"peer_run executes a stub staged on PATH and returns its output"` — a
+  real child process spawned through the full MCP tool-call path (stub
+  staged on PATH for this one test only, restored after), proving
+  `peer_run`'s advisory-result contract end-to-end through the protocol
+  layer, not just the bare function.
+
+**Suite totals:** 479 passed / 6 skipped, `tsc --noEmit` clean.
+
+### Spec success criteria 1–6 mapped
+
+1. **All four adapters detect, cap, and run (proven against stubs); a
+   missing CLI degrades to proceed-without, never blocks.** Directly
+   unit-verified — `peers-run.test.ts`'s detection, cap-truncation, and
+   missing-binary/disabled-provider cases above prove the mechanical half
+   against a stub CLI. The live claim — that the `peers` verb itself
+   proceeds without a missing peer rather than stalling — is verb-level
+   judgment (`verbs/peers.md` "Absent peers") riding this proven
+   transport; live proof against a real `review`/`plan` invocation is the
+   **peers drill**'s pass condition, below (PENDING).
+2. **Peer findings only reach the tracker AFTER adversarial verification,
+   with provenance (peer, round) in the record.** This is entirely
+   verb-level judgment — `verbs/peers.md`'s convergence loop (own review
+   first, judge each peer finding against the actual code, survivors only
+   after verification, provenance in both the `cairn:review` issue and the
+   `audit_record`). No server-side mechanism enforces this; the tool layer
+   (`peer_run`) only moves bytes. Live proof that a stubbed peer finding
+   actually flows through convergence into a real tracker issue + record
+   crediting the peer is the **peers drill**'s pass condition, below
+   (PENDING).
+3. **The outbound leak scan runs before every peer_run and a hit stops the
+   send (proven: the stub never receives the seeded secret).** Stated as
+   a hard rule in `verbs/peers.md` ("Outbound leak gate") — reuses the
+   existing `hooks/scripts/leak-patterns.mjs` pattern source, applied to
+   outbound peer input instead of a git diff. Unproven by any existing
+   unit test (the scan is verb-level judgment run before the tool call,
+   not something `peer_run` itself enforces) — proving a seeded secret
+   never reaches the stub CLI is the **peers drill**'s pass condition,
+   below (PENDING).
+4. **Convergence terminates: hard two-round cap, drilled.** Stated as a
+   hard rule in `verbs/peers.md` (round 2 only for material
+   disagreements, hard stop after). No unit mechanism to verify — this is
+   verb-level judgment with nothing at the tool layer to pin it against;
+   live proof is the **peers drill**'s pass condition, below (PENDING).
+5. **Config caps enforce truncation with the marker (`#997`).** Directly
+   unit-verified — `peers-run.test.ts`'s `"truncates input at the
+   configured cap and appends the exact marker"` above proves the exact
+   marker text and the `truncatedInput: true` flag at the tiny-cap
+   boundary the test configures.
+6. **Existing surfaces untouched: 60 prior tools unchanged, F1 compat
+   intact (suite unedited except pins).** Directly verified — the
+   cumulative Tier F2 diff on `git diff --stat main -- server/src/
+   index.ts` is 17 lines: the two new `registerTool("peer_list"/
+   "peer_run", ...)` blocks and their import, landed in the prior task and
+   untouched by this one (`git diff --stat HEAD~1 -- server/src/index.ts`
+   for this task's own commit is empty — this task edits only
+   `scripts/check-surface.mjs` (`TOOL_PREFIXES` gains `peer`),
+   `skills/cairn-trailhead/SKILL.md` (the routing-table row), and the new
+   `verbs/peers.md`). No pre-existing tool registration edited, no schema
+   changed. The widened `"lists the expected tools"` assertion in
+   `mcp.test.ts` (above) carries every pre-F2 tool name forward unchanged;
+   only `peer_list` and `peer_run` are appended.
+
+### Dogfood drill procedure (spec §5, PENDING)
+
+Per spec §5's drill ring, `drill-peers.mjs` — mechanical, post-merge, same
+harness convention as every prior tier (`server/drills/drill-<name>.mjs`,
+run against the real `dist/index.js` over stdio). Does not exist yet; per
+this tier's convention (see bottom of this file), it is authored post-merge
+and its results recorded here once run. Itemized per the spec:
+
+1. **Stub-CLI staging.** Stage four executable stub scripts on PATH, named
+   `codex`/`opencode`/`gemini`/`grok` (the exact binary names `peer_list`/
+   `peer_run` probe for) — no real provider CLI assumed anywhere. Each
+   stub echoes back stdin length plus a canned, parseable "finding" (one
+   fabricated review comment with a file:line and a severity word), so the
+   drill can assert the convergence mechanics without depending on any
+   real model's output.
+2. **Detection.** `peer_list()` against the staged PATH → expect all four
+   providers `onPath: true`, defaults applied for any provider absent from
+   `cairn.json`.
+3. **Cap truncation at a tiny configured cap.** Configure one provider
+   (e.g. `codex`) with a deliberately tiny `maxInputChars` (small enough
+   that a realistic diff exceeds it); `peer_run` that provider with input
+   over the cap → expect the stub to receive exactly the capped byte count
+   plus the exact marker line, and `truncatedInput: true` in the result.
+4. **Stubbed peer finding → real convergence → real tracker record.** Run
+   the `peers` verb's `review` flow (or a driver equivalent) against a
+   small scratch diff, with the stub CLIs staged: expect cairn's own
+   five-axis review to run first, the stub's canned finding to be judged
+   (verified against the actual scratch diff — the driver's stub finding
+   is deliberately checkable), a surviving finding to land as a real
+   `cairn:review` issue (severity first line, plain language, peer + round
+   named), and `audit_record(scope: "peers-review-<slug>")` to carry the
+   same provenance. Non-surviving (deliberately false) stub findings must
+   NOT reach the tracker — the adversarial-judgment half of spec success
+   criterion 2.
+5. **Outbound leak scan blocks a seeded secret.** Seed the scratch diff
+   content with an obviously fake but pattern-matching secret (a leak
+   pattern the project's `cairn.json` `leakGuard.extraPatterns` is
+   configured to catch for this drill). Attempt the `peers review` flow →
+   expect the leak scan to fire BEFORE any `peer_run` call, naming the
+   offending line, and — the drill's hard assertion — the stub CLI's
+   captured stdin (each stub script logs what it received to a drill-local
+   file) never contains the seeded secret string, for any of the four
+   providers. This is spec success criterion 3's live proof.
+6. **Missing provider degrades to proceed-without.** Remove one stub
+   (e.g. delete `grok` from the staged PATH dir) mid-drill and re-run the
+   `review` flow → expect `peer_list` to report that provider
+   `onPath: false`, the convergence loop to proceed with the remaining
+   three peers plus cairn's own review, and the run to complete and record
+   normally — never a hard stop for a missing CLI. This is spec success
+   criterion 1's live proof.
+7. Pass condition: all four adapters detect/cap/run against stubs and a
+   removed one degrades cleanly (criterion 1); a stubbed finding survives
+   adversarial judgment into a real tracker issue + record with provenance
+   while a false one does not (criterion 2); the seeded secret never
+   reaches any stub's captured stdin (criterion 3); the round cap holds
+   (criterion 4, observed via the driver's round count); cap truncation
+   and the marker are exact (criterion 5, re-confirmed live).
+
+Post-merge convention (same as Tiers D/E/F1): author + run
+`server/drills/drill-peers.mjs` against a real tracker for the finding
+mirror leg, then commit the drills-run record here.

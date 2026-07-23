@@ -170,3 +170,38 @@ describe("writeConfigPatch", () => {
     expect(cfg.leakGuard).toEqual({ enabled: true, allow: [], extraPatterns: [] });
   });
 });
+
+describe("peers config", () => {
+  const base = { tracker: { type: "github", config: { repo: "o/r" } } };
+
+  it("peers is absent by default", () => {
+    const dir = writeTmpConfig(base);
+    expect(loadConfig(dir).peers).toBeUndefined();
+  });
+
+  it("accepts known provider keys with partial fields and applies defaults on read", () => {
+    const dir = writeTmpConfig({
+      ...base,
+      peers: { codex: { enabled: false }, gemini: { maxInputChars: 900000 } },
+    });
+    const cfg = loadConfig(dir);
+    expect(cfg.peers).toEqual({
+      codex: { enabled: false },
+      gemini: { maxInputChars: 900000 },
+    });
+  });
+
+  it("rejects an unknown provider key", () => {
+    const dir = writeTmpConfig({ ...base, peers: { totallyBogus: { enabled: true } } });
+    expect(() => loadConfig(dir)).toThrowError(
+      expect.objectContaining({ code: "CONFIG_INVALID" }));
+  });
+
+  it("config_set-style patching via writeConfigPatch validates the peers block", () => {
+    const dir = writeTmpConfig(base);
+    const out = writeConfigPatch(dir, { peers: { grok: { enabled: true, maxInputChars: 5000 } } });
+    expect(out.peers).toEqual({ grok: { enabled: true, maxInputChars: 5000 } });
+    expect(() => writeConfigPatch(dir, { peers: { notAProvider: {} } }))
+      .toThrowError(expect.objectContaining({ code: "CONFIG_INVALID" }));
+  });
+});

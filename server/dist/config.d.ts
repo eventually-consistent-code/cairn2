@@ -75,6 +75,16 @@ export declare const ConfigSchema: z.ZodObject<{
         allow?: string[] | undefined;
         extraPatterns?: string[] | undefined;
     }>>;
+    peers: z.ZodOptional<z.ZodRecord<z.ZodEnum<["codex", "opencode", "gemini", "grok"]>, z.ZodObject<{
+        enabled: z.ZodOptional<z.ZodBoolean>;
+        maxInputChars: z.ZodOptional<z.ZodNumber>;
+    }, "strip", z.ZodTypeAny, {
+        enabled?: boolean | undefined;
+        maxInputChars?: number | undefined;
+    }, {
+        enabled?: boolean | undefined;
+        maxInputChars?: number | undefined;
+    }>>>;
 }, "strip", z.ZodTypeAny, {
     tracker: {
         type: "github" | "gitlab" | "jira" | "asana" | "azure-boards" | "clickup";
@@ -103,6 +113,10 @@ export declare const ConfigSchema: z.ZodObject<{
     user?: {
         handle: string;
     } | undefined;
+    peers?: Partial<Record<"codex" | "opencode" | "gemini" | "grok", {
+        enabled?: boolean | undefined;
+        maxInputChars?: number | undefined;
+    }>> | undefined;
 }, {
     tracker: {
         type: "github" | "gitlab" | "jira" | "asana" | "azure-boards" | "clickup";
@@ -131,6 +145,10 @@ export declare const ConfigSchema: z.ZodObject<{
         allow?: string[] | undefined;
         extraPatterns?: string[] | undefined;
     } | undefined;
+    peers?: Partial<Record<"codex" | "opencode" | "gemini" | "grok", {
+        enabled?: boolean | undefined;
+        maxInputChars?: number | undefined;
+    }>> | undefined;
 }>;
 export type CairnConfig = z.infer<typeof ConfigSchema>;
 export declare function loadConfig(projectDir: string): CairnConfig;

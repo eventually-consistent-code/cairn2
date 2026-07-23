@@ -2,7 +2,7 @@
 
 MCP server for cairn 2.0. See `docs/superpowers/specs/2026-07-12-cairn-2-design.md`.
 
-60 tools total across planning, memory, continuity, collaboration, milestones, config, sessions (trace, probe, draft, thread), audits (plan_check, audit_record), the project knowledge graph (map_set, map_get), and workspace/board (workspace_list, workspace_focus, workspace_status, board_get, board_update).
+62 tools total across planning, memory, continuity, collaboration, milestones, config, sessions (trace, probe, draft, thread), audits (plan_check, audit_record), the project knowledge graph (map_set, map_get), workspace/board (workspace_list, workspace_focus, workspace_status, board_get, board_update), and peers (peer_list, peer_run).
 
 ## Test rings
 
@@ -604,6 +604,82 @@ dispatch pattern), one level up from any one session's own continuity:
 | `workspace_status` | Curated cross-project read: per configured member, `{ name, phase, openIssues, openSessions }` pulled from that member's own stores/tracker — read-only, never switches focus. A member whose tracker errors reports `{ name, error }` rather than failing the whole call |
 | `board_get` | Deterministic read: workstream ids sorted, plus derived counts by status. Missing board file reads as an empty board with zeroed counts, never an error |
 | `board_update` | Single-writer merge-patch by workstream id (`null` deletes); validates `status` enum, `project` names a real workspace member, and `title`+`project` are required on create — all before any write, so a rejected patch leaves the file untouched. Requires a workspace; no workspace → `PRECONDITION_FAILED` ("run basecamp init") |
+
+## Peers (external AI CLI reviewers)
+
+Tier F2's peer runner (`server/src/peers/run.ts`) shells out to four
+allow-listed external AI CLIs — codex, opencode, gemini, grok — as a
+transport layer only. It moves bytes in and out of a child process; the
+`peers` verb (`skills/cairn-trailhead/verbs/peers.md`) is what judges
+whatever comes back. Nothing here is guaranteed installed — none of the
+four are assumed present anywhere in the server.
+
+### Templates (fixed argv, stdin-only input)
+
+Each provider has exactly one argv template, a constant, never built from
+user input:
+
+| provider | argv | input |
+|---|---|---|
+| `codex` | `codex exec -` | stdin |
+| `opencode` | `opencode run -` | stdin |
+| `gemini` | `gemini -p -` | stdin |
+| `grok` | `grok -p -` | stdin |
+
+Input NEVER rides in argv and is NEVER shell-interpolated — `execFile`
+resolves the binary via PATH itself, and the trailing `-`/`-p -` tells
+each CLI to read its prompt from stdin, which is where all caller-supplied
+content goes, full stop. The child-process surface is exactly these four
+templates; there is no path from any tool argument to a shell command
+string.
+
+### Caps (`cairn.json` → `peers` block)
+
+```jsonc
+"peers": {
+  "codex":  { "enabled": true, "maxInputChars": 200000 },
+  "gemini": { "maxInputChars": 900000 }
+  // absent provider = enabled with the default cap; unknown keys rejected
+}
+```
+
+Default cap is 200,000 chars per provider (`#997`'s constrained-model
+knob) — a provider not named in `cairn.json` still gets this default.
+Input longer than the configured cap is head-truncated with a marker line
+appended verbatim (`[cairn: input truncated at N chars]`) and
+`truncatedInput: true` in the result — the marker text is part of the
+contract callers can depend on, not cosmetic.
+
+### Degradation (missing/disabled peers never block)
+
+- Provider not on PATH → `peer_list` reports `onPath: false` (a DETECTED
+  state, not an error); `peer_run` against it throws `PRECONDITION_FAILED`
+  naming the provider and an install hint.
+- Provider disabled (`peers.<name>.enabled: false`) → `peer_run` throws
+  `PRECONDITION_FAILED` before ever touching PATH.
+- Timeout (default 120s) → the child is `SIGKILL`ed and `peer_run` throws
+  `PRECONDITION_FAILED` naming the provider and elapsed time.
+- Zero peers detected is a normal `peer_list` result, not a warning — the
+  `peers` verb proceeds without them rather than stalling.
+
+### Exit-code taxonomy (the one thing every caller needs to get right)
+
+- **Non-zero exit from the peer CLI itself is an advisory RESULT, not an
+  error.** Peers are advisory; the `peers` verb is the judge. `peer_run`
+  resolves normally with `{ exitCode, output, ... }` whatever that peer's
+  process returned, stderr folded into `output` when present.
+- **A spawn/precondition failure THROWS** (`CairnError`, code
+  `PRECONDITION_FAILED`): missing binary (`ENOENT`), disabled provider,
+  timeout kill, or any other errno the child never turned into a real
+  exit code (`EACCES`, `EMFILE`, a `maxBuffer` overrun). The process never
+  really ran in these cases, so there's no advisory output to return —
+  it's a tool error, handled the same way every other cairn tool reports
+  a precondition failure.
+
+| tool | purpose |
+|---|---|
+| `peer_list` | Detection/config snapshot per provider: `{ provider, onPath, enabled, maxInputChars }`. Never throws — an absent CLI is data, not an error |
+| `peer_run` | Runs one provider with capped stdin input and a timeout; resolves with the real exit code and output on any completed run (including non-zero exit), throws `PRECONDITION_FAILED` only when the process itself never ran |
 
 ## Hooks
 

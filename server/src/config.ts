@@ -2,6 +2,7 @@ import { z } from "zod";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CairnError } from "./errors.js";
+import { PROVIDERS } from "./peers/providers.js";
 
 export const ConfigSchema = z.object({
   tracker: z.object({
@@ -35,6 +36,18 @@ export const ConfigSchema = z.object({
       extraPatterns: z.array(z.string()).default([]),
     })
     .default({}),
+  // Per-provider peer CLI settings (Tier F2 #997) — absent provider or
+  // absent field means enabled with defaults; unknown provider keys are
+  // rejected by the enum-keyed record below.
+  peers: z
+    .record(
+      z.enum(PROVIDERS),
+      z.object({
+        enabled: z.boolean().optional(),
+        maxInputChars: z.number().int().positive().optional(),
+      }),
+    )
+    .optional(),
 });
 export type CairnConfig = z.infer<typeof ConfigSchema>;
 

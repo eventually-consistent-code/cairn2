@@ -1,14 +1,15 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync, rmSync, chmodSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, delimiter } from "node:path";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildServer } from "../src/index.js";
 import { FakeTracker } from "../src/tracker/fake.js";
 import { handoffPath } from "../src/core/continuity.js";
 import { listSessions } from "../src/sessions/store.js";
+import { PROVIDERS } from "../src/peers/run.js";
 
 // Controllable failure injection for the continuity resilience test below.
 // Mocks ONLY writeHandoff (everything else passes through to the real module)
@@ -77,11 +78,12 @@ describe("cairn MCP server", () => {
       "map_set", "map_get",
       "workspace_list", "workspace_focus", "workspace_status",
       "board_get", "board_update",
+      "peer_list", "peer_run",
     ].sort());
   });
 
-  it("pins the tool count at 60", async () => {
-    expect((await listToolNames()).length).toBe(60);
+  it("pins the tool count at 62", async () => {
+    expect((await listToolNames()).length).toBe(62);
   });
 
   it("workspace_list without a workspace returns { workspace: null }, not an error", async () => {
@@ -374,6 +376,47 @@ describe("cairn MCP server", () => {
     const status = await call("plan_status", {});
     expect(status.json.phases.find((p: { number: number }) => p.number === 7).issues)
       .toEqual([issue.json.id]);
+  });
+
+  it("peer_list reports all four providers, onPath false in the bare harness", async () => {
+    const ORIGINAL_PATH = process.env.PATH;
+    const emptyDir = mkdtempSync(join(tmpdir(), "cairn-mcp-empty-path-"));
+    process.env.PATH = emptyDir;
+    try {
+      const out = await call("peer_list", {});
+      expect(out.isError).toBeFalsy();
+      expect(out.json).toHaveLength(4);
+      expect(out.json.map((p: { provider: string }) => p.provider).sort())
+        .toEqual([...PROVIDERS].sort());
+      for (const entry of out.json) expect(entry.onPath).toBe(false);
+    } finally {
+      process.env.PATH = ORIGINAL_PATH;
+      rmSync(emptyDir, { recursive: true, force: true });
+    }
+  });
+
+  // peer_run spawns a real child process via execFile, which inherits
+  // process.env at spawn time -- since this server runs in-process (no
+  // subprocess transport for the MCP server itself), staging a stub CLI
+  // onto process.env.PATH here reaches peerRun's execFile call directly.
+  // Restored after the test so the stub never leaks into later tests.
+  it("peer_run executes a stub staged on PATH and returns its output", async () => {
+    const ORIGINAL_PATH = process.env.PATH;
+    const stubDir = mkdtempSync(join(tmpdir(), "cairn-mcp-peer-stub-"));
+    const stubPath = join(stubDir, "codex");
+    writeFileSync(stubPath, "#!/bin/sh\ncat > /dev/null\necho \"stub ok\"\n");
+    chmodSync(stubPath, 0o755);
+    process.env.PATH = `${stubDir}${delimiter}${ORIGINAL_PATH}`;
+    try {
+      const res = await call("peer_run", { provider: "codex", input: "hello" });
+      expect(res.isError).toBeFalsy();
+      expect(res.json.provider).toBe("codex");
+      expect(res.json.exitCode).toBe(0);
+      expect(res.json.output.trim()).toBe("stub ok");
+    } finally {
+      process.env.PATH = ORIGINAL_PATH;
+      rmSync(stubDir, { recursive: true, force: true });
+    }
   });
 });
 
