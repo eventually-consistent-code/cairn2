@@ -2,7 +2,7 @@
 
 MCP server for cairn 2.0. See `docs/superpowers/specs/2026-07-12-cairn-2-design.md`.
 
-62 tools total across planning, memory, continuity, collaboration, milestones, config, sessions (trace, probe, draft, thread), audits (plan_check, audit_record), the project knowledge graph (map_set, map_get), workspace/board (workspace_list, workspace_focus, workspace_status, board_get, board_update), and peers (peer_list, peer_run).
+63 tools total across planning, memory, continuity, collaboration, milestones, config, sessions (trace, probe, draft, thread), audits (plan_check, audit_record), the project knowledge graph (map_set, map_get), workspace/board (workspace_list, workspace_focus, workspace_status, board_get, board_update), peers (peer_list, peer_run), and tracker-delta ingest (plan_tracker_delta).
 
 ## Test rings
 
@@ -50,6 +50,7 @@ The `plan_*` tools manage project artifacts and phase tracking across cairn inte
 | `plan_issues_set` | Set the tracker issue ids a phase's `PLAN.md` frontmatter advances |
 | `plan_meta_set` | Set wave grouping (`wave_N` frontmatter) and/or the TDD-eligible task list on a phase's `PLAN.md` |
 | `plan_resync` | Detect out-of-band commits (covered by no `LEDGER.md` range) since the last resync marker; advances the marker. First run initializes the marker and reports nothing |
+| `plan_tracker_delta` | Diff the live tracker against the snapshot cursor (`.cairn/tracker-marker.json`): new issues/phases, per-field edits, external state changes. Peek by default; `ack: true` advances the cursor. First run initializes and reports nothing. Cairn's own mutations never echo — every issue-mutating tool writes through to the snapshot |
 
 ### Artifact layout
 
@@ -122,13 +123,13 @@ Tier 2 cards are frontmatter'd Markdown files (`type`, `scopePhase`, `scopeIssue
 `provenanceFiles`, `provenanceCommits`, `created`) with a deterministic id
 (`<type>-<sha256(body).slice(0,8)>`), so re-creating a card with identical content
 never produces a duplicate file. `type` includes `note` (knowledge captured by
-`/cairn mark --note`, not work); every type may carry an optional
+`/cairn:mark --note`, not work); every type may carry an optional
 `confidence: high | medium | low` in frontmatter, surfaced by `mem_search`,
 `mem_card_list`, `mem_card_recall`, and the SessionStart banner when present.
 `mem_card_update({ id, confidence })` is the one mutation cards get — a
 frontmatter-only patch (body and id, a content hash of the body, stay
 immutable; a changed lesson is a new card, not an edit) that throws
-`NOT_FOUND` on an unknown id and triggers a banner re-render. `/cairn retro`
+`NOT_FOUND` on an unknown id and triggers a banner re-render. `/cairn:retro`
 is the primary writer: it grades a card's confidence up when a later phase
 proves it out, or down (plus a corrected card) when contradicted.
 
@@ -167,7 +168,7 @@ write-through, on every call.
 
 | tool | purpose |
 |---|---|
-| `continuity_checkpoint` | Write/refresh the session handoff (also called manually by `/cairn waypoint`) |
+| `continuity_checkpoint` | Write/refresh the session handoff (also called manually by `/cairn:waypoint`) |
 | `continuity_get` | Read the current handoff; flags one older than 14 days as stale but never errors on staleness |
 | `continuity_clear` | Delete the handoff — called on confirmed resume, `ship`, and `summit` |
 | `ledger_append` | Append a verified-task line to a phase's git-committed `LEDGER.md` (append-only) |
@@ -190,9 +191,9 @@ across projects that happen to share a basename.
    `PreCompact` hook cover the gaps between tool calls; `SessionStart` cats
    the handoff and, per `continuity.resume`, offers (`prompt`), auto-runs
    (`auto`), or suppresses (`off`) the resume.
-2. `/cairn waypoint` is the manual path: no argument pauses (prompts for
+2. `/cairn:waypoint` is the manual path: no argument pauses (prompts for
    `next_action`/`notes`, optionally offers a `wip(cairn):` commit);
-   `/cairn waypoint resume` resumes.
+   `/cairn:waypoint resume` resumes.
 3. **Trust order is never the handoff alone.** The tracker and `git log`
    outrank `LEDGER.md`, which outranks the handoff — a handoff that
    contradicts the tracker (an issue it names as open that's actually
@@ -242,7 +243,7 @@ index actually saves versus injecting every card in full.
 - `resume` — `prompt` (default) asks before resuming, `auto` proceeds
   without asking, `off` suppresses the `SessionStart` resume offer entirely.
 - `checkpoint` — enables/disables the `PostToolUse` breadcrumb hook.
-- `wipCommits` — `/cairn waypoint` offers a `wip(cairn): waypoint —
+- `wipCommits` — `/cairn:waypoint` offers a `wip(cairn): waypoint —
   <next_action>` commit on pause when there's uncommitted work.
 - `recallIndex.enabled` / `recallIndex.maxCards` — the recall banner above.
 
@@ -274,6 +275,14 @@ When `user.handle` is set:
 
 When `user.handle` is absent, cairn operates in single-user mode — no assignee tracking, no ownership checks.
 
+**Collaboration mode (optional).** `user.mode` is `"vibe"` (default —
+cairn drives end-to-end) or `"engineer"` (the human claims issues, writes
+code, and makes the design calls; cairn pairs, scaffolds, verifies, and
+keeps the tracker mirror honest for both parties' work — see the `work`
+verb's pairing overlay and the `auto`/`ship` no-self-merge gate). Absent
+key ≡ `"vibe"`. Engineer mode needs `user.handle` for assignment identity
+— set both together via `tune mode engineer`.
+
 Assignee **write** support today is GitHub and Azure Boards only. The other backends accept the `issue_update(..., assignee: ...)` call but don't propagate it: ClickUp explicitly defers it (needs numeric user-id resolution not yet implemented); Jira, Asana, and GitLab have no assignee mapping yet.
 
 ### Infrastructure (not new machinery)
@@ -291,7 +300,7 @@ and `patchRoadmapMeta` already apply to plan artifacts:
 
 | tool | purpose |
 |---|---|
-| `config_get` | Read `cairn.json` as the parsed, validated, post-defaults effective config (what `/cairn tune` displays) |
+| `config_get` | Read `cairn.json` as the parsed, validated, post-defaults effective config (what `/cairn:tune` displays) |
 | `config_set` | Deep-merge-patch the raw `cairn.json`; `null` deletes a key |
 
 `config_set` validates the *merged* result against `ConfigSchema` before
@@ -370,6 +379,14 @@ Backed by the tracker interface's `commentIssue(id, text)` method +
 `Capability.hasComments` (true on all six adapters — GitHub, GitLab, Jira,
 Azure Boards, Asana, ClickUp — the flag exists so a future backend can
 degrade to a recorded skip, same posture as `hasMilestones`).
+
+**Time tracking.** `issue_close` accepts an optional `timeSpentMinutes`;
+on backends with `Capability.hasWorklog` (Jira only today, via
+`POST /rest/api/3/issue/<key>/worklog`) it writes a real worklog entry and
+returns `worklogLogged: true`. A worklog failure never fails a close that
+already succeeded — the result carries `worklogLogged: false` plus a
+`worklogError` note, and the verb's close comment carries the time line as
+the fallback on every backend.
 
 ### Artifact layout
 
@@ -716,7 +733,7 @@ and the agent sees exactly what leaked and where.
 
 **Escape hatches**, per spec §3:
 - `cairn.json` → `leakGuard: { enabled: true, allow: [globs], extraPatterns:
-  [regex] }`, editable via `/cairn tune leakguard off|on`.
+  [regex] }`, editable via `/cairn:tune leakguard off|on`.
 - One-shot override: prefix the command with `CAIRN_LEAK_OK=1 `. The
   override must *prefix* the command — `CAIRN_LEAK_OK=1` merely mentioned
   elsewhere (e.g. quoted inside the commit message) does not bypass the
