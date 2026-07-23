@@ -26,6 +26,10 @@ plain language a manager reads (#726). Never debug a routed failure inline.
 - **Fast lane** (cause already proven obvious AND fix ≤3 lines):
   `trace_start` → one `evidence` + one `verdict` → fix → `trace_close`.
   One motion, full paper trail, both mirror touches.
+- **Mirror rules:** plain language; no code blocks, no file paths, no
+  internal refs; comments at milestones only (started / cause identified) —
+  the resolution rides the close.
+
 ## Paper trail
 
 Every tracker state transition this verb makes carries a comment — claim
@@ -34,9 +38,3 @@ spent: ~Xm (approximate)" from claim to close, passed to `issue_close` as
 `timeSpentMinutes`), or parked (why, what remains). Milestone progress
 comments where the work is long enough to have milestones; batch small
 steps into one comment. Leak-guard discipline applies to every comment.
-
-## Mirror rules
-
-Plain language; no code blocks, no file paths, no
-internal refs; comments at milestones only (started / cause identified) —
-the resolution rides the close.
