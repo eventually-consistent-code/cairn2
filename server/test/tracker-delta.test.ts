@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { mkdtempSync, existsSync, readFileSync } from "node:fs";
+import { mkdtempSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { CairnError } from "../src/errors.js";
 import { FakeTracker } from "../src/tracker/fake.js";
 import { trackerDelta, snapshotNote, markerPath } from "../src/planning/tracker-delta.js";
 
@@ -89,5 +90,43 @@ describe("trackerDelta", () => {
       }),
     ).not.toThrow();
     expect(existsSync(markerPath(dir))).toBe(false);
+  });
+
+  it("corrupt marker file causes trackerDelta to reject with CONFIG_INVALID", async () => {
+    // Initialize marker first
+    await trackerDelta(dir, tracker);
+    // Corrupt the marker file
+    writeFileSync(markerPath(dir), "not json{");
+    // trackerDelta should reject with CairnError
+    await expect(trackerDelta(dir, tracker)).rejects.toThrow(
+      expect.objectContaining({ code: "CONFIG_INVALID" }),
+    );
+  });
+
+  it("corrupt marker is a silent no-op for snapshotNote", async () => {
+    // Initialize marker first
+    await trackerDelta(dir, tracker);
+    // Corrupt the marker file
+    writeFileSync(markerPath(dir), "not json{");
+    // snapshotNote should not throw
+    expect(() =>
+      snapshotNote(dir, {
+        id: "X-1", title: "t", body: "", state: "open", labels: [],
+        updatedAt: new Date().toISOString(), url: "fake://x",
+      }),
+    ).not.toThrow();
+  });
+
+  it("tracker rejection leaves existing marker unchanged", async () => {
+    const i = await tracker.createIssue({ title: "initial" });
+    await trackerDelta(dir, tracker, { ack: true });
+    const markerBefore = readFileSync(markerPath(dir));
+    // Monkey-patch tracker.listIssues to reject
+    tracker.listIssues = () => Promise.reject(new Error("tracker down"));
+    // trackerDelta should reject
+    await expect(trackerDelta(dir, tracker)).rejects.toThrow();
+    // Marker should be unchanged
+    const markerAfter = readFileSync(markerPath(dir));
+    expect(markerAfter).toEqual(markerBefore);
   });
 });
