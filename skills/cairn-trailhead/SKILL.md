@@ -48,6 +48,7 @@ canonical registry — `help` renders from it and CI enforces it.
 | `medic` | Planning-dir health, repair, and workflow forensics | `[--repair]` \| `forensics [phase]` | verbs/medic.md | live |
 | `backtrack` | Safe git undo by phase/plan manifest — reverts only | `<phase\|plan>` \| `--apply` | verbs/backtrack.md | live |
 | `basecamp` | Multi-project workspaces — dispatch board, focus, parallel workstreams | `init` \| `focus <member>` \| `dispatch` \| `claim\|update\|done <id>` | verbs/basecamp.md | live |
+| `peers` | Convene external AI CLIs as reviewers — convergence with adversarial judgment | (none = status) \| `review [target]` \| `plan <phase>` | verbs/peers.md | live |
 
 Reserved verbs have no subroutine file yet — each lands with its tier. Invoking
 one: say which tier ships it and show `/cairn help`.
