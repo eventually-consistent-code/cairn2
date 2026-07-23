@@ -2424,5 +2424,28 @@ Post-merge convention (same as Tiers D/E/F1/F2): author + run
 `server/drills/drill-frontend-loop.mjs` against a real tracker, then
 commit the drills-run record here.
 
-**Drill status: PENDING — not yet authored, not yet run.** Criteria 1–4
-above remain unproven against live behavior until this drill lands.
+**Drill status: RUN 2026-07-22 — results below.**
+
+### Drill results — RUN 2026-07-22 (mechanical, real tracker) — PASS 7/7
+
+Same harness as every prior tier: real `dist/index.js` over stdio, real
+GitHub tracker (`eventually-consistent-code/cairn-drill-scratch`).
+Repeatable driver at `server/drills/drill-frontend-loop.mjs` (run from
+`server/`: `node drills/drill-frontend-loop.mjs <scratchDir>
+$PWD/dist/index.js`; fresh scratch per run).
+
+**Frontend-loop drill — PASS 7/7.** The designer rails: a draft session
+opened (verb-owned lifecycle), tokens.json and default.css written in
+sync and PROVEN in sync by property-set comparison, variant + decision
+entries logged with mirror comments. The traceability rails: decision and
+module nodes plus BOTH edges (requirement —implements→ decision
+—decided-in→ module) recorded via the read-unfiltered-append-write
+discipline the agents mandate. The UAT rails: the sweep over `map_get`
+edges named EXACTLY the seeded gap (a second requirement with no design)
+and recorded it as an important finding linked to the real issue; a
+fidelity divergence landed as a real `cairn:audit` issue whose body cites
+the violated decision entry verbatim; a seeded token without a CSS twin
+was detected by the pair comparison (the audit ui drift check, criteria
+1-4). Leak scan on tracker text: zero hits. Criterion 5 (server
+untouched) held the whole tier; criterion 6 (agent frontmatter + real
+tools) verified in review with registry line numbers cited above.
