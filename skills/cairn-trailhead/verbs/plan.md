@@ -42,4 +42,4 @@ Plan the given phase per the `cairn-planning` skill's depth dial.
 6. Adopt: `plan_unplanned()` — for any unplanned issue that belongs to this
    phase, add its id via `plan_issues_set` (and set its tracker phase with
    `issue_update` if the backend supports phases). Ask before adopting.
-7. Report the plan summary and next step `/cairn work <N>`.
+7. Report the plan summary and next step `/cairn:work <N>`.

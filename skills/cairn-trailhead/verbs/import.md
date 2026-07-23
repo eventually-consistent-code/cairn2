@@ -15,5 +15,5 @@ Import tracker-origin work into cairn, per the `cairn-planning` skill.
 3. Gap interview: the tracker says *what*; ask the user *why* — capture
    vision into PROJECT.md and the phase's locked decisions into CONTEXT.md.
 4. Report: phase dir created, issues mapped, next step
-   `/cairn plan <N>` to flesh out the task breakdown or `/cairn work <N>`
+   `/cairn:plan <N>` to flesh out the task breakdown or `/cairn:work <N>`
    to start executing.

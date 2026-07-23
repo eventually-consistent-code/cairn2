@@ -14,7 +14,7 @@ exactly what will run before anything runs.
 2. Per phase, in order: plan if PLAN.md has no tasks (the `plan` verb's
    steps, standard depth) → the `work` verb's steps → the `verify` verb's
    steps. The A0 handoff tools track progress automatically; a killed run
-   resumes via `/cairn waypoint resume`.
+   resumes via `/cairn:waypoint resume`.
 3. HARD STOPS — halt the run, report, hand back: failed verify;
    `plan_drift` flags; any tracker error; any security-relevant decision
    (auth, secrets, data exposure, dependency trust).

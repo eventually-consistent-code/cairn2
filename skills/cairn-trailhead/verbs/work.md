@@ -7,9 +7,9 @@ status: live
 Execute the given phase per the `cairn-planning` skill.
 
 1. `plan_status()` → this phase's `issues` list. Empty → stop and point at
-   `/cairn plan <N>`.
+   `/cairn:plan <N>`.
 2. `--wave` (only when PLAN.md has `wave_N` frontmatter — else say so and
-   point at `/cairn plan <N>`): run waves in order (`--wave N` runs just
+   point at `/cairn:plan <N>`): run waves in order (`--wave N` runs just
    that wave). Within a wave, dispatch one subagent per issue IN PARALLEL —
    worktree isolation for any file-mutating issue. Each subagent runs the
    full per-issue lifecycle below (claim → work → close → ledger). Wave
@@ -45,4 +45,4 @@ Execute the given phase per the `cairn-planning` skill.
    redCommit: <RED sha — TDD tasks only>, greenCommit: <GREEN sha — TDD
    tasks only>)` — the durable, git-committed record that the task landed.
 8. After the last issue: `context_set(issueId: null)` and suggest
-   `/cairn verify <N>`.
+   `/cairn:verify <N>`.
