@@ -9,7 +9,7 @@ until every phase is verified.
 
 1. `milestone_list()` + `plan_status()` — show what's completing: phases,
    verification state, native milestone (when the backend has one). Any
-   unverified phase → stop, list them, point at `/cairn verify <N>`. If the
+   unverified phase → stop, list them, point at `/cairn:verify <N>`. If the
    backend has `hasMilestones` and `milestone_list()` shows no current
    native milestone id (first-milestone case — nothing has stamped one
    yet), fold an offer to create one now into step 2's question.

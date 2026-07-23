@@ -15,6 +15,6 @@ the context they invalidate.
 4. For each affected phase, batched into one AskUserQuestion per phase at
    most: refresh CONTEXT.md (what the out-of-band work changed about the
    locked decisions) and PLAN.md task notes. Assumptions broken outright →
-   offer `/cairn plan <N> --gaps`.
+   offer `/cairn:plan <N> --gaps`.
 5. The marker already advanced (the tool did it) — note that re-running
    reports clean from here, and say what was refreshed.

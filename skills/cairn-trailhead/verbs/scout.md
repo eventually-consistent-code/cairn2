@@ -20,4 +20,4 @@ resumable (#1961 shape: never redo finished research).
    write findings into its section and flip its marker to `done` as EACH
    section completes — a kill mid-run must lose at most one section.
 5. `mem_index` the finished brief (source: the RESEARCH.md path). Report
-   sections done/remaining and suggest `/cairn plan <N>`.
+   sections done/remaining and suggest `/cairn:plan <N>`.

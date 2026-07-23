@@ -1,0 +1,11 @@
+---
+description: "Zero-friction capture — backlog/seed to tracker, note to memory (cairn — /cairn:help for the verb reference)"
+argument-hint: "\"<text>\" [--seed \"<trigger>\"] [--note]"
+---
+
+Execute the cairn verb `mark`:
+
+1. Read `skills/cairn-trailhead/SKILL.md` (this plugin) — its shared
+   rules apply to every step below.
+2. Read `skills/cairn-trailhead/verbs/mark.md` and execute it with
+   `$ARGUMENTS` as its arguments.

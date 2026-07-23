@@ -7,6 +7,7 @@
 //   (c) subroutine frontmatter is exactly verb/args/status and verb matches filename
 //   (d) every prefixed tool reference in verb docs exists in the server registry
 //   (e) the reserved verb set matches the Tier 0 spec exactly
+//   (f) commands/ holds exactly one shim per live verb (gen-commands.mjs output)
 // Exit 0 clean, exit 1 with one line per failure.
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -102,6 +103,19 @@ for (const [verb, tier] of Object.entries(SPEC_RESERVED)) {
 for (const verb of Object.keys(reservedActual)) {
   if (!(verb in SPEC_RESERVED))
     failures.push(`(e) routing table reserves '${verb}' which is not in the spec list`);
+}
+
+// (f) commands/ shims <-> live rows, both directions
+const commandFiles = readdirSync(join(root, "commands"))
+  .filter((f) => f.endsWith(".md"))
+  .map((f) => f.replace(/\.md$/, ""));
+for (const r of liveRows) {
+  if (!commandFiles.includes(r.verb))
+    failures.push(`(f) live verb '${r.verb}' has no commands/${r.verb}.md shim (run scripts/gen-commands.mjs)`);
+}
+for (const c of commandFiles) {
+  if (!liveRows.find((r) => r.verb === c))
+    failures.push(`(f) commands/${c}.md has no live routing-table row (run scripts/gen-commands.mjs)`);
 }
 
 // --- report ------------------------------------------------------------------

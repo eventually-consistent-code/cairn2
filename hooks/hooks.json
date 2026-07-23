@@ -1,5 +1,5 @@
 {
-  "description": "cairn2 continuity hooks -- PreToolUse leak guard, PostToolUse breadcrumb, PreCompact refresh, SessionStart resume injection. All are dependency-free, fire-and-forget Node scripts (see hooks/scripts/).",
+  "description": "cairn continuity hooks -- PreToolUse leak guard, PostToolUse breadcrumb, PreCompact refresh, SessionStart resume injection. All are dependency-free, fire-and-forget Node scripts (see hooks/scripts/).",
   "hooks": {
     "PreToolUse": [
       {

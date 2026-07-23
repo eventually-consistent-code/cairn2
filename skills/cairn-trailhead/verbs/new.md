@@ -16,4 +16,4 @@ Start a new cairn 2.0 project in this repo, per the `cairn-planning` skill.
    `plan_phase_ensure(number, name)` → tracker phase id.
 5. For each requirement: `issue_create(title, body, phase: <phase id>)`, then
    record the ids per phase with `plan_issues_set(phaseDir, issues)`.
-6. Report: phases created, issues created, next step `/cairn plan 1`.
+6. Report: phases created, issues created, next step `/cairn:plan 1`.
