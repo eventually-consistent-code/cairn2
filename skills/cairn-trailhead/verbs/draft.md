@@ -19,6 +19,12 @@ decisions it locks in are not.
    component styles, no layout rules, ever — the theme is a palette, not a
    design. Every session after the first reuses this same file; never fork
    a second theme file for a new session.
+   Alongside it, `.cairn/draft/themes/tokens.json` mirrors the same custom
+   properties as typed groups (color/type/space/radius) — the CSS stays the
+   single source the variants LINK, tokens.json is its machine-readable
+   twin. Every token change touches BOTH files in the same change, never
+   one without the other; a token in one file and not the other is drift
+   `audit ui` will catch and flag as a finding.
 3. Variant loop, ONE design question per variant set — don't bundle "pick a
    color AND a layout" into one round, the user can't evaluate two axes at
    once:
@@ -70,6 +76,16 @@ decisions it locks in are not.
 3. Offer to delete the variant directory once the skill is written. NEVER
    auto-delete — the user gets the last look before the throwaway HTML
    actually gets thrown away.
+
+## Designer dispatch
+
+Non-trivial design questions — anything past a one-line pick — go to the
+`cairn-designer` agent (Task tool), handed the session id and the question.
+The verb stays the orchestrator: session lifecycle (`draft_start`/
+`draft_close`) and the tracker mirror are `draft`'s job; the wireframe →
+tokens → prototype work itself is the agent's. A question simple enough to
+decide without comparing variants doesn't need dispatch at all — see Fast
+lane.
 
 ## Mirror rules
 

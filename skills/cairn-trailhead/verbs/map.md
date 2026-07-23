@@ -16,7 +16,11 @@ edits `map.json` directly, same discipline as `config_set`.
 1. Walk the sources of truth: code structure (modules, their dependencies),
    plan artifacts (phases, decisions), and the tracker (issues, who owns
    what). Propose nodes and edges from what's actually there — don't invent
-   relationships the evidence doesn't support.
+   relationships the evidence doesn't support. Requirement → decision
+   `implements` edges (sourced from draft sessions) are first-class
+   citizens of this walk, same as any other edge — the design-traceability
+   sweep the `cairn-uat` agent runs depends on `map build` keeping them
+   current.
 2. Write in validated chunks via `map_set(patch)` — merge-patch by node id,
    edges replaced as a whole array per patch. Small, reviewable chunks beat
    one giant patch: if a chunk gets rejected (dangling edge, bad type), the
