@@ -2543,3 +2543,18 @@ Outbound (one full `work` issue):
 - [ ] Jira: worklog entry exists with matching minutes. Non-worklog
       backend: time line present in the close comment instead.
 - [ ] New session after >12h idle: SessionStart nudge line appears.
+
+## Engineer mode — dogfood checklist (pending live pass)
+
+- [ ] `tune mode engineer` without a handle fails CONFIG_INVALID, then
+      succeeds when handle+mode are set together.
+- [ ] `work` on a 2-issue phase asks "mine or yours?" once; one issue
+      each way.
+- [ ] Human-claimed issue: branch + claim comment with context appear;
+      cairn writes no code for it; after human commits land, cairn runs
+      tests, closes with "logged by cairn for <handle>" + time, offers
+      review.
+- [ ] cairn-claimed issue lands as an unmerged PR; `ship` stops while it
+      awaits review; passes after human merge.
+- [ ] A config without user.mode: all verbs behave exactly as before
+      (vibe default).
