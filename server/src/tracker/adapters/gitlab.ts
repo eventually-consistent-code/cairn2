@@ -19,7 +19,7 @@ interface GlMilestone {
 export class GitLabTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-    hasMilestones: false, hasPhaseClose: true, hasComments: true,
+    hasMilestones: false, hasPhaseClose: true, hasComments: true, hasWorklog: false,
   };
   constructor(private cfg: z.infer<typeof configSchema>, private fetchImpl: FetchLike = fetch) {}
 

@@ -219,13 +219,21 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
     }));
 
   server.registerTool("issue_close",
-    { description: "Close an issue", inputSchema: { id: z.string() } },
-    wrap(async (a: { id: string }) => {
+    { description: "Close an issue; optionally log time spent (worklog on supporting "
+        + "backends, otherwise the caller folds time into the close comment)",
+      inputSchema: { id: z.string(), timeSpentMinutes: z.number().int().positive().optional() } },
+    wrap(async (a: { id: string; timeSpentMinutes?: number }) => {
       const d = dir();
-      const result = await (await getTracker(d)).closeIssue(a.id);
+      const tracker = await getTracker(d);
+      const result = await tracker.closeIssue(a.id);
       snapshotNote(d, result);
+      let worklogLogged = false;
+      if (a.timeSpentMinutes && tracker.capabilities.hasWorklog && tracker.logWork) {
+        await tracker.logWork(a.id, a.timeSpentMinutes);
+        worklogLogged = true;
+      }
       refreshHandoff({ source: "tool", issue: a.id }, d);
-      return result;
+      return { ...result, worklogLogged };
     }));
 
   server.registerTool("issue_list",

@@ -362,4 +362,20 @@ describe("JiraTracker mapping", () => {
     expect(calls[0].body).toEqual({ body: adfBody("plain note") });
     expect(c.id).toBe("10500");
   });
+
+  it("logWork POSTs a Jira worklog with timeSpentSeconds", async () => {
+    const { f, calls } = fixtureFetch([{ status: 201, body: {} }]);
+    const t = makeJira(f);
+    await t.logWork!("PROJ-7", 90);
+    const call = calls.find((c) => c.url.endsWith("/rest/api/3/issue/PROJ-7/worklog"));
+    expect(call).toBeDefined();
+    expect(call!.method).toBe("POST");
+    expect(call!.body).toEqual({ timeSpentSeconds: 5400 });
+  });
+
+  it("declares hasWorklog", () => {
+    const { f } = fixtureFetch([]);
+    const t = makeJira(f);
+    expect(t.capabilities.hasWorklog).toBe(true);
+  });
 });
