@@ -111,8 +111,8 @@ export async function trackerDelta(
     const changes: FieldChange[] = [];
     if (old.title !== i.title) changes.push({ field: "title", from: old.title, to: i.title });
     if (old.bodyHash !== bodyHash(i.body)) changes.push({ field: "body" });
-    if (old.labels.join(" ") !== [...i.labels].sort().join(" "))
-      changes.push({ field: "labels", from: old.labels.join(" "), to: [...i.labels].sort().join(" ") });
+    if (JSON.stringify(old.labels) !== JSON.stringify([...i.labels].sort()))
+      changes.push({ field: "labels", from: old.labels.join(", "), to: [...i.labels].sort().join(", ") });
     if ((old.assignee ?? "") !== (i.assignee ?? ""))
       changes.push({ field: "assignee", from: old.assignee, to: i.assignee });
     if (changes.length) edited.push({ issue: i, changes });

@@ -129,4 +129,17 @@ describe("trackerDelta", () => {
     const markerAfter = readFileSync(markerPath(dir));
     expect(markerAfter).toEqual(markerBefore);
   });
+
+  it("detects label changes: joined label vs split labels", async () => {
+    const i = await tracker.createIssue({ title: "label test", labels: ["help wanted"] });
+    await trackerDelta(dir, tracker, { ack: true });
+    await tracker.updateIssue(i.id, { labels: ["help", "wanted"] });
+    const r = await trackerDelta(dir, tracker);
+    expect(r.edited).toHaveLength(1);
+    expect(r.edited[0].changes).toHaveLength(1);
+    const labelChange = r.edited[0].changes[0];
+    expect(labelChange.field).toBe("labels");
+    expect(labelChange.from).toBe("help wanted");
+    expect(labelChange.to).toBe("help, wanted");
+  });
 });
