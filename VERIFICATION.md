@@ -2449,3 +2449,34 @@ was detected by the pair comparison (the audit ui drift check, criteria
 1-4). Leak scan on tracker text: zero hits. Criterion 5 (server
 untouched) held the whole tier; criterion 6 (agent frontmatter + real
 tools) verified in review with registry line numbers cited above.
+
+## P5′ — Dogfood Gate, 1.x Cutover, Publish (2026-07-22)
+
+### Cutover (shipped this section)
+- `commands/` now contains exactly `cairn.md` — the seven transition
+  shims (`import new plan ship status verify work`) deleted per the
+  Tier 0 spec's schedule ("removed at P5′"). Always-present token cost
+  per Tier 0's method: ~213 tok (entrypoint + 7 shims) → ~23 tok
+  (entrypoint only), a ~89% drop from the transition-era cost (the
+  Tier 0 table's 86% figure is the 172 → 23 pre-shim baseline — both
+  land with this change).
+- `plugin.json` version: `2.0.0-alpha.0` → `2.0.0-rc.1` (cutover
+  complete, publish pending).
+- Gate at the cutover commit: full suite 479 passed / 6 skipped,
+  `tsc --noEmit` clean, `check-surface: clean — 36 live, 0 reserved,
+  62 server tools`. Zero server changes.
+
+### Human gate 1 — live dogfood pass — PENDING (owner)
+Install cairn2 as the local plugin in a fresh session, scratch repo with
+a real tracker in `cairn.json`, then: `/cairn new` → `/cairn plan 1` →
+`/cairn work 1` → `/cairn verify 1` → `/cairn ship`; `/cairn do "what's
+the status"` (expect: routes without confirmation); `/cairn wrok`
+(expect: help + "did you mean work?"); kill the session mid-`work` and
+confirm the waypoint resume lands on the exact task. Record results
+here. The 25 mechanical drill drivers (255/255 checks across the eleven per-tier runs, Tiers A0–F3) are
+the necessary half; this live pass is the sufficient half.
+
+### Human gate 2 — publish — PENDING (owner)
+Swap cairn 1.x → cairn2 in the plugin marketplace (this also retires the
+1.x `/cairn:gsd` parity passthrough, which per the roadmap survives
+until exactly this moment). Bump to `2.0.0` when both gates close.

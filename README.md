@@ -98,7 +98,16 @@ and [gap analysis](docs/superpowers/research/2026-07-15-competitor-gap-analysis.
 | Tier F1 | `basecamp` — workspace awareness, focus switch, dispatch board | ✅ shipped |
 | Tier F2 | `peers` — cross-AI review/plan convergence, adversarial judgment, outbound leak gate | ✅ shipped |
 | Tier F3 | Frontend quality loop — `cairn-designer` + `cairn-uat` agents, design-token discipline, requirements traceability | ✅ shipped |
-| P5′ | Dogfood gate → 1.x cutover → publish | planned |
+| P5′ | Dogfood gate → 1.x cutover → publish | 🚧 cutover shipped (`2.0.0-rc.1`) — two gates open |
+
+**P5′ status:** the seven transition shims are gone — `/cairn` is the
+plugin's only registered command (the Tier 0 record's ~213 → ~23 token
+win, landed). Two gates remain, both owner actions: (1) the **live
+dogfood pass** — a real session with cairn2 installed, running the Tier 0
+drill (`/cairn new → plan → work → verify → ship`, `/cairn do`, a typo'd
+verb, one waypoint resume), recorded in VERIFICATION.md; (2) **publish** —
+swapping cairn 1.x (and its `/cairn:gsd` passthrough) for cairn2 in the
+plugin marketplace. `2.0.0` follows both.
 
 ## Development
 
