@@ -4,8 +4,7 @@
 durable memory, tracker truth, and session continuity meet in a single
 deterministic engine.
 
-> **Private until launch.** This repo is the cairn 2.0 rebuild; the shipped
-> 1.x plugin lives in the public
+> This repo is the cairn 2.0 rebuild; the earlier 1.x plugin lives in the
 > [claude-plugins](https://github.com/eventually-consistent-code/claude-plugins)
 > marketplace repo. Full docs index: **[docs/README.md](docs/README.md)**.
 

@@ -8,7 +8,7 @@
     {
       "name": "cairn",
       "source": "./",
-      "description": "cairn 2.0 (private dogfood build) — converged work management: tracker-truth planning, provenance-checked memory, and a per-verb /cairn:<verb> surface, backed by a typed MCP server."
+      "description": "cairn 2.0 — converged work management: tracker-truth planning, provenance-checked memory, and a per-verb /cairn:<verb> surface, backed by a typed MCP server."
     }
   ]
 }
