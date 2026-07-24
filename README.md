@@ -106,8 +106,8 @@ and [gap analysis](docs/superpowers/research/2026-07-15-competitor-gap-analysis.
 | Tier F1 | `basecamp` — workspace awareness, focus switch, dispatch board | ✅ shipped |
 | Tier F2 | `peers` — cross-AI review/plan convergence, adversarial judgment, outbound leak gate | ✅ shipped |
 | Tier F3 | Frontend quality loop — `cairn-designer` + `cairn-uat` agents, design-token discipline, requirements traceability | ✅ shipped |
-| P5′ | Dogfood gate → 1.x cutover → publish | 🚧 cutover shipped — dogfood + publish gates open |
-| P5″ | Per-verb surface — plugin `cairn`, 36 generated `/cairn:<verb>` shims, conformance check (f) | ✅ shipped (`2.0.0-rc.2`) |
+| P5′ | Dogfood gate → 1.x cutover → publish | ✅ shipped (`2.0.0` — live dogfood + community-marketplace submission) |
+| P5″ | Per-verb surface — plugin `cairn`, 36 generated `/cairn:<verb>` shims, conformance check (f) | ✅ shipped (`2.0.0`) |
 | Fidelity | Tracker-mirror fidelity — inbound PM-delta ingest (`plan_tracker_delta`), outbound paper trail + Jira worklog | ✅ shipped |
 | Eng. mode | `user.mode` vibe/engineer — work pairing, no-self-merge gate, decision surfacing | ✅ shipped |
 
