@@ -295,9 +295,8 @@ Tier 0 dogfood drill and the Tier A0 kill-drills above.
 Run mechanically post-merge, same harness as the Tier A0 kill-drills: the
 real `dist/index.js` server driven over stdio, hook-free, against REAL
 trackers — GitHub (scratch private repo
-`eventually-consistent-code/cairn-drill-scratch`) and a REAL Jira Cloud site
-(`eventually-consistent.atlassian.net`, scratch project `DRILL`,
-company-managed kanban). Repeatable drivers committed at
+`eventually-consistent-code/cairn-drill-scratch`) and a REAL Jira Cloud
+sandbox site (scratch project `DRILL`, company-managed kanban). Repeatable drivers committed at
 `server/drills/drill-summit.mjs`, `drill-auto.mjs`, `drill-wave.mjs` (run
 from `server/`: `node drills/drill-<name>.mjs <projectDir> $PWD/dist/index.js`;
 summit reads the backend from the project's `cairn.json`).
