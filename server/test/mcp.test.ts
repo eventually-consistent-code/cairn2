@@ -662,3 +662,43 @@ describe("workspace_status: per-member isolation", () => {
     expect(broken.openIssues).toBeUndefined();
   });
 });
+
+describe("config_set tracker memo eviction", () => {
+  // Regression: the per-dir tracker memo used to survive a config_set that
+  // changed the tracker config, so every later tracker call kept hitting the
+  // old backend (stale baseUrl) until the server was restarted.
+  it("rebuilds the tracker from the new config after config_set", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cairn-evict-"));
+    writeFileSync(join(dir, "cairn.json"), JSON.stringify({
+      tracker: { type: "jira", config: { baseUrl: "https://old.example.com", projectKey: "T" } },
+    }));
+    vi.stubEnv("JIRA_EMAIL", "t@example.com");
+    vi.stubEnv("JIRA_API_TOKEN", "tok");
+    const urls: string[] = [];
+    vi.stubGlobal("fetch", async (url: string | URL) => {
+      urls.push(String(url));
+      return new Response(JSON.stringify({ issues: [] }), {
+        status: 200, headers: { "content-type": "application/json" },
+      });
+    });
+    try {
+      // no injected tracker -- getTracker must build the real (stubbed) jira adapter
+      const server = buildServer({ projectDir: dir });
+      const [ct, st] = InMemoryTransport.createLinkedPair();
+      const c = new Client({ name: "evict-test", version: "0.0.0" });
+      await Promise.all([server.connect(st), c.connect(ct)]);
+
+      await c.callTool({ name: "issue_list", arguments: {} });
+      expect(urls.at(-1)).toContain("old.example.com");
+
+      await c.callTool({ name: "config_set",
+        arguments: { patch: { tracker: { config: { baseUrl: "https://new.example.com" } } } } });
+      await c.callTool({ name: "issue_list", arguments: {} });
+      expect(urls.at(-1)).toContain("new.example.com");
+    } finally {
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

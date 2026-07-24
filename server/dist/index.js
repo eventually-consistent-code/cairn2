@@ -480,7 +480,16 @@ export function buildServer(deps) {
         inputSchema: {} }, wrap(() => loadConfig(dir())));
     server.registerTool("config_set", { description: "Merge-patch cairn.json (null deletes a key). Validates the merged result before "
             + "writing; refuses secret-looking keys/values — credentials live in env vars",
-        inputSchema: { patch: z.record(z.unknown()) } }, wrap((a) => writeConfigPatch(dir(), a.patch)));
+        inputSchema: { patch: z.record(z.unknown()) } }, wrap((a) => {
+        const d = dir();
+        const result = writeConfigPatch(d, a.patch);
+        // The tracker memo binds an adapter to the config it was built from --
+        // a config write may change backend or baseUrl, so drop it and let the
+        // next call rebuild. A test-injected tracker is config-independent.
+        if (!(deps.tracker && d === launchDir))
+            trackers.delete(d);
+        return result;
+    }));
     server.registerTool("issue_comment", { description: "Post a plain-language comment on a tracker issue (management-visible progress note)",
         inputSchema: { id: z.string(), text: z.string() } }, wrap(async (a) => (await getTracker()).commentIssue(a.id, a.text)));
     server.registerTool("trace_start", { description: "Open a persistent debugging session (.cairn/trace/<id>.md). Creates the tracker "
