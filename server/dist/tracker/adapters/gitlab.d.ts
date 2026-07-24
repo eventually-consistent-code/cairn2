@@ -38,13 +38,13 @@ export declare const configSchema: z.ZodObject<{
     extraLabels: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
 }, "strip", z.ZodTypeAny, {
     project: string;
-    tokenEnv: string;
     baseUrl: string;
+    tokenEnv: string;
     extraLabels: string[];
 }, {
     project: string;
-    tokenEnv?: string | undefined;
     baseUrl?: string | undefined;
+    tokenEnv?: string | undefined;
     extraLabels?: string[] | undefined;
 }>;
 export declare function make(config: z.infer<typeof configSchema>, fetchImpl?: FetchLike): Tracker;

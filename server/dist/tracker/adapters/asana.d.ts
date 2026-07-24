@@ -5,8 +5,8 @@ export declare const configSchema: z.ZodObject<{
     projectGid: z.ZodString;
     tokenEnv: z.ZodDefault<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
-    projectGid: string;
     tokenEnv: string;
+    projectGid: string;
 }, {
     projectGid: string;
     tokenEnv?: string | undefined;

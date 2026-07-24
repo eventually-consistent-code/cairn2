@@ -18,11 +18,11 @@ export declare const configSchema: z.ZodObject<{
         closed: string;
     }>>;
 }, "strip", z.ZodTypeAny, {
-    tokenEnv: string;
     baseUrl: string;
+    emailEnv: string;
+    tokenEnv: string;
     projectKey: string;
     issueType: string;
-    emailEnv: string;
     transitions: {
         in_progress: string;
         closed: string;
@@ -30,9 +30,9 @@ export declare const configSchema: z.ZodObject<{
 }, {
     baseUrl: string;
     projectKey: string;
+    emailEnv?: string | undefined;
     tokenEnv?: string | undefined;
     issueType?: string | undefined;
-    emailEnv?: string | undefined;
     transitions?: {
         in_progress: string;
         closed: string;

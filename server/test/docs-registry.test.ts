@@ -27,4 +27,18 @@ describe("makeDocsConnector", () => {
   it("throws CONFIG_MISSING without a docs block", async () => {
     await expect(makeDocsConnector(cfg())).rejects.toMatchObject({ code: "CONFIG_MISSING" });
   });
+
+  it("builds a ConfluenceConnector for connector=confluence", async () => {
+    const { ConfluenceConnector } = await import("../src/docs/adapters/confluence.js");
+    const conn = await makeDocsConnector(cfg({
+      connector: "confluence",
+      config: { baseUrl: "https://x.atlassian.net/wiki", spaceKey: "DOCS" },
+    }));
+    expect(conn).toBeInstanceOf(ConfluenceConnector);
+  });
+
+  it("rejects invalid confluence config", async () => {
+    await expect(makeDocsConnector(cfg({ connector: "confluence", config: {} })))
+      .rejects.toMatchObject({ code: "CONFIG_INVALID" });
+  });
 });
