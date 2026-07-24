@@ -12,6 +12,9 @@ import { ActiveContext } from "./active-context.js";
 import { makeTracker } from "./tracker/registry.js";
 import { CachedTracker } from "./tracker/cached.js";
 import type { Tracker, IssueState } from "./tracker/types.js";
+import { makeDocsConnector } from "./docs/registry.js";
+import type { DocsConnector } from "./docs/types.js";
+import { defaultProjectName, publishReadme } from "./docs/publish.js";
 import { scaffoldProject, scaffoldPhase, writePlanIssues, readPlanMeta, writePlanMeta } from "./planning/artifacts.js";
 import { projectStatus } from "./planning/status.js";
 import { driftReport, ensurePhase } from "./planning/mirror.js";
@@ -108,6 +111,18 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       trackers.set(d, t);
     }
     return t;
+  };
+
+  // Docs connectors memo per resolved dir, same lifecycle as trackers.
+  const docsConnectors = new Map<string, DocsConnector>();
+  const getDocsConnector = async (dOverride?: string): Promise<DocsConnector> => {
+    const d = dOverride ?? dir();
+    let c = docsConnectors.get(d);
+    if (!c) {
+      c = await makeDocsConnector(loadConfig(d));
+      docsConnectors.set(d, c);
+    }
+    return c;
   };
 
   const getCtx = (d: string = dir()): ActiveContext => new ActiveContext(d);
@@ -633,6 +648,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       // a config write may change backend or baseUrl, so drop it and let the
       // next call rebuild. A test-injected tracker is config-independent.
       if (!(deps.tracker && d === launchDir)) trackers.delete(d);
+      docsConnectors.delete(d);
       return result;
     }));
 
@@ -884,6 +900,27 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
     wrap(async (a: { provider: Provider; input: string; timeoutMs?: number }) => {
       const d = dir();
       return peerRun(d, a.provider, a.input, a.timeoutMs);
+    }));
+
+  server.registerTool("docs_publish",
+    { description: "Publish project documentation to the configured docs connector — "
+        + "README.md becomes (or refreshes) the project landing page. Idempotent",
+      inputSchema: { projectName: z.string().optional() } },
+    wrap(async (a: { projectName?: string }) => {
+      const d = dir();
+      return publishReadme(await getDocsConnector(d), d, a.projectName);
+    }));
+
+  server.registerTool("docs_status",
+    { description: "Docs connector status — configured connector and the project's landing page, when one exists",
+      inputSchema: { projectName: z.string().optional() } },
+    wrap(async (a: { projectName?: string }) => {
+      const d = dir();
+      const cfg = loadConfig(d);
+      if (!cfg.docs) return { configured: false };
+      const connector = await getDocsConnector(d);
+      const root = await connector.findPage(a.projectName ?? defaultProjectName(d));
+      return { configured: true, connector: cfg.docs.connector, root };
     }));
 
   return server;

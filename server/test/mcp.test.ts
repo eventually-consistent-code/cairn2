@@ -79,11 +79,12 @@ describe("cairn MCP server", () => {
       "workspace_list", "workspace_focus", "workspace_status",
       "board_get", "board_update",
       "peer_list", "peer_run",
+      "docs_publish", "docs_status",
     ].sort());
   });
 
-  it("pins the tool count at 63", async () => {
-    expect((await listToolNames()).length).toBe(63);
+  it("pins the tool count at 65", async () => {
+    expect((await listToolNames()).length).toBe(65);
   });
 
   it("workspace_list without a workspace returns { workspace: null }, not an error", async () => {
