@@ -14,7 +14,7 @@ import { CachedTracker } from "./tracker/cached.js";
 import type { Tracker, IssueState } from "./tracker/types.js";
 import { makeDocsConnector } from "./docs/registry.js";
 import type { DocsConnector } from "./docs/types.js";
-import { defaultProjectName, publishReadme } from "./docs/publish.js";
+import { defaultProjectName, publishTree } from "./docs/publish.js";
 import { scaffoldProject, scaffoldPhase, writePlanIssues, readPlanMeta, writePlanMeta } from "./planning/artifacts.js";
 import { projectStatus } from "./planning/status.js";
 import { driftReport, ensurePhase } from "./planning/mirror.js";
@@ -904,11 +904,12 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
 
   server.registerTool("docs_publish",
     { description: "Publish project documentation to the configured docs connector — "
-        + "README.md becomes (or refreshes) the project landing page. Idempotent",
+        + "README.md becomes the landing page, docs/ (+ CHANGELOG.md) becomes the child "
+        + "page tree, and the landing page gains a Documentation contents section. Idempotent",
       inputSchema: { projectName: z.string().optional() } },
     wrap(async (a: { projectName?: string }) => {
       const d = dir();
-      return publishReadme(await getDocsConnector(d), d, a.projectName);
+      return publishTree(await getDocsConnector(d), d, a.projectName);
     }));
 
   server.registerTool("docs_status",

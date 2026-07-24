@@ -33,6 +33,12 @@ describe("markdownToStorage", () => {
       .toBe("<ul><li>a<ul><li>sub</li></ul></li><li>b</li></ul>");
   });
 
+  it("treats a multi-level indent jump as one level (stays balanced)", () => {
+    // 4-space nesting — common style; used to emit unbalanced <ul><ul>.
+    expect(markdownToStorage("- a\n    - sub\n- b"))
+      .toBe("<ul><li>a<ul><li>sub</li></ul></li><li>b</li></ul>");
+  });
+
   it("converts fenced code blocks to the code macro with CDATA", () => {
     expect(markdownToStorage("```ts\nconst x = 1;\n```"))
       .toBe('<ac:structured-macro ac:name="code"><ac:parameter ac:name="language">ts</ac:parameter>'

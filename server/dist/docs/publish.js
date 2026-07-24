@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { basename, join } from "node:path";
 import { CairnError } from "../errors.js";
+import { dirTocMarkdown, scanDocs, tocMarkdown } from "./tree.js";
 function readReadme(projectDir) {
     try {
         return readFileSync(join(projectDir, "README.md"), "utf8");
@@ -14,14 +15,77 @@ export function defaultProjectName(projectDir) {
     return basename(projectDir);
 }
 /**
- * The walking-skeleton publish: README.md becomes (or refreshes) the
- * project's landing page in the docs backend. Idempotent — the root is
- * located by name and updated in place.
+ * Create-or-update by title under a parent — the idempotency primitive.
+ * Confluence titles are unique per SPACE, not per parent: when the title is
+ * already taken elsewhere in the space, the page is published under a
+ * "Title (Context)" disambiguation instead of failing the whole publish.
+ */
+async function upsert(connector, title, markdown, parentId, context) {
+    const existing = await connector.findPage(title, parentId);
+    if (existing)
+        return connector.updatePage(existing.id, { title, markdown, parentId });
+    const taken = await connector.findPage(title);
+    if (!taken)
+        return connector.createPage({ title, markdown, parentId });
+    const alt = `${title} (${context})`;
+    const existingAlt = await connector.findPage(alt, parentId);
+    return existingAlt
+        ? connector.updatePage(existingAlt.id, { title: alt, markdown, parentId })
+        : connector.createPage({ title: alt, markdown, parentId });
+}
+/**
+ * Publish one node and its subtree. Directory pages are published first with
+ * their own markdown, then refreshed with a generated child list once the
+ * children exist and have real URLs.
+ */
+async function publishNode(connector, node, parentId, context, sink) {
+    let page = await upsert(connector, node.title, node.markdown, parentId, context);
+    sink.push({ title: page.title, url: page.url });
+    if (node.children.length > 0) {
+        const childEntries = [];
+        for (const child of node.children) {
+            const childPage = await publishNode(connector, child, page.id, node.title, sink);
+            childEntries.push({ title: childPage.title, url: childPage.url });
+        }
+        const body = node.markdown
+            ? `${node.markdown}\n\n${dirTocMarkdown(childEntries)}`
+            : dirTocMarkdown(childEntries);
+        page = await connector.updatePage(page.id, {
+            title: page.title, markdown: body, parentId,
+        });
+    }
+    return page;
+}
+/**
+ * Full documentation publish: README becomes the landing page, docs/ (plus a
+ * root CHANGELOG.md) becomes the child page tree, and the landing page gains
+ * a Documentation section linking the top-level children. Idempotent — pages
+ * are matched by title + ancestry and updated in place.
+ */
+export async function publishTree(connector, projectDir, projectName) {
+    const name = projectName ?? defaultProjectName(projectDir);
+    const readme = readReadme(projectDir);
+    const root = await connector.ensureRoot(name);
+    const pages = [];
+    const topEntries = [];
+    for (const node of scanDocs(projectDir)) {
+        const page = await publishNode(connector, node, root.id, name, pages);
+        topEntries.push({ title: page.title, url: page.url });
+    }
+    const updatedRoot = await connector.updatePage(root.id, {
+        title: name,
+        markdown: `${readme}${tocMarkdown(topEntries)}`,
+    });
+    return { root: updatedRoot, published: 1 + pages.length, pages };
+}
+/**
+ * The walking-skeleton publish: README.md only, no child tree. Kept as the
+ * degenerate case — publishTree with an empty docs/ behaves identically.
  */
 export async function publishReadme(connector, projectDir, projectName) {
     const name = projectName ?? defaultProjectName(projectDir);
     const markdown = readReadme(projectDir);
     const root = await connector.ensureRoot(name);
     const updated = await connector.updatePage(root.id, { title: name, markdown });
-    return { root: updated, published: 1 };
+    return { root: updated, published: 1, pages: [] };
 }

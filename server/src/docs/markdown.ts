@@ -58,14 +58,14 @@ function listHtml(items: Array<{ indent: number; ordered: boolean; text: string 
   const stack: string[] = []; // open list tags, one per depth level
   let curDepth = -1;
   for (const item of items) {
-    const depth = Math.floor(item.indent / 2);
+    // Clamp to one level per step — a 4-space (or larger) indent jump means
+    // "one level deeper", and multi-level opens would unbalance the markup.
+    const depth = Math.min(Math.floor(item.indent / 2), curDepth + 1);
     if (depth > curDepth) {
       // Nested list opens inside the parent's still-open <li>.
-      for (let d = curDepth; d < depth; d++) {
-        const tag = item.ordered ? "ol" : "ul";
-        html += `<${tag}>`;
-        stack.push(tag);
-      }
+      const tag = item.ordered ? "ol" : "ul";
+      html += `<${tag}>`;
+      stack.push(tag);
     } else {
       html += "</li>";
       for (let d = curDepth; d > depth; d--) html += `</${stack.pop()}></li>`;
