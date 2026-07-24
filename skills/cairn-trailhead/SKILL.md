@@ -51,6 +51,7 @@ enforces both.
 | `backtrack` | Safe git undo by phase/plan manifest — reverts only | `<phase\|plan>` \| `--apply` | verbs/backtrack.md | live |
 | `basecamp` | Multi-project workspaces — dispatch board, focus, parallel workstreams | `init` \| `focus <member>` \| `dispatch` \| `claim\|update\|done <id>` | verbs/basecamp.md | live |
 | `peers` | Convene external AI CLIs as reviewers — convergence with adversarial judgment | (none = status) \| `review [target]` \| `plan <phase>` | verbs/peers.md | live |
+| `docs` | Publish repo docs to the configured docs connector (Confluence) — landing page + page tree | `publish [--name "<project>"]` \| (none = status) | verbs/docs.md | live |
 
 Reserved verbs have no subroutine file or command shim yet — each lands with
 its tier. If one comes up (via `do` or a typo): say which tier ships it and

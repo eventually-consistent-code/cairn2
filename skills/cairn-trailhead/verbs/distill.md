@@ -27,3 +27,7 @@ The output must read as if the repo never had planning scaffolding.
    remove. Re-scan until clean — the scanner exiting 0 is the gate.
 4. Show the diff summary (files, sections touched, ADR titles) — ONE
    confirmation — then write and offer a `docs(distill): …` commit.
+5. When a docs connector is configured (`docs:` in cairn.json), offer
+   `/cairn:docs publish` as the follow-up — distill synthesizes into
+   `docs/`; docs publish mirrors it (plus the README) into the connector
+   as a landing page + page tree.
