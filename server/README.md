@@ -2,7 +2,7 @@
 
 MCP server for cairn 2.0. See `docs/superpowers/specs/2026-07-12-cairn-2-design.md`.
 
-63 tools total across planning, memory, continuity, collaboration, milestones, config, sessions (trace, probe, draft, thread), audits (plan_check, audit_record), the project knowledge graph (map_set, map_get), workspace/board (workspace_list, workspace_focus, workspace_status, board_get, board_update), peers (peer_list, peer_run), and tracker-delta ingest (plan_tracker_delta).
+65 tools total across planning, memory, continuity, collaboration, milestones, config, sessions (trace, probe, draft, thread), audits (plan_check, audit_record), the project knowledge graph (map_set, map_get), workspace/board (workspace_list, workspace_focus, workspace_status, board_get, board_update), peers (peer_list, peer_run), tracker-delta ingest (plan_tracker_delta), and docs publishing (docs_publish, docs_status).
 
 ## Test rings
 

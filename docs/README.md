@@ -2,6 +2,13 @@
 
 ← back to the [project README](../README.md)
 
+## Start here
+
+- **[Quickstart](00-quickstart.md)** — zero to a tracker-mirrored project in
+  ~15 minutes: install, credentials, cairn.json, first phase.
+- **[Runbook](01-runbook.md)** — the complete operating manual: every verb,
+  every flag, every backend, every error code.
+
 Docs follow the spec → plan → build → review cycle: every phase/tier gets a
 design spec, then an implementation plan, then ships. Specs are decision
 records — status lines say whether a doc is approved or draft.

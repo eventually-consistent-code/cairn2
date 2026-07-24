@@ -1,0 +1,1420 @@
+# cairn Runbook — the complete operating manual
+
+Ever wonder what it would take to run a real engineering workflow — planning,
+tracking, memory, review, shipping — without the workflow itself becoming the
+job? That's the question cairn exists to answer. This runbook is the full
+operating manual: every verb, every flag, every gate, every config key, and
+every error code, written so you can run any workflow end to end without
+reading source.
+
+---
+
+## 1. Orientation
+
+Cairn is a Claude Code plugin backed by a TypeScript MCP server. The plugin
+layer (commands, skills, hooks) owns *policy and judgment*; the server owns
+every mechanism with a wrong answer — state transitions, tracker mirroring,
+drift math, staleness checks. You talk to it through 37 `/cairn:<verb>`
+commands, all generated from one routing table.
+
+### The three truths
+
+Everything in cairn hangs off a simple division of authority. Learn it once
+and the rest of the system makes sense:
+
+| Truth | Lives in | What it owns |
+|---|---|---|
+| **Work truth** | Your external tracker (GitHub, GitLab, Jira, Asana, Azure Boards, ClickUp) | Issues, states, assignees, milestones — the single source of truth for *work items* |
+| **Prose truth** | Git, inside your repo | Plans, phase context, verification records, memory cards, session files — everything written down |
+| **Disposable cache** | `~/.cairn/` on your machine | The full-text memory index, the session handoff, the recall banner — rebuildable, never git-tracked, safe to delete |
+
+On conflict, git plan docs (CONTEXT.md, PLAN.md) win over tracker issue text —
+cairn updates the issue rather than silently following it. One exception:
+a tracker edit detected by the delta cursor is provenance-known *newer* human
+intent, and integrates forward into the plan (unless it collides with a locked
+decision, which stops for you).
+
+### Quick reference — if you want to X, run /cairn:Y
+
+| If you want to… | Run |
+|---|---|
+| Start a brand-new project (interview → plan artifacts → tracker issues) | `/cairn:new` |
+| Plan a phase (research, PLAN.md, tracker reconcile) | `/cairn:plan <N>` |
+| Execute a phase (claim issues, do the work, close on verified done) | `/cairn:work <N>` |
+| Check a phase actually delivered what it promised | `/cairn:verify <N>` |
+| Push, gated on drift-clean + no open issues in verified phases | `/cairn:ship` |
+| Complete the milestone — close, release, archive, tag | `/cairn:summit` |
+| See everything — phases, issues, drift, open sessions — in one screen | `/cairn:status` |
+| Pull an existing tracker epic/milestone/list into cairn | `/cairn:import <ref>` |
+| Research a phase without planning it yet | `/cairn:scout <N>` |
+| Insert/remove/rename a phase without renumbering anything | `/cairn:route …` |
+| Run all remaining phases hands-off (opt-in, with hard stops) | `/cairn:auto` |
+| Make a trivial ≤3-file change with a full tracker paper trail | `/cairn:fast "<change>"` |
+| Reconcile out-of-band commits and tracker edits with the plan | `/cairn:resync` |
+| Capture an idea in one tool call, zero questions | `/cairn:mark "<text>"` |
+| Store a durable fact as a memory card | `/cairn:remember "<fact>"` |
+| Search memory, scoped, with staleness flags | `/cairn:recall "<query>"` |
+| Extract lessons after a phase/milestone, re-grade old knowledge | `/cairn:retro` |
+| Synthesize plans + memory into public-safe `docs/` | `/cairn:distill` |
+| Generate an onboarding briefing for a newcomer | `/cairn:brief` |
+| Pause or resume session continuity by hand | `/cairn:waypoint [resume]` |
+| Debug persistently — evidence → hypothesis → test, tracker-mirrored | `/cairn:trace "<bug>"` |
+| Spike a risky assumption with a throwaway experiment | `/cairn:probe "<question>"` |
+| Compare design variants on a shared theme | `/cairn:draft "<question>"` |
+| Keep long-running context alive across `/clear` | `/cairn:thread "<name>"` |
+| Run a cross-phase quality audit (uat/security/tests/docs/…) | `/cairn:audit <mode>` |
+| Five-axis code review of a diff, branch, or phase | `/cairn:review [target]` |
+| Sweep open issues for hygiene problems | `/cairn:triage` |
+| Build/query the project knowledge graph | `/cairn:map build` |
+| Check the planning directory's own health, repair, or forensics | `/cairn:medic` |
+| Safely revert a phase's shipped commits (reverts only) | `/cairn:backtrack <phase>` |
+| Manage multi-project workspaces and the dispatch board | `/cairn:basecamp` |
+| Convene external AI CLIs as reviewers | `/cairn:peers review` |
+| Publish README + docs/ to Confluence | `/cairn:docs publish` |
+| Edit cairn.json safely | `/cairn:tune` |
+| Teach cairn how you like to be talked to | `/cairn:profile` |
+| Say what you want in plain English and let cairn route it | `/cairn:do "<request>"` |
+| See the verb reference | `/cairn:help` |
+
+### Shared rules every verb inherits
+
+- **Errors surface, never stack-trace.** Server tools fail with typed codes
+  (section 11); the verb reports the code and your next action. One backend
+  being down never blocks git-side operations.
+- **Batch questions.** Related questions arrive as one question set, never
+  one checkbox at a time.
+- **Active context.** Verbs operate on the active project/phase/issue unless
+  arguments override; verbs that change focus record it.
+- **Continuity.** State-changing verbs refresh the session handoff
+  automatically; `ship` and `summit` clear it.
+- **Decision surfacing (engineer mode).** With `user.mode: engineer`, a
+  genuine design fork — multiple defensible shapes with real trade-offs —
+  stops and asks you, cairn's recommendation first. The bar is "would a peer
+  have wanted a say," not "is this a decision." Vibe mode (the default)
+  resolves judgment calls silently.
+- Every verb reads `.cairn/profile.md` when present and calibrates tone and
+  depth to it — advisory only, never a change to what a verb decides.
+
+---
+
+## 2. The core lifecycle
+
+The spine of cairn is six verbs: `new → plan → work → verify → ship →
+summit`. Everything else supports this loop.
+
+### `/cairn:new [project name]`
+
+Start here. From an empty repo to a routed plan in one verb.
+
+1. Confirms `cairn.json` exists (if not, it points you at
+   `templates/cairn.json.example` and stops).
+2. A brief interview: vision, 3–10 requirements, phase breakdown. It also
+   asks your collaboration mode once (skipped if `cairn.json` already sets
+   `user.mode`): **vibe** — cairn drives end-to-end (default) — or
+   **engineer** — you claim issues, write code, and make the design calls
+   while cairn pairs, verifies, and keeps the tracker honest. Choosing
+   engineer collects your tracker handle too, and sets both in one config
+   patch.
+3. Scaffolds `.cairn/plans/PROJECT.md` (vision + requirements) and
+   `roadmap.md` (the phase table).
+4. For each phase: creates the phase directory and ensures the tracker has a
+   matching phase object (milestone, epic, or list, depending on backend).
+5. For each requirement: creates a tracker issue and records the ids in the
+   phase's PLAN.md frontmatter.
+6. Reports what was created and points at `/cairn:plan 1`.
+
+Have an existing codebase with tracker history instead? That's
+`/cairn:import`.
+
+### `/cairn:plan <N> [flags]`
+
+Plan a phase. Depth resolves in this order: command flag > PLAN.md `depth:`
+frontmatter > `cairn.json` default > `standard`.
+
+| Depth | Research | Plan | Verify posture later |
+|---|---|---|---|
+| `--quick` | none | draft tasks directly | tests pass |
+| standard | one research subagent for unknowns | PLAN.md + CONTEXT.md | + tracker cross-check (drift) |
+| `--deep` | parallel fan-out, multi-angle | + a plan-checker agent pass | + adversarial verification |
+
+Steps: it first peeks at the tracker delta (new/edited issues since last
+sync — mentioned in one line, never blocking), confirms the phase directory
+exists, researches per depth, writes the task breakdown into PLAN.md (locked
+decisions go in CONTEXT.md), reconciles drift, and offers to adopt any
+unplanned tracker issues that belong to this phase (always asking first).
+
+The flags, all combinable:
+
+- `--mvp` — shape the first tasks as ONE thin vertical slice exercising every
+  layer end to end (a walking skeleton). Depth and breadth come only after
+  the slice stands. A slice that can't demo is not a slice.
+- `--tdd` — per task, judge TDD eligibility (behavior-testable code — logic,
+  APIs, parsers, state machines — yes; config, docs, scaffolding, styling,
+  generated code — no). The proposed split arrives as ONE question for your
+  overrides, then lands in PLAN.md `tdd:` frontmatter. Enforcement happens at
+  work time (RED/GREEN commit pairs) and verify time (the ledger check).
+- `--prd <file>` — read the product requirements doc first; interview ONLY
+  the gaps it leaves, batched into one question.
+- `--ingest <glob>` — read matching docs; write their decisions into
+  CONTEXT.md as locked decisions with source links. Conflicting docs surface
+  the conflict — never a silent pick.
+- `--gaps` — read this phase's verification failures and the latest resync
+  report; propose new or amended tasks. Goal-breaking gaps become issues in
+  this phase now; minor ones get offered to the backlog.
+- `--model <auto|haiku|sonnet|opus>` — override the agent model routing for
+  this run (see the routing rubric under section 8).
+- Wave grouping (with or without flags): when tasks are independent, cairn
+  proposes waves and records them in PLAN.md frontmatter. Waves must
+  partition cleanly — an issue in two waves is a tool error.
+
+All task-list changes flow through validated server tools, never hand-edits
+of frontmatter — that's how validation stays honest.
+
+### `/cairn:work <N> [--wave [N]]`
+
+Execute the phase. The per-issue lifecycle, in vibe mode:
+
+1. Tracker-delta peek (one line, non-blocking), then read the phase's issue
+   list. Empty list → stop and point at `/cairn:plan <N>`.
+2. For each issue in order: fetch it, skip closed ones. If it's assigned to
+   someone who isn't you (checked against `user.handle` when set), say so and
+   skip unless you override.
+3. Before starting: record the current commit as the issue's base and the
+   time as its start. Move the issue to `in_progress` (with your handle as
+   assignee when configured) and post a claim comment — starting now, which
+   wave and task, base commit as a short ref. Then set the active context.
+4. Do the work. Progress comments land at real milestones only — a subtask
+   done, a blocker hit, a trace spun off; several small steps batch into one
+   comment. Tracker noise is a failure mode, not diligence. No silent state
+   transitions, ever — if the tracker state changes, a comment says why.
+5. **TDD tasks** (ids in PLAN.md `tdd:` frontmatter) run RED → GREEN →
+   REFACTOR, each its own commit: write the failing test, run it, show the
+   failure, commit (RED); minimal code to pass, commit (GREEN); clean up with
+   tests green, commit (REFACTOR). The RED and GREEN shas go into the ledger
+   at close. Skipping RED on an eligible task means stop and restart —
+   verify fails the phase on a missing pair regardless.
+6. **A bug surfacing mid-issue that is not this issue's scope routes to
+   `trace`** — never an inline detour. The trace's tracker issue keeps the
+   discovery visible.
+7. On completion with tests passing: close comment first (what shipped in
+   plain language, commit range, test evidence, approximate time spent), then
+   close the issue — backends with worklog support get a real worklog entry.
+   Stopping early: leave it in progress with a parked comment (why, what
+   remains).
+8. Every close appends a line to the phase's git-committed `LEDGER.md` — the
+   durable record that the task landed, with base/head commits and (for TDD
+   tasks) the RED/GREEN pair.
+9. After the last issue: clear the issue context and suggest
+   `/cairn:verify <N>`.
+
+`--wave` (only when PLAN.md has wave frontmatter): waves run in order;
+`--wave N` runs just that wave. Within a wave, one subagent per issue runs in
+parallel, with worktree isolation for anything file-mutating. Wave N+1 starts
+only when every wave-N issue is closed and merged. A failed issue: the wave's
+others finish, then the run STOPS before the next wave — never build on
+possibly-broken foundations.
+
+**Engineer mode overlay** (`user.mode: engineer`): after the issue list, one
+"mine or yours?" question for the whole wave/phase. Cairn-claimed issues run
+the normal lifecycle except the work lands as a branch/PR that does NOT
+merge — the close comment links the PR and names you as reviewer.
+Human-claimed issues: cairn scaffolds (branch, in-progress state, a claim
+comment carrying the task text, likely files, and for TDD issues the failing
+test written first) and then steps back. When you say done (or your commits
+show up in resync), cairn runs the tests and verify posture against your
+work, closes with evidence and time logged on your behalf, and *offers*
+`/cairn:review` — a decline is recorded, not overridden.
+
+### `/cairn:verify <N>`
+
+Goal-backward verification — the phase must deliver what it *promised*, not
+merely have its tasks closed.
+
+1. Re-read the phase's CONTEXT.md and PLAN.md; check the codebase against the
+   promise. Run the test suite. Deep depth adds an adversarial verification
+   subagent.
+2. Drift check — this phase must contribute nothing flagged.
+3. Open-issue check — the phase's tracker issue list must be empty of open
+   issues; stragglers get reported, never closed unexamined.
+4. TDD evidence — every id in PLAN.md `tdd:` frontmatter must have a ledger
+   line carrying a `tdd <red>..<green>` segment. Any missing pair → the phase
+   FAILS, and no VERIFICATION.md is written.
+5. On pass: write the phase's `VERIFICATION.md` — what was checked, what
+   passed, deviations. **Its existence is the machine-read signal that the
+   phase is verified** — drift treats closed issues in verified phases as
+   normal from then on.
+6. **A failed verification routes to `trace` — mandatory.** Open a trace with
+   the failure as the description, log the failing output as the first
+   evidence entry, and continue there. Never patch-and-rerun inline.
+   Proven-obvious ≤3-line causes may use trace's fast lane — still traced,
+   still mirrored.
+
+Failure honesty is policy: never write VERIFICATION.md for a phase that
+didn't pass. A failed verify is a failed verify.
+
+### `/cairn:ship`
+
+The pre-push gate:
+
+1. Drift check — anything flagged: stop and report. Do not push.
+2. Every phase with a VERIFICATION.md must show all its issues closed
+   (spot-checked live) — any still open: stop.
+3. Engineer mode only: no cairn-authored PR may still be awaiting human
+   review. Human review is the merge gate; ship never overrides it.
+4. Clean gate → commit outstanding plan-doc changes, push the branch, clear
+   the session handoff (shipping ends the session), and offer a PR if the
+   project uses them.
+
+Never pushes with flagged drift or open issues on a verified phase. That's
+the whole point of the gate.
+
+### `/cairn:summit`
+
+Complete the milestone. The server gates hard — nothing archives until every
+phase is verified.
+
+1. Show what's completing: phases, verification state, the native tracker
+   milestone when the backend has one. Any unverified phase → stop, list
+   them, point at `/cairn:verify <N>`.
+2. One batched question: the milestone summary (1–3 sentences), whether to
+   start the next milestone, and — if no native milestone exists yet —
+   whether to create one now.
+3. Complete the milestone: closes tracker phases (recording skips for
+   backends whose phase primitive can't close), releases the native milestone
+   when supported, archives `phases/` to `milestones/vN/`, bumps the roadmap.
+   On `PRECONDITION_FAILED` or `TRACKER_DOWN`: report and stop — re-running
+   after a fix is safe; the operation is idempotent.
+4. Git side (always agent-side — the server never writes git): commit the
+   archive and tag `v<N>`.
+5. Clear the handoff — the milestone is done; no session survives it.
+6. If you said yes to the next milestone: create it, interview goals and
+   first phases (batched), scaffold, add roadmap rows.
+
+---
+
+## 3. Every verb, A to Z (grouped)
+
+Each verb below: purpose, exact args, when to reach for it, what happens
+under the hood, and the gotchas. The core six are detailed in section 2;
+they're summarized here for completeness.
+
+### Lifecycle
+
+**`new [project name]`** — new project: interview, plan artifacts, tracker
+mirror, issues. See section 2. Gotcha: it refuses to run without
+`cairn.json` — config first, always.
+
+**`plan <N> [--quick|--deep] [--model <m>] [--tdd] [--mvp] [--prd <file>]
+[--ingest <glob>] [--gaps]`** — plan a phase per the depth dial. See
+section 2. Gotcha: a non-empty tracker delta gets one line of mention and
+never blocks planning; `/cairn:resync` is the integration path.
+
+**`work <N> [--wave [N]]`** — execute a phase. See section 2. Gotchas:
+`--wave` requires wave frontmatter (plan first); ownership checks only exist
+when `user.handle` is set; the mid-issue-bug rule is absolute — route to
+`trace`, don't detour.
+
+**`verify <N>`** — goal-backward phase check. See section 2. Gotcha:
+VERIFICATION.md's *existence* is the verified signal, so it is never written
+on a failure — and a failed verify mandatorily opens a trace.
+
+**`ship`** — gate on drift-clean + no open issues in verified phases, then
+push. See section 2.
+
+**`summit`** — complete the milestone: verify gate, tracker close/release,
+archive, tag. See section 2. Gotcha: safe to re-run after a partial tracker
+failure — the completion is idempotent.
+
+**`status [--stats]`** — the one-screen view. Peeks the tracker delta, then
+renders: the phase table (artifacts present as C/R/P/V, issue counts), the
+active phase's issues (id · title · state · assignee), drift flags each with
+a one-line remedy, unplanned tracker issues with an adoption offer, open
+backlog/seed marks (seeds get flagged when their trigger reads as met —
+firing is cairn's judgment to surface, yours to act on), open traces, open
+sessions by kind, and open audit/review findings. Ends with the obvious next
+step. `--stats` folds in live-read project statistics — phase counts, issue
+counts grouped by label, memory index size, session counts, audit-record
+counts. Every number is a live read at that moment, never a cached snapshot;
+that's the entire reason stats live inside `status` instead of a report file.
+
+**`auto`** — chained hands-off execution of remaining phases. Opt-in and
+explicit: the run list (every phase with CONTEXT.md and without
+VERIFICATION.md, in order) is shown with ONE confirmation before anything
+runs. Phases without CONTEXT.md are excluded and listed as skipped — auto
+never invents context. Per phase: plan if needed (standard depth) → work →
+verify. Hard stops that halt the run and hand back: a failed verify (the
+report includes a ready-made trace handoff — auto never starts the trace
+itself; no self-repair), drift flags, any tracker error, any
+security-relevant decision (auth, secrets, data exposure, dependency trust),
+and — engineer mode — a cairn-authored PR awaiting human review. Unattended
+decisions resolve against ordered principles (completeness over shortcuts,
+match existing patterns, choose reversible, mirror your past choices, defer
+ambiguity, escalate security) and every one is logged with the principle that
+resolved it. Genuinely subjective taste calls don't stop the run — the
+reversible option is taken and the batch is presented as ONE review at the
+end. A killed run resumes via `/cairn:waypoint resume`.
+
+**`fast "<change>"`** — trivial inline change: one issue, ≤3 files, one
+atomic commit. Guardrail first: if the change plausibly touches more than 3
+files or needs design judgment, it stops and suggests `/cairn:plan` before
+creating anything. Otherwise: create the issue (label `fast`), make the
+change (growing past 3 files mid-flight: stop, leave the issue open with a
+note), pass the relevant tests, one conventional commit, close with the sha
+in the note. No ledger entry — there's no phase. Full paper trail: claim,
+close (with approximate time), or parked comments, leak-guard discipline
+throughout.
+
+### Planning aids
+
+**`scout <N>`** — research a phase WITHOUT planning it: `plan`'s research
+stage alone, resumable. RESEARCH.md sections carry `<!-- scout: done -->` or
+`<!-- scout: pending -->` markers; done sections are never re-researched (no
+marker = legacy content, treated as done). Topics come from CONTEXT.md
+unknowns and PLAN.md gaps; each section's marker flips to done as it
+completes, so a kill mid-run loses at most one section. The finished brief is
+indexed into memory. Use it when you want the knowledge now and the plan
+later.
+
+**`route insert|remove|edit <N> ["name"]`** — roadmap surgery. Never
+renumbers existing phases — decimal insertion only (renumbering is where
+prior tools broke). `insert <N.5> "name"` scaffolds a decimal-numbered phase
+between its neighbors. `remove <N>` shows what dies first (open issues,
+artifacts), asks one batched confirm-plus-per-issue-close-or-reassign
+question, closes the tracker phase object when the backend supports closing
+it (otherwise annotates the name and says so), moves the phase directory to
+the removed archive, and strikes the roadmap row. `edit <N> "new name"`
+renames the phase directory slug, roadmap row, doc headings, and tracker
+phase name; scope changes are locked-decision edits recorded with what
+changed and why.
+
+**`import <phase url, id, or name>`** — reverse-mirror tracker-origin work
+into cairn. Resolves the reference (URL → the identifying segment for your
+backend; id/name pass through), scaffolds project and phase docs, writes the
+phase's issue ids into PLAN.md frontmatter. An ambiguous name errors with
+candidates — re-run with the exact id. Then the gap interview: the tracker
+says *what*; you supply *why* — vision into PROJECT.md, locked decisions into
+CONTEXT.md. Use it when the work already exists in the tracker and cairn is
+arriving late to the party.
+
+**`resync`** — both directions of drift in one verb. Git side: detect
+commits no ledger range covers (first run just initializes the marker),
+group them by likely phase with reasoning shown, and refresh CONTEXT.md/
+PLAN.md per affected phase (assumptions broken outright → offer
+`/cairn:plan <N> --gaps`). Tracker side: read the delta cursor — new phases
+route to `import`, new issues get folded into their best-fit phase (with
+reasoning; no confident fit → you choose), edited issues integrate forward
+(cursor-detected edits are provenance-known newer human intent and win —
+except an edit colliding with a locked decision, which stops for you), state
+changes get their remedy (externally closed-unverified → verify or reopen),
+and declined items get labeled `cairn:backlog` plus a reconcile comment so
+the editor sees why the plan didn't follow. Only after the adoption questions
+are answered does the cursor advance — un-acked deltas re-surface every scan.
+
+**`probe "<question>" | (none = frontier) | --wrap [<id>]`** — risk-ordered
+throwaway spike sessions. With a question: opens a `cairn:spike` issue and a
+session file, then runs the experiment loop HIGHEST-UNCERTAINTY FIRST — the
+question most likely to kill the whole approach gets tested before anything
+that only refines it. Each cycle: state what the experiment validates
+*before* running it, build it in the probe's throwaway directory (prefer
+something you can FEEL working over a stdout dump), log what actually
+happened ("it worked" is not a result — the surprises are the result),
+capture any preference or constraint you state mid-loop as a requirement
+entry (losing one means re-discovering it the expensive way later), and log a
+verdict: VALIDATED | INVALIDATED | PARTIAL, with the why. Close archives the
+session with a `proceed|pivot|stop` resolution. No args = frontier mode:
+the session landscape (a tool, the only source of truth — never
+reconstructed from memory) plus the roadmap proposes risk-ordered candidates,
+splitting integration risk from frontier risk; a settled `stop` resolution is
+NEVER re-proposed. `--wrap [<id>]` promotes a resolved probe into a durable
+project skill with provenance, then *offers* to delete the throwaway
+directory — never auto-deletes. There is deliberately no fast lane: if the
+answer is already obvious, that's a `mark`, not a spike.
+
+**`draft "<design question>" | (none = frontier) | --wrap [<id>]`** —
+multi-variant design sketches on a shared theme. Every variant in every
+session links the same `themes/default.css` — CSS custom properties ONLY
+(colors, type scale, spacing, radii); no component styles, no layout, ever —
+so a picked direction reads as one system, not three unrelated pages.
+Alongside it, `tokens.json` mirrors the same properties as typed groups;
+every token change touches BOTH files in the same change — a token in one
+and not the other is drift `audit ui` will flag. The loop: one design
+question per variant set (never "pick a color AND a layout" — you can't
+evaluate two axes at once), one self-contained HTML file per option, a
+decision logged when you pick — and decisions COMPOUND: later variants honor
+them, never re-litigate. Passing remarks that matter get note entries. Close
+archives with the chosen direction as the resolution. Frontier mode proposes
+consistency sketches (screens drifted from a locked decision) and frontier
+sketches (undesigned areas); settled rejections are never re-proposed.
+`--wrap` promotes a resolved session to a skill, same as probe. Non-trivial
+questions dispatch to the `cairn-designer` agent — the verb keeps the
+session lifecycle and tracker mirror; the agent does the wireframe → tokens
+→ prototype work. No fast lane, by design.
+
+### Capture & memory
+
+**`mark "<text>" [--seed "<trigger>"] [--note]`** — zero-friction capture in
+ONE tool call. No questions, ever — structure happens at pickup, not
+capture. Default: a tracker issue labeled `cairn:backlog`; the id is echoed
+and you're done. `--seed "<trigger>"`: a `cairn:seed` issue whose body
+records the trigger; `status` lists open seeds and flags any whose trigger
+reads as met. `--note`: a memory `note` card scoped to the active
+phase/issue — knowledge, not work; it never becomes tracker noise. Pickup
+paths: backlog marks get adopted by `plan` or triaged later; notes surface
+through `recall` and the session banner.
+
+**`remember "<fact>" [--type decision|constraint|gotcha|reference]`** —
+store durable knowledge. One durable fact → a memory card (with scope from
+the active context and provenance — the files and commits the fact is about
+— when known); bulk material (tool output, fetched docs, research dumps) →
+the disposable index instead. Cards are git-committed — they ship with the
+repo, and cairn reminds you of that.
+
+**`recall "<query>" [--phase N] [--issue <id>]`** — search memory, scoped
+tight by default (flags > active context > whole project). Durable cards
+come back first with staleness surfaced — `STALE`/changed/deleted cards are
+reported with what moved and re-verified, never silently trusted — then
+index matches, matched sections only, never raw bulk. Every item cites its
+source and scope.
+
+**`retro [<N> | --milestone]`** — write the lessons a future session needs.
+Default scope: the last verified phase; `--milestone` spans every phase of
+the current milestone including just-archived ones. Evidence comes from the
+ledger, verification records, git log over the ledger ranges, and closed
+issues. Lessons become cards typed decision/constraint/gotcha with
+provenance from the ledger range and honest confidence: `high` = verified by
+this scope's events, `medium` = plausible inference, `low` = hunch worth
+recording. Prior cards in scope get re-graded: confirmed → confidence up one
+step; contradicted → down to `low` plus a corrected NEW card (card bodies
+are immutable — corrections are new cards, not edits). One question approves
+the whole batch.
+
+**`distill`** — ship-time knowledge synthesis, run at or after `ship`/
+`summit`. The output must read as if the repo never had planning
+scaffolding. Inputs: shipped phases' locked decisions, plan outcomes, ledger
+summaries, and decision/constraint cards. Outputs into `docs/`:
+ARCHITECTURE.md (per-section merge — never clobbers hand-written content;
+conflicts surface to you), one ADR per code-shaping locked decision
+(referencing commits, not phase dirs), and CHANGELOG.md entries grouped by
+milestone or phase. Everything is sanitized BEFORE writing — generated files
+are scanned against the leak patterns, and any hit is rewritten to
+public-safe form until the scanner passes clean. One confirmation shows the
+diff summary before writing; a docs connector configured → the follow-up
+offer is `/cairn:docs publish`.
+
+**`brief [--stdout]`** — onboarding briefing for someone who wasn't there.
+A view, not a source of truth — regenerated wholesale each run from
+PROJECT.md, the roadmap, per-phase ledger one-liners, and high-confidence
+decision/constraint cards (medium only when directly load-bearing). Output
+is cache-stable (no volatile timestamps, stable ordering). Default writes
+`docs/BRIEF.md` as a full overwrite; `--stdout` prints instead.
+
+**`map build | "<question>" | diff | status`** — the project knowledge
+graph: typed nodes (`module|phase|issue|decision|person`) and typed edges
+(`depends-on|implements|decided-in|owns`) in one deterministic store. The
+verb does the intelligence; the server only guarantees shape and atomicity,
+and all writes go through the validated patch tool — never a direct file
+edit. `build` walks the real sources (code structure, plan artifacts, the
+tracker) and proposes only what the evidence supports; requirement →
+decision and decision → module edges sourced from draft sessions are
+first-class — the UAT traceability sweep depends on them. Nodes are chunked
+across as many patches as you like, but **edges go in ONE final patch
+carrying the complete list** — an edges array replaces the whole list, so a
+partial edges chunk erases every edge written before it. `"<question>"`
+answers in named terms from the stored graph — a missing answer is a build
+gap, not a license to guess. `diff` rebuilds current truth in memory,
+compares against the store, and names the drift; it never writes. `status`
+reports counts plus staleness — a graph weeks behind the last commit is a
+graph nobody should trust yet, and it says so plainly.
+
+### Sessions & continuity
+
+**`waypoint [resume]`** — manual session continuity. Bare `waypoint`
+pauses: one batched question for `next_action` and `notes`, then a
+checkpoint that merge-patches over the existing handoff; with
+`continuity.wipCommits: true` and uncommitted work, it offers (never
+auto-makes) a `wip(cairn):` commit. `waypoint resume` resumes: read the
+handoff (none, or older than 14 days → say so, offer to inspect or discard,
+stop), then cross-check the trust order — **the handoff is a hint, never
+authority**: tracker + git log outrank the ledger, which outranks the
+handoff. A handoff contradicting the tracker gets reported and corrected
+before it's followed. On confirmed resume the handoff is cleared, and any
+in-flight decisions it carried are offered as decision cards — the distill
+moment a crash would otherwise have destroyed.
+
+**`trace ["<bug>" | <id> | close <id>]`** — persistent debugging that
+survives `/clear`, mirrored to the tracker in language a manager reads.
+Start: a `cairn:bug` issue plus a session file, then the loop — `evidence`
+FIRST (reproduce before hypothesizing) → `hypothesis` → `test` (an
+experiment that can DISPROVE it) → repeat. Never two open hypotheses without
+distinguishing evidence. Mirror touches at milestones only: "Investigation
+started", "Cause identified", and the resolution on close. Resume (bare
+`trace` or an id): the session file IS the context that survived — re-read
+it and continue from the last entry. Close: fix landed with tests passing →
+log a verdict (cause + fix + commit sha) → close (it mechanically refuses
+without a verdict), then write the gotcha card with high confidence — it's
+proven; that's what high means. Fast lane (cause already proven obvious AND
+fix ≤3 lines): one evidence + one verdict + fix + close — one motion, full
+paper trail.
+
+**`thread "<name>" | (none = list open) | --wrap`** — persistent context
+threads: the running memory for something that spans more sittings than your
+context window does. Not a bug hunt, not a spike. Start creates a
+`cairn:thread` issue; starting the same name while one is open is a resume,
+not a duplicate — re-read the file and pick up from the last entry (no
+mirror comment on resume; the tracker already knows). Entry discipline: log
+as the work happens, not in a batch at the end — `note` (a fact worth
+keeping), `link` (a reference PLUS one line of why it matters — a bare
+reference is worthless six sittings from now), `decision` (a choice and its
+reasoning, logged when made). Bare `thread` lists open threads from the
+session landscape and offers a resume — a menu, not an action. `--wrap`
+logs a wrap entry (the close gate) and closes with the resolution. Two
+tracker touches total: start and wrap.
+
+### Quality & governance
+
+**`audit <mode> [target] | --fix`** — cross-phase quality audits: a
+retro-check against what was already claimed done, not a new review invented
+on the spot. Modes: `uat` (walk shipped flows as a user on a named platform
+matrix — desktop + mobile viewport minimum — with a requirement-traceability
+sweep; dispatched to the `cairn-uat` agent), `milestone` (goals vs delivered,
+phase by phase), `security`/`ui`/`eval`/`validation` (re-check the phase's
+OWN stated criteria — never a generic checklist substituted for the phase's
+actual bar; `ui` adds the fidelity contract against the draft session's
+decided direction and tokens.json), `tests` (find untested requirements and
+WRITE the missing tests, not just flag them), `plans` (the plan-quality scan
+for contract drift and unanchored thresholds, translated to plain language),
+`docs` (sweep README/docs claims — tool counts, verb lists, paths, commands
+— against the real codebase; drifted claims are findings). No target on a
+phase-scoped mode = the most recently active phase. Closing discipline,
+every mode, no exceptions: write the audit record (the record is the source
+of truth; the tracker is the summary — and a clean `pass` still gets a
+record, because that's the proof the audit ran), then one `cairn:audit`
+issue per critical/important finding with the severity as the literal first
+line of the body. Minor findings stay in the record only — a tracker full of
+minors is a tracker nobody reads. `--fix`, only after the record exists:
+mechanical fixes (obvious and small) land directly, one commit per finding,
+comment + close; anything else is investigation-shaped and opens a trace —
+never an improvised inline fix in between.
+
+**`review [target] | --fix`** — five-axis code review: a fresh read against
+the code as it stands (that's the difference from `audit`). Target
+resolution: none = the working diff plus staged, full stop — no hunting for
+a "more interesting" target; a branch name = that branch against `main`; a
+phase number = the phase's ledgered commit ranges (read from the ledger, not
+guessed). The five axes: correctness, clarity, architecture, security,
+tests — a clean axis still gets a "no findings" line; silence isn't the same
+as checked. Every finding is ranked critical/important/minor and names a
+`file:line` plus a concrete failure scenario — a finding without a scenario
+is a hunch; it gets downgraded or cut. Closing: critical/important →
+`cairn:review` issues (severity first line, plain language — the scenario,
+not the stack trace); minors stay in the record; the record is written every
+time, clean or not, under a slugged scope. `--fix` follows audit's exact
+two-shapes contract. Audience split worth knowing: `file:line` and the
+verification detail live in the record (for engineers re-deriving the fix);
+the issue body is for a manager triaging by severity.
+
+**`triage [--stale-days N] | --apply`** — a health check on the tracker
+itself. Sweeps open issues into classes: resolved-but-open (an evidence
+rule, not a vibe — the session landscape or an audit record must name the
+resolution; "feels fixed" is not evidence), stale (default 14 days,
+`--stale-days` overrides — flag only, deliberately not config surface),
+unlabeled, bodiless, unowned-in-progress, possible-duplicate (judgment, not
+regex). Report always: a triage record plus a plain-language summary grouped
+by class. **No new issues are ever created** — the one deliberate deviation
+from audit/review's rule, because every triage finding already has a tracker
+object: the issue itself. Filing an issue about an issue is noise. `--apply`
+executes only the safe subset: best-fit labels from the vocabulary already
+in use (never a new label name), one-line stale nudges, evidence-quoting
+close comments then close for resolved-but-open, cross-linking comments on
+BOTH ends of a possible duplicate. Never-rules: duplicates are never
+auto-closed; bodiless and unowned-in-progress are always report-only; every
+close quotes its evidence first. When in doubt whether a finding qualifies
+for `--apply`, it doesn't.
+
+**`medic [--repair] | forensics [phase]`** — the planning directory's own
+doctor. Bare `medic`: plan status, drift, plan checks, and ledger/file
+cross-checks (does every phase have its ledger, plan, and directory? do
+ledger commits still exist? a phase marked verified with no ledger evidence
+is a finding, not a pass), ranked by what breaks next if ignored, closed
+with a record. `--repair`, only after the health record exists, makes
+exactly three mechanical moves: ensure a missing phase's tracker object,
+scaffold missing files, relink stale plan↔issue links. **Structure, never
+content**: it never rewrites what a plan says, never resolves a drift
+finding by editing either side to match, never guesses what an ambiguous
+state should mean — judgment-shaped findings are named "needs a human call."
+`forensics [phase]` reconstructs what actually happened from three
+witnesses — the ledger, git log over the phase's ranges, and tracker issue
+history — and names any disagreement ("ledger says closed clean; git shows
+two later commits touching the same files" is the shape of answer it
+exists to produce). Forensics mutates nothing.
+
+**`backtrack <phase|plan> | --apply`** — safe git undo scoped to what the
+ledger says shipped — never a blind reset. The compute pass builds the
+revert set from exactly the ledgered commits (nothing added because it
+"looks related"), then runs the overlap check: any LATER commit touching a
+file the revert set also touches is flagged file by file — overlap is never
+resolved automatically; it means manual review, full stop. Nothing is
+touched without `--apply`. `--apply` reverts one commit at a time,
+newest-first (never a squashed revert — every original keeps its paired
+revert in the log), runs the test suite (a red suite is reported, not
+silently swallowed — and not "fixed" mid-run), mirrors a plain-language
+comment to the affected issues, and writes a record. Never-rules: never
+`git reset --hard`, never force-push, never anything outside the ledgered
+manifest, and the remote is always untouched — pushing the reverts is your
+call.
+
+**`peers (none = status) | review [target] | plan <phase>`** — convene
+external AI CLIs (codex, opencode, gemini, grok) as reviewers — a second
+opinion on top of cairn's judgment, never a replacement. **A peer saying
+something doesn't make it true**: every peer finding is verified against the
+actual code (or plan) before it goes anywhere near the tracker. Bare
+`peers`: detection status per provider (on PATH, enabled, input cap) — zero
+peers is a normal result, not a warning. `peers review`: cairn's own
+five-axis review runs FIRST, in full; the outbound content is leak-scanned
+(a hit BLOCKS that send until you decide — redact and retry, or skip that
+peer); each available peer reviews the same diff with the same finding
+shape; every peer claim is judged adversarially; convergence runs at most
+two rounds (a peer still disagreeing after round 2 is recorded as an open
+disagreement, not given a round 3); survivors follow review's closing
+discipline plus provenance — which peer, which round. `peers plan <phase>`:
+same shape over PLAN.md — unambiguous verified critiques become plan edits;
+anything opinionated enough that the plan's owner should decide becomes a
+`cairn:audit` issue instead. Absent peers never block anything — the verb
+degrades gracefully to "cairn reviewed this alone" and records the run as
+usual.
+
+### Workspaces & collaboration
+
+**`basecamp init | focus <member> | dispatch | claim|update|done <id>`** —
+multi-project workspaces and the parallel-workstream dispatch board — the
+one verb that knows there's more than one project in the room. Bare
+`basecamp` renders the board: per member, a focus marker, workstreams
+grouped by status (queued/active/blocked/done), open-issue and open-session
+counts; unconfigured members show up flagged, not hidden. No workspace is
+not an error — cairn explains what one buys and offers `init` without
+running it unasked. `init` is an interview-lite: it finds candidate member
+directories (their own `cairn.json`, or an obvious project root), asks which
+are members, and writes `cairn-workspace.json` at the root — nothing else;
+each member keeps its own tracker-first setup untouched. `focus <member>`
+repoints EVERY verb at that member — plan, work, issue calls, banner,
+handoff — because they all resolve through the same project dir; nothing
+downstream needs to know a workspace exists. `dispatch` decomposes a goal
+into session-sized workstreams, queues them on the board, and prints
+copy-pasteable per-session opener lines — it NEVER auto-spawns sessions.
+The claim/update/done lifecycle runs from inside whichever session picked up
+a workstream, with the discipline that matters: **focus is workspace-global,
+last-write-wins, and another session can steal it between two of your tool
+calls** — so before ANY tracker or board write, confirm focus still points
+at YOUR member, and after claiming, re-read the board to confirm your
+session tag won the race (if another tag appears, back off and pick
+different work). Never claim a workstream that's already active.
+`done` closes the issue and the board entry with the same plain-language
+note — board and tracker tell one story.
+
+### Docs & knowledge
+
+**`docs publish [--name "<project>"] | (none = status)`** — mirror the
+repo's documentation into the configured docs connector (Confluence first).
+Status reports the connector and landing page, or shows you the config block
+shape if none is set. Publish: the project gets a folder named after it
+under the space root; README.md becomes the landing page inside it; `docs/`
+plus a root CHANGELOG.md become the child page tree; the landing page gains
+a generated Documentation contents section. Idempotent — re-publish updates
+in place. `--name` overrides the project name (default: repo directory
+name). Pairs naturally after `distill`. Full detail in section 5.
+
+### Configuration & health
+
+**`tune [key] [value]`** — the config editor over `cairn.json`; all writes
+go through the validated single-writer, never hand-edits. Bare `tune` shows
+the effective config grouped (tracker/agents/memory/continuity/leakGuard)
+with defaults marked, asks which group to change, batches that group's
+edits into one question. `tune <key> <value>` is a direct dot-path set
+(`tune continuity.resume auto`); `null` deletes a key; values are coerced to
+the target type before patching — a wrong guess is rejected with
+`CONFIG_INVALID` and the file stays untouched, so it's safe to be wrong.
+Two named shortcuts: `tune leakguard off|on` (the leak guard's front door)
+and `tune mode vibe|engineer` (the collaboration posture switch — engineer
+requires `user.handle`; the server rejects the combination without it, and
+tune asks for the handle and sets both in one patch). Credential-looking
+keys or values are refused outright — secrets live in env vars.
+
+**`profile`** — a developer profile: how you talk, what you already know,
+what you'd rather not re-explain every session. Advisory only — it
+calibrates tone and depth for every other verb, never what those verbs
+decide. No tools: it writes `.cairn/profile.md` directly. It infers first —
+README, contributing docs, linter configs, commit style from git log, test
+framework, recent session history — and asks only what's left, in one
+batched question (never a question the repo already answered). Sections:
+communication, expertise, conventions, cadence — each inferred-or-asked,
+never invented; an empty section beats a guessed one. Missing file is the
+default state, not an error.
+
+**`do "<request>"`** — the freeform smart router. Classifies your request
+against the routing table and dispatches: read-only verbs with a clear match
+run directly; mutating verbs or low confidence confirm first ("Sounds like
+`/cairn:plan 4 --deep` — run it?"); no plausible match renders help.
+
+**`help [verb]`** — the verb reference, rendered from the routing table.
+With a typo, it nearest-matches ("`wrok` isn't a cairn verb — did you mean
+`work`?"). With a verb name, it shows that verb's purpose, args, and
+procedure summary. Bare, it renders the full reference in lifecycle order —
+starting, always, with `/cairn:new`.
+
+---
+
+## 4. Tracker backends
+
+Six adapters behind one normalized interface, each declaring its
+capabilities rather than pretending to a lowest common denominator. All six
+support issue comments. Credentials never live in `cairn.json` — the config
+names *env vars*, and the adapter reads them at runtime.
+
+### GitHub
+
+```json
+"tracker": { "type": "github", "config": { "repo": "owner/name" } }
+```
+
+Auth: `GITHUB_TOKEN`, or an existing `gh auth login`. Phases map to
+milestones. Assignee writes: supported. Issue listing paginates up to 1000
+items.
+
+### GitLab
+
+```json
+"tracker": {
+  "type": "gitlab",
+  "config": {
+    "baseUrl": "https://gitlab.com",
+    "project": "owner/name",
+    "tokenEnv": "GITLAB_TOKEN",
+    "extraLabels": []
+  }
+}
+```
+
+Auth: the env var named by `tokenEnv` (a personal access token with `api`
+scope). `extraLabels` adds labels to every cairn-created issue. Assignee
+writes: not yet mapped. Listing paginates up to 1000 items.
+
+### Jira
+
+```json
+"tracker": {
+  "type": "jira",
+  "config": {
+    "baseUrl": "https://your-domain.atlassian.net",
+    "projectKey": "PROJ",
+    "issueType": "Task",
+    "emailEnv": "JIRA_EMAIL",
+    "tokenEnv": "JIRA_API_TOKEN",
+    "transitions": { "in_progress": "In Progress", "closed": "Done" }
+  }
+}
+```
+
+Auth: Atlassian email + API token via the named env vars. The `transitions`
+map ties cairn's normalized states to your workflow's transition names —
+if your board says "Doing" instead of "In Progress", say so here. Jira is
+the one backend with **worklog support**: `issue_close` with a time spent
+writes a real worklog entry (a worklog failure never fails a close that
+already succeeded — the close comment's time line is the fallback
+everywhere). Assignee writes: not yet mapped. Listing capped at 100 items.
+
+### Asana
+
+```json
+"tracker": {
+  "type": "asana",
+  "config": { "projectGid": "1234567890123456", "tokenEnv": "ASANA_TOKEN" }
+}
+```
+
+Auth: personal access token via the named env var. Assignee writes: not yet
+mapped. Listing capped at 100 items.
+
+### Azure Boards
+
+```json
+"tracker": {
+  "type": "azure-boards",
+  "config": {
+    "orgUrl": "https://dev.azure.com/your-org",
+    "project": "your-project",
+    "workItemType": "Issue",
+    "patEnv": "AZURE_DEVOPS_PAT",
+    "apiVersion": "7.0",
+    "states": { "in_progress": "Doing", "closed": "Done", "open": "To Do" }
+  }
+}
+```
+
+Auth: a PAT with Work Items (Read & Write) scope via the named env var. The
+`states` map plays the same role as Jira's `transitions` — normalized state
+to your process's state names. Assignee writes: supported. Listing capped
+at 100 items.
+
+### ClickUp
+
+```json
+"tracker": {
+  "type": "clickup",
+  "config": {
+    "defaultListId": "900123456",
+    "spaceId": "90123456",
+    "tokenEnv": "CLICKUP_TOKEN",
+    "statuses": { "open": "to do", "in_progress": "in progress", "closed": "complete" }
+  }
+}
+```
+
+Auth: personal API token via the named env var. The `statuses` map ties
+normalized states to your list's status names. Assignee writes: explicitly
+deferred (needs numeric user-id resolution not yet implemented). Listing
+capped at 100 items.
+
+### Capability differences at a glance
+
+| Capability | Backends |
+|---|---|
+| Issue comments | all six |
+| Assignee **writes** | GitHub, Azure Boards only (others accept the call but don't propagate) |
+| Worklog (real time entries on close) | Jira only |
+| Native milestones | backend-dependent; `summit` records a skip when the phase primitive can't close, and `milestone_*` degrades gracefully |
+| State mapping config | Jira `transitions`, Azure Boards `states`, ClickUp `statuses` |
+| Issue-list cap (affects `plan_unplanned` completeness) | 1000 (GitHub/GitLab), 100 (Jira/Asana/Azure Boards/ClickUp) — truncation is logged to server stderr |
+
+Adapter maturity, honestly stated: GitHub is live-green against a real
+sandbox. The other five are fully implemented and pass the unit and
+contract suites, but hadn't been run against live credentials at the time
+of writing — run the env-gated live suite (`server/README.md` has the exact
+commands per backend) before leaning on one in production. Two known risks
+called out there: the Jira adapter uses a search endpoint Atlassian has
+deprecated on Jira Cloud, and the Azure Boards iteration-parsing was
+hardened speculatively against known API variance.
+
+---
+
+## 5. Docs connector — Confluence, end to end
+
+The docs connector publishes your repo's documentation outward to a team
+wiki. It is deliberately a *sibling* of the tracker subsystem, not an
+extension of it — trackers manage work items, docs connectors publish
+documentation, and they share nothing but the HTTP core and the config
+pattern. Confluence ships first; the interface is product-neutral (bodies
+cross it as markdown; each adapter owns conversion), so Notion, GitBook,
+Slite, and SharePoint connectors can slot in behind the same contract suite.
+
+### Setup
+
+Add a `docs:` block to `cairn.json` (the template ships it as `_docs` —
+copy it over to `docs` to enable):
+
+```json
+"docs": {
+  "connector": "confluence",
+  "config": {
+    "baseUrl": "https://your-domain.atlassian.net/wiki",
+    "spaceKey": "DOCS",
+    "emailEnv": "CONFLUENCE_EMAIL",
+    "tokenEnv": "CONFLUENCE_API_TOKEN"
+  }
+}
+```
+
+Then export the two env vars the config *names* (the names are yours to
+choose; those are the defaults):
+
+- your Atlassian account email
+- an Atlassian API token (create one at Atlassian's API-token page)
+
+Jira and Confluence share Atlassian API tokens — same-site users can point
+these env names at their existing Jira credentials. The space named by
+`spaceKey` must already exist; an unknown key fails with `NOT_FOUND` and a
+pointer at the config.
+
+A note on `spaceKey`: pages are matched by title and ancestry *within the
+configured space*, and publish never deletes remote pages. Treat the space
+key as settled once you've published — pointing the config at a different
+space later doesn't move anything; it starts a fresh tree in the new space
+and leaves the old one standing.
+
+### What publish does
+
+`/cairn:docs publish [--name "<project>"]`:
+
+1. Your project gets a **folder named for the project** under the space
+   root (looked up case-insensitively; created if absent). `--name`
+   overrides the name; the default is the repo directory name.
+2. `README.md` becomes the **landing page** inside that folder. The README
+   is deliberately not part of the child tree — it's the front door.
+3. `docs/` (plus a root `CHANGELOG.md` when present — distill writes both)
+   becomes the **child page tree**, mirroring your directory structure.
+   Directory pages get generated child listings.
+4. The landing page gains a **Documentation contents** section with real
+   page URLs — a two-pass publish, since the links don't exist until the
+   children do.
+
+**Ordering:** directory entries are sorted lexically, so numeric filename
+prefixes (`01-runbook.md`, `02-adr/`…) control page order in the tree and
+in generated contents sections. The prefix (and the `.md` extension) is
+stripped from the page title; the title itself is the file's first H1 when
+it has one, else derived from the filename. Dotfiles are skipped.
+
+**Idempotency:** pages are matched by title + ancestry and updated in
+place — re-publishing is safe and is the normal way to push doc updates.
+
+**Title conflicts:** Confluence titles are unique per *space*, not per
+parent. When your page's title is already taken elsewhere in the space, the
+page publishes under a `Title (Context)` disambiguation instead of failing
+— the verb mentions any suffixed titles in its report.
+
+**What publish does NOT do:** delete anything remotely. When local files
+disappear, their remote pages remain — the verb notes stale pages for
+manual cleanup when the tree shrinks.
+
+**Conversion:** a dependency-free markdown → Confluence storage-format
+converter handles headings, paragraphs, nested lists, fenced code (as a
+code macro), tables, blockquotes, and links. Images degrade to links;
+unknown constructs degrade to escaped text. Conversion never throws — worst
+case you get plainer output, not a failed publish.
+
+### Status and errors
+
+Bare `/cairn:docs` reports the connector and the landing page (title +
+link) or "not yet published"; with no `docs:` block it shows you the block
+shape. `CONFIG_MISSING` → add the block. `AUTH_MISSING` → the message names
+the exact env vars to export.
+
+---
+
+## 6. Memory
+
+Cairn's memory is engineered against context rot: the failure mode where an
+assistant's "knowledge" quietly drifts out of sync with the code and nobody
+notices. Two tiers, different durability guarantees:
+
+| Tier | Store | Lifetime | Use for |
+|---|---|---|---|
+| 1 — index | SQLite full-text index at `~/.cairn/index/` (outside the repo) | disposable, rebuildable | reference-grade bulk you'll cite later: docs, API surfaces, research dumps |
+| 2 — cards | `.cairn/memory/cards/*.md`, git-committed | durable | single facts: decisions, constraints, gotchas, references |
+
+Never index logs, test output, or build output — that's ephemeral; read it,
+act on it, don't persist it.
+
+**Cards** are frontmatter'd markdown files, one fact each — not session
+summaries. Types: `decision`, `constraint`, `gotcha`, `reference`, and
+`note` (un-triaged jottings from `mark --note` — cheap to write, first to
+prune). Every card may carry a `confidence` of high/medium/low, surfaced at
+recall and re-graded only by `retro`, never silently. Card ids are content
+hashes of the body, so re-creating an identical card never duplicates —
+and **bodies are immutable**: the only mutation a card ever gets is a
+confidence re-grade. A changed lesson is a new card.
+
+**Provenance + staleness — the anti-rot headline.** Cards record the files
+and commits that back them. Every recall re-verifies that provenance
+against the current repo (a git diff since the recorded commit) and serves
+`stale: true` with reasons when the code has moved. Never treat a stale
+card as ground truth — re-verify the claim, then update (rewrite) or retire
+the card. A stale card left unaddressed is worse than no card. Memory can
+be wrong; it can never silently lie.
+
+**Scoped recall.** Search the task at hand, not the whole project's noise:
+recall scopes issue > phase > project, widening only when the narrow search
+comes up empty. A pre-rendered recall banner (capped at
+`continuity.recallIndex.maxCards`) is injected at session start at a known
+token cost — with honest accounting of what the banner saves versus
+injecting every card in full.
+
+**Distill-then-drop.** At issue close and phase transition, ask "what here
+deserves a card?" Write the card with provenance; then let the old index
+scope simply stop being searched. No deletion needed — tier 1 is
+disposable by design, which is also why losing the index loses nothing.
+
+**Capacity guard.** `memory.tokenThreshold` (default 150,000) is the
+advisory line: when the index's approximate token usage crosses it, the
+recommendation is to split the active issue into sub-tasks rather than
+piling more work into one context. Advisory means advisory — the tool can't
+pause you; you act on the signal.
+
+One care-and-feeding note: cards are git-committed, so treat them like
+code — review, PR, don't hand-edit frontmatter into malformed shapes. A
+malformed card silently drops out of recall rather than erroring; check
+`git status`/`git diff` after hand-editing one.
+
+---
+
+## 7. Continuity & sessions
+
+### Session continuity (the crash-proof part)
+
+Kill a session mid-task — compaction, usage cap, `/clear`, a real crash —
+and the next session resumes at the exact task with zero re-executed work.
+The server is the primary writer: every state-changing tool refreshes a
+per-machine handoff file, write-through, on every call. Hooks cover the
+gaps: a throttled breadcrumb after Edit/Write/Bash calls, an unthrottled
+refresh right before compaction, and a session-start hook that prints the
+handoff and — per `continuity.resume` — offers (`prompt`), auto-runs
+(`auto`), or suppresses (`off`) the resume. Every hook is fire-and-forget
+and targets under 100ms; a hook failure is never visible to your session.
+
+Guard rails worth knowing:
+
+- **Skeleton guard** — a write can never replace a rich handoff with an
+  empty one; richness is monotonic between clears.
+- **Unregistered guard** — nothing is ever created for a project without a
+  loadable `cairn.json`.
+- **Never trusted blind** — a handoff older than 14 days is surfaced as
+  stale and never auto-resumed, even with `resume: "auto"`. And the trust
+  order on any resume is: tracker + git log > LEDGER.md > handoff.
+
+`ship` and `summit` clear the handoff — shipping ends the session.
+`/cairn:waypoint` is the manual pause/resume path (section 3).
+
+### The four session kinds
+
+Four persistent, typed session kinds share one core: a git-side session
+file (append-only typed entries), a tracker mirror in plain language, and a
+mechanical close gate — a session *cannot* close without its gate entry
+logged first.
+
+| Kind | Directory | Entry kinds | Close gate | Tracker label | Reach for it when… |
+|---|---|---|---|---|---|
+| `trace` | `.cairn/trace/` | evidence, hypothesis, test, verdict | ≥1 verdict | `cairn:bug` | debugging anything — a failed verify, a reported bug, a mid-work discovery |
+| `probe` | `.cairn/probe/` | experiment, result, requirement, verdict | ≥1 verdict | `cairn:spike` | you'd otherwise be guessing — a risky assumption worth a throwaway experiment |
+| `draft` | `.cairn/draft/` | variant, decision, note | ≥1 decision | `cairn:sketch` | a design direction needs comparing options side by side |
+| `thread` | `.cairn/thread/` | note, link, decision, wrap | ≥1 wrap | `cairn:thread` | context must outlive more sittings than your context window does |
+
+Session ids are description-derived hashes, and starting the same
+description twice while a session is open refuses with a pointer at the
+existing session (for threads, that refusal *is* the resume path — by
+design). Archives are immutable: closing appends a resolution block and
+moves the file to the kind's `archive/` directory. Probe and draft artifact
+directories survive the close until `--wrap` packages what's worth keeping
+into a project skill — after which deletion is offered, never automatic.
+
+The tracker mirror across all kinds is milestone-only and verb-driven:
+comment on start, a key-finding/decision comment mid-session, and the
+resolution rides the close (threads collapse to two touches — start and
+wrap). Plain language on every mirror touch: no code blocks, no file paths,
+no internal refs a non-engineer would bounce off of. The detail lives in
+the session log; the tracker gets the story.
+
+`session_landscape` is the read-only join over all four kinds and the
+single source of truth for what's open — `status`, frontier modes, and
+thread listing all read it rather than reconstructing from disk or memory.
+
+---
+
+## 8. Quality machinery
+
+### Verify's posture
+
+Goal-backward, always: the question is "does the codebase deliver what the
+phase PROMISED," never "did the tasks close." Depth raises the bar — quick
+is tests-pass, standard adds the tracker cross-check, deep adds an
+adversarial verification subagent. VERIFICATION.md is written only on a
+pass, and a failed verify mandatorily becomes a trace.
+
+### Drift
+
+Drift is a stop signal, not a warning. The drift scan reads every phase's
+referenced tracker issues and flags two things: **missing** (the issue no
+longer exists — remedy: recreate it and relink) and **closed-unverified**
+(the issue is closed but its phase has no VERIFICATION.md — remedy: verify
+the phase, or reopen the issue). The presence of VERIFICATION.md is the
+human-controlled contract that makes closed issues normal. `plan`, `ship`,
+`status`, and `medic` all consume the same scan; `ship` refuses to push
+over it.
+
+### TDD gates
+
+Eligibility is decided per task at plan time (`plan --tdd`) and stored in
+PLAN.md frontmatter. Work time enforces RED → GREEN → REFACTOR as separate
+commits with the RED and GREEN shas recorded in the ledger at close. Verify
+enforces the evidence: every TDD task's ledger line must carry its
+`tdd <red>..<green>` segment, or the phase fails — no exceptions, no
+retroactive forgiveness. The ledger is the evidence chain.
+
+### Audits, reviews, triage
+
+Three distinct instruments — worth keeping straight:
+
+- **`audit`** is a retro-check against what was already claimed done (eight
+  modes, section 3), including the fidelity contract for UI (shipped UI vs
+  the draft session's decided direction and tokens.json) and the docs sweep
+  (README claims vs the real codebase).
+- **`review`** is a fresh five-axis read of a diff, branch, or phase —
+  correctness, clarity, architecture, security, tests — every finding with
+  a file:line and a concrete failure scenario, or it's a hunch and gets cut.
+- **`triage`** is tracker hygiene — and the one place findings never become
+  new issues, because each finding already *is* an issue.
+
+All three close through the same record store: `.cairn/audit/` files, one
+per scope per day (same scope re-run the same day supersedes; prior dates
+untouched). A `pass` verdict still writes the record — the record is the
+proof the check ran. Critical/important findings mirror to the tracker with
+the severity as the literal first line; minors stay in the record. The
+`--fix` contract everywhere is two shapes only: mechanical (fix, commit per
+finding, comment, close) or investigation-shaped (open a trace). Not
+clearly mechanical means investigation-shaped by default — the safe side to
+be wrong on.
+
+The plan-quality scan behind `audit plans` runs two deterministic
+detectors: **contract drift** (a consumer's Produces/Consumes contract text
+sharing a named symbol with a producer's but not matching it) and
+**unanchored thresholds** (a quantitative bound — `< 100ms`, `at least
+99.9%` — with no benchmark, fixture, spec, or measurement anchor nearby).
+Deterministically ordered, byte-equal across runs on an unchanged tree.
+
+### Peers
+
+External AI CLIs as reviewers, with three hard properties: cairn's own
+review always runs first and in full; every outbound send passes the leak
+gate (a hit blocks the send until you decide); and every inbound claim is
+judged adversarially against the real code, with a two-round convergence
+cap. Missing peers never block anything.
+
+---
+
+## 9. Collaboration
+
+### Vibe vs engineer mode
+
+`user.mode` picks the posture. **Vibe** (default): cairn drives end to end;
+judgment calls resolve silently. **Engineer**: you claim issues, write
+code, and make the design calls; cairn pairs, scaffolds, verifies, and
+keeps the tracker mirror honest for both parties' work. Concretely,
+engineer mode changes four things:
+
+1. **Claiming** — `work` asks "mine or yours?" once per wave/phase; your
+   issues get scaffolding (branch, in-progress, a claim comment carrying
+   the task context and, for TDD tasks, the failing test) and then cairn
+   steps back.
+2. **No-self-merge** — cairn's finished work lands as a PR naming you as
+   reviewer and does not merge; `ship` stops while any cairn-authored PR
+   awaits review; `auto` treats a waiting PR as a natural stop.
+3. **Decision surfacing** — genuine design forks stop and ask, options with
+   trade-offs, cairn's recommendation first. Boilerplate stays automatic.
+4. **Closing your work** — when you're done, cairn runs the tests and
+   verify posture against it, closes with evidence and time logged on your
+   behalf, and offers (never forces) a review.
+
+Engineer mode requires `user.handle` — set both with
+`/cairn:tune mode engineer`.
+
+### Ownership and courtesy
+
+With `user.handle` set, cairn claims issues under your handle so teammates
+see who holds what, and skips issues assigned to someone else unless you
+explicitly override — never silently. Without a handle, cairn runs in
+single-user mode: no assignee tracking, no ownership checks. Work-state
+concurrency (two agents starting the same issue) is the tracker's job — the
+in-progress state transition is the atomic claim; cairn reads the
+tracker's truth. Plans and memory cards collaborate through ordinary git:
+push, PR, review, merge. No locking machinery, on purpose.
+
+### Workspaces
+
+`basecamp` (section 3) adds the multi-project layer: a workspace file
+naming member projects, a focus that repoints every verb, a dispatch board
+for parallel workstreams, and the focus-discipline rules that keep N
+parallel sessions from trampling each other. The compatibility guarantee is
+absolute: with no workspace file anywhere above your launch directory,
+nothing changes — every single-project setup behaves identically.
+
+### Import and unplanned work
+
+`import` reverse-mirrors tracker-origin work into cairn; `plan_unplanned`
+surfacing (via `status` and `plan`) catches tracker issues no plan
+references — work at risk of being missed. Between them, cairn joins teams
+mid-stream instead of demanding a greenfield.
+
+---
+
+## 10. cairn.json — complete reference
+
+One file at the repo root, validated on every read and every write. All
+writes go through the config tools (`/cairn:tune`), which validate the
+*merged* result before touching the file — an invalid patch changes
+nothing.
+
+| Key | Type | Default | What it controls |
+|---|---|---|---|
+| `tracker.type` | `github \| gitlab \| jira \| asana \| azure-boards \| clickup` | *(required)* | Which tracker adapter runs |
+| `tracker.config` | object | *(required)* | Backend-specific config (section 4); deep validation lives in the adapter |
+| `docs.connector` | `confluence` | *(optional block)* | Which docs connector runs |
+| `docs.config` | object | — | Connector config: `baseUrl`, `spaceKey`, `emailEnv` (default `CONFLUENCE_EMAIL`), `tokenEnv` (default `CONFLUENCE_API_TOKEN`) |
+| `agents.model` | `auto \| inherit \| haiku \| sonnet \| opus` | `auto` | Model routing for agent fan-out. `inherit` = session model everywhere; an explicit value pins everything; `auto` routes per work class: mechanical → fast tier, synthesis → session tier, judgment gates → strongest. Blast-radius rule: output that gates verify/ship routes UP, never down; uncertain → inherit |
+| `memory.tokenThreshold` | positive integer | `150000` | The capacity-guard advisory line for the memory index |
+| `user.handle` | non-empty string | *(optional)* | Your tracker identity — enables ownership tracking, claiming, skip-others'-work |
+| `user.mode` | `vibe \| engineer` | absent ≡ `vibe` | Collaboration posture (section 9). Engineer requires `handle` |
+| `continuity.resume` | `prompt \| auto \| off` | `prompt` | Session-start resume behavior: ask, proceed, or suppress |
+| `continuity.checkpoint` | boolean | `true` | The post-tool-use breadcrumb hook |
+| `continuity.wipCommits` | boolean | `false` | Whether `waypoint` offers a `wip(cairn):` commit on pause |
+| `continuity.recallIndex.enabled` | boolean | `true` | The session-start memory banner |
+| `continuity.recallIndex.maxCards` | positive integer | `20` | Banner card cap |
+| `leakGuard.enabled` | boolean | `true` | The commit-time leak guard hook |
+| `leakGuard.allow` | string[] | `[]` | Path globs exempt from the guard |
+| `leakGuard.extraPatterns` | string[] | `[]` | Additional regex patterns to guard against |
+| `peers.<provider>.enabled` | boolean | `true` when absent | Per-provider toggle; providers: `codex`, `opencode`, `gemini`, `grok` — unknown keys are rejected |
+| `peers.<provider>.maxInputChars` | positive integer | `200000` | Input cap per provider; longer input is head-truncated with a verbatim marker line |
+
+**The secrets-in-env rule, enforced:** config writes refuse any
+credential-shaped key (`token`, `apiToken`, `api_key`, `password`,
+`secret`, `pat`, …) and any value matching known token prefixes (GitHub,
+GitLab, Atlassian, Slack, `sk-` keys). Config carries env var *names*; the
+env carries the secrets. There is no override.
+
+About the leak guard, since it's the config block people meet first: it
+fires only on `git commit` calls, scanning the staged diff's added lines
+for cairn-internal references — `.cairn/` paths, phase-directory refs,
+cairn label strings, and your backend's issue-id pattern (for GitHub, bare
+`#N` is deliberately not matched — "fixes #123" is legitimate). Allowlisted
+paths (`.cairn/**`, `docs/**`, `*.md`, ledger/verification artifacts) are
+skipped. A hit blocks the commit with an exact `file:line: [pattern]`
+listing. Escape hatches: `tune leakguard off`, the `allow`/`extraPatterns`
+config keys, or a one-shot `CAIRN_LEAK_OK=1 ` *prefix* on the commit
+command (mentioning the variable elsewhere — say, quoted inside the commit
+message — does not bypass). Accepted limitation: commits made outside
+Claude Code are unguarded.
+
+---
+
+## 11. Error codes & troubleshooting
+
+Every server tool fails with a typed `CairnError`: a code, a message, and
+usually a `nextAction` telling you what to do. Verbs surface these — never
+stack traces.
+
+| Code | Meaning | Your next move |
+|---|---|---|
+| `CONFIG_MISSING` | No readable `cairn.json` in the project dir | Create one from `templates/cairn.json.example` |
+| `CONFIG_INVALID` | `cairn.json` (or a config patch, workspace file, or stale focus) failed validation — bad JSON, wrong types, a secret where a secret doesn't belong, a malformed `cairn-workspace.json`, or a focus naming a vanished member | Read the message — it names the exact path and problem. The file is left untouched on a rejected patch, so fix and retry |
+| `AUTH_MISSING` | A required credential env var isn't set | The message names the exact env vars to export (and where to mint the token) |
+| `RATE_LIMITED` | The backend is throttling | Wait and retry; the shared HTTP core already retries with backoff before this surfaces |
+| `NOT_FOUND` | The named thing doesn't exist — an issue id, a card id, a session id, a Confluence space | Check the identifier; for spaces, check `docs.config.spaceKey` |
+| `TRACKER_DOWN` | The backend is unreachable or erroring | Git-side operations continue; retry the tracker work when it's back. Verbs report and keep what they can |
+| `HANDOFF_INVALID` | The continuity handoff file is malformed | Inspect or discard it; a fresh checkpoint rewrites it |
+| `HANDOFF_STALE` | The handoff is too old to trust | Inspect or discard — stale handoffs are never auto-resumed |
+| `UNSUPPORTED` | The operation isn't valid here — e.g. an invalid node/edge type in a map patch, or a capability the backend doesn't have | Use a supported type/path; capability differences are in section 4 |
+| `PRECONDITION_FAILED` | The operation's gate isn't satisfied — unverified phases at summit, closing a session without its gate entry, starting a duplicate open session, a map patch with dangling edges, board writes without a workspace, a peer that isn't on PATH / is disabled / timed out | The message names the gate. Satisfy it and re-run — these operations are built to be safely re-runnable |
+
+### Common failure scenarios
+
+**Missing env vars.** The first tracker or docs call fails `AUTH_MISSING`
+with the exact names to export. Export them and re-run — nothing partial
+happened.
+
+**Drift flags mid-flow.** `plan`, `ship`, or `status` reports missing or
+closed-unverified issues. Reconcile before proceeding: recreate + relink
+missing issues; for closed-unverified, either verify the phase or reopen
+the issue. `ship` will not push over drift, full stop.
+
+**`PRECONDITION_FAILED` on summit.** At least one phase lacks
+VERIFICATION.md. Run `/cairn:verify <N>` for each listed phase, then re-run
+summit — milestone completion is idempotent, so re-running after a partial
+tracker failure is safe too.
+
+**Tracker down mid-work.** The current issue's tracker writes fail
+`TRACKER_DOWN`; git-side work, plans, memory, and sessions continue
+untouched (one backend being down never blocks git-side operations). The
+verb reports what it couldn't mirror; when the tracker returns, the close
+comments and state transitions catch up — and `resync`'s cursor means
+nothing external that changed meanwhile gets lost.
+
+**Session refuses to close.** Every session kind mechanically requires its
+gate entry (verdict / decision / wrap) before closing. Log the gate entry —
+that's the whole design: no session ends without its conclusion written
+down.
+
+**Stolen basecamp focus.** In parallel-dispatch topology, another session's
+focus switch can repoint yours between calls. The discipline in section 3
+(confirm focus before every write; re-read the board after claiming) is the
+fix; a lost claim race means back off and pick different work.
+
+**Planning directory looks wrong.** `/cairn:medic` for the diagnosis,
+`medic --repair` for the mechanical subset, `medic forensics <phase>` when
+you need to know what actually happened versus what the docs claim.
+
+---
+
+## 12. Appendix
+
+### Artifact map — what lives where, and who writes it
+
+| Path | What | Written by |
+|---|---|---|
+| `cairn.json` | project config | you (initially), then `config_set` via `tune` — single-writer |
+| `.cairn/plans/PROJECT.md` | vision + requirements | `new` interview (scaffolded, never overwritten) |
+| `.cairn/plans/roadmap.md` | phase table + status, milestone id | `new`; updated at verify/ship/summit/route |
+| `.cairn/plans/phases/NN-slug/CONTEXT.md` | locked decisions | planning discussion |
+| `.cairn/plans/phases/NN-slug/RESEARCH.md` | research brief (with scout's done/pending markers) | research fan-out / `scout` |
+| `.cairn/plans/phases/NN-slug/PLAN.md` | task breakdown; frontmatter: `issues:`, `depth:`, `tdd:`, `wave_N` | `plan` (frontmatter only via server tools) |
+| `.cairn/plans/phases/NN-slug/VERIFICATION.md` | goal-backward check results — its existence marks the phase verified | `verify`, on pass only |
+| `.cairn/plans/phases/NN-slug/LEDGER.md` | append-only task ledger: what shipped, commit ranges, TDD pairs | `ledger_append` at issue close |
+| `.cairn/plans/milestones/vN/` | archived phases per completed milestone | `summit` |
+| `.cairn/memory/cards/*.md` | durable memory cards (git-committed) | `mem_card_create` via remember/mark/retro/trace |
+| `.cairn/trace/`, `.cairn/probe/`, `.cairn/draft/`, `.cairn/thread/` | session files + `archive/` per kind; probe/draft artifact dirs; `draft/themes/default.css` + `tokens.json` | the session tools per kind |
+| `.cairn/audit/<scope>-<date>.md` | audit/review/triage/medic/backtrack records | `audit_record` |
+| `.cairn/map/map.json` | the knowledge graph | `map_set` via `map build` only |
+| `.cairn/profile.md` | developer profile (advisory) | `profile` — no tool, direct write |
+| `.cairn/state/active-context.json` | per-machine active project/phase/issue | `context_set` |
+| `.cairn/tracker-marker.json` | tracker-delta snapshot cursor | `plan_tracker_delta` |
+| `cairn-workspace.json` (workspace root) | workspace name + members | `basecamp init` |
+| `.cairn/basecamp/focus.json` (workspace root) | workspace-global focus — last write wins | `workspace_focus` |
+| `.cairn/basecamp/board.json` (workspace root) | dispatch board workstreams | `board_update` |
+| `docs/BRIEF.md` | generated onboarding briefing (full overwrite) | `brief` |
+| `docs/` ARCHITECTURE / ADRs / CHANGELOG | public-safe synthesized docs | `distill` (section-merge, never clobbers hand-written) |
+| `~/.cairn/index/<project>.db` | tier-1 memory index — disposable | `mem_index` |
+| `~/.cairn/handoff/<project>-<hash>.json` | session handoff — ephemeral, per-machine | every state-changing tool + hooks |
+| `~/.cairn/banner/<project>-<hash>.md` | pre-rendered recall banner | re-rendered on card/context changes |
+
+### The 65 MCP tools, by subsystem
+
+**Active context (2):** `context_get` · `context_set`
+
+**Tracker / issues (8):** `issue_create` · `issue_get` · `issue_update` ·
+`issue_close` · `issue_list` · `issue_comment` · `phase_create` ·
+`phase_list`
+
+**Milestones (3):** `milestone_create` · `milestone_list` ·
+`milestone_complete`
+
+**Planning (11):** `plan_scaffold_project` · `plan_scaffold_phase` ·
+`plan_status` · `plan_phase_ensure` · `plan_drift` · `plan_issues_set` ·
+`plan_meta_set` · `plan_resync` · `plan_tracker_delta` · `plan_unplanned` ·
+`plan_import`
+
+**Memory (8):** `mem_index` · `mem_search` · `mem_stats` ·
+`mem_card_create` · `mem_card_list` · `mem_card_recall` ·
+`mem_card_update` · `mem_timeline`
+
+**Continuity (4):** `continuity_checkpoint` · `continuity_get` ·
+`continuity_clear` · `ledger_append`
+
+**Config (2):** `config_get` · `config_set`
+
+**Sessions (14):** `trace_start` · `trace_log` · `trace_list` ·
+`trace_close` · `probe_start` · `probe_log` · `probe_close` ·
+`draft_start` · `draft_log` · `draft_close` · `thread_start` ·
+`thread_log` · `thread_close` · `session_landscape`
+
+**Plan checks / audit records (2):** `plan_check` · `audit_record`
+
+**Knowledge graph (2):** `map_set` · `map_get`
+
+**Workspace & board (5):** `workspace_list` · `workspace_focus` ·
+`workspace_status` · `board_get` · `board_update`
+
+**Peers (2):** `peer_list` · `peer_run`
+
+**Docs connector (2):** `docs_publish` · `docs_status`
+
+---
+
+That's the whole machine. Start with `/cairn:new` (or `/cairn:import` if
+the work already exists), keep the loop honest — plan, work, verify, ship —
+and let the gates do their job. They're not there to slow you down; they're
+there so that when something says "done," it actually is…
