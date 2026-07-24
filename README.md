@@ -35,7 +35,8 @@ with retry/backoff, and a single contract test suite every adapter must pass
 
 **Docs connectors** — publish repo documentation outward through the same
 pluggable-adapter pattern: `/cairn:docs publish` mirrors README + `docs/`
-into Confluence as a landing page plus a logical child-page tree (generated
+into Confluence as a per-project folder holding a landing page plus a
+logical child-page tree (generated
 contents sections, idempotent re-publish, space-wide title-conflict
 handling). The SPI is product-neutral — Notion, GitBook, Slite, and
 SharePoint connectors slot in behind the same contract suite.

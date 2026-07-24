@@ -102,16 +102,43 @@ export class ConfluenceConnector implements DocsConnector {
     return this.space;
   }
 
+  /**
+   * Find the project's folder by title (case-insensitive) anywhere in the
+   * space. Folders have no title-filtered v2 listing, so this goes through
+   * CQL search (v1 endpoint, same auth).
+   */
+  private async findFolder(title: string): Promise<string | null> {
+    const resp = await this.api("GET",
+      `/rest/api/search?cql=${encodeURIComponent(`type=folder and space="${this.cfg.spaceKey}"`)}&limit=100`) as
+      { results?: Array<{ content?: { id?: string | number; title?: string } }> };
+    const match = (resp.results ?? [])
+      .map((r) => r.content)
+      .find((c) => c?.title?.toLowerCase() === title.toLowerCase());
+    return match?.id == null ? null : String(match.id);
+  }
+
+  private async createFolder(title: string, parentId?: string): Promise<string> {
+    const space = await this.getSpace();
+    const raw = await this.api("POST", "/api/v2/folders", {
+      spaceId: space.id,
+      title,
+      ...(parentId ? { parentId } : {}),
+    }) as { id: string | number };
+    return String(raw.id);
+  }
+
+  /**
+   * Project layout mirrors the space convention: a FOLDER named for the
+   * project under the space root, with the landing page (and doc tree)
+   * inside it.
+   */
   async ensureRoot(projectName: string): Promise<Page> {
     const space = await this.getSpace();
-    const existing = await this.findPage(projectName,
-      space.homepageId || undefined);
+    const folderId = await this.findFolder(projectName)
+      ?? await this.createFolder(projectName, space.homepageId || undefined);
+    const existing = await this.findPage(projectName, folderId);
     if (existing) return existing;
-    return this.createPage({
-      title: projectName,
-      markdown: "",
-      parentId: space.homepageId || undefined,
-    });
+    return this.createPage({ title: projectName, markdown: "", parentId: folderId });
   }
 
   async getPage(id: string): Promise<Page> {

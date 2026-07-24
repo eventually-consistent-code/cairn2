@@ -124,25 +124,33 @@ describe("ConfluenceConnector", () => {
     expect(p.version).toBe(8);
   });
 
-  it("ensureRoot returns an existing landing page without creating", async () => {
+  it("ensureRoot reuses an existing project folder + landing page (case-insensitive)", async () => {
     const { f, calls } = fixtureFetch([
       { status: 200, body: SPACE },
-      { status: 200, body: { results: [rawPage({ id: 42, title: "proj", parentId: 900 })] } },
+      { status: 200, body: { results: [{ content: { id: 8061115, title: "Proj" } }] } },
+      { status: 200, body: { results: [rawPage({ id: 42, title: "proj", parentId: 8061115 })] } },
     ]);
     const root = await makeConn(f).ensureRoot("proj");
     expect(root.id).toBe("42");
+    expect(root.parentId).toBe("8061115");
     expect(calls.some((c) => c.method === "POST")).toBe(false);
+    expect(calls[1].url).toContain("/rest/api/search?cql=");
   });
 
-  it("ensureRoot creates the landing page under the space homepage when absent", async () => {
+  it("ensureRoot creates folder under the space root, then the landing page inside it", async () => {
     const { f, calls } = fixtureFetch([
       { status: 200, body: SPACE },
-      { status: 200, body: { results: [] } },
-      { status: 200, body: rawPage({ id: 43, title: "proj" }) },
+      { status: 200, body: { results: [] } },              // no folder yet
+      { status: 200, body: { id: 555 } },                   // folder created
+      { status: 200, body: { results: [] } },              // no landing yet
+      { status: 200, body: rawPage({ id: 43, title: "proj", parentId: 555 }) },
     ]);
     const root = await makeConn(f).ensureRoot("proj");
     expect(root.id).toBe("43");
-    const post = calls.find((c) => c.method === "POST")!;
-    expect(post.body).toMatchObject({ title: "proj", parentId: "900" });
+    const posts = calls.filter((c) => c.method === "POST");
+    expect(posts[0].url).toContain("/api/v2/folders");
+    expect(posts[0].body).toMatchObject({ spaceId: "111", title: "proj", parentId: "900" });
+    expect(posts[1].url).toContain("/api/v2/pages");
+    expect(posts[1].body).toMatchObject({ title: "proj", parentId: "555" });
   });
 });

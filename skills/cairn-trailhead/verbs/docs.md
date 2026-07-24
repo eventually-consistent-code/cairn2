@@ -12,8 +12,9 @@ SharePoint land as future adapters behind the same SPI).
   the cairn.json `docs:` block shape (see templates/cairn.json.example,
   `_docs`). Configured → report the connector and the landing page (title +
   link) or "not yet published".
-- **publish:** `docs_publish(projectName?)` — README.md becomes the project
-  landing page in the configured space, `docs/` (+ root CHANGELOG.md) becomes
+- **publish:** `docs_publish(projectName?)` — the project gets a FOLDER named
+  after it under the space root; README.md becomes the landing page inside
+  that folder, `docs/` (+ root CHANGELOG.md) becomes
   the child page tree, and the landing page gains a Documentation contents
   section. Idempotent: re-publish updates pages in place. `--name` overrides
   the project name (default: repo dir name). Report the page count and the

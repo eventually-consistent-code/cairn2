@@ -40,6 +40,18 @@ export declare class ConfluenceConnector implements DocsConnector {
     private normalize;
     /** Resolve and memoize the configured space (id + homepage). */
     private getSpace;
+    /**
+     * Find the project's folder by title (case-insensitive) anywhere in the
+     * space. Folders have no title-filtered v2 listing, so this goes through
+     * CQL search (v1 endpoint, same auth).
+     */
+    private findFolder;
+    private createFolder;
+    /**
+     * Project layout mirrors the space convention: a FOLDER named for the
+     * project under the space root, with the landing page (and doc tree)
+     * inside it.
+     */
     ensureRoot(projectName: string): Promise<Page>;
     getPage(id: string): Promise<Page>;
     findPage(title: string, parentId?: string): Promise<Page | null>;

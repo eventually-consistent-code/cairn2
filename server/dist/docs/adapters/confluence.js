@@ -76,16 +76,40 @@ export class ConfluenceConnector {
         };
         return this.space;
     }
+    /**
+     * Find the project's folder by title (case-insensitive) anywhere in the
+     * space. Folders have no title-filtered v2 listing, so this goes through
+     * CQL search (v1 endpoint, same auth).
+     */
+    async findFolder(title) {
+        const resp = await this.api("GET", `/rest/api/search?cql=${encodeURIComponent(`type=folder and space="${this.cfg.spaceKey}"`)}&limit=100`);
+        const match = (resp.results ?? [])
+            .map((r) => r.content)
+            .find((c) => c?.title?.toLowerCase() === title.toLowerCase());
+        return match?.id == null ? null : String(match.id);
+    }
+    async createFolder(title, parentId) {
+        const space = await this.getSpace();
+        const raw = await this.api("POST", "/api/v2/folders", {
+            spaceId: space.id,
+            title,
+            ...(parentId ? { parentId } : {}),
+        });
+        return String(raw.id);
+    }
+    /**
+     * Project layout mirrors the space convention: a FOLDER named for the
+     * project under the space root, with the landing page (and doc tree)
+     * inside it.
+     */
     async ensureRoot(projectName) {
         const space = await this.getSpace();
-        const existing = await this.findPage(projectName, space.homepageId || undefined);
+        const folderId = await this.findFolder(projectName)
+            ?? await this.createFolder(projectName, space.homepageId || undefined);
+        const existing = await this.findPage(projectName, folderId);
         if (existing)
             return existing;
-        return this.createPage({
-            title: projectName,
-            markdown: "",
-            parentId: space.homepageId || undefined,
-        });
+        return this.createPage({ title: projectName, markdown: "", parentId: folderId });
     }
     async getPage(id) {
         const raw = await this.api("GET", `/api/v2/pages/${encodeURIComponent(id)}`);
