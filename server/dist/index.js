@@ -96,6 +96,8 @@ export function buildServer(deps) {
     };
     // Docs connectors memo per resolved dir, same lifecycle as trackers.
     const docsConnectors = new Map();
+    if (deps.docsConnector)
+        docsConnectors.set(launchDir, deps.docsConnector);
     const getDocsConnector = async (dOverride) => {
         const d = dOverride ?? dir();
         let c = docsConnectors.get(d);
@@ -501,7 +503,8 @@ export function buildServer(deps) {
         // next call rebuild. A test-injected tracker is config-independent.
         if (!(deps.tracker && d === launchDir))
             trackers.delete(d);
-        docsConnectors.delete(d);
+        if (!(deps.docsConnector && d === launchDir))
+            docsConnectors.delete(d);
         return result;
     }));
     server.registerTool("issue_comment", { description: "Post a plain-language comment on a tracker issue (management-visible progress note)",

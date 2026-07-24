@@ -4,48 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { mkdirSync } from "node:fs";
 import { publishReadme, publishTree } from "../src/docs/publish.js";
-import type { DocsConnector, Page, PageSpec } from "../src/docs/types.js";
-
-/** Minimal in-memory DocsConnector — records what publish asked for. */
-function memoryConnector() {
-  const pages = new Map<string, Page & { markdown: string }>();
-  let seq = 0;
-  const conn: DocsConnector = {
-    capabilities: { hasPageTree: true, hasAttachments: false, hasLabels: false },
-    async ensureRoot(projectName: string) {
-      for (const p of pages.values()) if (p.title === projectName) return p;
-      return conn.createPage({ title: projectName, markdown: "" });
-    },
-    async getPage(id: string) {
-      const p = pages.get(id);
-      if (!p) throw new Error(`no page ${id}`);
-      return p;
-    },
-    async findPage(title: string, parentId?: string) {
-      for (const p of pages.values()) {
-        if (p.title === title && (parentId === undefined || p.parentId === parentId)) return p;
-      }
-      return null;
-    },
-    async listChildren(parentId: string) {
-      return [...pages.values()].filter((p) => p.parentId === parentId);
-    },
-    async createPage(spec: PageSpec) {
-      const page = { id: String(++seq), title: spec.title, parentId: spec.parentId,
-        version: 1, url: `mem://${seq}`, markdown: spec.markdown };
-      pages.set(page.id, page);
-      return page;
-    },
-    async updatePage(id: string, spec: PageSpec) {
-      const prev = pages.get(id)!;
-      const page = { ...prev, title: spec.title, markdown: spec.markdown,
-        version: (prev.version ?? 0) + 1 };
-      pages.set(id, page);
-      return page;
-    },
-  };
-  return { conn, pages };
-}
+import { FakeDocsConnector } from "../src/docs/fake.js";
 
 function tempProject(readme?: string): string {
   const dir = mkdtempSync(join(tmpdir(), "cairn-pub-"));
@@ -56,7 +15,8 @@ function tempProject(readme?: string): string {
 describe("publishReadme", () => {
   it("creates the landing page from README.md, titled after the project dir", async () => {
     const dir = tempProject("# Hello\n\nWorld.");
-    const { conn, pages } = memoryConnector();
+    const conn = new FakeDocsConnector();
+    const pages = conn.pages;
     try {
       const result = await publishReadme(conn, dir);
       expect(result.published).toBe(1);
@@ -67,7 +27,8 @@ describe("publishReadme", () => {
 
   it("re-publish updates the same page in place (idempotent)", async () => {
     const dir = tempProject("v1");
-    const { conn, pages } = memoryConnector();
+    const conn = new FakeDocsConnector();
+    const pages = conn.pages;
     try {
       const first = await publishReadme(conn, dir, "proj");
       writeFileSync(join(dir, "README.md"), "v2");
@@ -80,7 +41,7 @@ describe("publishReadme", () => {
 
   it("honors an explicit project name", async () => {
     const dir = tempProject("x");
-    const { conn } = memoryConnector();
+    const conn = new FakeDocsConnector();
     try {
       const result = await publishReadme(conn, dir, "My Project");
       expect(result.root.title).toBe("My Project");
@@ -89,7 +50,7 @@ describe("publishReadme", () => {
 
   it("throws NOT_FOUND without a README", async () => {
     const dir = tempProject();
-    const { conn } = memoryConnector();
+    const conn = new FakeDocsConnector();
     try {
       await expect(publishReadme(conn, dir)).rejects.toMatchObject({ code: "NOT_FOUND" });
     } finally { rmSync(dir, { recursive: true, force: true }); }
@@ -108,7 +69,8 @@ describe("publishTree", () => {
 
   it("publishes the full tree with correct ancestry", async () => {
     const dir = docsProject();
-    const { conn, pages } = memoryConnector();
+    const conn = new FakeDocsConnector();
+    const pages = conn.pages;
     try {
       const result = await publishTree(conn, dir, "proj");
       // root + Architecture + Adr + First + Changelog
@@ -123,7 +85,8 @@ describe("publishTree", () => {
 
   it("writes a Documentation TOC on the landing page and a child list on dir pages", async () => {
     const dir = docsProject();
-    const { conn, pages } = memoryConnector();
+    const conn = new FakeDocsConnector();
+    const pages = conn.pages;
     try {
       await publishTree(conn, dir, "proj");
       const root = [...pages.values()].find((p) => p.title === "proj")!;
@@ -137,7 +100,8 @@ describe("publishTree", () => {
 
   it("re-publish updates in place — page count stays constant", async () => {
     const dir = docsProject();
-    const { conn, pages } = memoryConnector();
+    const conn = new FakeDocsConnector();
+    const pages = conn.pages;
     try {
       await publishTree(conn, dir, "proj");
       const count = pages.size;
@@ -149,7 +113,8 @@ describe("publishTree", () => {
 
   it("disambiguates space-wide title conflicts with a (Context) suffix", async () => {
     const dir = docsProject();
-    const { conn, pages } = memoryConnector();
+    const conn = new FakeDocsConnector();
+    const pages = conn.pages;
     // Simulate an unrelated page elsewhere in the space already owning the title.
     await conn.createPage({ title: "Architecture", markdown: "other", parentId: "elsewhere" });
     try {
@@ -165,7 +130,8 @@ describe("publishTree", () => {
 
   it("degenerates to README-only when there is no docs tree", async () => {
     const dir = tempProject("# Solo");
-    const { conn, pages } = memoryConnector();
+    const conn = new FakeDocsConnector();
+    const pages = conn.pages;
     try {
       const result = await publishTree(conn, dir, "proj");
       expect(result.published).toBe(1);

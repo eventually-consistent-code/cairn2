@@ -703,3 +703,56 @@ describe("config_set tracker memo eviction", () => {
     }
   });
 });
+
+describe("docs tools over an injected fake connector", () => {
+  it("docs_publish publishes the tree; docs_status reports the landing page", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cairn-docs-"));
+    writeFileSync(join(dir, "cairn.json"), JSON.stringify({
+      tracker: { type: "github", config: { repo: "o/r" } },
+      docs: { connector: "confluence", config: { baseUrl: "https://x.atlassian.net/wiki", spaceKey: "D" } },
+    }));
+    writeFileSync(join(dir, "README.md"), "# Landing");
+    mkdirSync(join(dir, "docs"));
+    writeFileSync(join(dir, "docs", "guide.md"), "# Guide\n\nBody.");
+    const { FakeDocsConnector } = await import("../src/docs/fake.js");
+    const fake = new FakeDocsConnector();
+    try {
+      const server = buildServer({ projectDir: dir, tracker: new FakeTracker(), docsConnector: fake });
+      const [ct, st] = InMemoryTransport.createLinkedPair();
+      const c = new Client({ name: "docs-test", version: "0.0.0" });
+      await Promise.all([server.connect(st), c.connect(ct)]);
+
+      const pub = await c.callTool({ name: "docs_publish", arguments: { projectName: "proj" } });
+      const pubJson = JSON.parse((pub.content as Array<{ text: string }>)[0].text);
+      expect(pub.isError).toBeFalsy();
+      expect(pubJson.published).toBe(2);
+      expect(pubJson.root.title).toBe("proj");
+      expect(fake.pages.size).toBe(2);
+
+      const status = await c.callTool({ name: "docs_status", arguments: { projectName: "proj" } });
+      const statusJson = JSON.parse((status.content as Array<{ text: string }>)[0].text);
+      expect(statusJson.configured).toBe(true);
+      expect(statusJson.connector).toBe("confluence");
+      expect(statusJson.root.title).toBe("proj");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("docs_status reports configured:false without a docs block", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cairn-nodocs-"));
+    writeFileSync(join(dir, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
+    try {
+      const server = buildServer({ projectDir: dir, tracker: new FakeTracker() });
+      const [ct, st] = InMemoryTransport.createLinkedPair();
+      const c = new Client({ name: "docs-test-2", version: "0.0.0" });
+      await Promise.all([server.connect(st), c.connect(ct)]);
+      const status = await c.callTool({ name: "docs_status", arguments: {} });
+      const statusJson = JSON.parse((status.content as Array<{ text: string }>)[0].text);
+      expect(statusJson.configured).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

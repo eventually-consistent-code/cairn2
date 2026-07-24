@@ -85,7 +85,9 @@ const timelineMergeSort = (items: TimelineItem[]): TimelineItem[] =>
     return ka === kb ? timelineCmp(sa, sb) : timelineCmp(ka, kb);
   });
 
-export function buildServer(deps: { projectDir: string; tracker?: Tracker }): McpServer {
+export function buildServer(deps: {
+  projectDir: string; tracker?: Tracker; docsConnector?: DocsConnector;
+}): McpServer {
   const server = new McpServer({ name: "cairn", version: VERSION });
 
   // Workspace resolution: the injected projectDir is the LAUNCH dir, fixed for the
@@ -115,6 +117,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
 
   // Docs connectors memo per resolved dir, same lifecycle as trackers.
   const docsConnectors = new Map<string, DocsConnector>();
+  if (deps.docsConnector) docsConnectors.set(launchDir, deps.docsConnector);
   const getDocsConnector = async (dOverride?: string): Promise<DocsConnector> => {
     const d = dOverride ?? dir();
     let c = docsConnectors.get(d);
@@ -648,7 +651,7 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       // a config write may change backend or baseUrl, so drop it and let the
       // next call rebuild. A test-injected tracker is config-independent.
       if (!(deps.tracker && d === launchDir)) trackers.delete(d);
-      docsConnectors.delete(d);
+      if (!(deps.docsConnector && d === launchDir)) docsConnectors.delete(d);
       return result;
     }));
 
