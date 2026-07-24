@@ -4,6 +4,16 @@
     "type": "github",
     "config": { "repo": "owner/name" }
   },
+  "_docs": {
+    "$comment": "Optional documentation connector — publishes README + docs/ as a page tree. Copy to `docs` to enable. Credentials come from env vars named here, never this file.",
+    "connector": "confluence",
+    "config": {
+      "baseUrl": "https://your-domain.atlassian.net/wiki",
+      "spaceKey": "DOCS",
+      "emailEnv": "CONFLUENCE_EMAIL",
+      "tokenEnv": "CONFLUENCE_API_TOKEN"
+    }
+  },
   "agents": { "model": "auto" },
   "continuity": {
     "resume": "prompt",

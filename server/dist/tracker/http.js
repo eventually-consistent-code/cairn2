@@ -72,6 +72,26 @@ async function fetchPage(fetchImpl, url, init, opts) {
     return { body, next: match?.[1] };
 }
 /**
+ * Body-cursor variant of paginate for APIs that put the next link in the
+ * response body (Confluence `_links.next`) instead of a Link header. The
+ * caller's `extract` pulls items + the next cursor out of each page body;
+ * relative cursors resolve against the first URL's origin. Same MAX_PAGES
+ * cap and truncation warning as paginate.
+ */
+export async function paginateCursor(fetchImpl, firstUrl, init, extract, opts = {}) {
+    const out = [];
+    let url = firstUrl;
+    for (let page = 0; url && page < MAX_PAGES; page++) {
+        const body = await fetchJson(fetchImpl, url, init, opts);
+        const { items, next } = extract(body);
+        out.push(...items);
+        url = next ? new URL(next, firstUrl).toString() : undefined;
+        if (url && page === MAX_PAGES - 1)
+            console.error(`[cairn] pagination truncated at ${MAX_PAGES} pages for ${firstUrl}`);
+    }
+    return out;
+}
+/**
  * Follows RFC-5988 Link: rel="next" headers, concatenating array pages.
  * Hard-caps at MAX_PAGES pages; logs a truncation warning if the cap is hit
  * while a next link is still present (never silently drops data).

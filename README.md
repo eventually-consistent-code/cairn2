@@ -33,6 +33,14 @@ GitLab, Jira, Asana, Azure Boards, ClickUp. Capability matrix per backend
 with retry/backoff, and a single contract test suite every adapter must pass
 — fixtures in CI, live sandboxes before release.
 
+**Docs connectors** — publish repo documentation outward through the same
+pluggable-adapter pattern: `/cairn:docs publish` mirrors README + `docs/`
+into Confluence as a per-project folder holding a landing page plus a
+logical child-page tree (generated
+contents sections, idempotent re-publish, space-wide title-conflict
+handling). The SPI is product-neutral — Notion, GitBook, Slite, and
+SharePoint connectors slot in behind the same contract suite.
+
 **Planning engine** — GSD-depth planning on native Claude Code muscles.
 Git-owned artifacts (`PROJECT.md`, `roadmap.md`, per-phase
 `CONTEXT.md`/`RESEARCH.md`/`PLAN.md`/`VERIFICATION.md`), tracker mirroring
@@ -54,15 +62,15 @@ unplanned-work surfacing (tracker issues no plan references), `import`
 assignee-aware claiming, and plans/cards that collaborate through ordinary
 git PRs.
 
-**Verbs (36 live):** `plan` `work` `verify` `ship` `status` `new` `import`
+**Verbs (37 live):** `plan` `work` `verify` `ship` `status` `new` `import`
 `remember` `recall` `help` `do` `waypoint` `scout` `route` `summit` `auto`
 `fast` `resync` `mark` `retro` `distill` `brief` `tune` `trace` `probe`
 `draft` `audit` `review` `triage` `map` `thread` `profile` `medic`
-`backtrack` `basecamp` `peers` — each a `/cairn:<verb>` command, generated
+`backtrack` `basecamp` `peers` `docs` — each a `/cairn:<verb>` command, generated
 from the routing table.
 The routing table is complete: the reserved verb set is now empty.
 
-**Server:** 63 typed MCP tools, 495 passing tests (env-gated live-backend
+**Server:** 65 typed MCP tools, 555 passing tests (env-gated live-backend
 suites skip without creds), three dependencies (`@modelcontextprotocol/sdk`,
 `better-sqlite3`, `zod`). Fail loud, never fake state.
 

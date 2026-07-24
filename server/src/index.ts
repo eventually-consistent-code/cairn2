@@ -12,6 +12,9 @@ import { ActiveContext } from "./active-context.js";
 import { makeTracker } from "./tracker/registry.js";
 import { CachedTracker } from "./tracker/cached.js";
 import type { Tracker, IssueState } from "./tracker/types.js";
+import { makeDocsConnector } from "./docs/registry.js";
+import type { DocsConnector } from "./docs/types.js";
+import { defaultProjectName, publishTree } from "./docs/publish.js";
 import { scaffoldProject, scaffoldPhase, writePlanIssues, readPlanMeta, writePlanMeta } from "./planning/artifacts.js";
 import { projectStatus } from "./planning/status.js";
 import { driftReport, ensurePhase } from "./planning/mirror.js";
@@ -82,7 +85,9 @@ const timelineMergeSort = (items: TimelineItem[]): TimelineItem[] =>
     return ka === kb ? timelineCmp(sa, sb) : timelineCmp(ka, kb);
   });
 
-export function buildServer(deps: { projectDir: string; tracker?: Tracker }): McpServer {
+export function buildServer(deps: {
+  projectDir: string; tracker?: Tracker; docsConnector?: DocsConnector;
+}): McpServer {
   const server = new McpServer({ name: "cairn", version: VERSION });
 
   // Workspace resolution: the injected projectDir is the LAUNCH dir, fixed for the
@@ -108,6 +113,19 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
       trackers.set(d, t);
     }
     return t;
+  };
+
+  // Docs connectors memo per resolved dir, same lifecycle as trackers.
+  const docsConnectors = new Map<string, DocsConnector>();
+  if (deps.docsConnector) docsConnectors.set(launchDir, deps.docsConnector);
+  const getDocsConnector = async (dOverride?: string): Promise<DocsConnector> => {
+    const d = dOverride ?? dir();
+    let c = docsConnectors.get(d);
+    if (!c) {
+      c = await makeDocsConnector(loadConfig(d));
+      docsConnectors.set(d, c);
+    }
+    return c;
   };
 
   const getCtx = (d: string = dir()): ActiveContext => new ActiveContext(d);
@@ -626,8 +644,16 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
     { description: "Merge-patch cairn.json (null deletes a key). Validates the merged result before "
         + "writing; refuses secret-looking keys/values — credentials live in env vars",
       inputSchema: { patch: z.record(z.unknown()) } },
-    wrap((a: { patch: Record<string, unknown> }) =>
-      writeConfigPatch(dir(), a.patch)));
+    wrap((a: { patch: Record<string, unknown> }) => {
+      const d = dir();
+      const result = writeConfigPatch(d, a.patch);
+      // The tracker memo binds an adapter to the config it was built from --
+      // a config write may change backend or baseUrl, so drop it and let the
+      // next call rebuild. A test-injected tracker is config-independent.
+      if (!(deps.tracker && d === launchDir)) trackers.delete(d);
+      if (!(deps.docsConnector && d === launchDir)) docsConnectors.delete(d);
+      return result;
+    }));
 
   server.registerTool("issue_comment",
     { description: "Post a plain-language comment on a tracker issue (management-visible progress note)",
@@ -877,6 +903,28 @@ export function buildServer(deps: { projectDir: string; tracker?: Tracker }): Mc
     wrap(async (a: { provider: Provider; input: string; timeoutMs?: number }) => {
       const d = dir();
       return peerRun(d, a.provider, a.input, a.timeoutMs);
+    }));
+
+  server.registerTool("docs_publish",
+    { description: "Publish project documentation to the configured docs connector — "
+        + "README.md becomes the landing page, docs/ (+ CHANGELOG.md) becomes the child "
+        + "page tree, and the landing page gains a Documentation contents section. Idempotent",
+      inputSchema: { projectName: z.string().optional() } },
+    wrap(async (a: { projectName?: string }) => {
+      const d = dir();
+      return publishTree(await getDocsConnector(d), d, a.projectName);
+    }));
+
+  server.registerTool("docs_status",
+    { description: "Docs connector status — configured connector and the project's landing page, when one exists",
+      inputSchema: { projectName: z.string().optional() } },
+    wrap(async (a: { projectName?: string }) => {
+      const d = dir();
+      const cfg = loadConfig(d);
+      if (!cfg.docs) return { configured: false };
+      const connector = await getDocsConnector(d);
+      const root = await connector.findPage(a.projectName ?? defaultProjectName(d));
+      return { configured: true, connector: cfg.docs.connector, root };
     }));
 
   return server;

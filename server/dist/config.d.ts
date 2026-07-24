@@ -10,6 +10,16 @@ export declare const ConfigSchema: z.ZodObject<{
         type: "github" | "gitlab" | "jira" | "asana" | "azure-boards" | "clickup";
         config: Record<string, unknown>;
     }>;
+    docs: z.ZodOptional<z.ZodObject<{
+        connector: z.ZodEnum<["confluence"]>;
+        config: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+    }, "strip", z.ZodTypeAny, {
+        config: Record<string, unknown>;
+        connector: "confluence";
+    }, {
+        config: Record<string, unknown>;
+        connector: "confluence";
+    }>>;
     agents: z.ZodDefault<z.ZodObject<{
         model: z.ZodEnum<["auto", "inherit", "haiku", "sonnet", "opus"]>;
     }, "strip", z.ZodTypeAny, {
@@ -113,6 +123,10 @@ export declare const ConfigSchema: z.ZodObject<{
         allow: string[];
         extraPatterns: string[];
     };
+    docs?: {
+        config: Record<string, unknown>;
+        connector: "confluence";
+    } | undefined;
     user?: {
         handle: string;
         mode?: "vibe" | "engineer" | undefined;
@@ -126,6 +140,10 @@ export declare const ConfigSchema: z.ZodObject<{
         type: "github" | "gitlab" | "jira" | "asana" | "azure-boards" | "clickup";
         config: Record<string, unknown>;
     };
+    docs?: {
+        config: Record<string, unknown>;
+        connector: "confluence";
+    } | undefined;
     agents?: {
         model: "auto" | "inherit" | "haiku" | "sonnet" | "opus";
     } | undefined;

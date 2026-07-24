@@ -9,6 +9,14 @@ export const ConfigSchema = z.object({
     type: z.enum(["github", "gitlab", "jira", "asana", "azure-boards", "clickup"]),
     config: z.record(z.unknown()),
   }),
+  // Documentation connectors publish repo docs outward (Confluence first);
+  // same two-level shape as tracker — deep validation lives in the adapter.
+  docs: z
+    .object({
+      connector: z.enum(["confluence"]),
+      config: z.record(z.unknown()),
+    })
+    .optional(),
   agents: z
     .object({ model: z.enum(["auto", "inherit", "haiku", "sonnet", "opus"]) })
     .default({ model: "auto" }),
