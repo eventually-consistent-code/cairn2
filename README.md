@@ -35,11 +35,12 @@ with retry/backoff, and a single contract test suite every adapter must pass
 
 **Docs connectors** — publish repo documentation outward through the same
 pluggable-adapter pattern: `/cairn:docs publish` mirrors README + `docs/`
-into Confluence as a per-project folder holding a landing page plus a
-logical child-page tree (generated
-contents sections, idempotent re-publish, space-wide title-conflict
-handling). The SPI is product-neutral — Notion, GitBook, Slite, and
-SharePoint connectors slot in behind the same contract suite.
+into Confluence (per-project folder, landing page + child-page tree,
+generated contents sections, space-wide title-conflict handling) or into a
+local Docusaurus site checkout (markdown + `_category_.json`, native
+sidebar, optional auto-commit — never push). Idempotent re-publish on both.
+The SPI is product-neutral — Notion, GitBook, Slite, and SharePoint
+connectors slot in behind the same contract suite.
 
 **Planning engine** — GSD-depth planning on native Claude Code muscles.
 Git-owned artifacts (`PROJECT.md`, `roadmap.md`, per-phase
