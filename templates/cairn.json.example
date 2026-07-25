@@ -5,7 +5,7 @@
     "config": { "repo": "owner/name" }
   },
   "_docs": {
-    "$comment": "Optional documentation connector — publishes README + docs/ as a page tree. Copy to `docs` to enable. Credentials come from env vars named here, never this file.",
+    "$comment": "Optional documentation connector — publishes README + docs/ as a page tree. Copy to `docs` to enable. Credentials come from env vars named here, never this file. Alternative: `docusaurus` writes markdown into a local Docusaurus site checkout (no credentials; autoCommit commits in the site repo after publish, never pushes).",
     "connector": "confluence",
     "config": {
       "baseUrl": "https://your-domain.atlassian.net/wiki",
@@ -13,6 +13,11 @@
       "emailEnv": "CONFLUENCE_EMAIL",
       "tokenEnv": "CONFLUENCE_API_TOKEN"
     }
+  },
+  "_docs_docusaurus": {
+    "$comment": "Docusaurus example — copy to `docs` to enable.",
+    "connector": "docusaurus",
+    "config": { "sitePath": "../my-docs-site", "docsDir": "docs", "autoCommit": false }
   },
   "agents": { "model": "auto" },
   "continuity": {
