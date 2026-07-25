@@ -20,6 +20,7 @@ export function docsConnectorContract(
       expect(typeof c.capabilities.hasPageTree).toBe("boolean");
       expect(typeof c.capabilities.hasAttachments).toBe("boolean");
       expect(typeof c.capabilities.hasLabels).toBe("boolean");
+      expect(typeof c.capabilities.hasNativeToc).toBe("boolean");
     });
 
     it("ensureRoot is idempotent — same page both times", async () => {

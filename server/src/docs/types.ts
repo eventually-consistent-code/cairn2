@@ -10,6 +10,9 @@ export interface DocsCapability {
   hasAttachments: boolean;
   /** Pages can carry labels/tags. */
   hasLabels: boolean;
+  /** Backend renders directory/landing indexes natively — the publisher
+   *  must not append generated TOC markdown. */
+  hasNativeToc: boolean;
 }
 
 export interface Page {
@@ -27,6 +30,9 @@ export interface PageSpec {
   markdown: string;
   /** Omitted = top of the project tree (child of the project root page). */
   parentId?: string;
+  /** Hint: this page will have child pages. Filesystem backends need to
+   *  know folder-vs-file at create time; API backends may ignore it. */
+  container?: boolean;
 }
 
 export interface DocsConnector {
@@ -42,4 +48,7 @@ export interface DocsConnector {
   listChildren(parentId: string): Promise<Page[]>;
   createPage(spec: PageSpec): Promise<Page>;
   updatePage(id: string, spec: PageSpec): Promise<Page>;
+  /** Post-publish hook (e.g. auto-commit). Returns a warning string when the
+   *  step degraded, undefined when clean or not applicable. */
+  finalize?(): Promise<string | undefined>;
 }

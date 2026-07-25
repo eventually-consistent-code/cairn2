@@ -18,7 +18,7 @@ interface StoredPage extends Page {
 
 export class FakeDocsConnector implements DocsConnector {
   readonly capabilities: DocsCapability = {
-    hasPageTree: true, hasAttachments: false, hasLabels: false,
+    hasPageTree: true, hasAttachments: false, hasLabels: false, hasNativeToc: false,
   };
 
   readonly pages = new Map<string, StoredPage>();
