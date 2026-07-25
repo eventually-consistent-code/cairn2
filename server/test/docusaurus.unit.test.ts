@@ -1,6 +1,7 @@
 // Docusaurus connector unit tests — temp-dir site fixtures, no live backend.
 // The temp dir IS the backend, so these are also the connector's live tests.
 
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -110,6 +111,49 @@ describe("DocusaurusConnector", () => {
     await c.createPage({ title: "P", markdown: "x", parentId: root.id });
     expect(readFileSync(join(site, "docs", "handwritten.md"), "utf8")).toBe("mine");
     expect(readdirSync(join(site, "docs")).sort()).toEqual(["handwritten.md", "proj"]);
+  });
+});
+
+function gitSite(): string {
+  const site = tempSite();
+  execFileSync("git", ["init", "-q"], { cwd: site });
+  execFileSync("git", ["-C", site, "config", "user.email", "t@t"], {});
+  execFileSync("git", ["-C", site, "config", "user.name", "t"], {});
+  return site;
+}
+
+describe("finalize / autoCommit", () => {
+  it("autoCommit off → finalize returns undefined, no commit", async () => {
+    const site = gitSite();
+    const c = make(configSchema.parse({ sitePath: site }));
+    const root = await c.ensureRoot("proj");
+    await c.createPage({ title: "P", markdown: "x", parentId: root.id });
+    expect(await c.finalize!()).toBeUndefined();
+    // no commits at all — git log on an unborn branch exits non-zero
+    expect(() => execFileSync("git", ["-C", site, "log", "--oneline"], { stdio: "pipe" }))
+      .toThrow();
+  });
+
+  it("autoCommit on + git repo → commits the project folder, never pushes", async () => {
+    const site = gitSite();
+    const c = make(configSchema.parse({ sitePath: site, autoCommit: true }));
+    const root = await c.ensureRoot("proj");
+    await c.createPage({ title: "P", markdown: "x", parentId: root.id });
+    expect(await c.finalize!()).toBeUndefined();
+    const log = execFileSync("git", ["-C", site, "log", "--oneline"], { encoding: "utf8" });
+    expect(log).toContain("docs(cairn): publish proj");
+    const status = execFileSync("git", ["-C", site, "status", "--porcelain"],
+      { encoding: "utf8" });
+    expect(status.trim().split("\n").filter((l) => l.includes("docs/proj"))).toEqual([]);
+  });
+
+  it("autoCommit on + not a git repo → warning, publish unharmed", async () => {
+    const site = tempSite();
+    const c = make(configSchema.parse({ sitePath: site, autoCommit: true }));
+    const root = await c.ensureRoot("proj");
+    await c.createPage({ title: "P", markdown: "x", parentId: root.id });
+    const warning = await c.finalize!();
+    expect(warning).toMatch(/auto-commit skipped/i);
   });
 });
 
