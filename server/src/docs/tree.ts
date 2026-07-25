@@ -9,6 +9,8 @@ export interface DocNode {
   title: string;
   /** Markdown body. Directories get an empty body; the publisher writes a TOC. */
   markdown: string;
+  /** Source file/dir basename — lets filesystem backends mirror the layout. */
+  sourceName: string;
   children: DocNode[];
 }
 
@@ -31,6 +33,7 @@ function fileNode(path: string): DocNode {
   return {
     title: h1 ? h1[1].trim() : nameToTitle(basename(path)),
     markdown,
+    sourceName: basename(path),
     children: [],
   };
 }
@@ -48,7 +51,8 @@ function dirNode(path: string): DocNode | null {
     }
   }
   if (children.length === 0) return null;
-  return { title: nameToTitle(basename(path)), markdown: "", children };
+  return { title: nameToTitle(basename(path)), markdown: "",
+    sourceName: basename(path), children };
 }
 
 /**

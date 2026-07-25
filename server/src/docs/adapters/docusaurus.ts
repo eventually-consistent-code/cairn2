@@ -41,7 +41,10 @@ const FRONT_MATTER_RE = /^---\n([\s\S]*?)\n---\n/;
 function frontMatter(title: string, version: number, position?: number): string {
   const quoted = `"${title.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
   const pos = position === undefined ? "" : `sidebar_position: ${position}\n`;
-  return `---\ntitle: ${quoted}\n${pos}sidebar_custom_props:\n  cairn_version: ${version}\n---\n\n`;
+  // mdx.format: md — bodies cross the SPI as raw markdown, and Docusaurus v3
+  // compiles .md as MDX by default, where any literal <tag> is a parse error.
+  return `---\ntitle: ${quoted}\n${pos}mdx:\n  format: md\n`
+    + `sidebar_custom_props:\n  cairn_version: ${version}\n---\n\n`;
 }
 
 function readFrontMatter(raw: string): { title?: string; position?: number; version?: number } {
@@ -225,16 +228,18 @@ export class DocusaurusConnector implements DocsConnector {
     const dirId = this.parentDirId(spec.parentId);
     const dirAbs = dirId === "" ? this.docsAbs : this.abs(dirId);
     mkdirSync(dirAbs, { recursive: true });
-    const slug = slugify(spec.title);
     const position = this.nextPosition(dirAbs);
-    const id = dirId === "" ? slug : posix.join(dirId, slug);
     if (spec.container) {
-      mkdirSync(join(dirAbs, slug), { recursive: true });
+      const name = spec.sourceName ?? slugify(spec.title);
+      const id = dirId === "" ? name : posix.join(dirId, name);
+      mkdirSync(join(dirAbs, name), { recursive: true });
       this.writeContainer(id, spec, position, 1);
       return this.pageFor(id);
     }
-    const fileId = `${id}.md`;
-    writeFileSync(join(dirAbs, `${slug}.md`),
+    // source filename wins so repo-relative links between docs keep resolving
+    const fileName = spec.sourceName ?? `${slugify(spec.title)}.md`;
+    const fileId = dirId === "" ? fileName : posix.join(dirId, fileName);
+    writeFileSync(join(dirAbs, fileName),
       frontMatter(spec.title, 1, position) + this.body(spec.markdown));
     return this.pageFor(fileId);
   }

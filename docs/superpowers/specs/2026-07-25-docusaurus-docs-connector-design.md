@@ -62,11 +62,18 @@ Implements `DocsConnector` with the filesystem as the backend.
   separators). Leaf page → `<parent>/<slug>.md`; directory page → `<parent>/
   <slug>` (the folder). `Page.url` = absolute file path (no site URL is
   knowable without building the site).
-- **Slugging:** `slugify(title)` — lowercase, alphanumerics kept, everything
-  else collapsed to single hyphens, trimmed. Filenames derive from the
-  *original* title at create time and stay stable on rename: `updatePage`
-  with a new title rewrites front matter `title:` but keeps the file path,
-  preserving URLs (Docusaurus best practice).
+- **Naming (amended during verification):** filenames mirror the source —
+  `PageSpec.sourceName` (the repo file/dir basename, threaded from
+  `DocNode` through the publisher) wins; `slugify(title)` (lowercase,
+  alphanumerics kept, everything else collapsed to single hyphens, trimmed)
+  is the fallback for pages with no source file (e.g. the project root).
+  Mirroring keeps repo-relative links between docs resolving on the
+  published site. Paths stay stable on rename: `updatePage` with a new
+  title rewrites front matter `title:` but keeps the file path.
+- **CommonMark opt-out (amended during verification):** every page's front
+  matter carries `mdx: {format: md}` — Docusaurus v3 compiles `.md` as MDX
+  by default, where literal `<angle>` text is a parse error; SPI bodies are
+  raw markdown, so CommonMark is the correct per-file setting.
 - **`ensureRoot(projectName)`** — idempotent: ensures
   `<docsDir>/<slug(projectName)>/` exists with a `_category_.json`
   (`{"label": projectName}`). Returns the folder as the root `Page`. The

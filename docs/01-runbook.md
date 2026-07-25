@@ -1024,14 +1024,23 @@ contents page itself. No generated TOC markdown anywhere: the sidebar and
 generated indexes are the navigation, which is the whole point of the
 `hasNativeToc` capability.
 
+**Filenames mirror your repo:** published files keep their source names
+(`docs/00-quickstart.md` publishes as `00-quickstart.md`, not a
+title-derived slug), so repo-relative links *between* your docs keep
+resolving on the published site. Every page also opts into CommonMark via
+`mdx.format: md` front matter — raw markdown with literal `<angle>`
+brackets never hits the MDX parser.
+
+**Broken-link policy:** links that point *outside* `docs/` (a
+`../README.md`, a source-file reference) can't resolve on a static site.
+Docusaurus fails the build on these by default — set `onBrokenLinks:
+'warn'` in `docusaurus.config.js` (the standard setting for imported
+content), or keep doc links inside `docs/`.
+
 **Ownership:** everything under `<docsDir>/<project-slug>/` is
 cairn-managed and overwritten on re-publish; the connector never touches a
 file outside that folder. Hand-written pages elsewhere in the site are
 safe.
-
-**Stable URLs:** page filenames derive from the title at first publish and
-*stay put* on rename — a renamed title rewrites the front matter, not the
-file path, so published links keep working.
 
 **v1 limits:** no attachments, no versioned-docs/i18n trees, and page URLs
 in the publish report are file paths (the real site URL needs a built

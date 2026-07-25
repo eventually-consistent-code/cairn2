@@ -33,6 +33,10 @@ export interface PageSpec {
   /** Hint: this page will have child pages. Filesystem backends need to
    *  know folder-vs-file at create time; API backends may ignore it. */
   container?: boolean;
+  /** Source file/dir basename (e.g. "00-quickstart.md"). Filesystem backends
+   *  store under this name so repo-relative links between docs keep
+   *  resolving; API backends may ignore it. */
+  sourceName?: string;
 }
 
 export interface DocsConnector {

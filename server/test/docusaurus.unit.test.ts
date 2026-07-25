@@ -56,6 +56,20 @@ describe("DocusaurusConnector", () => {
     expect(raw.endsWith("x\n")).toBe(true);
   });
 
+  it("every page opts into CommonMark — raw markdown must never hit the MDX parser", async () => {
+    const site = tempSite();
+    const { c } = connectorAt(site);
+    const root = await c.ensureRoot("proj");
+    const page = await c.createPage({
+      title: "Generics", markdown: "mind the Array<ts> outside code fences", parentId: root.id,
+    });
+    const raw = readFileSync(join(site, "docs", page.id), "utf8");
+    expect(raw).toMatch(/^mdx:\n  format: md$/m);
+    const dir = await c.createPage({ title: "Sub", markdown: "landing", parentId: root.id, container: true });
+    const idx = readFileSync(join(site, "docs", dir.id, "index.md"), "utf8");
+    expect(idx).toMatch(/^mdx:\n  format: md$/m);
+  });
+
   it("container spec creates a folder; empty markdown gets a generated-index category", async () => {
     const site = tempSite();
     const { c } = connectorAt(site);
@@ -111,6 +125,34 @@ describe("DocusaurusConnector", () => {
     await c.createPage({ title: "P", markdown: "x", parentId: root.id });
     expect(readFileSync(join(site, "docs", "handwritten.md"), "utf8")).toBe("mine");
     expect(readdirSync(join(site, "docs")).sort()).toEqual(["handwritten.md", "proj"]);
+  });
+});
+
+describe("sourceName mirroring", () => {
+  it("stores pages under their source filename so repo-relative links keep working", async () => {
+    const site = tempSite();
+    const { c } = connectorAt(site);
+    const root = await c.ensureRoot("proj");
+    const page = await c.createPage({
+      title: "Quickstart", markdown: "see [runbook](01-runbook.md)",
+      parentId: root.id, sourceName: "00-quickstart.md",
+    });
+    expect(page.id).toBe("proj/00-quickstart.md");
+    const dir = await c.createPage({
+      title: "Adr", markdown: "", parentId: root.id, container: true, sourceName: "adr",
+    });
+    expect(dir.id).toBe("proj/adr");
+  });
+
+  it("re-publish under a sourceName is idempotent — findPage falls back to the stored title", async () => {
+    const site = tempSite();
+    const { c } = connectorAt(site);
+    const root = await c.ensureRoot("proj");
+    const page = await c.createPage({
+      title: "Quickstart", markdown: "v1", parentId: root.id, sourceName: "00-quickstart.md",
+    });
+    const found = await c.findPage("Quickstart", root.id);
+    expect(found?.id).toBe(page.id);
   });
 });
 

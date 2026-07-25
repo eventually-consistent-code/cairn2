@@ -39,16 +39,19 @@ async function upsert(
   parentId: string,
   context: string,
   container: boolean,
+  sourceName?: string,
 ): Promise<Page> {
   const existing = await connector.findPage(title, parentId);
-  if (existing) return connector.updatePage(existing.id, { title, markdown, parentId, container });
+  if (existing) {
+    return connector.updatePage(existing.id, { title, markdown, parentId, container, sourceName });
+  }
   const taken = await connector.findPage(title);
-  if (!taken) return connector.createPage({ title, markdown, parentId, container });
+  if (!taken) return connector.createPage({ title, markdown, parentId, container, sourceName });
   const alt = `${title} (${context})`;
   const existingAlt = await connector.findPage(alt, parentId);
   return existingAlt
-    ? connector.updatePage(existingAlt.id, { title: alt, markdown, parentId, container })
-    : connector.createPage({ title: alt, markdown, parentId, container });
+    ? connector.updatePage(existingAlt.id, { title: alt, markdown, parentId, container, sourceName })
+    : connector.createPage({ title: alt, markdown, parentId, container, sourceName });
 }
 
 /**
@@ -64,7 +67,7 @@ async function publishNode(
   sink: Array<{ title: string; url: string }>,
 ): Promise<Page> {
   let page = await upsert(connector, node.title, node.markdown, parentId, context,
-    node.children.length > 0);
+    node.children.length > 0, node.sourceName);
   sink.push({ title: page.title, url: page.url });
   if (node.children.length > 0) {
     const childEntries: Array<{ title: string; url: string }> = [];
