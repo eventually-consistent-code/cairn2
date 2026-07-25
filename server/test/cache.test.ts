@@ -49,6 +49,28 @@ describe("CachedTracker", () => {
     expect((await t.listMilestones()).find((x) => x.id === m.id)?.state).toBe("released");
   });
 
+  it("forwards logWork to the inner adapter — the worklog gate checks method presence", async () => {
+    class WorklogFake extends FakeTracker {
+      override readonly capabilities = { ...new FakeTracker().capabilities, hasWorklog: true };
+      worklogs: Array<{ id: string; minutes: number }> = [];
+      async logWork(id: string, minutes: number): Promise<void> {
+        this.worklogs.push({ id, minutes });
+      }
+    }
+    const fake = new WorklogFake();
+    const t = new CachedTracker(fake);
+    expect(t.capabilities.hasWorklog).toBe(true);
+    expect(t.logWork).toBeDefined();
+    const issue = await t.createIssue({ title: "w" });
+    await t.logWork!(issue.id, 25);
+    expect(fake.worklogs).toEqual([{ id: issue.id, minutes: 25 }]);
+  });
+
+  it("leaves logWork undefined when the inner adapter has none", () => {
+    const t = new CachedTracker(new FakeTracker());
+    expect(t.logWork).toBeUndefined();
+  });
+
   it("commentIssue invalidates the cache", async () => {
     const fake = new FakeTracker();
     const t = new CachedTracker(fake);

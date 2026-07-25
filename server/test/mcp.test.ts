@@ -190,6 +190,14 @@ describe("cairn MCP server", () => {
     expect(closed.json.state).toBe("closed");
   });
 
+  it("issue_close with timeSpentMinutes on a no-worklog backend says why it skipped", async () => {
+    const made = await call("issue_create", { title: "timed close" });
+    const closed = await call("issue_close", { id: made.json.id, timeSpentMinutes: 15 });
+    expect(closed.json.state).toBe("closed");
+    expect(closed.json.worklogLogged).toBe(false);
+    expect(closed.json.worklogError).toMatch(/no worklog support/);
+  });
+
   it("context_set then context_get roundtrips", async () => {
     await call("context_set", { phase: 1, issueId: "FAKE-1" });
     const got = await call("context_get");

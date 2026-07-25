@@ -256,6 +256,12 @@ export function buildServer(deps: {
           // line as fallback, so a worklog failure must never fail the close.
           worklogError = e instanceof Error ? e.message : String(e);
         }
+      } else if (a.timeSpentMinutes) {
+        // a silent worklogLogged:false is indistinguishable from a bug — say
+        // why the worklog was skipped so the time isn't presumed recorded.
+        worklogError = tracker.capabilities.hasWorklog
+          ? "tracker advertises hasWorklog but exposes no logWork method"
+          : "backend has no worklog support; time recorded in the close comment only";
       }
       refreshHandoff({ source: "tool", issue: a.id }, d);
       return { ...result, worklogLogged, ...(worklogError ? { worklogError } : {}) };
