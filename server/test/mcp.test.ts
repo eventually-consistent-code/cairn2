@@ -190,6 +190,35 @@ describe("cairn MCP server", () => {
     expect(closed.json.state).toBe("closed");
   });
 
+  it("claiming an unassigned issue auto-assigns the working user", async () => {
+    const made = await call("issue_create", { title: "claim me" });
+    const wip = await call("issue_update", { id: made.json.id, state: "in_progress" });
+    expect(wip.json.assignee).toBe("fake-user");
+    expect(wip.json.autoAssigned).toBe(true);
+  });
+
+  it("an explicit assignee wins over auto-assign", async () => {
+    const made = await call("issue_create", { title: "explicit" });
+    const wip = await call("issue_update",
+      { id: made.json.id, state: "in_progress", assignee: "someone-else" });
+    expect(wip.json.assignee).toBe("someone-else");
+    expect(wip.json.autoAssigned).toBeUndefined();
+  });
+
+  it("an already-assigned issue is left untouched on claim", async () => {
+    const made = await call("issue_create", { title: "taken" });
+    await call("issue_update", { id: made.json.id, assignee: "owner" });
+    const wip = await call("issue_update", { id: made.json.id, state: "in_progress" });
+    expect(wip.json.assignee).toBe("owner");
+    expect(wip.json.autoAssigned).toBeUndefined();
+  });
+
+  it("non-claim transitions never auto-assign", async () => {
+    const made = await call("issue_create", { title: "close only" });
+    const closed = await call("issue_update", { id: made.json.id, state: "closed" });
+    expect(closed.json.assignee).toBeUndefined();
+  });
+
   it("issue_close with timeSpentMinutes on a no-worklog backend says why it skipped", async () => {
     const made = await call("issue_create", { title: "timed close" });
     const closed = await call("issue_close", { id: made.json.id, timeSpentMinutes: 15 });

@@ -230,10 +230,22 @@ export function buildServer(deps: {
                labels?: string[]; assignee?: string }) => {
       const d = dir();
       const { id, ...patch } = a;
-      const result = await (await getTracker(d)).updateIssue(id, patch);
+      const tracker = await getTracker(d);
+      let autoAssigned = false;
+      if (patch.state === "in_progress" && patch.assignee === undefined) {
+        // best-effort claim attribution — identity failures never block the claim
+        try {
+          const current = await tracker.getIssue(id);
+          if (!current.assignee) {
+            const who = loadConfig(d).user?.handle ?? await tracker.resolveSelf?.();
+            if (who) { patch.assignee = who; autoAssigned = true; }
+          }
+        } catch { /* claim proceeds unassigned */ }
+      }
+      const result = await tracker.updateIssue(id, patch);
       snapshotNote(d, result);
       refreshHandoff({ source: "tool", issue: id }, d);
-      return result;
+      return { ...result, ...(autoAssigned ? { autoAssigned: true } : {}) };
     }));
 
   server.registerTool("issue_close",
