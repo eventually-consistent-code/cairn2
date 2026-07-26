@@ -13,7 +13,7 @@ export const ConfigSchema = z.object({
   // same two-level shape as tracker — deep validation lives in the adapter.
   docs: z
     .object({
-      connector: z.enum(["confluence"]),
+      connector: z.enum(["confluence", "docusaurus"]),
       config: z.record(z.unknown()),
     })
     .optional(),

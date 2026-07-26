@@ -5,6 +5,7 @@ import type { DocsConnector } from "./types.js";
 
 const CONNECTOR_PATHS: Record<string, string> = {
   confluence: "./adapters/confluence.js",
+  docusaurus: "./adapters/docusaurus.js",
 };
 
 interface ConnectorModule {

@@ -12,12 +12,22 @@ export class CachedTracker implements Tracker {
   readonly capabilities: Capability;
   private cache: ReadCache;
 
+  // Optional on Tracker — present only when the inner adapter has it, so the
+  // caller's "capabilities.hasWorklog && tracker.logWork" gate keeps working.
+  logWork?: (id: string, minutes: number) => Promise<void>;
+
   constructor(
     private inner: Tracker,
     cache?: ReadCache,
   ) {
     this.capabilities = inner.capabilities;
     this.cache = cache ?? new ReadCache(60_000);
+    if (inner.logWork) {
+      this.logWork = async (id, minutes) => {
+        await this.inner.logWork!(id, minutes);
+        this.cache.clear();
+      };
+    }
   }
 
   private clone<T>(value: T): T {

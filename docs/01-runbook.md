@@ -70,7 +70,7 @@ decision, which stops for you).
 | Safely revert a phase's shipped commits (reverts only) | `/cairn:backtrack <phase>` |
 | Manage multi-project workspaces and the dispatch board | `/cairn:basecamp` |
 | Convene external AI CLIs as reviewers | `/cairn:peers review` |
-| Publish README + docs/ to Confluence | `/cairn:docs publish` |
+| Publish README + docs/ to the docs connector | `/cairn:docs publish` |
 | Edit cairn.json safely | `/cairn:tune` |
 | Teach cairn how you like to be talked to | `/cairn:profile` |
 | Say what you want in plain English and let cairn route it | `/cairn:do "<request>"` |
@@ -714,7 +714,8 @@ note — board and tracker tell one story.
 ### Docs & knowledge
 
 **`docs publish [--name "<project>"] | (none = status)`** — mirror the
-repo's documentation into the configured docs connector (Confluence first).
+repo's documentation into the configured docs connector (Confluence or
+Docusaurus).
 Status reports the connector and landing page, or shows you the config block
 shape if none is set. Publish: the project gets a folder named after it
 under the space root; README.md becomes the landing page inside it; `docs/`
@@ -896,15 +897,17 @@ hardened speculatively against known API variance.
 
 ---
 
-## 5. Docs connector — Confluence, end to end
+## 5. Docs connectors — Confluence and Docusaurus, end to end
 
 The docs connector publishes your repo's documentation outward to a team
-wiki. It is deliberately a *sibling* of the tracker subsystem, not an
-extension of it — trackers manage work items, docs connectors publish
+wiki or docs site. It is deliberately a *sibling* of the tracker subsystem,
+not an extension of it — trackers manage work items, docs connectors publish
 documentation, and they share nothing but the HTTP core and the config
-pattern. Confluence ships first; the interface is product-neutral (bodies
-cross it as markdown; each adapter owns conversion), so Notion, GitBook,
-Slite, and SharePoint connectors can slot in behind the same contract suite.
+pattern. Two connectors ship today — Confluence (remote wiki, HTTP) and
+Docusaurus (local static-site checkout, filesystem) — and the interface is
+product-neutral (bodies cross it as markdown; each adapter owns conversion),
+so Notion, GitBook, Slite, and SharePoint connectors can slot in behind the
+same contract suite.
 
 ### Setup
 
@@ -979,6 +982,69 @@ converter handles headings, paragraphs, nested lists, fenced code (as a
 code macro), tables, blockquotes, and links. Images degrade to links;
 unknown constructs degrade to escaped text. Conversion never throws — worst
 case you get plainer output, not a failed publish.
+
+### Docusaurus
+
+Why would a static-site generator need a *connector* at all? Because
+Docusaurus has no page API — the site's `docs/` folder IS the database, and
+the community-recommended way to feed it from a tool is simply to write
+markdown files into that folder and let the site's own CI build and deploy.
+That's exactly what this connector does…
+
+```json
+"docs": {
+  "connector": "docusaurus",
+  "config": {
+    "sitePath": "../my-docs-site",
+    "docsDir": "docs",
+    "autoCommit": false
+  }
+}
+```
+
+- `sitePath` — path to your Docusaurus site checkout (absolute, or relative
+  to the cairn project). It must contain a `docusaurus.config.js|ts|mjs`;
+  publish fails with `CONFIG_INVALID` otherwise. No credentials — there is
+  no remote.
+- `docsDir` (default `docs`) — the docs root inside the site; created if
+  missing.
+- `autoCommit` (default `false`) — after a successful publish, commit the
+  project folder in the *site's* repo (`docs(cairn): publish <project>`).
+  It never pushes, and a failed commit (not a repo, hooks, whatever) never
+  fails the publish — it degrades to a `warning` on the publish result.
+
+**The mapping:** your project becomes one folder,
+`<docsDir>/<project-slug>/`, with a `_category_.json` carrying the project
+name. The README becomes the folder's `index.md` (Docusaurus's native
+category landing page), each doc file becomes a `.md` page with front
+matter (`title`, `sidebar_position` in publish order), and each doc
+directory becomes a nested folder — empty directories get a
+`_category_.json` with a `generated-index` link so Docusaurus renders the
+contents page itself. No generated TOC markdown anywhere: the sidebar and
+generated indexes are the navigation, which is the whole point of the
+`hasNativeToc` capability.
+
+**Filenames mirror your repo:** published files keep their source names
+(`docs/00-quickstart.md` publishes as `00-quickstart.md`, not a
+title-derived slug), so repo-relative links *between* your docs keep
+resolving on the published site. Every page also opts into CommonMark via
+`mdx.format: md` front matter — raw markdown with literal `<angle>`
+brackets never hits the MDX parser.
+
+**Broken-link policy:** links that point *outside* `docs/` (a
+`../README.md`, a source-file reference) can't resolve on a static site.
+Docusaurus fails the build on these by default — set `onBrokenLinks:
+'warn'` in `docusaurus.config.js` (the standard setting for imported
+content), or keep doc links inside `docs/`.
+
+**Ownership:** everything under `<docsDir>/<project-slug>/` is
+cairn-managed and overwritten on re-publish; the connector never touches a
+file outside that folder. Hand-written pages elsewhere in the site are
+safe.
+
+**v1 limits:** no attachments, no versioned-docs/i18n trees, and page URLs
+in the publish report are file paths (the real site URL needs a built
+site).
 
 ### Status and errors
 
@@ -1244,7 +1310,7 @@ nothing.
 |---|---|---|---|
 | `tracker.type` | `github \| gitlab \| jira \| asana \| azure-boards \| clickup` | *(required)* | Which tracker adapter runs |
 | `tracker.config` | object | *(required)* | Backend-specific config (section 4); deep validation lives in the adapter |
-| `docs.connector` | `confluence` | *(optional block)* | Which docs connector runs |
+| `docs.connector` | `confluence` \| `docusaurus` | *(optional block)* | Which docs connector runs |
 | `docs.config` | object | — | Connector config: `baseUrl`, `spaceKey`, `emailEnv` (default `CONFLUENCE_EMAIL`), `tokenEnv` (default `CONFLUENCE_API_TOKEN`) |
 | `agents.model` | `auto \| inherit \| haiku \| sonnet \| opus` | `auto` | Model routing for agent fan-out. `inherit` = session model everywhere; an explicit value pins everything; `auto` routes per work class: mechanical → fast tier, synthesis → session tier, judgment gates → strongest. Blast-radius rule: output that gates verify/ship routes UP, never down; uncertain → inherit |
 | `memory.tokenThreshold` | positive integer | `150000` | The capacity-guard advisory line for the memory index |

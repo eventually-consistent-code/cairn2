@@ -8,6 +8,8 @@ export interface PublishResult {
   root: Page;
   published: number;
   pages: Array<{ title: string; url: string }>;
+  /** Degraded-but-successful post-publish step (e.g. auto-commit skipped). */
+  warning?: string;
 }
 
 function readReadme(projectDir: string): string {
@@ -36,16 +38,20 @@ async function upsert(
   markdown: string,
   parentId: string,
   context: string,
+  container: boolean,
+  sourceName?: string,
 ): Promise<Page> {
   const existing = await connector.findPage(title, parentId);
-  if (existing) return connector.updatePage(existing.id, { title, markdown, parentId });
+  if (existing) {
+    return connector.updatePage(existing.id, { title, markdown, parentId, container, sourceName });
+  }
   const taken = await connector.findPage(title);
-  if (!taken) return connector.createPage({ title, markdown, parentId });
+  if (!taken) return connector.createPage({ title, markdown, parentId, container, sourceName });
   const alt = `${title} (${context})`;
   const existingAlt = await connector.findPage(alt, parentId);
   return existingAlt
-    ? connector.updatePage(existingAlt.id, { title: alt, markdown, parentId })
-    : connector.createPage({ title: alt, markdown, parentId });
+    ? connector.updatePage(existingAlt.id, { title: alt, markdown, parentId, container, sourceName })
+    : connector.createPage({ title: alt, markdown, parentId, container, sourceName });
 }
 
 /**
@@ -60,7 +66,8 @@ async function publishNode(
   context: string,
   sink: Array<{ title: string; url: string }>,
 ): Promise<Page> {
-  let page = await upsert(connector, node.title, node.markdown, parentId, context);
+  let page = await upsert(connector, node.title, node.markdown, parentId, context,
+    node.children.length > 0, node.sourceName);
   sink.push({ title: page.title, url: page.url });
   if (node.children.length > 0) {
     const childEntries: Array<{ title: string; url: string }> = [];
@@ -68,12 +75,14 @@ async function publishNode(
       const childPage = await publishNode(connector, child, page.id, node.title, sink);
       childEntries.push({ title: childPage.title, url: childPage.url });
     }
-    const body = node.markdown
-      ? `${node.markdown}\n\n${dirTocMarkdown(childEntries)}`
-      : dirTocMarkdown(childEntries);
-    page = await connector.updatePage(page.id, {
-      title: page.title, markdown: body, parentId,
-    });
+    if (!connector.capabilities.hasNativeToc) {
+      const body = node.markdown
+        ? `${node.markdown}\n\n${dirTocMarkdown(childEntries)}`
+        : dirTocMarkdown(childEntries);
+      page = await connector.updatePage(page.id, {
+        title: page.title, markdown: body, parentId, container: true,
+      });
+    }
   }
   return page;
 }
@@ -100,11 +109,15 @@ export async function publishTree(
     topEntries.push({ title: page.title, url: page.url });
   }
 
+  const landing = connector.capabilities.hasNativeToc
+    ? readme
+    : `${readme}${tocMarkdown(topEntries)}`;
   const updatedRoot = await connector.updatePage(root.id, {
-    title: name,
-    markdown: `${readme}${tocMarkdown(topEntries)}`,
+    title: name, markdown: landing, container: true,
   });
-  return { root: updatedRoot, published: 1 + pages.length, pages };
+  const warning = await connector.finalize?.();
+  return { root: updatedRoot, published: 1 + pages.length, pages,
+    ...(warning ? { warning } : {}) };
 }
 
 /**
@@ -119,6 +132,7 @@ export async function publishReadme(
   const name = projectName ?? defaultProjectName(projectDir);
   const markdown = readReadme(projectDir);
   const root = await connector.ensureRoot(name);
-  const updated = await connector.updatePage(root.id, { title: name, markdown });
-  return { root: updated, published: 1, pages: [] };
+  const updated = await connector.updatePage(root.id, { title: name, markdown, container: true });
+  const warning = await connector.finalize?.();
+  return { root: updated, published: 1, pages: [], ...(warning ? { warning } : {}) };
 }

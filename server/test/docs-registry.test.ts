@@ -41,4 +41,18 @@ describe("makeDocsConnector", () => {
     await expect(makeDocsConnector(cfg({ connector: "confluence", config: {} })))
       .rejects.toMatchObject({ code: "CONFIG_INVALID" });
   });
+
+  it("builds a DocusaurusConnector for connector=docusaurus", async () => {
+    const { DocusaurusConnector } = await import("../src/docs/adapters/docusaurus.js");
+    const conn = await makeDocsConnector(cfg({
+      connector: "docusaurus", config: { sitePath: "../my-docs-site" },
+    }));
+    expect(conn).toBeInstanceOf(DocusaurusConnector);
+    expect(conn.capabilities.hasNativeToc).toBe(true);
+  });
+
+  it("rejects invalid docusaurus config", async () => {
+    await expect(makeDocsConnector(cfg({ connector: "docusaurus", config: {} })))
+      .rejects.toMatchObject({ code: "CONFIG_INVALID" });
+  });
 });

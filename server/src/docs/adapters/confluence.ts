@@ -40,7 +40,7 @@ interface RawPage {
 
 export class ConfluenceConnector implements DocsConnector {
   readonly capabilities: DocsCapability = {
-    hasPageTree: true, hasAttachments: true, hasLabels: true,
+    hasPageTree: true, hasAttachments: true, hasLabels: true, hasNativeToc: false,
   };
 
   private space: ConfluenceSpace | undefined;
