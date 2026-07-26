@@ -59,6 +59,7 @@ interface JiraIssueFields {
   updated: string;
   labels?: string[];
   parent?: { key: string };
+  assignee?: { accountId?: string } | null;
 }
 
 interface JiraIssue {
@@ -144,6 +145,7 @@ export class JiraTracker implements Tracker {
       state,
       labels: f.labels ?? [],
       phase: f.parent?.key,
+      assignee: f.assignee?.accountId ?? undefined,
       updatedAt: normalizeTimestamp(f.updated),
       url: `${this.cfg.baseUrl.replace(/\/$/, "")}/browse/${raw.key}`,
     };
@@ -195,9 +197,33 @@ export class JiraTracker implements Tracker {
   async getIssue(id: string): Promise<Issue> {
     this.assertId(id);
     const raw = await this.api("GET",
-      `/rest/api/3/issue/${id}?fields=summary,description,status,updated,labels,parent`,
+      `/rest/api/3/issue/${id}?fields=summary,description,status,updated,labels,parent,assignee`,
       undefined, "jira issue_get");
     return this.normalize(raw as JiraIssue);
+  }
+
+  private self: string | undefined;
+
+  async resolveSelf(): Promise<string | undefined> {
+    if (this.self) return this.self;
+    const me = await this.api("GET", "/rest/api/3/myself", undefined,
+      "jira myself") as { accountId?: string };
+    this.self = me.accountId;
+    return this.self;
+  }
+
+  /** Assignee values may arrive as an email (user.handle) — Jira wants accountId. */
+  private async toAccountId(value: string): Promise<string> {
+    if (!value.includes("@")) return value;
+    const hits = await this.api("GET",
+      `/rest/api/3/user/search?query=${encodeURIComponent(value)}`, undefined,
+      "jira user_search") as Array<{ accountId?: string }>;
+    const id = hits[0]?.accountId;
+    if (!id) {
+      throw new CairnError("NOT_FOUND", `no Jira user matches '${value}'`,
+        "set user.handle in cairn.json to a Jira accountId or exact email");
+    }
+    return id;
   }
 
   async updateIssue(id: string, patch: IssuePatch): Promise<Issue> {
@@ -206,6 +232,9 @@ export class JiraTracker implements Tracker {
     if (patch.title !== undefined) fields.summary = patch.title;
     if (patch.body !== undefined) fields.description = adf(patch.body);
     if (patch.labels !== undefined) fields.labels = patch.labels;
+    if (patch.assignee !== undefined) {
+      fields.assignee = { accountId: await this.toAccountId(patch.assignee) };
+    }
     if (Object.keys(fields).length > 0) {
       await this.api("PUT", `/rest/api/3/issue/${id}`, { fields }, "jira issue_update");
     }
@@ -237,7 +266,7 @@ export class JiraTracker implements Tracker {
     const raw = (await this.api("POST", "/rest/api/3/search/jql", {
       jql,
       maxResults: MAX_RESULTS,
-      fields: ["summary", "description", "status", "updated", "labels", "parent"],
+      fields: ["summary", "description", "status", "updated", "labels", "parent", "assignee"],
     }, "jira issue_list")) as { issues: JiraIssue[]; total?: number };
     if (raw.issues.length === MAX_RESULTS) {
       console.error(`[cairn] jira issue_list truncated at ${MAX_RESULTS} results (total: ${raw.total ?? "unknown"})`);

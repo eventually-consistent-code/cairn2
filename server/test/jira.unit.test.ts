@@ -386,3 +386,44 @@ describe("JiraTracker mapping", () => {
     expect(t.capabilities.hasWorklog).toBe(true);
   });
 });
+
+describe("JiraTracker identity + assignee", () => {
+  it("resolveSelf returns the accountId from /myself and memoizes", async () => {
+    const { f, calls } = fixtureFetch([{ status: 200, body: { accountId: "acc-123" } }]);
+    const t = makeJira(f);
+    expect(await t.resolveSelf!()).toBe("acc-123");
+    expect(await t.resolveSelf!()).toBe("acc-123");
+    expect(calls.filter((c) => c.url.includes("/rest/api/3/myself")).length).toBe(1);
+  });
+
+  it("normalize surfaces the assignee accountId", async () => {
+    const { f } = fixtureFetch([
+      { status: 200, body: jiraIssue({ assignee: { accountId: "acc-9" } }) },
+    ]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    expect((await t.getIssue("CHN-101")).assignee).toBe("acc-9");
+  });
+
+  it("updateIssue writes assignee as {accountId}, resolving an email first", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: [{ accountId: "acc-77" }] },   // user search
+      { status: 204, body: null },                        // PUT fields
+      { status: 200, body: jiraIssue({ assignee: { accountId: "acc-77" } }) }, // re-get
+    ]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    const updated = await t.updateIssue("CHN-101", { assignee: "user@example.com" });
+    const put = calls.find((c) => c.method === "PUT")!;
+    expect(put.body).toMatchObject({ fields: { assignee: { accountId: "acc-77" } } });
+    expect(updated.assignee).toBe("acc-77");
+  });
+
+  it("updateIssue passes a bare accountId through without a search", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 204, body: null },
+      { status: 200, body: jiraIssue({ assignee: { accountId: "acc-55" } }) },
+    ]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    await t.updateIssue("CHN-101", { assignee: "acc-55" });
+    expect(calls.some((c) => c.url.includes("user/search"))).toBe(false);
+  });
+});
