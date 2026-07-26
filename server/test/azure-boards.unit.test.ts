@@ -396,3 +396,26 @@ describe("AzureBoardsTracker mapping", () => {
     expect(c.id).toBe("4001");
   });
 });
+
+describe("AzureBoardsTracker identity", () => {
+  it("resolveSelf returns the authenticated user's account from connectionData, memoized", async () => {
+    const { f, calls } = fixtureFetch([{ status: 200, body: {
+      authenticatedUser: { properties: { Account: { $value: "me@corp.com" } },
+        providerDisplayName: "Me Corp" },
+    } }]);
+    const t = makeAzure(f);
+    expect(await t.resolveSelf!()).toBe("me@corp.com");
+    expect(await t.resolveSelf!()).toBe("me@corp.com");
+    expect(calls.filter((c) => c.url.includes("connectionData")).length).toBe(1);
+  });
+
+  it("resolveSelf falls back to providerDisplayName, undefined when absent", async () => {
+    const { f } = fixtureFetch([{ status: 200, body: {
+      authenticatedUser: { providerDisplayName: "Fallback Name" },
+    } }, { status: 200, body: {} }]);
+    const t = makeAzure(f);
+    expect(await t.resolveSelf!()).toBe("Fallback Name");
+    const t2 = makeAzure(f);
+    expect(await t2.resolveSelf!()).toBeUndefined();
+  });
+});

@@ -174,3 +174,13 @@ describe("GitHubTracker mapping", () => {
     expect(c).toEqual({ id: "991", url: "https://github.com/o/r/issues/7#issuecomment-991" });
   });
 });
+
+describe("GitHubTracker identity", () => {
+  it("resolveSelf returns the token user's login from /user and memoizes", async () => {
+    const { f, calls } = fixtureFetch([{ status: 200, body: { login: "octo-dev" } }]);
+    const t = new GitHubTracker({ repo: "o/r" }, f, () => "tok");
+    expect(await t.resolveSelf!()).toBe("octo-dev");
+    expect(await t.resolveSelf!()).toBe("octo-dev");
+    expect(calls.filter((c) => c.url.endsWith("/user")).length).toBe(1);
+  });
+});

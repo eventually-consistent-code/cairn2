@@ -74,6 +74,15 @@ export class GitHubTracker implements Tracker {
     }
   }
 
+  private self: string | undefined;
+
+  async resolveSelf(): Promise<string | undefined> {
+    if (this.self) return this.self;
+    const me = await this.api("GET", "/user") as { login?: string };
+    this.self = me.login;
+    return this.self;
+  }
+
   private normalize(raw: GhIssue): Issue {
     const labels = raw.labels.map((l) => l.name);
     let state: IssueState = raw.state === "closed" ? "closed" : "open";

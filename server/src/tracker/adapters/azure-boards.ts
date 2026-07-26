@@ -114,6 +114,23 @@ export class AzureBoardsTracker implements Tracker {
     }
   }
 
+  private self: string | undefined;
+
+  async resolveSelf(): Promise<string | undefined> {
+    if (this.self) return this.self;
+    const data = await this.api("GET", "/_apis/connectionData", undefined,
+      { context: "azure-boards connectionData" }) as {
+      authenticatedUser?: {
+        properties?: { Account?: { $value?: string } };
+        providerDisplayName?: string;
+      };
+    };
+    // Account.$value is the sign-in email System.AssignedTo accepts
+    this.self = data.authenticatedUser?.properties?.Account?.$value
+      ?? data.authenticatedUser?.providerDisplayName;
+    return this.self;
+  }
+
   private get projectPath(): string {
     return encodeURIComponent(this.cfg.project);
   }
