@@ -15,6 +15,7 @@ export class CachedTracker implements Tracker {
   // Optional on Tracker — present only when the inner adapter has it, so the
   // caller's "capabilities.hasWorklog && tracker.logWork" gate keeps working.
   logWork?: (id: string, minutes: number) => Promise<void>;
+  resolveSelf?: () => Promise<string | undefined>;
 
   constructor(
     private inner: Tracker,
@@ -27,6 +28,9 @@ export class CachedTracker implements Tracker {
         await this.inner.logWork!(id, minutes);
         this.cache.clear();
       };
+    }
+    if (inner.resolveSelf) {
+      this.resolveSelf = () => this.inner.resolveSelf!();
     }
   }
 

@@ -104,6 +104,10 @@ export class FakeTracker implements Tracker {
     return { id: comment.id, url: `fake://comment/${comment.id}` };
   }
 
+  async resolveSelf(): Promise<string | undefined> {
+    return "fake-user";
+  }
+
   /** Test accessor: comments posted to an issue, in order. */
   comments(id: string): Array<{ id: string; text: string }> {
     return [...(this.issueComments.get(id) ?? [])];

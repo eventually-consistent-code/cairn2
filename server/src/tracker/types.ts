@@ -68,4 +68,7 @@ export interface Tracker {
   commentIssue(id: string, text: string): Promise<{ id: string; url?: string }>;
   /** Log time against an issue. Present only on adapters with hasWorklog. */
   logWork?(id: string, minutes: number): Promise<void>;
+  /** Backend-native identifier for the authenticated user (assignee form).
+   *  Present only on adapters that can derive it. Memoized per instance. */
+  resolveSelf?(): Promise<string | undefined>;
 }
