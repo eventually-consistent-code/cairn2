@@ -71,6 +71,20 @@ describe("CachedTracker", () => {
     expect(t.logWork).toBeUndefined();
   });
 
+  it("forwards resolveSelf when the inner adapter has it", async () => {
+    const t = new CachedTracker(new FakeTracker());
+    expect(t.resolveSelf).toBeDefined();
+    expect(await t.resolveSelf!()).toBe("fake-user");
+  });
+
+  it("leaves resolveSelf undefined when the inner adapter has none", () => {
+    const bare = new FakeTracker();
+    // strip the method to simulate an adapter without identity support
+    (bare as { resolveSelf?: unknown }).resolveSelf = undefined;
+    const t = new CachedTracker(bare);
+    expect(t.resolveSelf).toBeUndefined();
+  });
+
   it("commentIssue invalidates the cache", async () => {
     const fake = new FakeTracker();
     const t = new CachedTracker(fake);

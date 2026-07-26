@@ -1272,10 +1272,22 @@ Engineer mode requires `user.handle` — set both with
 
 ### Ownership and courtesy
 
-With `user.handle` set, cairn claims issues under your handle so teammates
-see who holds what, and skips issues assigned to someone else unless you
-explicitly override — never silently. Without a handle, cairn runs in
-single-user mode: no assignee tracking, no ownership checks. Work-state
+Claiming an unassigned issue (any verb that moves it to in-progress)
+auto-assigns it to the working user, so the tracker shows who holds what
+without anyone remembering to assign. Identity comes from `user.handle`
+when set; otherwise it's derived from the tracker credentials themselves —
+Jira resolves the authenticated account (`/myself` → accountId, and an
+email handle is resolved to an accountId automatically), GitHub uses the
+token's login, Azure Boards the signed-in account. GitLab and ClickUp
+don't support assignee writes yet (numeric-id resolution pending). The
+rules: an explicit assignee always wins, an already-assigned issue is
+never touched, and an identity-lookup failure never blocks the claim —
+the result carries `autoAssigned: true` when it fired.
+
+With `user.handle` set, cairn also skips issues assigned to someone else
+unless you explicitly override — never silently. Without a handle,
+ownership checks are off (auto-assign still works via credential-derived
+identity where the backend supports it). Work-state
 concurrency (two agents starting the same issue) is the tracker's job — the
 in-progress state transition is the atomic claim; cairn reads the
 tracker's truth. Plans and memory cards collaborate through ordinary git:
