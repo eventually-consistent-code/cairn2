@@ -30,6 +30,13 @@ Show project status:
   language beside the trace detail above (e.g. "open sessions: 1 trace, 2
   probes, 0 drafts"). An open probe or draft is unfinished spike/sketch
   work — surface it every time, same as an open trace.
+- Dependency graph (trackers with `hasDependencies` — e.g. `local`):
+  `graph_report()` — render "Ready now:" from `frontier` (the pick-next-work
+  list, this is the headline), any `priorities` rows as
+  "`<id>` effectively `<effective>` (inherits from `<inheritedFrom>`)", and
+  when `dangling` is non-empty, one ⚠ line: "N broken issue links —
+  `/cairn:medic --repair` removes them." Skip the whole block silently on
+  `UNSUPPORTED` backends.
 - Open audit/review findings: `issue_list` filtered by label `cairn:audit`
   and again by `cairn:review`, reported in plain language beside the
   session detail above (e.g. "open audit findings: 2 · open review

@@ -895,6 +895,26 @@ called out there: the Jira adapter uses a search endpoint Atlassian has
 deprecated on Jira Cloud, and the Azure Boards iteration-parsing was
 hardened speculatively against known API variance.
 
+### The dependency graph
+
+Backends with `hasDependencies` (the local tracker first — full section
+coming with its setup docs) carry typed links between issues: `blocks`,
+`parent-of`, `relates-to`, and `supersedes` for iteration lineage. On top
+of them, `graph_report` answers three questions no flat issue list can:
+
+- **What's ready right now?** The frontier — open issues whose blockers
+  are all closed. `status` leads with it; it's the pick-next-work list.
+- **What's actually urgent?** A P3 that blocks a P1 is effectively P1 —
+  priority inherits through the `blocks` chain, and `status` shows the
+  inheritance (`effectively P1, inherits from <id>`).
+- **How did this idea evolve?** `supersedes` edges chain iterations
+  oldest → newest, so an issue's whole lineage is one lookup.
+
+Cycles are rejected the moment an edge would close one, and `medic` flags
+(and `--repair` removes) edges whose endpoint issue no longer exists. Any
+backend that grows `hasDependencies` later gets all of this for free — the
+graph functions compute over the neutral SPI shapes, not the store.
+
 ---
 
 ## 5. Docs connectors — Confluence and Docusaurus, end to end
@@ -1449,13 +1469,14 @@ you need to know what actually happened versus what the docs claim.
 | `~/.cairn/handoff/<project>-<hash>.json` | session handoff — ephemeral, per-machine | every state-changing tool + hooks |
 | `~/.cairn/banner/<project>-<hash>.md` | pre-rendered recall banner | re-rendered on card/context changes |
 
-### The 68 MCP tools, by subsystem
+### The 69 MCP tools, by subsystem
 
 **Active context (2):** `context_get` · `context_set`
 
-**Tracker / issues (11):** `issue_create` · `issue_get` · `issue_update` ·
+**Tracker / issues (12):** `issue_create` · `issue_get` · `issue_update` ·
 `issue_close` · `issue_list` · `issue_comment` · `issue_link` ·
-`issue_unlink` · `issue_links` · `phase_create` · `phase_list`
+`issue_unlink` · `issue_links` · `graph_report` · `phase_create` ·
+`phase_list`
 
 **Milestones (3):** `milestone_create` · `milestone_list` ·
 `milestone_complete`

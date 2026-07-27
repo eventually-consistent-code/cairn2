@@ -12,6 +12,7 @@ import { ActiveContext } from "./active-context.js";
 import { makeTracker } from "./tracker/registry.js";
 import { CachedTracker } from "./tracker/cached.js";
 import type { Tracker, IssueState, LinkType } from "./tracker/types.js";
+import { danglingEdges, effectivePriorities, lineage, readyFrontier } from "./tracker/graph.js";
 import { makeDocsConnector } from "./docs/registry.js";
 import type { DocsConnector } from "./docs/types.js";
 import { defaultProjectName, publishTree } from "./docs/publish.js";
@@ -284,6 +285,22 @@ export function buildServer(deps: {
     wrap(async (a: { id?: string }) => {
       const t = await linkCapable();
       return { links: await t.listLinks!(a.id) };
+    }));
+
+  server.registerTool("graph_report",
+    { description: "Dependency-graph report: ready frontier (open issues with no open "
+        + "blockers), inherited effective priorities, dangling edges, and optionally "
+        + "one issue's supersedes lineage. UNSUPPORTED unless the tracker hasDependencies",
+      inputSchema: { lineageOf: z.string().optional() } },
+    wrap(async (a: { lineageOf?: string }) => {
+      const t = await linkCapable();
+      const [issues, links] = await Promise.all([t.listIssues(), t.listLinks!()]);
+      return {
+        frontier: readyFrontier(issues, links),
+        priorities: effectivePriorities(issues, links),
+        dangling: danglingEdges(issues, links),
+        ...(a.lineageOf ? { lineage: lineage(issues, links, a.lineageOf) } : {}),
+      };
     }));
 
   server.registerTool("issue_close",
