@@ -1,6 +1,7 @@
 import { ReadCache } from "../core/cache.js";
 import type {
-  Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
+  Capability, Issue, IssueCreate, IssueLink, IssuePatch, IssueState, LinkType,
+  Milestone, Phase, Tracker,
 } from "./types.js";
 
 /**
@@ -16,6 +17,9 @@ export class CachedTracker implements Tracker {
   // caller's "capabilities.hasWorklog && tracker.logWork" gate keeps working.
   logWork?: (id: string, minutes: number) => Promise<void>;
   resolveSelf?: () => Promise<string | undefined>;
+  linkIssues?: (from: string, type: LinkType, to: string) => Promise<void>;
+  unlinkIssues?: (from: string, type: LinkType, to: string) => Promise<void>;
+  listLinks?: (id?: string) => Promise<IssueLink[]>;
 
   constructor(
     private inner: Tracker,
@@ -31,6 +35,21 @@ export class CachedTracker implements Tracker {
     }
     if (inner.resolveSelf) {
       this.resolveSelf = () => this.inner.resolveSelf!();
+    }
+    if (inner.linkIssues) {
+      this.linkIssues = async (f, ty, to) => {
+        await this.inner.linkIssues!(f, ty, to);
+        this.cache.clear();
+      };
+    }
+    if (inner.unlinkIssues) {
+      this.unlinkIssues = async (f, ty, to) => {
+        await this.inner.unlinkIssues!(f, ty, to);
+        this.cache.clear();
+      };
+    }
+    if (inner.listLinks) {
+      this.listLinks = (id) => this.inner.listLinks!(id);
     }
   }
 

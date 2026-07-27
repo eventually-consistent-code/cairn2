@@ -4,6 +4,11 @@
     "type": "github",
     "config": { "repo": "owner/name" }
   },
+  "_tracker_local": {
+    "$comment": "Zero-credential option — issues live in this repo (commit the dir). Copy over `tracker` to enable.",
+    "type": "local",
+    "config": { "dir": ".tracker", "prefix": "proj" }
+  },
   "_docs": {
     "$comment": "Optional documentation connector — publishes README + docs/ as a page tree. Copy to `docs` to enable. Credentials come from env vars named here, never this file. Alternative: `docusaurus` writes markdown into a local Docusaurus site checkout (no credentials; autoCommit commits in the site repo after publish, never pushes).",
     "connector": "confluence",

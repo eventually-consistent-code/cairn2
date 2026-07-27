@@ -52,6 +52,10 @@ export interface IssuePatch {
   assignee?: string;
 }
 
+export type LinkType = "blocks" | "parent-of" | "relates-to" | "supersedes";
+
+export interface IssueLink { from: string; type: LinkType; to: string }
+
 export interface Tracker {
   readonly capabilities: Capability;
   createIssue(input: IssueCreate): Promise<Issue>;
@@ -71,4 +75,9 @@ export interface Tracker {
   /** Backend-native identifier for the authenticated user (assignee form).
    *  Present only on adapters that can derive it. Memoized per instance. */
   resolveSelf?(): Promise<string | undefined>;
+  /** Issue links. Present only on adapters with hasDependencies. */
+  linkIssues?(from: string, type: LinkType, to: string): Promise<void>;
+  unlinkIssues?(from: string, type: LinkType, to: string): Promise<void>;
+  /** id given → links touching that issue (either direction); omitted → all. */
+  listLinks?(id?: string): Promise<IssueLink[]>;
 }

@@ -126,6 +126,33 @@ export function trackerContract(name: string, factory: () => Promise<Tracker>): 
       expect(done.state).toBe("released");
     });
 
+    it("links: create → list → unlink when hasDependencies; absent methods otherwise", async () => {
+      if (!t.capabilities.hasDependencies) {
+        expect(t.linkIssues).toBeUndefined();
+        return;
+      }
+      const a = await t.createIssue({ title: "contract: link-from" });
+      const b = await t.createIssue({ title: "contract: link-to" });
+      await t.linkIssues!(a.id, "blocks", b.id);
+      const all = await t.listLinks!();
+      expect(all).toContainEqual({ from: a.id, type: "blocks", to: b.id });
+      const ofA = await t.listLinks!(a.id);
+      expect(ofA).toContainEqual({ from: a.id, type: "blocks", to: b.id });
+      await t.unlinkIssues!(a.id, "blocks", b.id);
+      expect(await t.listLinks!(a.id)).not.toContainEqual({ from: a.id, type: "blocks", to: b.id });
+    });
+
+    it("links: linking a nonexistent issue is NOT_FOUND; cycles are rejected", async () => {
+      if (!t.capabilities.hasDependencies) return;
+      const a = await t.createIssue({ title: "contract: cycle-a" });
+      const b = await t.createIssue({ title: "contract: cycle-b" });
+      await expect(t.linkIssues!(a.id, "blocks", "no-such-id"))
+        .rejects.toMatchObject({ code: "NOT_FOUND" });
+      await t.linkIssues!(a.id, "blocks", b.id);
+      await expect(t.linkIssues!(b.id, "blocks", a.id))
+        .rejects.toMatchObject({ code: "CONFIG_INVALID" });
+    });
+
     it("commentIssue posts and is UNSUPPORTED when hasComments is false", async () => {
       const made = await t.createIssue({ title: "contract: comment target" });
       if (!t.capabilities.hasComments) {

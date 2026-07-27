@@ -59,7 +59,8 @@ describe("cairn MCP server", () => {
     const tools = await listToolNames();
     expect(tools).toEqual([
       "context_get", "context_set", "issue_close", "issue_create", "issue_get",
-      "issue_list", "issue_update", "phase_create", "phase_list",
+      "issue_list", "issue_update", "issue_link", "issue_unlink", "issue_links",
+      "phase_create", "phase_list",
       "plan_drift", "plan_import", "plan_issues_set", "plan_phase_ensure",
       "plan_scaffold_project", "plan_scaffold_phase", "plan_status", "plan_unplanned",
       "mem_index", "mem_search", "mem_stats",
@@ -83,8 +84,8 @@ describe("cairn MCP server", () => {
     ].sort());
   });
 
-  it("pins the tool count at 65", async () => {
-    expect((await listToolNames()).length).toBe(65);
+  it("pins the tool count at 68", async () => {
+    expect((await listToolNames()).length).toBe(68);
   });
 
   it("workspace_list without a workspace returns { workspace: null }, not an error", async () => {
@@ -211,6 +212,25 @@ describe("cairn MCP server", () => {
     const wip = await call("issue_update", { id: made.json.id, state: "in_progress" });
     expect(wip.json.assignee).toBe("owner");
     expect(wip.json.autoAssigned).toBeUndefined();
+  });
+
+  it("issue_link → issue_links → issue_unlink roundtrip", async () => {
+    const a = await call("issue_create", { title: "link a" });
+    const b = await call("issue_create", { title: "link b" });
+    await call("issue_link", { from: a.json.id, type: "blocks", to: b.json.id });
+    const links = await call("issue_links", { id: a.json.id });
+    expect(links.json.links).toContainEqual({ from: a.json.id, type: "blocks", to: b.json.id });
+    await call("issue_unlink", { from: a.json.id, type: "blocks", to: b.json.id });
+    expect((await call("issue_links", { id: a.json.id })).json.links).toEqual([]);
+  });
+
+  it("issue_link surfaces cycle rejection as a typed error", async () => {
+    const a = await call("issue_create", { title: "cyc a" });
+    const b = await call("issue_create", { title: "cyc b" });
+    await call("issue_link", { from: a.json.id, type: "blocks", to: b.json.id });
+    const res = await call("issue_link", { from: b.json.id, type: "blocks", to: a.json.id });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("CONFIG_INVALID");
   });
 
   it("non-claim transitions never auto-assign", async () => {
