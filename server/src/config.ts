@@ -6,7 +6,7 @@ import { PROVIDERS } from "./peers/providers.js";
 
 export const ConfigSchema = z.object({
   tracker: z.object({
-    type: z.enum(["github", "gitlab", "jira", "asana", "azure-boards", "clickup"]),
+    type: z.enum(["github", "gitlab", "jira", "asana", "azure-boards", "clickup", "local"]),
     config: z.record(z.unknown()),
   }),
   // Documentation connectors publish repo docs outward (Confluence first);

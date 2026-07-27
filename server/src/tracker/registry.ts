@@ -9,6 +9,7 @@ const ADAPTER_PATHS: Record<CairnConfig["tracker"]["type"], string> = {
   asana: "./adapters/asana.js",
   "azure-boards": "./adapters/azure-boards.js",
   clickup: "./adapters/clickup.js",
+  local: "./adapters/local.js",
 };
 
 interface AdapterModule {
@@ -39,7 +40,7 @@ export function importErrorToCairn(type: string, e: unknown): CairnError {
   return new CairnError("TRACKER_DOWN", `adapter module for '${type}' failed to load: ${e}`);
 }
 
-export async function makeTracker(cfg: CairnConfig): Promise<Tracker> {
+export async function makeTracker(cfg: CairnConfig, projectDir?: string): Promise<Tracker> {
   const { type, config } = cfg.tracker;
   let mod: AdapterModule;
   try {
@@ -52,6 +53,12 @@ export async function makeTracker(cfg: CairnConfig): Promise<Tracker> {
     throw new CairnError("CONFIG_INVALID",
       `${type} tracker config: ${parsed.error!.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`,
       `fix tracker.config in cairn.json (see templates/cairn.json.example)`);
+  }
+  // The local adapter is repo-resident — it needs the project dir; hosted
+  // adapters reserve their second make() param for a fetch impl.
+  if (type === "local") {
+    return (mod.make as unknown as (c: unknown, dir: string) => Tracker)(
+      parsed.data, projectDir ?? process.cwd());
   }
   return mod.make(parsed.data as never);
 }

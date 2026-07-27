@@ -18,6 +18,7 @@ const MINIMAL: Record<string, Record<string, unknown>> = {
   asana: { projectGid: "123" },
   "azure-boards": { orgUrl: "https://dev.azure.com/o", project: "P" },
   clickup: { defaultListId: "1", spaceId: "2" },
+  local: {},
 };
 
 describe("makeTracker", () => {
@@ -36,8 +37,19 @@ describe("makeTracker", () => {
 
   it("builds a tracker for every supported type", async () => {
     for (const [type, config] of Object.entries(MINIMAL)) {
-      expect(await makeTracker(cfg(type, config))).toBeTruthy();
+      expect(await makeTracker(cfg(type, config), "/tmp")).toBeTruthy();
     }
+  });
+
+  it("local: defaults dir/prefix, rooted at the given projectDir, hasDependencies true", async () => {
+    const t = await makeTracker(cfg("local", {}), "/tmp/cairn-reg-local");
+    expect(t.capabilities.hasDependencies).toBe(true);
+    expect(t.linkIssues).toBeDefined();
+  });
+
+  it("local: invalid prefix is CONFIG_INVALID", async () => {
+    await expect(makeTracker(cfg("local", { prefix: "NOPE!" }), "/tmp"))
+      .rejects.toMatchObject({ code: "CONFIG_INVALID" });
   });
 });
 

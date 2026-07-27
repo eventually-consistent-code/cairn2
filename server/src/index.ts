@@ -11,7 +11,7 @@ import { loadConfig, writeConfigPatch } from "./config.js";
 import { ActiveContext } from "./active-context.js";
 import { makeTracker } from "./tracker/registry.js";
 import { CachedTracker } from "./tracker/cached.js";
-import type { Tracker, IssueState } from "./tracker/types.js";
+import type { Tracker, IssueState, LinkType } from "./tracker/types.js";
 import { makeDocsConnector } from "./docs/registry.js";
 import type { DocsConnector } from "./docs/types.js";
 import { defaultProjectName, publishTree } from "./docs/publish.js";
@@ -109,7 +109,7 @@ export function buildServer(deps: {
     const d = dOverride ?? dir();
     let t = trackers.get(d);
     if (!t) {
-      t = new CachedTracker(await makeTracker(loadConfig(d)));
+      t = new CachedTracker(await makeTracker(loadConfig(d), d));
       trackers.set(d, t);
     }
     return t;
@@ -246,6 +246,44 @@ export function buildServer(deps: {
       snapshotNote(d, result);
       refreshHandoff({ source: "tool", issue: id }, d);
       return { ...result, ...(autoAssigned ? { autoAssigned: true } : {}) };
+    }));
+
+  const LinkTypeEnum = z.enum(["blocks", "parent-of", "relates-to", "supersedes"]);
+
+  const linkCapable = async (): Promise<Tracker> => {
+    const t = await getTracker(dir());
+    if (!t.capabilities.hasDependencies || !t.linkIssues) {
+      throw new CairnError("UNSUPPORTED", "this tracker has no dependency links",
+        "issue links need a backend with hasDependencies (e.g. tracker.type: local)");
+    }
+    return t;
+  };
+
+  server.registerTool("issue_link",
+    { description: "Link two issues (blocks/parent-of/relates-to/supersedes); "
+        + "UNSUPPORTED unless the tracker hasDependencies",
+      inputSchema: { from: z.string(), type: LinkTypeEnum, to: z.string() } },
+    wrap(async (a: { from: string; type: LinkType; to: string }) => {
+      const t = await linkCapable();
+      await t.linkIssues!(a.from, a.type, a.to);
+      return { linked: { from: a.from, type: a.type, to: a.to } };
+    }));
+
+  server.registerTool("issue_unlink",
+    { description: "Remove an issue link; UNSUPPORTED unless the tracker hasDependencies",
+      inputSchema: { from: z.string(), type: LinkTypeEnum, to: z.string() } },
+    wrap(async (a: { from: string; type: LinkType; to: string }) => {
+      const t = await linkCapable();
+      await t.unlinkIssues!(a.from, a.type, a.to);
+      return { unlinked: { from: a.from, type: a.type, to: a.to } };
+    }));
+
+  server.registerTool("issue_links",
+    { description: "List issue links — for one issue (either direction) or the whole project",
+      inputSchema: { id: z.string().optional() } },
+    wrap(async (a: { id?: string }) => {
+      const t = await linkCapable();
+      return { links: await t.listLinks!(a.id) };
     }));
 
   server.registerTool("issue_close",
@@ -869,7 +907,7 @@ export function buildServer(deps: {
           // per-member paths/trackers constructed directly -- no focus switch
           let t = trackers.get(m.absPath);
           if (!t) {
-            t = new CachedTracker(await makeTracker(loadConfig(m.absPath)));
+            t = new CachedTracker(await makeTracker(loadConfig(m.absPath), m.absPath));
             trackers.set(m.absPath, t);
           }
           const openIssues = (await t.listIssues({ state: "open" })).length;
