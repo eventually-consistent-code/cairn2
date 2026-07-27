@@ -7,13 +7,14 @@
 
 import { execFileSync } from "node:child_process";
 import {
-  existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync,
+  existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync,
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import type {
-  Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
+  Capability, Issue, IssueCreate, IssueLink, IssuePatch, IssueState, LinkType,
+  Milestone, Phase, Tracker,
 } from "../types.js";
 
 export const configSchema = z.object({
@@ -49,7 +50,6 @@ interface Fields {
   assignee?: string;
   phase?: string;
   priority?: string;
-  updatedAt: string;
   body: string;
 }
 
@@ -66,8 +66,10 @@ function renderIssue(f: Fields): string {
     `assignee: ${f.assignee ?? ""}`,
     `phase: ${f.phase ?? ""}`,
     `priority: ${f.priority ?? ""}`,
-    `updatedAt: ${f.updatedAt}`,
   ];
+  // updatedAt is deliberately NOT stored — a stored timestamp would make
+  // every concurrent update-pair a same-field merge conflict. It derives
+  // from the file's mtime instead.
   const body = f.body === "" || f.body.endsWith("\n") ? f.body : `${f.body}\n`;
   return `---\n${lines.join("\n\n")}\n---\n\n${body}`;
 }
@@ -84,7 +86,6 @@ function parseIssueFile(raw: string): Fields {
     assignee: get("assignee") || undefined,
     phase: get("phase") || undefined,
     priority: get("priority") || undefined,
-    updatedAt: get("updatedAt") || new Date().toISOString(),
     body: raw.slice(m[0].length).replace(/^\n/, "").replace(/\n$/, ""),
   };
 }
@@ -100,7 +101,7 @@ function splitPriority(labels: string[]): { labels: string[]; priority?: string 
 
 export class LocalTracker implements Tracker {
   readonly capabilities: Capability = {
-    hasInProgress: true, hasPhases: true, hasDependencies: false, hasLabels: true,
+    hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
     hasMilestones: true, hasPhaseClose: true, hasComments: true, hasWorklog: true,
   };
 
@@ -149,6 +150,12 @@ export class LocalTracker implements Tracker {
   }
 
   private toIssue(f: Fields): Issue {
+    let updatedAt: string;
+    try {
+      updatedAt = statSync(this.issuePath(f.id)).mtime.toISOString();
+    } catch {
+      updatedAt = new Date().toISOString();
+    }
     return {
       id: f.id,
       title: f.title,
@@ -157,7 +164,7 @@ export class LocalTracker implements Tracker {
       labels: f.priority ? [...f.labels, `priority:${f.priority}`] : f.labels,
       phase: f.phase,
       assignee: f.assignee,
-      updatedAt: f.updatedAt,
+      updatedAt,
       url: `file://${this.issuePath(f.id)}`,
     };
   }
@@ -171,7 +178,6 @@ export class LocalTracker implements Tracker {
       labels,
       priority,
       phase: input.phase,
-      updatedAt: new Date().toISOString(),
       body: input.body ?? "",
     });
   }
@@ -193,7 +199,6 @@ export class LocalTracker implements Tracker {
       labels: patched.labels,
       priority: patched.priority,
       assignee: patch.assignee ?? f.assignee,
-      updatedAt: new Date().toISOString(),
     });
   }
 
@@ -282,6 +287,61 @@ export class LocalTracker implements Tracker {
     const dir = join(this.issueDir(id), "worklog");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, `${this.stamp()}-${await this.who()}.md`), `${minutes}m\n`);
+  }
+
+  private edgePath(from: string, type: LinkType, to: string): string {
+    return join(this.issueDir(from), "edges", `${type}--${to}.md`);
+  }
+
+  /** All stored edges — a directory walk; the graph is always in-memory. */
+  private allEdges(): IssueLink[] {
+    const links: IssueLink[] = [];
+    for (const from of this.ids()) {
+      const dir = join(this.issueDir(from), "edges");
+      if (!existsSync(dir)) continue;
+      for (const e of readdirSync(dir)) {
+        const m = /^([a-z-]+)--(.+)\.md$/.exec(e);
+        if (m) links.push({ from, type: m[1] as LinkType, to: m[2] });
+      }
+    }
+    return links;
+  }
+
+  private wouldCycle(from: string, type: LinkType, to: string): boolean {
+    if (type !== "blocks" && type !== "parent-of") return false;
+    const edges = this.allEdges().filter((l) => l.type === type);
+    const seen = new Set<string>();
+    const stack = [to];
+    while (stack.length) {
+      const cur = stack.pop()!;
+      if (cur === from) return true;
+      if (seen.has(cur)) continue;
+      seen.add(cur);
+      for (const l of edges) if (l.from === cur) stack.push(l.to);
+    }
+    return false;
+  }
+
+  async linkIssues(from: string, type: LinkType, to: string): Promise<void> {
+    this.readFields(from);
+    this.readFields(to); // NOT_FOUND guard on both ends
+    if (this.wouldCycle(from, type, to)) {
+      throw new CairnError("CONFIG_INVALID",
+        `link ${from} ${type} ${to} would create a cycle`,
+        "reverse the direction or drop one edge in the chain");
+    }
+    mkdirSync(join(this.issueDir(from), "edges"), { recursive: true });
+    const path = this.edgePath(from, type, to);
+    if (!existsSync(path)) writeFileSync(path, "");
+  }
+
+  async unlinkIssues(from: string, type: LinkType, to: string): Promise<void> {
+    rmSync(this.edgePath(from, type, to), { force: true });
+  }
+
+  async listLinks(id?: string): Promise<IssueLink[]> {
+    const all = this.allEdges();
+    return id === undefined ? all : all.filter((l) => l.from === id || l.to === id);
   }
 
   async resolveSelf(): Promise<string | undefined> {

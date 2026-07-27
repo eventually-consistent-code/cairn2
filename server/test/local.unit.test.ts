@@ -65,3 +65,40 @@ describe("LocalTracker storage shape", () => {
     expect((await t.getIssue(i.id)).body).toContain("not: frontmatter");
   });
 });
+
+describe("LocalTracker edges", () => {
+  it("linkIssues writes one file per edge; listLinks derives both directions", async () => {
+    const { dir, t } = fresh();
+    const a = await t.createIssue({ title: "A" });
+    const b = await t.createIssue({ title: "B" });
+    await t.linkIssues!(a.id, "blocks", b.id);
+    expect(existsSync(join(dir, ".tracker", "issues", a.id, "edges", `blocks--${b.id}.md`))).toBe(true);
+    expect(await t.listLinks!(a.id)).toContainEqual({ from: a.id, type: "blocks", to: b.id });
+    expect(await t.listLinks!(b.id)).toContainEqual({ from: a.id, type: "blocks", to: b.id });
+    expect((await t.listLinks!()).length).toBe(1);
+  });
+
+  it("rejects cycles on blocks and parent-of; allows relates-to loops", async () => {
+    const { t } = fresh();
+    const a = await t.createIssue({ title: "A" });
+    const b = await t.createIssue({ title: "B" });
+    const c = await t.createIssue({ title: "C" });
+    await t.linkIssues!(a.id, "blocks", b.id);
+    await t.linkIssues!(b.id, "blocks", c.id);
+    await expect(t.linkIssues!(c.id, "blocks", a.id))
+      .rejects.toMatchObject({ code: "CONFIG_INVALID" });
+    await t.linkIssues!(a.id, "relates-to", b.id);
+    await t.linkIssues!(b.id, "relates-to", a.id); // fine — undirected in spirit
+  });
+
+  it("unlink removes the file; edge to unknown issue is NOT_FOUND", async () => {
+    const { dir, t } = fresh();
+    const a = await t.createIssue({ title: "A" });
+    const b = await t.createIssue({ title: "B" });
+    await t.linkIssues!(a.id, "supersedes", b.id);
+    await t.unlinkIssues!(a.id, "supersedes", b.id);
+    expect(existsSync(join(dir, ".tracker", "issues", a.id, "edges", `supersedes--${b.id}.md`))).toBe(false);
+    await expect(t.linkIssues!(a.id, "blocks", "lt-zzzzz"))
+      .rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});

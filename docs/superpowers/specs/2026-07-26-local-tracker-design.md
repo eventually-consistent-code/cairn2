@@ -49,7 +49,10 @@ gitignored). Layout:
 ```
 
 `issue.md` frontmatter (one blank line between every field — this is the
-merge-safety mechanism, not styling):
+merge-safety mechanism, not styling). **Amended during implementation:**
+`updatedAt` is NOT stored — a stored timestamp turns every concurrent
+update-pair into a same-field conflict (caught by the merge regression
+suite before first merge). It derives from the file's mtime on read:
 
 ```
 ---
@@ -66,8 +69,6 @@ assignee: jsreed
 phase: ph-2k9df
 
 priority: P2               # optional; surfaced through the SPI as label "priority:P2"
-
-updatedAt: 2026-07-26T00:00:00Z
 ---
 
 Markdown body.
