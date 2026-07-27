@@ -25,6 +25,11 @@ from the evidence trail. All three close the same way: a record.
 5. Rank findings — a missing phase directory blocks everything downstream
    of it; a stale plan-issue link is cosmetic. Rank by what breaks next if
    it's ignored, not by how many there are.
+5b. Dependency-graph integrity (trackers with `hasDependencies`):
+   `graph_report()` — every entry in `dangling` is a broken relationship
+   (an edge whose issue no longer exists). Report each as
+   "`<from>` —`<type>`→ `<to>`: endpoint missing." Skip silently on
+   `UNSUPPORTED` backends.
 6. `audit_record(scope: "medic", verdict, findings)` — same discipline as
    `audit`: the record is the source of truth even when every finding is
    minor, and a clean bill of health still gets a `verdict: pass` record
@@ -39,6 +44,7 @@ Only after the health record exists. Three moves, and only three:
 | phase directory missing or incomplete | `plan_phase_ensure` |
 | phase scaffold missing (PLAN.md, LEDGER.md, etc.) | `plan_scaffold_phase` |
 | stale or missing plan↔issue links | `plan_issues_set` |
+| dangling issue-graph edge (endpoint deleted) | `issue_unlink` per `graph_report().dangling` entry |
 
 **Never-rule: `--repair` touches structure, never content.** It creates a
 missing directory, scaffolds a missing file, or relinks a stale issue

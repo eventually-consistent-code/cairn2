@@ -895,6 +895,26 @@ called out there: the Jira adapter uses a search endpoint Atlassian has
 deprecated on Jira Cloud, and the Azure Boards iteration-parsing was
 hardened speculatively against known API variance.
 
+### The dependency graph
+
+Backends with `hasDependencies` (the local tracker first — full section
+coming with its setup docs) carry typed links between issues: `blocks`,
+`parent-of`, `relates-to`, and `supersedes` for iteration lineage. On top
+of them, `graph_report` answers three questions no flat issue list can:
+
+- **What's ready right now?** The frontier — open issues whose blockers
+  are all closed. `status` leads with it; it's the pick-next-work list.
+- **What's actually urgent?** A P3 that blocks a P1 is effectively P1 —
+  priority inherits through the `blocks` chain, and `status` shows the
+  inheritance (`effectively P1, inherits from <id>`).
+- **How did this idea evolve?** `supersedes` edges chain iterations
+  oldest → newest, so an issue's whole lineage is one lookup.
+
+Cycles are rejected the moment an edge would close one, and `medic` flags
+(and `--repair` removes) edges whose endpoint issue no longer exists. Any
+backend that grows `hasDependencies` later gets all of this for free — the
+graph functions compute over the neutral SPI shapes, not the store.
+
 ---
 
 ## 5. Docs connectors — Confluence and Docusaurus, end to end
