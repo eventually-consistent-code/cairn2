@@ -6,6 +6,8 @@
 // Known cosmetic limit (spec'd): hosted comment APIs attribute writes to the
 // API credential, so original author/time survive as a text prefix.
 
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 import type { Tracker } from "./types.js";
 
 export interface MigrateResult {
@@ -14,6 +16,28 @@ export interface MigrateResult {
   phaseRemap: Record<string, string>;
   counts: { phases: number; issues: number; comments: number; worklogs: number; links: number };
   warnings: string[];
+}
+
+/**
+ * Post-migration bookkeeping on the LOCAL store: write MIGRATED.json (the
+ * durable remap record) and mark config.json migratedTo. The only mutation
+ * migration ever makes to the source. Returns the record's path.
+ */
+export function finalizeMigration(storeDir: string, targetType: string,
+  result: MigrateResult): string {
+  const path = join(storeDir, "MIGRATED.json");
+  writeFileSync(path, `${JSON.stringify({
+    target: targetType,
+    remap: result.remap,
+    phaseRemap: result.phaseRemap,
+    counts: result.counts,
+    warnings: result.warnings,
+    at: new Date().toISOString(),
+  }, null, 2)}\n`);
+  const cfgPath = join(storeDir, "config.json");
+  const cfg = JSON.parse(readFileSync(cfgPath, "utf8")) as Record<string, unknown>;
+  writeFileSync(cfgPath, `${JSON.stringify({ ...cfg, migratedTo: targetType }, null, 2)}\n`);
+  return path;
 }
 
 export async function migrateTracker(src: Tracker, dst: Tracker): Promise<MigrateResult> {

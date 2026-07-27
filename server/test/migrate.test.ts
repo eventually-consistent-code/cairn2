@@ -5,14 +5,16 @@ import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import { FakeTracker } from "../src/tracker/fake.js";
-import { migrateTracker } from "../src/tracker/migrate.js";
+import { finalizeMigration, migrateTracker } from "../src/tracker/migrate.js";
 import { configSchema, make } from "../src/tracker/adapters/local.js";
 import type { Tracker } from "../src/tracker/types.js";
 
 /** Local store with one of everything worth carrying. */
-async function seededLocal(): Promise<{ src: Tracker; ids: Record<string, string> }> {
-  const src = make(configSchema.parse({ prefix: "lt" }), mkdtempSync(join(tmpdir(), "cairn-mig-")));
+async function seededLocal(): Promise<{ src: Tracker; ids: Record<string, string>; dir: string }> {
+  const dir = mkdtempSync(join(tmpdir(), "cairn-mig-"));
+  const src = make(configSchema.parse({ prefix: "lt" }), dir);
   const phase = await src.createPhase("Phase 1");
   const open = await src.createIssue({ title: "Open one", body: "body A", labels: ["x"], phase: phase.id });
   const done = await src.createIssue({ title: "Done one", labels: ["priority:P1"] });
@@ -23,7 +25,7 @@ async function seededLocal(): Promise<{ src: Tracker; ids: Record<string, string
   await src.commentIssue(talky.id, "second note");
   await src.logWork!(talky.id, 25);
   await src.linkIssues!(open.id, "blocks", talky.id);
-  return { src, ids: { phase: phase.id, open: open.id, done: done.id, talky: talky.id } };
+  return { src, ids: { phase: phase.id, open: open.id, done: done.id, talky: talky.id }, dir };
 }
 
 describe("migrateTracker", () => {
@@ -70,6 +72,23 @@ describe("migrateTracker", () => {
     expect(r.warnings.some((w) => w.includes("link"))).toBe(true);
     const fromComments = await dst.listComments!(r.remap[ids.open]);
     expect(fromComments.some((c) => /^\[link\] blocks → /.test(c.text))).toBe(true);
+  });
+
+  it("finalizeMigration writes MIGRATED.json and marks config.json; store stays writable", async () => {
+    const { src, dir } = await seededLocal();
+    const dst = new FakeTracker();
+    const r = await migrateTracker(src, dst);
+    const storeDir = join(dir, ".tracker");
+    const path = finalizeMigration(storeDir, "github", r);
+    const record = JSON.parse(readFileSync(path, "utf8"));
+    expect(record.target).toBe("github");
+    expect(record.remap).toEqual(r.remap);
+    expect(record.counts).toEqual(r.counts);
+    const cfg = JSON.parse(readFileSync(join(storeDir, "config.json"), "utf8"));
+    expect(cfg.migratedTo).toBe("github");
+    // soft guard only — the store still accepts writes
+    const after = await src.createIssue({ title: "post-migration write" });
+    expect(after.id).toBeTruthy();
   });
 
   it("a per-item failure becomes a warning, not an abort", async () => {

@@ -142,8 +142,26 @@ export class LocalTracker implements Tracker {
     return parseIssueFile(readFileSync(this.issuePath(id), "utf8"));
   }
 
+  private warnedMigrated = false;
+
+  /** Soft guard: a store already promoted to a hosted backend still works,
+   *  but writes are probably landing in the wrong place — say so once. */
+  private warnIfMigrated(): void {
+    if (this.warnedMigrated) return;
+    this.warnedMigrated = true;
+    try {
+      const cfg = JSON.parse(readFileSync(join(this.root, "config.json"), "utf8")) as
+        { migratedTo?: string };
+      if (cfg.migratedTo) {
+        console.error(`[cairn local] warning: this store was migrated to `
+          + `'${cfg.migratedTo}' — new writes here won't reach it`);
+      }
+    } catch { /* unscaffolded store — nothing to warn about */ }
+  }
+
   private writeFields(f: Fields): Issue {
     this.init();
+    this.warnIfMigrated();
     mkdirSync(this.issueDir(f.id), { recursive: true });
     writeFileSync(this.issuePath(f.id), renderIssue(f));
     return this.toIssue(f);

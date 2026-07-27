@@ -60,7 +60,7 @@ describe("cairn MCP server", () => {
     expect(tools).toEqual([
       "context_get", "context_set", "issue_close", "issue_create", "issue_get",
       "issue_list", "issue_update", "issue_link", "issue_unlink", "issue_links",
-      "graph_report", "phase_create", "phase_list",
+      "graph_report", "tracker_migrate", "phase_create", "phase_list",
       "plan_drift", "plan_import", "plan_issues_set", "plan_phase_ensure",
       "plan_scaffold_project", "plan_scaffold_phase", "plan_status", "plan_unplanned",
       "mem_index", "mem_search", "mem_stats",
@@ -84,8 +84,14 @@ describe("cairn MCP server", () => {
     ].sort());
   });
 
-  it("pins the tool count at 69", async () => {
-    expect((await listToolNames()).length).toBe(69);
+  it("pins the tool count at 70", async () => {
+    expect((await listToolNames()).length).toBe(70);
+  });
+
+  it("tracker_migrate refuses a non-local source", async () => {
+    const res = await call("tracker_migrate", { targetType: "github", targetConfig: { repo: "o/r" } });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("CONFIG_INVALID");
   });
 
   it("workspace_list without a workspace returns { workspace: null }, not an error", async () => {

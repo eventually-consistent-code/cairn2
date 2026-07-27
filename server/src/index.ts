@@ -8,11 +8,13 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { z } from "zod";
 import { CairnError } from "./errors.js";
 import { loadConfig, writeConfigPatch } from "./config.js";
+import type { CairnConfig } from "./config.js";
 import { ActiveContext } from "./active-context.js";
 import { makeTracker } from "./tracker/registry.js";
 import { CachedTracker } from "./tracker/cached.js";
 import type { Tracker, IssueState, LinkType } from "./tracker/types.js";
 import { danglingEdges, effectivePriorities, lineage, readyFrontier } from "./tracker/graph.js";
+import { finalizeMigration, migrateTracker } from "./tracker/migrate.js";
 import { makeDocsConnector } from "./docs/registry.js";
 import type { DocsConnector } from "./docs/types.js";
 import { defaultProjectName, publishTree } from "./docs/publish.js";
@@ -301,6 +303,41 @@ export function buildServer(deps: {
         dangling: danglingEdges(issues, links),
         ...(a.lineageOf ? { lineage: lineage(issues, links, a.lineageOf) } : {}),
       };
+    }));
+
+  server.registerTool("tracker_migrate",
+    { description: "Promote a local-tracker project to a hosted backend: phases, "
+        + "issues, comments, worklogs, and links carry over with an id remap and "
+        + "provenance backlinks. Source must be tracker.type: local. dryRun reports "
+        + "what would migrate without writing anything.",
+      inputSchema: {
+        targetType: z.enum(["github", "gitlab", "jira", "asana", "azure-boards", "clickup"]),
+        targetConfig: z.record(z.unknown()),
+        dryRun: z.boolean().optional(),
+      } },
+    wrap(async (a: { targetType: string; targetConfig: Record<string, unknown>;
+      dryRun?: boolean }) => {
+      const d = dir();
+      const cfg = loadConfig(d);
+      if (cfg.tracker.type !== "local") {
+        throw new CairnError("CONFIG_INVALID",
+          `source tracker is not local (found '${cfg.tracker.type}')`,
+          "tracker_migrate promotes a local store; nothing to do here");
+      }
+      const src = await getTracker(d);
+      if (a.dryRun) {
+        const [issues, phases, links] = await Promise.all([
+          src.listIssues(), src.listPhases(), src.listLinks?.() ?? []]);
+        return { dryRun: true, wouldMigrate: {
+          phases: phases.length, issues: issues.length, links: links.length } };
+      }
+      const dst = await makeTracker({
+        ...cfg, tracker: { type: a.targetType, config: a.targetConfig },
+      } as CairnConfig, d);
+      const result = await migrateTracker(src, dst);
+      const storeDir = resolve(d, (cfg.tracker.config as { dir?: string }).dir ?? ".tracker");
+      const recordPath = finalizeMigration(storeDir, a.targetType, result);
+      return { ...result, record: recordPath };
     }));
 
   server.registerTool("issue_close",

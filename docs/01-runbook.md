@@ -1502,14 +1502,14 @@ you need to know what actually happened versus what the docs claim.
 | `~/.cairn/handoff/<project>-<hash>.json` | session handoff — ephemeral, per-machine | every state-changing tool + hooks |
 | `~/.cairn/banner/<project>-<hash>.md` | pre-rendered recall banner | re-rendered on card/context changes |
 
-### The 69 MCP tools, by subsystem
+### The 70 MCP tools, by subsystem
 
 **Active context (2):** `context_get` · `context_set`
 
-**Tracker / issues (12):** `issue_create` · `issue_get` · `issue_update` ·
+**Tracker / issues (13):** `issue_create` · `issue_get` · `issue_update` ·
 `issue_close` · `issue_list` · `issue_comment` · `issue_link` ·
-`issue_unlink` · `issue_links` · `graph_report` · `phase_create` ·
-`phase_list`
+`issue_unlink` · `issue_links` · `graph_report` · `tracker_migrate` ·
+`phase_create` · `phase_list`
 
 **Milestones (3):** `milestone_create` · `milestone_list` ·
 `milestone_complete`
