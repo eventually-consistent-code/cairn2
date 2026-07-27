@@ -142,8 +142,12 @@ nextAction if it is).
 
 - Order: phases → issues (phase refs remapped) → state/assignee → comments
   (`[<orig-time> <orig-author>] text` prefix) → worklogs (same prefix
-  form) → edges (native links when the target grows link support; text
-  backlinks `[blocks crn-x7k2m → PROJ-12]` in the body meanwhile).
+  form) → edges (native links when the target grows link support).
+  **Amended during implementation:** unmigratable edges land as target
+  COMMENTS (`[link] blocks → <new-id>`) rather than body rewrites — one
+  mechanism, no post-create body surgery, and the degradation is recorded
+  as a warning. Migration also needed comment/worklog READS the SPI lacked:
+  optional `listComments?`/`listWorklogs?` were added (local + fake).
 - Emits an ID remap table (old → new) written to
   `<dir>/MIGRATED.json` and appended to each migrated issue as a
   provenance backlink `[migrated from <old-id>]`.

@@ -798,8 +798,20 @@ field conflicts loudly on purpose — that's a real race a human should see.
 Extras the hosted backends don't have yet: real issue links (`blocks`,
 `parent-of`, `relates-to`, `supersedes`) and everything under "The
 dependency graph" below. Time logged on close lands as real worklog files.
-Promotion to a hosted tracker when the team grows is phase 4 of the local
-tracker's roadmap.
+
+**Promotion — start local, graduate when the team grows.** One call,
+`tracker_migrate(targetType, targetConfig)`, moves everything to a hosted
+backend: phases first, then issues (states, labels, assignee, with the
+phase references remapped), then comments and worklogs, then links —
+native issue links where the target supports them, `[link]` comments where
+it doesn't. Every migrated issue carries a `[migrated from <old-id>]`
+backlink, and the full old→new id map lands in `.tracker/MIGRATED.json`.
+`dryRun: true` reports counts without writing a thing. Honest caveat:
+hosted comment APIs attribute writes to the API credential, so original
+authors and timestamps survive as a `[<time> <author>]` prefix inside the
+comment text, not as native metadata. The local store is never modified
+beyond a `migratedTo` marker — writes still work afterward, with a warning
+that they won't reach the new home.
 
 ### GitHub
 
