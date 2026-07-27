@@ -60,7 +60,7 @@ describe("cairn MCP server", () => {
     expect(tools).toEqual([
       "context_get", "context_set", "issue_close", "issue_create", "issue_get",
       "issue_list", "issue_update", "issue_link", "issue_unlink", "issue_links",
-      "phase_create", "phase_list",
+      "graph_report", "phase_create", "phase_list",
       "plan_drift", "plan_import", "plan_issues_set", "plan_phase_ensure",
       "plan_scaffold_project", "plan_scaffold_phase", "plan_status", "plan_unplanned",
       "mem_index", "mem_search", "mem_stats",
@@ -84,8 +84,8 @@ describe("cairn MCP server", () => {
     ].sort());
   });
 
-  it("pins the tool count at 68", async () => {
-    expect((await listToolNames()).length).toBe(68);
+  it("pins the tool count at 69", async () => {
+    expect((await listToolNames()).length).toBe(69);
   });
 
   it("workspace_list without a workspace returns { workspace: null }, not an error", async () => {
@@ -222,6 +222,24 @@ describe("cairn MCP server", () => {
     expect(links.json.links).toContainEqual({ from: a.json.id, type: "blocks", to: b.json.id });
     await call("issue_unlink", { from: a.json.id, type: "blocks", to: b.json.id });
     expect((await call("issue_links", { id: a.json.id })).json.links).toEqual([]);
+  });
+
+  it("graph_report: frontier, inherited priority, lineage", async () => {
+    const blocker = await call("issue_create", { title: "graph blocker", labels: ["priority:P3"] });
+    const blocked = await call("issue_create", { title: "graph blocked", labels: ["priority:P1"] });
+    await call("issue_link", { from: blocker.json.id, type: "blocks", to: blocked.json.id });
+    const v2 = await call("issue_create", { title: "graph v2" });
+    await call("issue_link", { from: v2.json.id, type: "supersedes", to: blocker.json.id });
+
+    const report = await call("graph_report", { lineageOf: v2.json.id });
+    const frontierIds = report.json.frontier.map((i: { id: string }) => i.id);
+    expect(frontierIds).toContain(blocker.json.id);      // nothing blocks it
+    expect(frontierIds).not.toContain(blocked.json.id);  // blocker still open
+    expect(report.json.priorities).toContainEqual({
+      id: blocker.json.id, declared: "P3", effective: "P1", inheritedFrom: blocked.json.id,
+    });
+    expect(report.json.lineage).toEqual([blocker.json.id, v2.json.id]);
+    expect(report.json.dangling).toEqual([]);
   });
 
   it("issue_link surfaces cycle rejection as a typed error", async () => {
