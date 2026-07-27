@@ -66,6 +66,36 @@ describe("LocalTracker storage shape", () => {
   });
 });
 
+describe("LocalTracker history reads", () => {
+  it("listComments returns texts in file order with author from the filename", async () => {
+    const { t } = fresh();
+    const i = await t.createIssue({ title: "H" });
+    await t.commentIssue(i.id, "first note");
+    await t.commentIssue(i.id, "second note");
+    const comments = await t.listComments!(i.id);
+    expect(comments.map((c) => c.text)).toEqual(["first note", "second note"]);
+    expect(comments[0].author).toBeTruthy();
+    expect(comments[0].at).toBeTruthy();
+  });
+
+  it("listWorklogs parses minutes, author, timestamp", async () => {
+    const { t } = fresh();
+    const i = await t.createIssue({ title: "W" });
+    await t.logWork!(i.id, 25);
+    const logs = await t.listWorklogs!(i.id);
+    expect(logs).toHaveLength(1);
+    expect(logs[0].minutes).toBe(25);
+    expect(logs[0].author).toBeTruthy();
+  });
+
+  it("no history yet → empty arrays, never throws", async () => {
+    const { t } = fresh();
+    const i = await t.createIssue({ title: "E" });
+    expect(await t.listComments!(i.id)).toEqual([]);
+    expect(await t.listWorklogs!(i.id)).toEqual([]);
+  });
+});
+
 describe("LocalTracker edges", () => {
   it("linkIssues writes one file per edge; listLinks derives both directions", async () => {
     const { dir, t } = fresh();

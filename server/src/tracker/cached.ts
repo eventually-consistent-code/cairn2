@@ -1,7 +1,7 @@
 import { ReadCache } from "../core/cache.js";
 import type {
-  Capability, Issue, IssueCreate, IssueLink, IssuePatch, IssueState, LinkType,
-  Milestone, Phase, Tracker,
+  Capability, Issue, IssueComment, IssueCreate, IssueLink, IssuePatch, IssueState,
+  LinkType, Milestone, Phase, Tracker, WorklogEntry,
 } from "./types.js";
 
 /**
@@ -20,6 +20,8 @@ export class CachedTracker implements Tracker {
   linkIssues?: (from: string, type: LinkType, to: string) => Promise<void>;
   unlinkIssues?: (from: string, type: LinkType, to: string) => Promise<void>;
   listLinks?: (id?: string) => Promise<IssueLink[]>;
+  listComments?: (id: string) => Promise<IssueComment[]>;
+  listWorklogs?: (id: string) => Promise<WorklogEntry[]>;
 
   constructor(
     private inner: Tracker,
@@ -50,6 +52,12 @@ export class CachedTracker implements Tracker {
     }
     if (inner.listLinks) {
       this.listLinks = (id) => this.inner.listLinks!(id);
+    }
+    if (inner.listComments) {
+      this.listComments = (id) => this.inner.listComments!(id);
+    }
+    if (inner.listWorklogs) {
+      this.listWorklogs = (id) => this.inner.listWorklogs!(id);
     }
   }
 

@@ -1,7 +1,7 @@
 import { CairnError } from "../errors.js";
 import type {
-  Capability, Issue, IssueCreate, IssueLink, IssuePatch, IssueState, LinkType,
-  Milestone, Phase, Tracker,
+  Capability, Issue, IssueComment, IssueCreate, IssueLink, IssuePatch, IssueState,
+  LinkType, Milestone, Phase, Tracker,
 } from "./types.js";
 
 export class FakeTracker implements Tracker {
@@ -145,6 +145,10 @@ export class FakeTracker implements Tracker {
   async listLinks(id?: string): Promise<IssueLink[]> {
     return id === undefined ? [...this.links]
       : this.links.filter((l) => l.from === id || l.to === id);
+  }
+
+  async listComments(id: string): Promise<IssueComment[]> {
+    return (this.issueComments.get(id) ?? []).map((c) => ({ text: c.text }));
   }
 
   /** Test accessor: comments posted to an issue, in order. */
