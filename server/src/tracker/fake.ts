@@ -1,6 +1,7 @@
 import { CairnError } from "../errors.js";
 import type {
-  Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
+  Capability, Issue, IssueCreate, IssueLink, IssuePatch, IssueState, LinkType,
+  Milestone, Phase, Tracker,
 } from "./types.js";
 
 export class FakeTracker implements Tracker {
@@ -106,6 +107,44 @@ export class FakeTracker implements Tracker {
 
   async resolveSelf(): Promise<string | undefined> {
     return "fake-user";
+  }
+
+  private links: IssueLink[] = [];
+
+  private wouldCycle(from: string, type: LinkType, to: string): boolean {
+    if (type !== "blocks" && type !== "parent-of") return false;
+    // walk from `to` along same-type edges; hitting `from` closes a cycle
+    const seen = new Set<string>();
+    const stack = [to];
+    while (stack.length) {
+      const cur = stack.pop()!;
+      if (cur === from) return true;
+      if (seen.has(cur)) continue;
+      seen.add(cur);
+      for (const l of this.links) if (l.from === cur && l.type === type) stack.push(l.to);
+    }
+    return false;
+  }
+
+  async linkIssues(from: string, type: LinkType, to: string): Promise<void> {
+    await this.getIssue(from);
+    await this.getIssue(to);
+    if (this.wouldCycle(from, type, to)) {
+      throw new CairnError("CONFIG_INVALID",
+        `link ${from} ${type} ${to} would create a cycle`);
+    }
+    if (!this.links.some((l) => l.from === from && l.type === type && l.to === to)) {
+      this.links.push({ from, type, to });
+    }
+  }
+
+  async unlinkIssues(from: string, type: LinkType, to: string): Promise<void> {
+    this.links = this.links.filter((l) => !(l.from === from && l.type === type && l.to === to));
+  }
+
+  async listLinks(id?: string): Promise<IssueLink[]> {
+    return id === undefined ? [...this.links]
+      : this.links.filter((l) => l.from === id || l.to === id);
   }
 
   /** Test accessor: comments posted to an issue, in order. */

@@ -77,6 +77,17 @@ describe("CachedTracker", () => {
     expect(await t.resolveSelf!()).toBe("fake-user");
   });
 
+  it("forwards the link methods when the inner adapter has them", async () => {
+    const inner = new FakeTracker();
+    const t = new CachedTracker(inner);
+    const a = await t.createIssue({ title: "la" });
+    const b = await t.createIssue({ title: "lb" });
+    await t.linkIssues!(a.id, "blocks", b.id);
+    expect(await t.listLinks!(a.id)).toContainEqual({ from: a.id, type: "blocks", to: b.id });
+    await t.unlinkIssues!(a.id, "blocks", b.id);
+    expect(await t.listLinks!(a.id)).toEqual([]);
+  });
+
   it("leaves resolveSelf undefined when the inner adapter has none", () => {
     const bare = new FakeTracker();
     // strip the method to simulate an adapter without identity support
