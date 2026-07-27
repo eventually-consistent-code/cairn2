@@ -27,8 +27,10 @@ tracker API (work truth) · git repo (prose truth) · ~/.cairn/ (disposable cach
 
 ## Features (shipped — P0–P4)
 
-**Tracker layer** — six adapters behind one normalized interface: GitHub,
-GitLab, Jira, Asana, Azure Boards, ClickUp. Capability matrix per backend
+**Tracker layer** — seven adapters behind one normalized interface: GitHub,
+GitLab, Jira, Asana, Azure Boards, ClickUp, and a zero-credential local
+backend that stores issues as plain files in your repo (with issue links
+and a dependency graph the hosted backends don't have yet). Capability matrix per backend
 (declare, don't flatten), write-through with cached reads, shared HTTP core
 with retry/backoff, and a single contract test suite every adapter must pass
 — fixtures in CI, live sandboxes before release.

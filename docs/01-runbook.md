@@ -766,10 +766,40 @@ starting, always, with `/cairn:new`.
 
 ## 4. Tracker backends
 
-Six adapters behind one normalized interface, each declaring its
-capabilities rather than pretending to a lowest common denominator. All six
-support issue comments. Credentials never live in `cairn.json` — the config
-names *env vars*, and the adapter reads them at runtime.
+Seven adapters behind one normalized interface, each declaring its
+capabilities rather than pretending to a lowest common denominator. All
+seven support issue comments. Credentials never live in `cairn.json` — the
+config names *env vars*, and the adapter reads them at runtime. (The local
+backend needs none at all.)
+
+### Local
+
+No accounts, no credentials, nothing to sign up for — issues live in your
+repository as plain files. This is the zero-setup path, and it passes the
+identical contract suite the hosted six pass:
+
+```json
+"tracker": { "type": "local", "config": { "dir": ".tracker", "prefix": "proj" } }
+```
+
+`dir` (default `.tracker`) is created on first use and **must be
+committed** — it IS the tracker. `prefix` (2–10 lowercase alphanumerics)
+forms issue ids like `proj-x7k2m`; the 5-character random suffix makes
+simultaneous creation on different branches collision-safe.
+
+The layout is deliberately boring: one directory per issue holding an
+`issue.md` (readable frontmatter + markdown body — the blank line between
+fields is what keeps concurrent edits merge-clean, don't "tidy" it), plus
+one file per comment, worklog entry, and issue link. Concurrent work merges
+with stock git: two branches creating issues, commenting the same issue,
+or adding different links never conflict; two branches rewriting the same
+field conflicts loudly on purpose — that's a real race a human should see.
+
+Extras the hosted backends don't have yet: real issue links (`blocks`,
+`parent-of`, `relates-to`, `supersedes`) and everything under "The
+dependency graph" below. Time logged on close lands as real worklog files.
+Promotion to a hosted tracker when the team grows is phase 4 of the local
+tracker's roadmap.
 
 ### GitHub
 
@@ -879,17 +909,20 @@ capped at 100 items.
 
 | Capability | Backends |
 |---|---|
-| Issue comments | all six |
-| Assignee **writes** | GitHub, Azure Boards only (others accept the call but don't propagate) |
-| Worklog (real time entries on close) | Jira only |
+| Issue comments | all seven |
+| Assignee **writes** | Local, GitHub, Azure Boards (others accept the call but don't propagate) |
+| Worklog (real time entries on close) | Local, Jira |
+| Issue links + dependency graph | Local only (`graph_report`) |
 | Native milestones | backend-dependent; `summit` records a skip when the phase primitive can't close, and `milestone_*` degrades gracefully |
 | State mapping config | Jira `transitions`, Azure Boards `states`, ClickUp `statuses` |
 | Issue-list cap (affects `plan_unplanned` completeness) | 1000 (GitHub/GitLab), 100 (Jira/Asana/Azure Boards/ClickUp) — truncation is logged to server stderr |
 
 Adapter maturity, honestly stated: GitHub is live-green against a real
-sandbox. The other five are fully implemented and pass the unit and
-contract suites, but hadn't been run against live credentials at the time
-of writing — run the env-gated live suite (`server/README.md` has the exact
+sandbox, and the local backend needs no live suite at all — its filesystem
+IS the live backend, exercised directly by the unit, contract, and
+merge-safety suites. The other five are fully implemented and pass the
+unit and contract suites, but hadn't been run against live credentials at
+the time of writing — run the env-gated live suite (`server/README.md` has the exact
 commands per backend) before leaning on one in production. Two known risks
 called out there: the Jira adapter uses a search endpoint Atlassian has
 deprecated on Jira Cloud, and the Azure Boards iteration-parsing was

@@ -376,9 +376,9 @@ being wrapped up, never abandoned silently.
 | `session_landscape` | Read-only join over all four kinds: every session's kind/id/status/issue/description/entryCounts, `openByKind` totals, archived resolution text (read from the `## resolution` block), and phase groupings. Deterministic ordering (kind, then id — trace, probe, draft, thread) — same store state, same bytes |
 
 Backed by the tracker interface's `commentIssue(id, text)` method +
-`Capability.hasComments` (true on all six adapters — GitHub, GitLab, Jira,
-Azure Boards, Asana, ClickUp — the flag exists so a future backend can
-degrade to a recorded skip, same posture as `hasMilestones`).
+`Capability.hasComments` (true on all seven adapters — Local, GitHub,
+GitLab, Jira, Azure Boards, Asana, ClickUp — the flag exists so a future
+backend can degrade to a recorded skip, same posture as `hasMilestones`).
 
 **Time tracking.** `issue_close` accepts an optional `timeSpentMinutes`;
 on backends with `Capability.hasWorklog` (Jira only today, via

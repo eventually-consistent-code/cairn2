@@ -43,6 +43,10 @@ connects.
 
 ## Step 2 — create your tracker credentials (outside Claude)
 
+No tracker account at all? Skip this whole step: `"type": "local"` in
+Step 3 stores issues as plain files in your repo — zero credentials, and
+you can promote to a hosted tracker later.
+
 Cairn never stores secrets in config files — only the *names* of environment
 variables. Create a token for your backend and export it in your shell
 profile:

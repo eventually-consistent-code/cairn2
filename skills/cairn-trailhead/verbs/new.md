@@ -6,7 +6,16 @@ status: live
 
 Start a new cairn 2.0 project in this repo, per the `cairn-planning` skill.
 
-1. Confirm `cairn.json` exists (else point at `templates/cairn.json.example` and stop).
+1. Confirm `cairn.json` exists. Missing → ask which tracker backs this
+   project (one AskUserQuestion): **local** first — "issues live in this
+   repo as plain files; no accounts, no credentials" — then the six hosted
+   options. Local chosen → write a minimal `cairn.json`
+   (`{"tracker": {"type": "local", "config": {"prefix": "<project slug,
+   2–10 lowercase alphanumerics>"}}}`), then check `.gitignore`: if any
+   pattern matches `.tracker/`, show the offending line and stop until the
+   user removes it — the store only works committed. Hosted chosen → point
+   at that backend's block in `templates/cairn.json.example` and stop for
+   credentials setup as before.
 2. Interview the user briefly: vision, 3–10 requirements, phase breakdown. Native
    plan mode is appropriate for this conversation at standard/deep depth.
    The interview also asks the mode once (skip when cairn.json already
