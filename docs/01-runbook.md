@@ -619,16 +619,21 @@ rule, not a vibe — the session landscape or an audit record must name the
 resolution; "feels fixed" is not evidence), stale (default 14 days,
 `--stale-days` overrides — flag only, deliberately not config surface),
 unlabeled, bodiless, unowned-in-progress, possible-duplicate (judgment, not
-regex). Report always: a triage record plus a plain-language summary grouped
+regex), and — on link-capable trackers — priority-inversion (an issue whose
+declared priority is weaker than what it inherits through the dependency
+chain, straight from `graph_report`; a P3 blocking a P1 is effectively P1).
+Report always: a triage record plus a plain-language summary grouped
 by class. **No new issues are ever created** — the one deliberate deviation
 from audit/review's rule, because every triage finding already has a tracker
 object: the issue itself. Filing an issue about an issue is noise. `--apply`
 executes only the safe subset: best-fit labels from the vocabulary already
 in use (never a new label name), one-line stale nudges, evidence-quoting
 close comments then close for resolved-but-open, cross-linking comments on
-BOTH ends of a possible duplicate. Never-rules: duplicates are never
+BOTH ends of a possible duplicate, and a plain-language comment naming the
+inheritance chain on a priority-inversion. Never-rules: duplicates are never
 auto-closed; bodiless and unowned-in-progress are always report-only; every
-close quotes its evidence first. When in doubt whether a finding qualifies
+close quotes its evidence first; priority labels are never rewritten — the
+comment surfaces the inversion, raising the label is the human's move. When in doubt whether a finding qualifies
 for `--apply`, it doesn't.
 
 **`medic [--repair] | forensics [phase]`** — the planning directory's own
