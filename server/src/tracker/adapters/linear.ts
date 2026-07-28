@@ -39,6 +39,8 @@ interface LinearIssueNode {
 
 interface LinearStateNode { id: string; name: string; type: string; position: number }
 
+interface LinearProjectNode { id: string; name: string; state: string }
+
 export class LinearTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
@@ -186,23 +188,71 @@ export class LinearTracker implements Tracker {
     return issues;
   }
 
-  // Phases (Linear Projects) land in the next task.
-  async createPhase(_name: string): Promise<Phase> {
-    throw new CairnError("UNSUPPORTED", "linear phases not yet implemented");
+  // A cairn phase is a Linear Project — named container, native close state.
+  private normalizePhase(raw: LinearProjectNode): Phase {
+    return {
+      id: raw.id, name: raw.name,
+      state: raw.state === "completed" || raw.state === "canceled" ? "closed" : "open",
+    };
   }
+
+  async createPhase(name: string): Promise<Phase> {
+    const data = await this.gql<{ projectCreate: { project: LinearProjectNode } }>(
+      `mutation ProjectCreate($input: ProjectCreateInput!) { projectCreate(input: $input) { project { id name state } } }`,
+      { input: { name, teamIds: [this.cfg.teamId] } }, "phase_create");
+    return this.normalizePhase(data.projectCreate.project);
+  }
+
   async listPhases(): Promise<Phase[]> {
-    throw new CairnError("UNSUPPORTED", "linear phases not yet implemented");
+    const data = await this.gql<{ team: { projects: { nodes: LinearProjectNode[] } } }>(
+      `query Projects($teamId: String!) { team(id: $teamId) { projects { nodes { id name state } } } }`,
+      { teamId: this.cfg.teamId }, "phase_list");
+    return data.team.projects.nodes.map((p) => this.normalizePhase(p));
   }
-  async closePhase(_id: string): Promise<Phase> {
-    throw new CairnError("UNSUPPORTED", "linear phases not yet implemented");
+
+  /** Org project statuses, fetched once — close writes the 'completed' one. */
+  private completedStatusCache: string | undefined;
+  private async completedStatusId(): Promise<string> {
+    if (!this.completedStatusCache) {
+      const data = await this.gql<{ organization: { projectStatuses: { nodes: Array<{ id: string; type: string }> } } }>(
+        `query ProjectStatuses { organization { projectStatuses { nodes { id type } } } }`,
+        {}, "project_statuses");
+      const hit = data.organization.projectStatuses.nodes.find((s) => s.type === "completed");
+      if (!hit) {
+        throw new CairnError("CONFIG_INVALID",
+          "linear organization has no 'completed' project status",
+          "check project statuses in Linear workspace settings");
+      }
+      this.completedStatusCache = hit.id;
+    }
+    return this.completedStatusCache;
+  }
+
+  async closePhase(id: string): Promise<Phase> {
+    const statusId = await this.completedStatusId();
+    const data = await this.gql<{ projectUpdate: { project: LinearProjectNode } }>(
+      `mutation ProjectUpdate($id: String!, $input: ProjectUpdateInput!) { projectUpdate(id: $id, input: $input) { project { id name state } } }`,
+      { id, input: { statusId } }, "phase_close");
+    return this.normalizePhase(data.projectUpdate.project);
   }
 
   async createMilestone(_name: string): Promise<Milestone> { return milestonesUnsupported("linear"); }
   async listMilestones(): Promise<Milestone[]> { return milestonesUnsupported("linear"); }
   async completeMilestone(_id: string): Promise<Milestone> { return milestonesUnsupported("linear"); }
 
-  async commentIssue(_id: string, _text: string): Promise<{ id: string; url?: string }> {
-    throw new CairnError("UNSUPPORTED", "linear comments not yet implemented");
+  /** Identifier (ENG-123) → internal UUID; free NOT_FOUND on missing issues. */
+  private async uuid(id: string): Promise<string> {
+    const data = await this.gql<{ issue: { id: string } }>(
+      `query IssueId($id: String!) { issue(id: $id) { id } }`, { id }, "issue_resolve");
+    return data.issue.id;
+  }
+
+  async commentIssue(id: string, text: string): Promise<{ id: string; url?: string }> {
+    const issueId = await this.uuid(id);
+    const data = await this.gql<{ commentCreate: { comment: { id: string; url?: string } } }>(
+      `mutation CommentCreate($input: CommentCreateInput!) { commentCreate(input: $input) { comment { id url } } }`,
+      { input: { issueId, body: text } }, "issue_comment");
+    return { id: data.commentCreate.comment.id, url: data.commentCreate.comment.url };
   }
 }
 

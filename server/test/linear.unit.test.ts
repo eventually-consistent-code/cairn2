@@ -184,3 +184,62 @@ describe("LinearTracker mapping", () => {
     await expect(t(f2).getIssue("ENG-1")).rejects.toMatchObject({ code: "TRACKER_DOWN" });
   });
 });
+
+describe("LinearTracker phases (Projects) + comments", () => {
+  it("createPhase posts projectCreate with name + teamIds", async () => {
+    const { f, calls } = gqlFetch([
+      { data: { projectCreate: { project: { id: "prj-1", name: "Phase 1", state: "planned" } } } },
+    ]);
+    const ph = await t(f).createPhase("Phase 1");
+    expect(calls[0].query).toContain("projectCreate");
+    expect(calls[0].variables.input).toMatchObject({ name: "Phase 1", teamIds: [TEAM] });
+    expect(ph).toMatchObject({ id: "prj-1", name: "Phase 1", state: "open" });
+  });
+
+  it("listPhases maps project state: completed/canceled→closed, else open", async () => {
+    const { f } = gqlFetch([
+      { data: { team: { projects: { nodes: [
+        { id: "prj-1", name: "P1", state: "started" },
+        { id: "prj-2", name: "P2", state: "completed" },
+        { id: "prj-3", name: "P3", state: "canceled" },
+      ] } } } },
+    ]);
+    const phases = await t(f).listPhases();
+    expect(phases.map((p) => p.state)).toEqual(["open", "closed", "closed"]);
+  });
+
+  it("closePhase resolves the org's completed project status once, then projectUpdate(statusId)", async () => {
+    const { f, calls } = gqlFetch([
+      { data: { organization: { projectStatuses: { nodes: [
+        { id: "ps-started", type: "started" },
+        { id: "ps-done", type: "completed" },
+      ] } } } },
+      { data: { projectUpdate: { project: { id: "prj-1", name: "P1", state: "completed" } } } },
+    ]);
+    const ph = await t(f).closePhase("prj-1");
+    expect(calls[1].query).toContain("projectUpdate");
+    expect(calls[1].variables).toMatchObject({ id: "prj-1", input: { statusId: "ps-done" } });
+    expect(ph.state).toBe("closed");
+  });
+
+  it("commentIssue resolves identifier → UUID, then commentCreate", async () => {
+    const { f, calls } = gqlFetch([
+      { data: { issue: { id: "uuid-1" } } },
+      { data: { commentCreate: { comment: { id: "cm-1", url: "https://linear.app/c/1" } } } },
+    ]);
+    const c = await t(f).commentIssue("ENG-1", "plain note");
+    expect(calls[0].variables).toMatchObject({ id: "ENG-1" });
+    expect(calls[1].query).toContain("commentCreate");
+    expect(calls[1].variables.input).toMatchObject({ issueId: "uuid-1", body: "plain note" });
+    expect(c).toEqual({ id: "cm-1", url: "https://linear.app/c/1" });
+  });
+
+  it("milestones are UNSUPPORTED (capability-flagged fallback)", async () => {
+    const { f } = gqlFetch([]);
+    const tracker = t(f);
+    expect(tracker.capabilities.hasMilestones).toBe(false);
+    await expect(tracker.createMilestone("v1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
+    await expect(tracker.listMilestones()).rejects.toMatchObject({ code: "UNSUPPORTED" });
+    await expect(tracker.completeMilestone("1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
+  });
+});
