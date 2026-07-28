@@ -88,6 +88,14 @@ describe("CachedTracker", () => {
     expect(await t.listLinks!(a.id)).toEqual([]);
   });
 
+  it("forwards listComments when the inner adapter has it", async () => {
+    const inner = new FakeTracker();
+    const t = new CachedTracker(inner);
+    const i = await t.createIssue({ title: "hc" });
+    await t.commentIssue(i.id, "note");
+    expect((await t.listComments!(i.id)).map((c) => c.text)).toEqual(["note"]);
+  });
+
   it("leaves resolveSelf undefined when the inner adapter has none", () => {
     const bare = new FakeTracker();
     // strip the method to simulate an adapter without identity support

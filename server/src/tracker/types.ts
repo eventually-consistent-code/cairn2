@@ -52,6 +52,10 @@ export interface IssuePatch {
   assignee?: string;
 }
 
+export interface IssueComment { at?: string; author?: string; text: string }
+
+export interface WorklogEntry { at?: string; author?: string; minutes: number }
+
 export type LinkType = "blocks" | "parent-of" | "relates-to" | "supersedes";
 
 export interface IssueLink { from: string; type: LinkType; to: string }
@@ -80,4 +84,8 @@ export interface Tracker {
   unlinkIssues?(from: string, type: LinkType, to: string): Promise<void>;
   /** id given → links touching that issue (either direction); omitted → all. */
   listLinks?(id?: string): Promise<IssueLink[]>;
+  /** History reads — present where the backend can enumerate them
+   *  (migration sources). */
+  listComments?(id: string): Promise<IssueComment[]>;
+  listWorklogs?(id: string): Promise<WorklogEntry[]>;
 }

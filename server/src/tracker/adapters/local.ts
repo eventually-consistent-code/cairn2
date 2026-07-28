@@ -13,8 +13,8 @@ import { join, resolve } from "node:path";
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import type {
-  Capability, Issue, IssueCreate, IssueLink, IssuePatch, IssueState, LinkType,
-  Milestone, Phase, Tracker,
+  Capability, Issue, IssueComment, IssueCreate, IssueLink, IssuePatch, IssueState,
+  LinkType, Milestone, Phase, Tracker, WorklogEntry,
 } from "../types.js";
 
 export const configSchema = z.object({
@@ -142,8 +142,26 @@ export class LocalTracker implements Tracker {
     return parseIssueFile(readFileSync(this.issuePath(id), "utf8"));
   }
 
+  private warnedMigrated = false;
+
+  /** Soft guard: a store already promoted to a hosted backend still works,
+   *  but writes are probably landing in the wrong place — say so once. */
+  private warnIfMigrated(): void {
+    if (this.warnedMigrated) return;
+    this.warnedMigrated = true;
+    try {
+      const cfg = JSON.parse(readFileSync(join(this.root, "config.json"), "utf8")) as
+        { migratedTo?: string };
+      if (cfg.migratedTo) {
+        console.error(`[cairn local] warning: this store was migrated to `
+          + `'${cfg.migratedTo}' — new writes here won't reach it`);
+      }
+    } catch { /* unscaffolded store — nothing to warn about */ }
+  }
+
   private writeFields(f: Fields): Issue {
     this.init();
+    this.warnIfMigrated();
     mkdirSync(this.issueDir(f.id), { recursive: true });
     writeFileSync(this.issuePath(f.id), renderIssue(f));
     return this.toIssue(f);
@@ -287,6 +305,32 @@ export class LocalTracker implements Tracker {
     const dir = join(this.issueDir(id), "worklog");
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, `${this.stamp()}-${await this.who()}.md`), `${minutes}m\n`);
+  }
+
+  /** Parse "<stamp>-<author>.md" record filenames back into metadata. */
+  private historyFiles(id: string, sub: string): Array<{ at?: string; author?: string; text: string }> {
+    this.readFields(id); // NOT_FOUND guard
+    const dir = join(this.issueDir(id), sub);
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir).filter((e) => e.endsWith(".md")).sort().map((e) => {
+      const m = /^(.+Z)-(.+)\.md$/.exec(e);
+      return {
+        at: m?.[1],
+        author: m?.[2],
+        text: readFileSync(join(dir, e), "utf8").trim(),
+      };
+    });
+  }
+
+  async listComments(id: string): Promise<IssueComment[]> {
+    return this.historyFiles(id, "comments");
+  }
+
+  async listWorklogs(id: string): Promise<WorklogEntry[]> {
+    return this.historyFiles(id, "worklog").map((r) => ({
+      at: r.at, author: r.author,
+      minutes: Number(/^(\d+)m/.exec(r.text)?.[1] ?? 0),
+    }));
   }
 
   private edgePath(from: string, type: LinkType, to: string): string {

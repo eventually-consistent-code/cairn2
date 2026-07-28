@@ -798,8 +798,20 @@ field conflicts loudly on purpose — that's a real race a human should see.
 Extras the hosted backends don't have yet: real issue links (`blocks`,
 `parent-of`, `relates-to`, `supersedes`) and everything under "The
 dependency graph" below. Time logged on close lands as real worklog files.
-Promotion to a hosted tracker when the team grows is phase 4 of the local
-tracker's roadmap.
+
+**Promotion — start local, graduate when the team grows.** One call,
+`tracker_migrate(targetType, targetConfig)`, moves everything to a hosted
+backend: phases first, then issues (states, labels, assignee, with the
+phase references remapped), then comments and worklogs, then links —
+native issue links where the target supports them, `[link]` comments where
+it doesn't. Every migrated issue carries a `[migrated from <old-id>]`
+backlink, and the full old→new id map lands in `.tracker/MIGRATED.json`.
+`dryRun: true` reports counts without writing a thing. Honest caveat:
+hosted comment APIs attribute writes to the API credential, so original
+authors and timestamps survive as a `[<time> <author>]` prefix inside the
+comment text, not as native metadata. The local store is never modified
+beyond a `migratedTo` marker — writes still work afterward, with a warning
+that they won't reach the new home.
 
 ### GitHub
 
@@ -1502,14 +1514,14 @@ you need to know what actually happened versus what the docs claim.
 | `~/.cairn/handoff/<project>-<hash>.json` | session handoff — ephemeral, per-machine | every state-changing tool + hooks |
 | `~/.cairn/banner/<project>-<hash>.md` | pre-rendered recall banner | re-rendered on card/context changes |
 
-### The 69 MCP tools, by subsystem
+### The 70 MCP tools, by subsystem
 
 **Active context (2):** `context_get` · `context_set`
 
-**Tracker / issues (12):** `issue_create` · `issue_get` · `issue_update` ·
+**Tracker / issues (13):** `issue_create` · `issue_get` · `issue_update` ·
 `issue_close` · `issue_list` · `issue_comment` · `issue_link` ·
-`issue_unlink` · `issue_links` · `graph_report` · `phase_create` ·
-`phase_list`
+`issue_unlink` · `issue_links` · `graph_report` · `tracker_migrate` ·
+`phase_create` · `phase_list`
 
 **Milestones (3):** `milestone_create` · `milestone_list` ·
 `milestone_complete`
