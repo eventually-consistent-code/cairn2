@@ -23,6 +23,7 @@ an issue.
 | bodiless | empty body | minor |
 | unowned-in-progress | `state: in_progress`, no assignee | minor |
 | possible-duplicate | title near-match against another open issue (judgment, not regex — reason about it) | minor |
+| priority-inversion | `graph_report()` `priorities` names it — declared priority label weaker than the effective priority it inherits from what it blocks | important |
 
 `--stale-days N` overrides the default of 14; no config key, it's a flag
 only — this isn't `cairn.json` surface.
@@ -32,6 +33,12 @@ only — this isn't `cairn.json` surface.
 `cairn:audit`/`cairn:review` issues against `.cairn/audit/` records. No
 evidence naming the resolution means the issue doesn't land in this
 class, full stop — a hunch that a bug "feels fixed" isn't evidence.
+
+**Priority-inversion comes from the graph, not from judgment.** On trackers
+with `hasDependencies` (e.g. `local`), call `graph_report()` once for the
+sweep; each `priorities` row IS the finding — issue, effective priority,
+and the issue it inherits from. Skip the class silently on `UNSUPPORTED`
+backends; never infer inversions by eyeballing titles.
 
 ## Report (always)
 
@@ -53,6 +60,7 @@ itself. Filing a new issue about an issue is noise, not signal.
 | stale | `issue_comment` nudge, plain language, one line |
 | resolved-but-open | `issue_comment` naming the evidence (trace id / record scope + resolution text), then `issue_close` |
 | possible-duplicate | cross-linking `issue_comment` on BOTH issues |
+| priority-inversion | `issue_comment` naming the inheritance in plain language — what it blocks, that issue's priority, what this issue is labeled — so a human can raise the label |
 | bodiless | report-only, always |
 | unowned-in-progress | report-only, always |
 
@@ -65,6 +73,9 @@ itself. Filing a new issue about an issue is noise, not signal.
 - Labels come only from the vocabulary already in use — `issue_list`
   shows what's live on the project; inventing a new label name is not
   triage's call to make.
+- Priority labels are never rewritten — an inversion gets a comment
+  naming the inheritance; raising the declared priority is the human's
+  move.
 - A close always quotes its evidence in the comment first, then
   `issue_close` — never close on the strength of the classification
   alone.
