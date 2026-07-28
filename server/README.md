@@ -23,6 +23,7 @@ env vars aren't set, so `npm test` never touches the network.
 | `asana` | ✅ | ✅ | ✅ | ⏳ implemented, live pending credentials | `CAIRN_TEST_ASANA_PROJECT_GID`, `ASANA_TOKEN` |
 | `azure-boards` | ✅ | ✅ | ✅ | ⏳ implemented, live pending credentials | `CAIRN_TEST_AZURE_ORG_URL`, `CAIRN_TEST_AZURE_PROJECT`, `AZURE_DEVOPS_PAT` |
 | `clickup` | ✅ | ✅ | ✅ | ⏳ implemented, live pending credentials | `CAIRN_TEST_CLICKUP_DEFAULT_LIST`, `CAIRN_TEST_CLICKUP_SPACE` (or `CAIRN_TEST_CLICKUP_FOLDER`), `CLICKUP_TOKEN` |
+| `linear` | ✅ | ✅ | ✅ | ⏳ implemented, live pending credentials | `CAIRN_TEST_LINEAR_TEAM`, `LINEAR_API_KEY` |
 
 "contract (fake)" is ONE shared run of `test/contract.ts` against `FakeTracker`
 (and `CachedTracker(FakeTracker)` for "contract (cached)") — it is not a
@@ -376,7 +377,7 @@ being wrapped up, never abandoned silently.
 | `session_landscape` | Read-only join over all four kinds: every session's kind/id/status/issue/description/entryCounts, `openByKind` totals, archived resolution text (read from the `## resolution` block), and phase groupings. Deterministic ordering (kind, then id — trace, probe, draft, thread) — same store state, same bytes |
 
 Backed by the tracker interface's `commentIssue(id, text)` method +
-`Capability.hasComments` (true on all seven adapters — Local, GitHub,
+`Capability.hasComments` (true on all eight adapters — Local, Linear, GitHub,
 GitLab, Jira, Azure Boards, Asana, ClickUp — the flag exists so a future
 backend can degrade to a recorded skip, same posture as `hasMilestones`).
 
@@ -818,6 +819,20 @@ export CAIRN_TEST_CLICKUP_SPACE="<throwaway space id>"   # or CAIRN_TEST_CLICKUP
 export CLICKUP_TOKEN="<personal API token>"
 cd server && npx vitest run test/clickup.live.test.ts
 ```
+
+### linear
+
+```bash
+export CAIRN_LIVE_TESTS=1
+export CAIRN_TEST_LINEAR_TEAM="<throwaway team UUID>"
+export LINEAR_API_KEY="<personal API key>"
+cd server && npx vitest run test/linear.live.test.ts
+```
+
+Known risk: phase close writes a `projectUpdate` with the organization's
+`completed` project-status id — that status lookup and write path was built
+against the documented schema, not a live workspace. This live gate is the
+definitive check.
 
 Every suite creates issues/milestones (or the backend's phase equivalent)
 prefixed `contract:` in the sandbox project. Clean up by closing them or

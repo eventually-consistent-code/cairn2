@@ -771,9 +771,9 @@ starting, always, with `/cairn:new`.
 
 ## 4. Tracker backends
 
-Seven adapters behind one normalized interface, each declaring its
+Eight adapters behind one normalized interface, each declaring its
 capabilities rather than pretending to a lowest common denominator. All
-seven support issue comments. Credentials never live in `cairn.json` — the
+eight support issue comments. Credentials never live in `cairn.json` — the
 config names *env vars*, and the adapter reads them at runtime. (The local
 backend needs none at all.)
 
@@ -922,22 +922,46 @@ normalized states to your list's status names. Assignee writes: explicitly
 deferred (needs numeric user-id resolution not yet implemented). Listing
 capped at 100 items.
 
+### Linear
+
+```json
+"tracker": {
+  "type": "linear",
+  "config": {
+    "teamId": "9cfb482a-81e3-4154-b5b9-2c805e70a02d",
+    "apiKeyEnv": "LINEAR_API_KEY"
+  }
+}
+```
+
+Auth: personal API key via the named env var (sent raw — no Bearer prefix;
+create one at linear.app/settings/api). Issues carry Linear's human
+identifiers (`ENG-123`). No state map needed: cairn's states resolve
+against the team's workflow automatically (in-progress → the team's
+`started` state, close → `completed`). Phases are Linear **Projects**, with
+a real phase close via the workspace's completed project status. First
+hosted backend with native issue links — `blocks` and `relates-to` map to
+Linear relations, `parent-of` to native sub-issues, so `graph_report`
+(ready frontier, inherited priority) works here too; `supersedes` has no
+Linear equivalent and degrades to a text backlink. Labels find-or-create
+by name. Listing capped at 100 items.
+
 ### Capability differences at a glance
 
 | Capability | Backends |
 |---|---|
-| Issue comments | all seven |
+| Issue comments | all eight |
 | Assignee **writes** | Local, GitHub, Azure Boards (others accept the call but don't propagate) |
 | Worklog (real time entries on close) | Local, Jira |
-| Issue links + dependency graph | Local only (`graph_report`) |
+| Issue links + dependency graph | Local + Linear (`graph_report`; Linear lacks `supersedes`) |
 | Native milestones | backend-dependent; `summit` records a skip when the phase primitive can't close, and `milestone_*` degrades gracefully |
-| State mapping config | Jira `transitions`, Azure Boards `states`, ClickUp `statuses` |
-| Issue-list cap (affects `plan_unplanned` completeness) | 1000 (GitHub/GitLab), 100 (Jira/Asana/Azure Boards/ClickUp) — truncation is logged to server stderr |
+| State mapping config | Jira `transitions`, Azure Boards `states`, ClickUp `statuses` (Linear resolves the team workflow automatically) |
+| Issue-list cap (affects `plan_unplanned` completeness) | 1000 (GitHub/GitLab), 100 (Jira/Asana/Azure Boards/ClickUp/Linear) — truncation is logged to server stderr |
 
 Adapter maturity, honestly stated: GitHub is live-green against a real
 sandbox, and the local backend needs no live suite at all — its filesystem
 IS the live backend, exercised directly by the unit, contract, and
-merge-safety suites. The other five are fully implemented and pass the
+merge-safety suites. The other six are fully implemented and pass the
 unit and contract suites, but hadn't been run against live credentials at
 the time of writing — run the env-gated live suite (`server/README.md` has the exact
 commands per backend) before leaning on one in production. Two known risks
@@ -1390,7 +1414,7 @@ nothing.
 
 | Key | Type | Default | What it controls |
 |---|---|---|---|
-| `tracker.type` | `github \| gitlab \| jira \| asana \| azure-boards \| clickup` | *(required)* | Which tracker adapter runs |
+| `tracker.type` | `github \| gitlab \| jira \| asana \| azure-boards \| clickup \| linear \| local` | *(required)* | Which tracker adapter runs |
 | `tracker.config` | object | *(required)* | Backend-specific config (section 4); deep validation lives in the adapter |
 | `docs.connector` | `confluence` \| `docusaurus` | *(optional block)* | Which docs connector runs |
 | `docs.config` | object | — | Connector config: `baseUrl`, `spaceKey`, `emailEnv` (default `CONFLUENCE_EMAIL`), `tokenEnv` (default `CONFLUENCE_API_TOKEN`) |
