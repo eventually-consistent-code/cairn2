@@ -254,6 +254,132 @@ export class LinearTracker implements Tracker {
       { input: { issueId, body: text } }, "issue_comment");
     return { id: data.commentCreate.comment.id, url: data.commentCreate.comment.url };
   }
+
+  // Links — blocks/related are native issue relations, parent-of is Linear's
+  // sub-issue parent. supersedes has no Linear equivalent and stays honest
+  // about it. Relation ownership: each relation lives on its `from` issue;
+  // inverse direction is derived at read time, never stored twice.
+
+  private static readonly RELATION_TYPE: Partial<Record<LinkType, string>> = {
+    blocks: "blocks", "relates-to": "related",
+  };
+  private static readonly FROM_RELATION_TYPE: Record<string, LinkType | undefined> = {
+    blocks: "blocks", related: "relates-to",
+  };
+
+  async linkIssues(from: string, type: LinkType, to: string): Promise<void> {
+    if (type === "supersedes") {
+      throw new CairnError("UNSUPPORTED", "linear has no supersedes relation",
+        "migration and verbs fall back to a text backlink for this link type");
+    }
+    if (type === "parent-of") {
+      const parentId = await this.uuid(from);
+      await this.gql(
+        `mutation SetParent($id: String!, $input: IssueUpdateInput!) { issueUpdate(id: $id, input: $input) { success } }`,
+        { id: to, input: { parentId } }, "issue_link");
+      return;
+    }
+    const issueId = await this.uuid(from);
+    const relatedIssueId = await this.uuid(to);
+    if (type === "blocks") {
+      // Linear happily stores circular blocks — the cairn contract doesn't.
+      const blocks = (await this.listLinks()).filter((l) => l.type === "blocks");
+      const stack = [to];
+      const seen = new Set<string>();
+      while (stack.length) {
+        const cur = stack.pop()!;
+        if (cur === from) {
+          throw new CairnError("CONFIG_INVALID",
+            `link ${from} blocks ${to} would create a dependency cycle`,
+            "break the existing chain first");
+        }
+        if (seen.has(cur)) continue;
+        seen.add(cur);
+        for (const l of blocks) if (l.from === cur) stack.push(l.to);
+      }
+    }
+    await this.gql(
+      `mutation RelationCreate($input: IssueRelationCreateInput!) { issueRelationCreate(input: $input) { issueRelation { id } } }`,
+      { input: { issueId, relatedIssueId, type: LinearTracker.RELATION_TYPE[type] } },
+      "issue_link");
+  }
+
+  async unlinkIssues(from: string, type: LinkType, to: string): Promise<void> {
+    if (type === "parent-of") {
+      await this.gql(
+        `mutation ClearParent($id: String!, $input: IssueUpdateInput!) { issueUpdate(id: $id, input: $input) { success } }`,
+        { id: to, input: { parentId: null } }, "issue_unlink");
+      return;
+    }
+    const links = await this.issueLinksRaw(from);
+    const hit = links.relations.nodes.find((r) =>
+      LinearTracker.FROM_RELATION_TYPE[r.type] === type && r.relatedIssue.identifier === to);
+    if (!hit) {
+      throw new CairnError("NOT_FOUND", `no ${type} link from ${from} to ${to}`);
+    }
+    await this.gql(
+      `mutation RelationDelete($id: String!) { issueRelationDelete(id: $id) { success } }`,
+      { id: hit.id }, "issue_unlink");
+  }
+
+  private async issueLinksRaw(id: string): Promise<{
+    identifier: string;
+    parent: { identifier: string } | null;
+    children: { nodes: Array<{ identifier: string }> };
+    relations: { nodes: Array<{ id: string; type: string; relatedIssue: { identifier: string } }> };
+    inverseRelations: { nodes: Array<{ id: string; type: string; issue: { identifier: string } }> };
+  }> {
+    const data = await this.gql<{ issue: Awaited<ReturnType<LinearTracker["issueLinksRaw"]>> }>(
+      `query IssueLinks($id: String!) { issue(id: $id) {
+        identifier
+        parent { identifier }
+        children { nodes { identifier } }
+        relations { nodes { id type relatedIssue { identifier } } }
+        inverseRelations { nodes { id type issue { identifier } } }
+      } }`, { id }, "issue_links");
+    return data.issue;
+  }
+
+  async listLinks(id?: string): Promise<IssueLink[]> {
+    const out: IssueLink[] = [];
+    if (id !== undefined) {
+      const raw = await this.issueLinksRaw(id);
+      const self = raw.identifier;
+      for (const r of raw.relations.nodes) {
+        const type = LinearTracker.FROM_RELATION_TYPE[r.type];
+        if (type) out.push({ from: self, type, to: r.relatedIssue.identifier });
+      }
+      for (const r of raw.inverseRelations.nodes) {
+        const type = LinearTracker.FROM_RELATION_TYPE[r.type];
+        if (type) out.push({ from: r.issue.identifier, type, to: self });
+      }
+      if (raw.parent) out.push({ from: raw.parent.identifier, type: "parent-of", to: self });
+      for (const c of raw.children.nodes) out.push({ from: self, type: "parent-of", to: c.identifier });
+      return out;
+    }
+    const data = await this.gql<{ issues: { nodes: Array<{
+      identifier: string;
+      parent: { identifier: string } | null;
+      relations: { nodes: Array<{ id: string; type: string; relatedIssue: { identifier: string } }> };
+    }> } }>(
+      `query TeamLinks($filter: IssueFilter, $first: Int!) { issues(filter: $filter, first: $first) { nodes {
+        identifier
+        parent { identifier }
+        relations { nodes { id type relatedIssue { identifier } } }
+      } } }`,
+      { filter: { team: { id: { eq: this.cfg.teamId } } }, first: LIST_CAP }, "issue_links");
+    if (data.issues.nodes.length === LIST_CAP) {
+      console.error(`[cairn] linear issue_links truncated at ${LIST_CAP} issues for team ${this.cfg.teamId}`);
+    }
+    for (const n of data.issues.nodes) {
+      for (const r of n.relations.nodes) {
+        const type = LinearTracker.FROM_RELATION_TYPE[r.type];
+        if (type) out.push({ from: n.identifier, type, to: r.relatedIssue.identifier });
+      }
+      if (n.parent) out.push({ from: n.parent.identifier, type: "parent-of", to: n.identifier });
+    }
+    return out;
+  }
 }
 
 export function resolveLinearKey(apiKeyEnv: string): string {

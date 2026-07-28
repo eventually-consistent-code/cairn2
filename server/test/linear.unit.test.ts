@@ -243,3 +243,139 @@ describe("LinearTracker phases (Projects) + comments", () => {
     await expect(tracker.completeMilestone("1")).rejects.toMatchObject({ code: "UNSUPPORTED" });
   });
 });
+
+// Fixtures for link tests — issue uuid resolutions and relation queries
+const uuidFix = (uuid: string) => ({ data: { issue: { id: uuid } } });
+const teamLinksFix = (nodes: unknown[]) => ({ data: { issues: { nodes } } });
+const linkNode = (identifier: string, over: Record<string, unknown> = {}) => ({
+  identifier, parent: null, relations: { nodes: [] as unknown[] }, ...over,
+});
+
+describe("LinearTracker links", () => {
+  it("linkIssues(blocks) resolves both UUIDs, cycle-checks, then issueRelationCreate", async () => {
+    const { f, calls } = gqlFetch([
+      uuidFix("uuid-a"), uuidFix("uuid-b"),
+      teamLinksFix([linkNode("ENG-1"), linkNode("ENG-2")]),
+      { data: { issueRelationCreate: { issueRelation: { id: "rel-1" } } } },
+    ]);
+    await t(f).linkIssues!("ENG-1", "blocks", "ENG-2");
+    expect(calls[3].query).toContain("issueRelationCreate");
+    expect(calls[3].variables.input).toMatchObject({
+      issueId: "uuid-a", relatedIssueId: "uuid-b", type: "blocks",
+    });
+  });
+
+  it("linkIssues(relates-to) maps to Linear's 'related' type, no cycle check", async () => {
+    const { f, calls } = gqlFetch([
+      uuidFix("uuid-a"), uuidFix("uuid-b"),
+      { data: { issueRelationCreate: { issueRelation: { id: "rel-1" } } } },
+    ]);
+    await t(f).linkIssues!("ENG-1", "relates-to", "ENG-2");
+    expect(calls).toHaveLength(3);
+    expect(calls[2].variables.input).toMatchObject({ type: "related" });
+  });
+
+  it("linkIssues(parent-of) sets the native sub-issue parent", async () => {
+    const { f, calls } = gqlFetch([
+      uuidFix("uuid-parent"),
+      { data: { issueUpdate: { success: true } } },
+    ]);
+    await t(f).linkIssues!("ENG-1", "parent-of", "ENG-2");
+    expect(calls[1].query).toContain("issueUpdate");
+    expect(calls[1].variables).toMatchObject({ id: "ENG-2", input: { parentId: "uuid-parent" } });
+  });
+
+  it("linkIssues(supersedes) is UNSUPPORTED with no HTTP calls", async () => {
+    const { f, calls } = gqlFetch([]);
+    await expect(t(f).linkIssues!("ENG-1", "supersedes", "ENG-2"))
+      .rejects.toMatchObject({ code: "UNSUPPORTED" });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("linkIssues to a nonexistent issue is NOT_FOUND before any mutation", async () => {
+    const { f, calls } = gqlFetch([
+      uuidFix("uuid-a"),
+      { errors: [{ message: "Entity not found: Issue" }] },
+    ]);
+    await expect(t(f).linkIssues!("ENG-1", "blocks", "ENG-404"))
+      .rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(calls).toHaveLength(2);
+  });
+
+  it("linkIssues rejects a blocks cycle adapter-side with CONFIG_INVALID", async () => {
+    const { f, calls } = gqlFetch([
+      uuidFix("uuid-b"), uuidFix("uuid-a"),
+      teamLinksFix([
+        linkNode("ENG-1", { relations: { nodes: [
+          { id: "rel-1", type: "blocks", relatedIssue: { identifier: "ENG-2" } },
+        ] } }),
+        linkNode("ENG-2"),
+      ]),
+    ]);
+    await expect(t(f).linkIssues!("ENG-2", "blocks", "ENG-1"))
+      .rejects.toMatchObject({ code: "CONFIG_INVALID" });
+    expect(calls).toHaveLength(3); // no mutation happened
+  });
+
+  it("listLinks(id) merges relations, inverse relations, parent and children; ignores duplicates", async () => {
+    const { f } = gqlFetch([
+      { data: { issue: {
+        identifier: "ENG-2",
+        parent: { identifier: "ENG-9" },
+        children: { nodes: [{ identifier: "ENG-10" }] },
+        relations: { nodes: [
+          { id: "rel-1", type: "blocks", relatedIssue: { identifier: "ENG-3" } },
+          { id: "rel-2", type: "duplicate", relatedIssue: { identifier: "ENG-4" } },
+        ] },
+        inverseRelations: { nodes: [
+          { id: "rel-3", type: "blocks", issue: { identifier: "ENG-1" } },
+          { id: "rel-4", type: "related", issue: { identifier: "ENG-5" } },
+        ] },
+      } } },
+    ]);
+    const links = await t(f).listLinks!("ENG-2");
+    expect(links).toContainEqual({ from: "ENG-2", type: "blocks", to: "ENG-3" });
+    expect(links).toContainEqual({ from: "ENG-1", type: "blocks", to: "ENG-2" });
+    expect(links).toContainEqual({ from: "ENG-5", type: "relates-to", to: "ENG-2" });
+    expect(links).toContainEqual({ from: "ENG-9", type: "parent-of", to: "ENG-2" });
+    expect(links).toContainEqual({ from: "ENG-2", type: "parent-of", to: "ENG-10" });
+    expect(links.some((l) => l.to === "ENG-4" || l.from === "ENG-4")).toBe(false);
+  });
+
+  it("listLinks() walks team issues — relations owned once, parent-of derived from parent", async () => {
+    const { f } = gqlFetch([
+      teamLinksFix([
+        linkNode("ENG-1", { relations: { nodes: [
+          { id: "rel-1", type: "blocks", relatedIssue: { identifier: "ENG-2" } },
+        ] } }),
+        linkNode("ENG-2", { parent: { identifier: "ENG-1" } }),
+      ]),
+    ]);
+    const links = await t(f).listLinks!();
+    expect(links).toContainEqual({ from: "ENG-1", type: "blocks", to: "ENG-2" });
+    expect(links).toContainEqual({ from: "ENG-1", type: "parent-of", to: "ENG-2" });
+    expect(links).toHaveLength(2);
+  });
+
+  it("unlinkIssues(blocks) finds the owning relation id then issueRelationDelete", async () => {
+    const { f, calls } = gqlFetch([
+      { data: { issue: {
+        identifier: "ENG-1", parent: null, children: { nodes: [] },
+        relations: { nodes: [
+          { id: "rel-7", type: "blocks", relatedIssue: { identifier: "ENG-2" } },
+        ] },
+        inverseRelations: { nodes: [] },
+      } } },
+      { data: { issueRelationDelete: { success: true } } },
+    ]);
+    await t(f).unlinkIssues!("ENG-1", "blocks", "ENG-2");
+    expect(calls[1].query).toContain("issueRelationDelete");
+    expect(calls[1].variables).toMatchObject({ id: "rel-7" });
+  });
+
+  it("unlinkIssues(parent-of) clears the parent", async () => {
+    const { f, calls } = gqlFetch([{ data: { issueUpdate: { success: true } } }]);
+    await t(f).unlinkIssues!("ENG-1", "parent-of", "ENG-2");
+    expect(calls[0].variables).toMatchObject({ id: "ENG-2", input: { parentId: null } });
+  });
+});
