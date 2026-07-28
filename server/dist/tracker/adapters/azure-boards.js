@@ -71,6 +71,16 @@ export class AzureBoardsTracker {
             throw new CairnError("NOT_FOUND", `invalid work item id: ${id}`, "work item id must be a numeric string");
         }
     }
+    self;
+    async resolveSelf() {
+        if (this.self)
+            return this.self;
+        const data = await this.api("GET", "/_apis/connectionData", undefined, { context: "azure-boards connectionData" });
+        // Account.$value is the sign-in email System.AssignedTo accepts
+        this.self = data.authenticatedUser?.properties?.Account?.$value
+            ?? data.authenticatedUser?.providerDisplayName;
+        return this.self;
+    }
     get projectPath() {
         return encodeURIComponent(this.cfg.project);
     }

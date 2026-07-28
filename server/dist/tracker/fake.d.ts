@@ -1,4 +1,4 @@
-import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker } from "./types.js";
+import type { Capability, Issue, IssueComment, IssueCreate, IssueLink, IssuePatch, IssueState, LinkType, Milestone, Phase, Tracker } from "./types.js";
 export declare class FakeTracker implements Tracker {
     readonly capabilities: Capability;
     private issues;
@@ -24,6 +24,13 @@ export declare class FakeTracker implements Tracker {
         id: string;
         url?: string;
     }>;
+    resolveSelf(): Promise<string | undefined>;
+    private links;
+    private wouldCycle;
+    linkIssues(from: string, type: LinkType, to: string): Promise<void>;
+    unlinkIssues(from: string, type: LinkType, to: string): Promise<void>;
+    listLinks(id?: string): Promise<IssueLink[]>;
+    listComments(id: string): Promise<IssueComment[]>;
     /** Test accessor: comments posted to an issue, in order. */
     comments(id: string): Array<{
         id: string;

@@ -9,7 +9,7 @@ export function make() {
 }
 export class FakeDocsConnector {
     capabilities = {
-        hasPageTree: true, hasAttachments: false, hasLabels: false,
+        hasPageTree: true, hasAttachments: false, hasLabels: false, hasNativeToc: false,
     };
     pages = new Map();
     seq = 0;

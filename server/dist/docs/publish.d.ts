@@ -6,6 +6,8 @@ export interface PublishResult {
         title: string;
         url: string;
     }>;
+    /** Degraded-but-successful post-publish step (e.g. auto-commit skipped). */
+    warning?: string;
 }
 /** Default project name: the repo directory's basename. */
 export declare function defaultProjectName(projectDir: string): string;

@@ -64,6 +64,10 @@ export declare class JiraTracker implements Tracker {
     private transitionToOpenCategory;
     createIssue(input: IssueCreate): Promise<Issue>;
     getIssue(id: string): Promise<Issue>;
+    private self;
+    resolveSelf(): Promise<string | undefined>;
+    /** Assignee values may arrive as an email (user.handle) — Jira wants accountId. */
+    private toAccountId;
     updateIssue(id: string, patch: IssuePatch): Promise<Issue>;
     closeIssue(id: string): Promise<Issue>;
     listIssues(filter?: {

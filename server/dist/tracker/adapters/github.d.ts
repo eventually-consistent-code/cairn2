@@ -21,6 +21,8 @@ export declare class GitHubTracker implements Tracker {
     private headers;
     private api;
     private assertId;
+    private self;
+    resolveSelf(): Promise<string | undefined>;
     private normalize;
     createIssue(input: IssueCreate): Promise<Issue>;
     getIssue(id: string): Promise<Issue>;

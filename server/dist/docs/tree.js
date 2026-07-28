@@ -19,6 +19,7 @@ function fileNode(path) {
     return {
         title: h1 ? h1[1].trim() : nameToTitle(basename(path)),
         markdown,
+        sourceName: basename(path),
         children: [],
     };
 }
@@ -38,7 +39,8 @@ function dirNode(path) {
     }
     if (children.length === 0)
         return null;
-    return { title: nameToTitle(basename(path)), markdown: "", children };
+    return { title: nameToTitle(basename(path)), markdown: "",
+        sourceName: basename(path), children };
 }
 /**
  * Scan the project's documentation surface: everything under docs/, plus a

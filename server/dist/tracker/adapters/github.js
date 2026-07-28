@@ -57,6 +57,14 @@ export class GitHubTracker {
             throw new CairnError("NOT_FOUND", `invalid issue id: ${id}`, "issue id must be a numeric string");
         }
     }
+    self;
+    async resolveSelf() {
+        if (this.self)
+            return this.self;
+        const me = await this.api("GET", "/user");
+        this.self = me.login;
+        return this.self;
+    }
     normalize(raw) {
         const labels = raw.labels.map((l) => l.name);
         let state = raw.state === "closed" ? "closed" : "open";

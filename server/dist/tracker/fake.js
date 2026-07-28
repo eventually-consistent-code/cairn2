@@ -90,6 +90,49 @@ export class FakeTracker {
         this.issueComments.set(id, list);
         return { id: comment.id, url: `fake://comment/${comment.id}` };
     }
+    async resolveSelf() {
+        return "fake-user";
+    }
+    links = [];
+    wouldCycle(from, type, to) {
+        if (type !== "blocks" && type !== "parent-of")
+            return false;
+        // walk from `to` along same-type edges; hitting `from` closes a cycle
+        const seen = new Set();
+        const stack = [to];
+        while (stack.length) {
+            const cur = stack.pop();
+            if (cur === from)
+                return true;
+            if (seen.has(cur))
+                continue;
+            seen.add(cur);
+            for (const l of this.links)
+                if (l.from === cur && l.type === type)
+                    stack.push(l.to);
+        }
+        return false;
+    }
+    async linkIssues(from, type, to) {
+        await this.getIssue(from);
+        await this.getIssue(to);
+        if (this.wouldCycle(from, type, to)) {
+            throw new CairnError("CONFIG_INVALID", `link ${from} ${type} ${to} would create a cycle`);
+        }
+        if (!this.links.some((l) => l.from === from && l.type === type && l.to === to)) {
+            this.links.push({ from, type, to });
+        }
+    }
+    async unlinkIssues(from, type, to) {
+        this.links = this.links.filter((l) => !(l.from === from && l.type === type && l.to === to));
+    }
+    async listLinks(id) {
+        return id === undefined ? [...this.links]
+            : this.links.filter((l) => l.from === id || l.to === id);
+    }
+    async listComments(id) {
+        return (this.issueComments.get(id) ?? []).map((c) => ({ text: c.text }));
+    }
     /** Test accessor: comments posted to an issue, in order. */
     comments(id) {
         return [...(this.issueComments.get(id) ?? [])];

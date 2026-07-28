@@ -8,10 +8,49 @@ export class CachedTracker {
     inner;
     capabilities;
     cache;
+    // Optional on Tracker — present only when the inner adapter has it, so the
+    // caller's "capabilities.hasWorklog && tracker.logWork" gate keeps working.
+    logWork;
+    resolveSelf;
+    linkIssues;
+    unlinkIssues;
+    listLinks;
+    listComments;
+    listWorklogs;
     constructor(inner, cache) {
         this.inner = inner;
         this.capabilities = inner.capabilities;
         this.cache = cache ?? new ReadCache(60_000);
+        if (inner.logWork) {
+            this.logWork = async (id, minutes) => {
+                await this.inner.logWork(id, minutes);
+                this.cache.clear();
+            };
+        }
+        if (inner.resolveSelf) {
+            this.resolveSelf = () => this.inner.resolveSelf();
+        }
+        if (inner.linkIssues) {
+            this.linkIssues = async (f, ty, to) => {
+                await this.inner.linkIssues(f, ty, to);
+                this.cache.clear();
+            };
+        }
+        if (inner.unlinkIssues) {
+            this.unlinkIssues = async (f, ty, to) => {
+                await this.inner.unlinkIssues(f, ty, to);
+                this.cache.clear();
+            };
+        }
+        if (inner.listLinks) {
+            this.listLinks = (id) => this.inner.listLinks(id);
+        }
+        if (inner.listComments) {
+            this.listComments = (id) => this.inner.listComments(id);
+        }
+        if (inner.listWorklogs) {
+            this.listWorklogs = (id) => this.inner.listWorklogs(id);
+        }
     }
     clone(value) {
         return structuredClone(value);
