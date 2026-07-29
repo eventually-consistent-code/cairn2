@@ -22,6 +22,8 @@ export class CachedTracker implements Tracker {
   listLinks?: (id?: string) => Promise<IssueLink[]>;
   listComments?: (id: string) => Promise<IssueComment[]>;
   listWorklogs?: (id: string) => Promise<WorklogEntry[]>;
+  attachFile?: (id: string, filename: string, data: Buffer,
+    mediaType?: string) => Promise<{ id?: string; url?: string }>;
 
   constructor(
     private inner: Tracker,
@@ -58,6 +60,11 @@ export class CachedTracker implements Tracker {
     }
     if (inner.listWorklogs) {
       this.listWorklogs = (id) => this.inner.listWorklogs!(id);
+    }
+    if (inner.attachFile) {
+      // Write, not a read — no cache entry to clear (attachments aren't cached).
+      this.attachFile = (id, filename, data, mediaType) =>
+        this.inner.attachFile!(id, filename, data, mediaType);
     }
   }
 

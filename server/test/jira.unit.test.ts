@@ -640,3 +640,41 @@ describe("JiraTracker estimates", () => {
     expect(t.capabilities.hasEstimates).toBe(true);
   });
 });
+
+describe("JiraTracker attachments", () => {
+  /** Non-JSON-body-tolerant fixture — multipart uploads record the FormData raw. */
+  function rawFetch(fixtures: Array<{ status: number; body: unknown }>) {
+    const calls: Array<{ url: string; method: string; body?: unknown;
+      headers: Record<string, string> }> = [];
+    const f: FetchLike = async (url, init) => {
+      const h: Record<string, string> = {};
+      new Headers(init?.headers).forEach((v, k) => { h[k] = v; });
+      let body: unknown = init?.body;
+      if (typeof body === "string") { try { body = JSON.parse(body); } catch { /* raw */ } }
+      calls.push({ url: String(url), method: init?.method ?? "GET", body, headers: h });
+      const fx = fixtures.shift()!;
+      return new Response(JSON.stringify(fx.body), { status: fx.status });
+    };
+    return { f, calls };
+  }
+
+  it("attachFile POSTs multipart with the no-check header", async () => {
+    const { f, calls } = rawFetch([
+      { status: 200, body: [{ id: "10001", filename: "shot.png" }] },
+    ]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    const res = await t.attachFile!("CHN-101", "shot.png", Buffer.from([1, 2]), "image/png");
+    expect(calls[0].url).toBe(`${BASE}/rest/api/3/issue/CHN-101/attachments`);
+    expect(calls[0].method).toBe("POST");
+    expect(calls[0].headers["x-atlassian-token"]).toBe("no-check");
+    expect(calls[0].headers["content-type"] ?? "").not.toContain("application/json");
+    expect(calls[0].body).toBeInstanceOf(FormData);
+    expect(res.id).toBe("10001");
+  });
+
+  it("declares hasIssueAttachments", () => {
+    const { f } = rawFetch([]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    expect(t.capabilities.hasIssueAttachments).toBe(true);
+  });
+});

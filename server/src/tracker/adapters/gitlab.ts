@@ -21,6 +21,7 @@ export class GitLabTracker implements Tracker {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
     hasMilestones: false, hasPhaseClose: true, hasComments: true, hasWorklog: false,
     hasEstimates: false,
+    hasIssueAttachments: false,
   };
   constructor(private cfg: z.infer<typeof configSchema>, private fetchImpl: FetchLike = fetch) {}
 

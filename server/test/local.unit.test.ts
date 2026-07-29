@@ -155,3 +155,17 @@ describe("LocalTracker estimates", () => {
     expect((await t.getIssue(i.id)).estimate).toEqual({ points: 8, minutes: 120 });
   });
 });
+
+describe("LocalTracker attachments", () => {
+  it("attachFile writes under issues/<id>/attachments and de-collides names", async () => {
+    const { dir, t } = fresh();
+    expect(t.capabilities.hasIssueAttachments).toBe(true);
+    const i = await t.createIssue({ title: "Shots" });
+    await t.attachFile!(i.id, "shot.png", Buffer.from([1]), "image/png");
+    await t.attachFile!(i.id, "shot.png", Buffer.from([2]), "image/png");
+    const files = readdirSync(join(dir, ".tracker", "issues", i.id, "attachments"));
+    expect(files).toHaveLength(2);
+    expect(files).toContain("shot.png");
+    expect(files.some((f) => /^shot-.+\.png$/.test(f))).toBe(true);
+  });
+});

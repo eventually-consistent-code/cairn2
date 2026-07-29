@@ -44,6 +44,7 @@ export class GitHubTracker implements Tracker {
     hasPhases: true, hasDependencies: false, hasLabels: true,
     hasMilestones: false, hasPhaseClose: true, hasComments: true, hasWorklog: false,
     hasEstimates: false,
+    hasIssueAttachments: false,
   };
 
   constructor(

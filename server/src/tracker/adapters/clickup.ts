@@ -58,6 +58,7 @@ export class ClickUpTracker implements Tracker {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
     hasMilestones: false, hasPhaseClose: false, hasComments: true, hasWorklog: false,
     hasEstimates: false,
+    hasIssueAttachments: false,
   };
 
   constructor(

@@ -34,6 +34,7 @@ export class AsanaTracker implements Tracker {
     hasInProgress: false, hasPhases: true, hasDependencies: true, hasLabels: false,
     hasMilestones: false, hasPhaseClose: false, hasComments: true, hasWorklog: false,
     hasEstimates: false,
+    hasIssueAttachments: false,
   };
 
   constructor(

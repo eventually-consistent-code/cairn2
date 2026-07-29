@@ -46,6 +46,7 @@ export class LinearTracker implements Tracker {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
     hasMilestones: false, hasPhaseClose: true, hasComments: true, hasWorklog: false,
     hasEstimates: false,
+    hasIssueAttachments: false,
   };
 
   // Lazy per-instance caches — a team's workflow states and label ids are
