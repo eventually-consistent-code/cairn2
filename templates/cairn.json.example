@@ -83,6 +83,13 @@
         "tokenEnv": "CLICKUP_TOKEN",
         "statuses": { "open": "to do", "in_progress": "in progress", "closed": "complete" }
       }
+    },
+    "linear": {
+      "type": "linear",
+      "config": {
+        "teamId": "9cfb482a-81e3-4154-b5b9-2c805e70a02d",
+        "apiKeyEnv": "LINEAR_API_KEY"
+      }
     }
   }
 }

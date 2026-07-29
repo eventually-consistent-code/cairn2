@@ -5,14 +5,14 @@ import { CairnError } from "./errors.js";
 import { PROVIDERS } from "./peers/providers.js";
 export const ConfigSchema = z.object({
     tracker: z.object({
-        type: z.enum(["github", "gitlab", "jira", "asana", "azure-boards", "clickup"]),
+        type: z.enum(["github", "gitlab", "jira", "asana", "azure-boards", "clickup", "linear", "local"]),
         config: z.record(z.unknown()),
     }),
     // Documentation connectors publish repo docs outward (Confluence first);
     // same two-level shape as tracker — deep validation lives in the adapter.
     docs: z
         .object({
-        connector: z.enum(["confluence"]),
+        connector: z.enum(["confluence", "docusaurus"]),
         config: z.record(z.unknown()),
     })
         .optional(),

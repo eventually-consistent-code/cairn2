@@ -6,4 +6,4 @@ import type { Tracker } from "./types.js";
  * adapter modules that exist but fail to load (syntax error, broken import, etc).
  */
 export declare function importErrorToCairn(type: string, e: unknown): CairnError;
-export declare function makeTracker(cfg: CairnConfig): Promise<Tracker>;
+export declare function makeTracker(cfg: CairnConfig, projectDir?: string): Promise<Tracker>;

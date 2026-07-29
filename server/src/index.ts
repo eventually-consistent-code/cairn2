@@ -311,7 +311,7 @@ export function buildServer(deps: {
         + "provenance backlinks. Source must be tracker.type: local. dryRun reports "
         + "what would migrate without writing anything.",
       inputSchema: {
-        targetType: z.enum(["github", "gitlab", "jira", "asana", "azure-boards", "clickup"]),
+        targetType: z.enum(["github", "gitlab", "jira", "asana", "azure-boards", "clickup", "linear"]),
         targetConfig: z.record(z.unknown()),
         dryRun: z.boolean().optional(),
       } },

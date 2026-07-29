@@ -60,6 +60,8 @@ export declare class AzureBoardsTracker implements Tracker {
     private url;
     private api;
     private assertId;
+    private self;
+    resolveSelf(): Promise<string | undefined>;
     private get projectPath();
     private normalizeState;
     private normalize;

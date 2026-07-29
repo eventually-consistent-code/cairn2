@@ -9,6 +9,7 @@ const ADAPTER_PATHS: Record<CairnConfig["tracker"]["type"], string> = {
   asana: "./adapters/asana.js",
   "azure-boards": "./adapters/azure-boards.js",
   clickup: "./adapters/clickup.js",
+  linear: "./adapters/linear.js",
   local: "./adapters/local.js",
 };
 

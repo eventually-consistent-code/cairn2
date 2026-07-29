@@ -3,6 +3,8 @@ export interface DocNode {
     title: string;
     /** Markdown body. Directories get an empty body; the publisher writes a TOC. */
     markdown: string;
+    /** Source file/dir basename — lets filesystem backends mirror the layout. */
+    sourceName: string;
     children: DocNode[];
 }
 /** "0004-api-versioning" / "quick_start" → "Api Versioning" / "Quick Start". */

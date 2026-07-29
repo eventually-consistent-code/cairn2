@@ -25,7 +25,7 @@ export class ConfluenceConnector {
     fetchImpl;
     authProvider;
     capabilities = {
-        hasPageTree: true, hasAttachments: true, hasLabels: true,
+        hasPageTree: true, hasAttachments: true, hasLabels: true, hasNativeToc: false,
     };
     space;
     constructor(cfg, fetchImpl = fetch, authProvider = () => resolveConfluenceAuth(cfg)) {

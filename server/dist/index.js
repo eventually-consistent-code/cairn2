@@ -11,6 +11,8 @@ import { loadConfig, writeConfigPatch } from "./config.js";
 import { ActiveContext } from "./active-context.js";
 import { makeTracker } from "./tracker/registry.js";
 import { CachedTracker } from "./tracker/cached.js";
+import { danglingEdges, effectivePriorities, lineage, readyFrontier } from "./tracker/graph.js";
+import { finalizeMigration, migrateTracker } from "./tracker/migrate.js";
 import { makeDocsConnector } from "./docs/registry.js";
 import { defaultProjectName, publishTree } from "./docs/publish.js";
 import { scaffoldProject, scaffoldPhase, writePlanIssues, readPlanMeta, writePlanMeta } from "./planning/artifacts.js";
@@ -89,7 +91,7 @@ export function buildServer(deps) {
         const d = dOverride ?? dir();
         let t = trackers.get(d);
         if (!t) {
-            t = new CachedTracker(await makeTracker(loadConfig(d)));
+            t = new CachedTracker(await makeTracker(loadConfig(d), d));
             trackers.set(d, t);
         }
         return t;
@@ -193,10 +195,96 @@ export function buildServer(deps) {
             assignee: z.string().optional() } }, wrap(async (a) => {
         const d = dir();
         const { id, ...patch } = a;
-        const result = await (await getTracker(d)).updateIssue(id, patch);
+        const tracker = await getTracker(d);
+        let autoAssigned = false;
+        if (patch.state === "in_progress" && patch.assignee === undefined) {
+            // best-effort claim attribution — identity failures never block the claim
+            try {
+                const current = await tracker.getIssue(id);
+                if (!current.assignee) {
+                    const who = loadConfig(d).user?.handle ?? await tracker.resolveSelf?.();
+                    if (who) {
+                        patch.assignee = who;
+                        autoAssigned = true;
+                    }
+                }
+            }
+            catch { /* claim proceeds unassigned */ }
+        }
+        const result = await tracker.updateIssue(id, patch);
         snapshotNote(d, result);
         refreshHandoff({ source: "tool", issue: id }, d);
-        return result;
+        return { ...result, ...(autoAssigned ? { autoAssigned: true } : {}) };
+    }));
+    const LinkTypeEnum = z.enum(["blocks", "parent-of", "relates-to", "supersedes"]);
+    const linkCapable = async () => {
+        const t = await getTracker(dir());
+        if (!t.capabilities.hasDependencies || !t.linkIssues) {
+            throw new CairnError("UNSUPPORTED", "this tracker has no dependency links", "issue links need a backend with hasDependencies (e.g. tracker.type: local)");
+        }
+        return t;
+    };
+    server.registerTool("issue_link", { description: "Link two issues (blocks/parent-of/relates-to/supersedes); "
+            + "UNSUPPORTED unless the tracker hasDependencies",
+        inputSchema: { from: z.string(), type: LinkTypeEnum, to: z.string() } }, wrap(async (a) => {
+        const t = await linkCapable();
+        await t.linkIssues(a.from, a.type, a.to);
+        return { linked: { from: a.from, type: a.type, to: a.to } };
+    }));
+    server.registerTool("issue_unlink", { description: "Remove an issue link; UNSUPPORTED unless the tracker hasDependencies",
+        inputSchema: { from: z.string(), type: LinkTypeEnum, to: z.string() } }, wrap(async (a) => {
+        const t = await linkCapable();
+        await t.unlinkIssues(a.from, a.type, a.to);
+        return { unlinked: { from: a.from, type: a.type, to: a.to } };
+    }));
+    server.registerTool("issue_links", { description: "List issue links — for one issue (either direction) or the whole project",
+        inputSchema: { id: z.string().optional() } }, wrap(async (a) => {
+        const t = await linkCapable();
+        return { links: await t.listLinks(a.id) };
+    }));
+    server.registerTool("graph_report", { description: "Dependency-graph report: ready frontier (open issues with no open "
+            + "blockers), inherited effective priorities, dangling edges, and optionally "
+            + "one issue's supersedes lineage. UNSUPPORTED unless the tracker hasDependencies",
+        inputSchema: { lineageOf: z.string().optional() } }, wrap(async (a) => {
+        const t = await linkCapable();
+        const [issues, links] = await Promise.all([t.listIssues(), t.listLinks()]);
+        return {
+            frontier: readyFrontier(issues, links),
+            priorities: effectivePriorities(issues, links),
+            dangling: danglingEdges(issues, links),
+            ...(a.lineageOf ? { lineage: lineage(issues, links, a.lineageOf) } : {}),
+        };
+    }));
+    server.registerTool("tracker_migrate", { description: "Promote a local-tracker project to a hosted backend: phases, "
+            + "issues, comments, worklogs, and links carry over with an id remap and "
+            + "provenance backlinks. Source must be tracker.type: local. dryRun reports "
+            + "what would migrate without writing anything.",
+        inputSchema: {
+            targetType: z.enum(["github", "gitlab", "jira", "asana", "azure-boards", "clickup", "linear"]),
+            targetConfig: z.record(z.unknown()),
+            dryRun: z.boolean().optional(),
+        } }, wrap(async (a) => {
+        const d = dir();
+        const cfg = loadConfig(d);
+        if (cfg.tracker.type !== "local") {
+            throw new CairnError("CONFIG_INVALID", `source tracker is not local (found '${cfg.tracker.type}')`, "tracker_migrate promotes a local store; nothing to do here");
+        }
+        const src = await getTracker(d);
+        if (a.dryRun) {
+            const [issues, phases, links] = await Promise.all([
+                src.listIssues(), src.listPhases(), src.listLinks?.() ?? []
+            ]);
+            return { dryRun: true, wouldMigrate: {
+                    phases: phases.length, issues: issues.length, links: links.length
+                } };
+        }
+        const dst = await makeTracker({
+            ...cfg, tracker: { type: a.targetType, config: a.targetConfig },
+        }, d);
+        const result = await migrateTracker(src, dst);
+        const storeDir = resolve(d, cfg.tracker.config.dir ?? ".tracker");
+        const recordPath = finalizeMigration(storeDir, a.targetType, result);
+        return { ...result, record: recordPath };
     }));
     server.registerTool("issue_close", { description: "Close an issue; optionally log time spent (worklog on supporting "
             + "backends, otherwise the caller folds time into the close comment)",
@@ -217,6 +305,13 @@ export function buildServer(deps) {
                 // line as fallback, so a worklog failure must never fail the close.
                 worklogError = e instanceof Error ? e.message : String(e);
             }
+        }
+        else if (a.timeSpentMinutes) {
+            // a silent worklogLogged:false is indistinguishable from a bug — say
+            // why the worklog was skipped so the time isn't presumed recorded.
+            worklogError = tracker.capabilities.hasWorklog
+                ? "tracker advertises hasWorklog but exposes no logWork method"
+                : "backend has no worklog support; time recorded in the close comment only";
         }
         refreshHandoff({ source: "tool", issue: a.id }, d);
         return { ...result, worklogLogged, ...(worklogError ? { worklogError } : {}) };
@@ -657,7 +752,7 @@ export function buildServer(deps) {
                 // per-member paths/trackers constructed directly -- no focus switch
                 let t = trackers.get(m.absPath);
                 if (!t) {
-                    t = new CachedTracker(await makeTracker(loadConfig(m.absPath)));
+                    t = new CachedTracker(await makeTracker(loadConfig(m.absPath), m.absPath));
                     trackers.set(m.absPath, t);
                 }
                 const openIssues = (await t.listIssues({ state: "open" })).length;

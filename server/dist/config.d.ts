@@ -1,24 +1,24 @@
 import { z } from "zod";
 export declare const ConfigSchema: z.ZodObject<{
     tracker: z.ZodObject<{
-        type: z.ZodEnum<["github", "gitlab", "jira", "asana", "azure-boards", "clickup"]>;
+        type: z.ZodEnum<["github", "gitlab", "jira", "asana", "azure-boards", "clickup", "linear", "local"]>;
         config: z.ZodRecord<z.ZodString, z.ZodUnknown>;
     }, "strip", z.ZodTypeAny, {
-        type: "github" | "gitlab" | "jira" | "asana" | "azure-boards" | "clickup";
+        type: "github" | "gitlab" | "jira" | "asana" | "azure-boards" | "clickup" | "linear" | "local";
         config: Record<string, unknown>;
     }, {
-        type: "github" | "gitlab" | "jira" | "asana" | "azure-boards" | "clickup";
+        type: "github" | "gitlab" | "jira" | "asana" | "azure-boards" | "clickup" | "linear" | "local";
         config: Record<string, unknown>;
     }>;
     docs: z.ZodOptional<z.ZodObject<{
-        connector: z.ZodEnum<["confluence"]>;
+        connector: z.ZodEnum<["confluence", "docusaurus"]>;
         config: z.ZodRecord<z.ZodString, z.ZodUnknown>;
     }, "strip", z.ZodTypeAny, {
         config: Record<string, unknown>;
-        connector: "confluence";
+        connector: "confluence" | "docusaurus";
     }, {
         config: Record<string, unknown>;
-        connector: "confluence";
+        connector: "confluence" | "docusaurus";
     }>>;
     agents: z.ZodDefault<z.ZodObject<{
         model: z.ZodEnum<["auto", "inherit", "haiku", "sonnet", "opus"]>;
@@ -100,7 +100,7 @@ export declare const ConfigSchema: z.ZodObject<{
     }>>>;
 }, "strip", z.ZodTypeAny, {
     tracker: {
-        type: "github" | "gitlab" | "jira" | "asana" | "azure-boards" | "clickup";
+        type: "github" | "gitlab" | "jira" | "asana" | "azure-boards" | "clickup" | "linear" | "local";
         config: Record<string, unknown>;
     };
     agents: {
@@ -125,7 +125,7 @@ export declare const ConfigSchema: z.ZodObject<{
     };
     docs?: {
         config: Record<string, unknown>;
-        connector: "confluence";
+        connector: "confluence" | "docusaurus";
     } | undefined;
     user?: {
         handle: string;
@@ -137,12 +137,12 @@ export declare const ConfigSchema: z.ZodObject<{
     }>> | undefined;
 }, {
     tracker: {
-        type: "github" | "gitlab" | "jira" | "asana" | "azure-boards" | "clickup";
+        type: "github" | "gitlab" | "jira" | "asana" | "azure-boards" | "clickup" | "linear" | "local";
         config: Record<string, unknown>;
     };
     docs?: {
         config: Record<string, unknown>;
-        connector: "confluence";
+        connector: "confluence" | "docusaurus";
     } | undefined;
     agents?: {
         model: "auto" | "inherit" | "haiku" | "sonnet" | "opus";

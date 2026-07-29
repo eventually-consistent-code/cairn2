@@ -8,7 +8,7 @@ Start a new cairn 2.0 project in this repo, per the `cairn-planning` skill.
 
 1. Confirm `cairn.json` exists. Missing → ask which tracker backs this
    project (one AskUserQuestion): **local** first — "issues live in this
-   repo as plain files; no accounts, no credentials" — then the six hosted
+   repo as plain files; no accounts, no credentials" — then the seven hosted
    options. Local chosen → write a minimal `cairn.json`
    (`{"tracker": {"type": "local", "config": {"prefix": "<project slug,
    2–10 lowercase alphanumerics>"}}}`), then check `.gitignore`: if any
