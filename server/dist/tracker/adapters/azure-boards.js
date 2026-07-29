@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson } from "../http.js";
+import { matchesState } from "../types.js";
 import { phaseCloseUnsupported } from "../unsupported.js";
 const MAX_IDS = 100;
 export const configSchema = z.object({
@@ -9,11 +10,10 @@ export const configSchema = z.object({
     workItemType: z.string().default("Issue"),
     patEnv: z.string().default("AZURE_DEVOPS_PAT"),
     apiVersion: z.string().default("7.0"),
-    states: z.object({
-        in_progress: z.string(),
-        closed: z.string(),
-        open: z.string().default("To Do"),
-    }).default({ in_progress: "Doing", closed: "Done", open: "To Do" }),
+    // Extra keys are custom cairn states ("review": "In Review") — CRN-26.
+    states: z.record(z.string())
+        .default({ in_progress: "Doing", closed: "Done", open: "To Do" })
+        .refine((s) => ["open", "in_progress", "closed"].every((k) => typeof s[k] === "string"), "states must include open, in_progress, and closed"),
 });
 export function make(config, fetchImpl) {
     return new AzureBoardsTracker(config, fetchImpl);
@@ -127,7 +127,8 @@ export class AzureBoardsTracker {
             id: String(raw.id),
             title: f["System.Title"] ?? "",
             body: f["System.Description"] ?? "",
-            state: this.normalizeState(f),
+            state: f["System.State"] ?? this.normalizeState(f),
+            category: this.normalizeState(f),
             labels,
             phase,
             assignee,
@@ -222,10 +223,10 @@ export class AzureBoardsTracker {
         if (patch.assignee !== undefined)
             ops.push({ op: "add", path: "/fields/System.AssignedTo", value: patch.assignee });
         if (patch.state) {
-            const { states } = this.cfg;
-            const stateValue = patch.state === "closed" ? states.closed
-                : patch.state === "in_progress" ? states.in_progress
-                    : states.open;
+            const stateValue = this.cfg.states[patch.state];
+            if (!stateValue) {
+                throw new CairnError("CONFIG_INVALID", `no azure-boards state mapped for '${patch.state}'`, `add it to tracker.config.states in cairn.json (known: ${Object.keys(this.cfg.states).join(", ")})`);
+            }
             ops.push({ op: "add", path: "/fields/System.State", value: stateValue });
         }
         const raw = await this.api("PATCH", `/${this.projectPath}/_apis/wit/workitems/${id}`, ops, { contentType: "application/json-patch+json", context: "azure-boards issue_update" });
@@ -269,7 +270,7 @@ export class AzureBoardsTracker {
             }
         }
         if (filter?.state)
-            issues = issues.filter((i) => i.state === filter.state);
+            issues = issues.filter((i) => matchesState(i, filter.state));
         return issues;
     }
     async createPhase(name) {

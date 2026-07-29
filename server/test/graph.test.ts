@@ -5,8 +5,8 @@ import { describe, it, expect } from "vitest";
 import { danglingEdges, effectivePriorities, lineage, readyFrontier } from "../src/tracker/graph.js";
 import type { Issue, IssueLink } from "../src/tracker/types.js";
 
-const issue = (id: string, state: Issue["state"] = "open", labels: string[] = []): Issue =>
-  ({ id, title: id, body: "", state, labels, updatedAt: "2026-07-26T00:00:00Z", url: `x://${id}` });
+const issue = (id: string, state: Issue["category"] = "open", labels: string[] = []): Issue =>
+  ({ id, title: id, body: "", state, category: state, labels, updatedAt: "2026-07-26T00:00:00Z", url: `x://` });
 
 const L = (from: string, type: IssueLink["type"], to: string): IssueLink => ({ from, type, to });
 

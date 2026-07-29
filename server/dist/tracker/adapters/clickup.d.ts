@@ -6,27 +6,11 @@ export declare const configSchema: z.ZodEffects<z.ZodObject<{
     folderId: z.ZodOptional<z.ZodString>;
     spaceId: z.ZodOptional<z.ZodString>;
     tokenEnv: z.ZodDefault<z.ZodString>;
-    statuses: z.ZodDefault<z.ZodObject<{
-        open: z.ZodDefault<z.ZodString>;
-        in_progress: z.ZodString;
-        closed: z.ZodString;
-    }, "strip", z.ZodTypeAny, {
-        open: string;
-        in_progress: string;
-        closed: string;
-    }, {
-        in_progress: string;
-        closed: string;
-        open?: string | undefined;
-    }>>;
+    statuses: z.ZodEffects<z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodString>>, Record<string, string>, Record<string, string> | undefined>;
 }, "strip", z.ZodTypeAny, {
     tokenEnv: string;
     defaultListId: string;
-    statuses: {
-        open: string;
-        in_progress: string;
-        closed: string;
-    };
+    statuses: Record<string, string>;
     folderId?: string | undefined;
     spaceId?: string | undefined;
 }, {
@@ -34,19 +18,11 @@ export declare const configSchema: z.ZodEffects<z.ZodObject<{
     tokenEnv?: string | undefined;
     folderId?: string | undefined;
     spaceId?: string | undefined;
-    statuses?: {
-        in_progress: string;
-        closed: string;
-        open?: string | undefined;
-    } | undefined;
+    statuses?: Record<string, string> | undefined;
 }>, {
     tokenEnv: string;
     defaultListId: string;
-    statuses: {
-        open: string;
-        in_progress: string;
-        closed: string;
-    };
+    statuses: Record<string, string>;
     folderId?: string | undefined;
     spaceId?: string | undefined;
 }, {
@@ -54,11 +30,7 @@ export declare const configSchema: z.ZodEffects<z.ZodObject<{
     tokenEnv?: string | undefined;
     folderId?: string | undefined;
     spaceId?: string | undefined;
-    statuses?: {
-        in_progress: string;
-        closed: string;
-        open?: string | undefined;
-    } | undefined;
+    statuses?: Record<string, string> | undefined;
 }>;
 export type ClickUpConfig = z.infer<typeof configSchema>;
 export declare function make(config: ClickUpConfig, fetchImpl?: FetchLike): Tracker;

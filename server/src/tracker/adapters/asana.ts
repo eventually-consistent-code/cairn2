@@ -4,6 +4,7 @@ import { fetchJson, type FetchLike } from "../http.js";
 import type {
   Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
 } from "../types.js";
+import { assertCanonicalState, matchesState } from "../types.js";
 import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 
 const API = "https://app.asana.com/api/1.0";
@@ -71,6 +72,7 @@ export class AsanaTracker implements Tracker {
     return {
       id: raw.gid, title: raw.name, body: raw.notes ?? "",
       state: raw.completed ? "closed" : "open",
+      category: raw.completed ? "closed" : "open",
       labels: [],
       phase: sectionGid,
       updatedAt: raw.modified_at,
@@ -111,6 +113,7 @@ export class AsanaTracker implements Tracker {
     const body: Record<string, unknown> = {};
     if (patch.title !== undefined) body.name = patch.title;
     if (patch.body !== undefined) body.notes = patch.body;
+    assertCanonicalState(patch.state, "asana");
     // Asana has no native in-progress state: in_progress and open both map
     // to completed:false. Never write completed:true except for an explicit close.
     if (patch.state === "closed") body.completed = true;
@@ -144,7 +147,7 @@ export class AsanaTracker implements Tracker {
       }
     }
     let issues = raw.map((r) => this.normalize(r));
-    if (filter?.state) issues = issues.filter((i) => i.state === filter.state);
+    if (filter?.state) issues = issues.filter((i) => matchesState(i, filter.state!));
     return issues;
   }
 

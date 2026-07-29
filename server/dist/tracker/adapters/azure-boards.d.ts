@@ -7,41 +7,21 @@ export declare const configSchema: z.ZodObject<{
     workItemType: z.ZodDefault<z.ZodString>;
     patEnv: z.ZodDefault<z.ZodString>;
     apiVersion: z.ZodDefault<z.ZodString>;
-    states: z.ZodDefault<z.ZodObject<{
-        in_progress: z.ZodString;
-        closed: z.ZodString;
-        open: z.ZodDefault<z.ZodString>;
-    }, "strip", z.ZodTypeAny, {
-        open: string;
-        in_progress: string;
-        closed: string;
-    }, {
-        in_progress: string;
-        closed: string;
-        open?: string | undefined;
-    }>>;
+    states: z.ZodEffects<z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodString>>, Record<string, string>, Record<string, string> | undefined>;
 }, "strip", z.ZodTypeAny, {
     project: string;
     orgUrl: string;
     workItemType: string;
     patEnv: string;
     apiVersion: string;
-    states: {
-        open: string;
-        in_progress: string;
-        closed: string;
-    };
+    states: Record<string, string>;
 }, {
     project: string;
     orgUrl: string;
     workItemType?: string | undefined;
     patEnv?: string | undefined;
     apiVersion?: string | undefined;
-    states?: {
-        in_progress: string;
-        closed: string;
-        open?: string | undefined;
-    } | undefined;
+    states?: Record<string, string> | undefined;
 }>;
 type Config = z.infer<typeof configSchema>;
 export declare function make(config: Config, fetchImpl?: FetchLike): Tracker;

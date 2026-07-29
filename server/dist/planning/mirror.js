@@ -18,7 +18,7 @@ export async function driftReport(tracker, projectDir) {
         for (const issueId of phase.issues) {
             let state;
             try {
-                state = (await tracker.getIssue(issueId)).state;
+                state = (await tracker.getIssue(issueId)).category;
             }
             catch (e) {
                 if (e instanceof CairnError && e.code === "NOT_FOUND") {

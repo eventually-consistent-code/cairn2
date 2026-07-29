@@ -184,3 +184,11 @@ describe("GitHubTracker identity", () => {
     expect(calls.filter((c) => c.url.endsWith("/user")).length).toBe(1);
   });
 });
+
+describe("GitHubTracker custom states", () => {
+  it("custom state names are CONFIG_INVALID — no custom-state surface", async () => {
+    const t = new GitHubTracker({ repo: "o/r" }, async () => new Response("{}", { status: 200 }), () => "tok");
+    await expect(t.updateIssue("1", { state: "review" }))
+      .rejects.toMatchObject({ code: "CONFIG_INVALID" });
+  });
+});

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, paginate } from "../http.js";
+import { assertCanonicalState, matchesState } from "../types.js";
 import { milestonesUnsupported } from "../unsupported.js";
 const WIP = "in-progress";
 export class GitLabTracker {
@@ -33,10 +34,11 @@ export class GitLabTracker {
         }
     }
     normalize(raw) {
-        let state = raw.state === "closed" ? "closed" : "open";
-        if (state === "open" && raw.labels.includes(WIP))
-            state = "in_progress";
-        return { id: String(raw.iid), title: raw.title, body: raw.description ?? "", state,
+        let category = raw.state === "closed" ? "closed" : "open";
+        if (category === "open" && raw.labels.includes(WIP))
+            category = "in_progress";
+        return { id: String(raw.iid), title: raw.title, body: raw.description ?? "",
+            state: category, category,
             labels: raw.labels.filter((l) => l !== WIP),
             phase: raw.milestone ? String(raw.milestone.id) : undefined,
             assignee: raw.assignee?.username, updatedAt: raw.updated_at, url: raw.web_url };
@@ -70,6 +72,7 @@ export class GitLabTracker {
         if (patch.labels !== undefined) {
             body.labels = patch.labels.filter((l) => l !== WIP).join(",");
         }
+        assertCanonicalState(patch.state, "gitlab");
         if (patch.state === "closed") {
             body.state_event = "close";
         }
@@ -97,7 +100,7 @@ export class GitLabTracker {
         if (filter?.phase)
             issues = issues.filter((i) => i.phase === filter.phase);
         if (filter?.state)
-            issues = issues.filter((i) => i.state === filter.state);
+            issues = issues.filter((i) => matchesState(i, filter.state));
         return issues;
     }
     async createPhase(name) {

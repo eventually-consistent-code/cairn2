@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson } from "../http.js";
+import { assertCanonicalState, matchesState } from "../types.js";
 import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 const API = "https://app.asana.com/api/1.0";
 const OPT_FIELDS = "name,notes,completed,modified_at,memberships.section.gid";
@@ -51,6 +52,7 @@ export class AsanaTracker {
         return {
             id: raw.gid, title: raw.name, body: raw.notes ?? "",
             state: raw.completed ? "closed" : "open",
+            category: raw.completed ? "closed" : "open",
             labels: [],
             phase: sectionGid,
             updatedAt: raw.modified_at,
@@ -86,6 +88,7 @@ export class AsanaTracker {
             body.name = patch.title;
         if (patch.body !== undefined)
             body.notes = patch.body;
+        assertCanonicalState(patch.state, "asana");
         // Asana has no native in-progress state: in_progress and open both map
         // to completed:false. Never write completed:true except for an explicit close.
         if (patch.state === "closed")
@@ -116,7 +119,7 @@ export class AsanaTracker {
         }
         let issues = raw.map((r) => this.normalize(r));
         if (filter?.state)
-            issues = issues.filter((i) => i.state === filter.state);
+            issues = issues.filter((i) => matchesState(i, filter.state));
         return issues;
     }
     async createPhase(name) {

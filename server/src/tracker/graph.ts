@@ -30,9 +30,9 @@ function rank(priority: string | undefined): number {
  */
 export function readyFrontier(issues: Issue[], links: IssueLink[]): Issue[] {
   const byId = new Map(issues.map((i) => [i.id, i]));
-  return issues.filter((i) => i.state === "open"
+  return issues.filter((i) => i.category === "open"
     && links.every((l) => l.type !== "blocks" || l.to !== i.id
-      || byId.get(l.from)?.state === "closed"));
+      || byId.get(l.from)?.category === "closed"));
 }
 
 /**
@@ -46,7 +46,7 @@ export function effectivePriorities(issues: Issue[], links: IssueLink[]): Priori
   const out: PriorityEntry[] = [];
 
   for (const i of issues) {
-    if (i.state === "closed") continue;
+    if (i.category === "closed") continue;
     // walk everything i transitively blocks, tracking the strongest priority
     let best = { rank: rank(declaredPriority(i)), from: undefined as string | undefined };
     const seen = new Set<string>([i.id]);
@@ -56,7 +56,7 @@ export function effectivePriorities(issues: Issue[], links: IssueLink[]): Priori
       if (seen.has(cur)) continue;
       seen.add(cur);
       const node = byId.get(cur);
-      if (!node || node.state === "closed") continue;
+      if (!node || node.category === "closed") continue;
       const r = rank(declaredPriority(node));
       if (r < best.rank) best = { rank: r, from: cur };
       for (const l of blocks) if (l.from === cur) stack.push(l.to);

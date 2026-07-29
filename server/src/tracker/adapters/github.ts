@@ -3,8 +3,9 @@ import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, paginate, type FetchLike } from "../http.js";
 import type {
-  Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
+  Capability, StateCategory, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
 } from "../types.js";
+import { assertCanonicalState, matchesState } from "../types.js";
 import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 
 const API = "https://api.github.com";
@@ -87,11 +88,11 @@ export class GitHubTracker implements Tracker {
 
   private normalize(raw: GhIssue): Issue {
     const labels = raw.labels.map((l) => l.name);
-    let state: IssueState = raw.state === "closed" ? "closed" : "open";
-    if (state === "open" && labels.includes(WIP_LABEL)) state = "in_progress";
+    let category: StateCategory = raw.state === "closed" ? "closed" : "open";
+    if (category === "open" && labels.includes(WIP_LABEL)) category = "in_progress";
     return {
       id: String(raw.number), title: raw.title, body: raw.body ?? "",
-      state, labels: labels.filter((l) => l !== WIP_LABEL),
+      state: category, category, labels: labels.filter((l) => l !== WIP_LABEL),
       phase: raw.milestone ? String(raw.milestone.number) : undefined,
       assignee: raw.assignee?.login,
       updatedAt: raw.updated_at, url: raw.html_url,
@@ -122,6 +123,7 @@ export class GitHubTracker implements Tracker {
     this.assertId(id);
     const body: Record<string, unknown> = {};
     if (patch.title !== undefined) body.title = patch.title;
+    assertCanonicalState(patch.state, "github");
     if (patch.body !== undefined) body.body = patch.body;
     if (patch.labels !== undefined) body.labels = patch.labels;
     if (patch.assignee !== undefined) body.assignees = [patch.assignee];
@@ -155,7 +157,7 @@ export class GitHubTracker implements Tracker {
       { context: "github issue_list" },
     )) as GhIssue[];
     let issues = raw.filter((r) => !("pull_request" in r)).map((r) => this.normalize(r));
-    if (filter?.state) issues = issues.filter((i) => i.state === filter.state);
+    if (filter?.state) issues = issues.filter((i) => matchesState(i, filter.state!));
     return issues;
   }
 

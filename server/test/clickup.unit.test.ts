@@ -75,7 +75,7 @@ describe("ClickUpTracker mapping", () => {
       { status: 200, body: cuTask({ status: { status: "to do", type: "open" } }) },
     ]);
     const t = new ClickUpTracker(cfg, f, () => "tok");
-    expect((await t.getIssue("abc123")).state).toBe("open");
+    expect((await t.getIssue("abc123")).category).toBe("open");
   });
 
   it("getIssue maps status.type=done/closed to state=closed", async () => {
@@ -83,13 +83,13 @@ describe("ClickUpTracker mapping", () => {
       { status: 200, body: cuTask({ status: { status: "complete", type: "done" } }) },
     ]);
     const t = new ClickUpTracker(cfg, f, () => "tok");
-    expect((await t.getIssue("abc123")).state).toBe("closed");
+    expect((await t.getIssue("abc123")).category).toBe("closed");
 
     const { f: f2 } = fixtureFetch([
       { status: 200, body: cuTask({ status: { status: "closed", type: "closed" } }) },
     ]);
     const t2 = new ClickUpTracker(cfg, f2, () => "tok");
-    expect((await t2.getIssue("abc123")).state).toBe("closed");
+    expect((await t2.getIssue("abc123")).category).toBe("closed");
   });
 
   it("getIssue maps custom status matching statuses.in_progress (case-insensitive) to in_progress", async () => {
@@ -97,7 +97,7 @@ describe("ClickUpTracker mapping", () => {
       { status: 200, body: cuTask({ status: { status: "In Progress", type: "custom" } }) },
     ]);
     const t = new ClickUpTracker(cfg, f, () => "tok");
-    expect((await t.getIssue("abc123")).state).toBe("in_progress");
+    expect((await t.getIssue("abc123")).category).toBe("in_progress");
   });
 
   it("getIssue maps custom status NOT matching statuses.in_progress to open", async () => {
@@ -105,7 +105,7 @@ describe("ClickUpTracker mapping", () => {
       { status: 200, body: cuTask({ status: { status: "blocked", type: "custom" } }) },
     ]);
     const t = new ClickUpTracker(cfg, f, () => "tok");
-    expect((await t.getIssue("abc123")).state).toBe("open");
+    expect((await t.getIssue("abc123")).category).toBe("open");
   });
 
   it("updateIssue(state=in_progress) PUTs status: statuses.in_progress", async () => {
@@ -131,7 +131,7 @@ describe("ClickUpTracker mapping", () => {
     const t = new ClickUpTracker(cfg, f, () => "tok");
     const closed = await t.closeIssue("abc123");
     expect(calls[0].body).toMatchObject({ status: "complete" });
-    expect(closed.state).toBe("closed");
+    expect(closed.category).toBe("closed");
   });
 
   it("listIssues(no phase) GETs the defaultListId with include_closed=true", async () => {
@@ -299,5 +299,24 @@ describe("ClickUpTracker mapping", () => {
     expect(calls[0].url).toContain("/task/abc123/comment");
     expect(calls[0].body).toEqual({ comment_text: "plain note" });
     expect(c.id).toBe("888");
+  });
+});
+
+describe("ClickUpTracker custom states", () => {
+  it("custom statuses-map key writes the mapped native status", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: cuTask({ status: { status: "code review", type: "custom" } }) },
+    ]);
+    const t = new ClickUpTracker({ ...cfg, statuses: { ...cfg.statuses, review: "code review" } }, f, () => "tok");
+    await t.updateIssue("abc123", { state: "review" });
+    const put = calls.find((c) => c.method === "PUT")!;
+    expect(put.body).toMatchObject({ status: "code review" });
+  });
+
+  it("unknown custom state is CONFIG_INVALID", async () => {
+    const { f } = fixtureFetch([]);
+    const t = new ClickUpTracker(cfg, f, () => "tok");
+    await expect(t.updateIssue("abc123", { state: "wat" }))
+      .rejects.toMatchObject({ code: "CONFIG_INVALID" });
   });
 });

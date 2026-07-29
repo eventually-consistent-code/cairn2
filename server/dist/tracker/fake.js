@@ -1,4 +1,5 @@
 import { CairnError } from "../errors.js";
+import { matchesState } from "./types.js";
 export class FakeTracker {
     capabilities = {
         hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
@@ -22,7 +23,7 @@ export class FakeTracker {
     async createIssue(input) {
         const id = `FAKE-${++this.seq}`;
         const issue = {
-            id, title: input.title, body: input.body ?? "", state: "open",
+            id, title: input.title, body: input.body ?? "", state: "open", category: "open",
             labels: input.labels ?? [], phase: input.phase, estimate: input.estimate,
             updatedAt: new Date().toISOString(), url: `fake://issue/${id}`,
         };
@@ -42,6 +43,11 @@ export class FakeTracker {
             title: patch.title ?? i.title,
             body: patch.body ?? i.body,
             state: (patch.state ?? i.state),
+            category: patch.state === undefined
+                ? i.category
+                : (["open", "in_progress", "closed"].includes(patch.state)
+                    ? patch.state
+                    : i.category),
             labels: patch.labels ?? i.labels,
             assignee: patch.assignee ?? i.assignee,
             estimate: patch.estimate ?? i.estimate,
@@ -56,7 +62,7 @@ export class FakeTracker {
     async listIssues(filter) {
         return [...this.issues.values()]
             .filter((i) => (filter?.phase ? i.phase === filter.phase : true))
-            .filter((i) => (filter?.state ? i.state === filter.state : true))
+            .filter((i) => (filter?.state ? matchesState(i, filter.state) : true))
             .map((i) => ({ ...i }));
     }
     async createPhase(name) {

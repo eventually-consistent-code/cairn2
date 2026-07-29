@@ -18,9 +18,9 @@ function rank(priority) {
  */
 export function readyFrontier(issues, links) {
     const byId = new Map(issues.map((i) => [i.id, i]));
-    return issues.filter((i) => i.state === "open"
+    return issues.filter((i) => i.category === "open"
         && links.every((l) => l.type !== "blocks" || l.to !== i.id
-            || byId.get(l.from)?.state === "closed"));
+            || byId.get(l.from)?.category === "closed"));
 }
 /**
  * Dependency-chain priority inheritance: an issue is effectively as urgent
@@ -32,7 +32,7 @@ export function effectivePriorities(issues, links) {
     const blocks = links.filter((l) => l.type === "blocks");
     const out = [];
     for (const i of issues) {
-        if (i.state === "closed")
+        if (i.category === "closed")
             continue;
         // walk everything i transitively blocks, tracking the strongest priority
         let best = { rank: rank(declaredPriority(i)), from: undefined };
@@ -44,7 +44,7 @@ export function effectivePriorities(issues, links) {
                 continue;
             seen.add(cur);
             const node = byId.get(cur);
-            if (!node || node.state === "closed")
+            if (!node || node.category === "closed")
                 continue;
             const r = rank(declaredPriority(node));
             if (r < best.rank)

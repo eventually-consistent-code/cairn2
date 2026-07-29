@@ -2,9 +2,10 @@ import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, type FetchLike } from "../http.js";
 import type {
-  Capability, Issue, IssueCreate, IssueLink, IssuePatch, IssueState, LinkType,
+  Capability, StateCategory, Issue, IssueCreate, IssueLink, IssuePatch, IssueState, LinkType,
   Milestone, Phase, Tracker,
 } from "../types.js";
+import { matchesState } from "../types.js";
 import { milestonesUnsupported } from "../unsupported.js";
 
 const API = "https://api.linear.app/graphql";
@@ -22,7 +23,7 @@ export function make(config: z.infer<typeof configSchema>, fetchImpl?: FetchLike
 // Every issue read goes through this one shape — queries share the fragment.
 const ISSUE_FIELDS = `fragment IssueFields on Issue {
   id identifier title description url updatedAt
-  state { type }
+  state { name type }
   labels { nodes { name } }
   project { id }
   assignee { displayName }
@@ -31,7 +32,7 @@ const ISSUE_FIELDS = `fragment IssueFields on Issue {
 interface LinearIssueNode {
   id: string; identifier: string; title: string; description: string | null;
   url: string; updatedAt: string;
-  state: { type: string };
+  state: { name?: string; type: string };
   labels: { nodes: Array<{ name: string }> };
   project: { id: string } | null;
   assignee: { displayName: string } | null;
@@ -82,12 +83,13 @@ export class LinearTracker implements Tracker {
 
   private normalize(raw: LinearIssueNode): Issue {
     const type = raw.state.type;
-    const state: IssueState =
+    const category: StateCategory =
       type === "completed" || type === "canceled" ? "closed"
         : type === "started" ? "in_progress" : "open";
     return {
       id: raw.identifier, title: raw.title, body: raw.description ?? "",
-      state,
+      state: raw.state.name ?? category,
+      category,
       labels: raw.labels.nodes.map((l) => l.name),
       phase: raw.project?.id,
       assignee: raw.assignee?.displayName,
@@ -107,18 +109,20 @@ export class LinearTracker implements Tracker {
     return this.statesCache;
   }
 
-  /** SPI state → the team's canonical stateId for that bucket. */
+  /** SPI state → a team stateId: canonical three by bucket, anything else
+   *  matched against the team's workflow state names (CRN-26). */
   private async stateId(state: IssueState): Promise<string> {
     const all = await this.states();
     const byType = (t: string) =>
       all.filter((s) => s.type === t).sort((a, b) => a.position - b.position)[0];
     const hit = state === "closed" ? byType("completed")
       : state === "in_progress" ? byType("started")
-        : byType("unstarted") ?? byType("backlog");
+        : state === "open" ? byType("unstarted") ?? byType("backlog")
+          : all.find((s) => s.name.toLowerCase() === state.toLowerCase());
     if (!hit) {
       throw new CairnError("CONFIG_INVALID",
-        `linear team ${this.cfg.teamId} has no workflow state for '${state}'`,
-        "check the team's workflow configuration in Linear");
+        `linear team ${this.cfg.teamId} has no workflow state '${state}'`,
+        `team states: ${all.map((s) => s.name).join(", ") || "none"} — or use open/in_progress/closed`);
     }
     return hit.id;
   }
@@ -186,7 +190,7 @@ export class LinearTracker implements Tracker {
       console.error(`[cairn] linear issue_list truncated at ${LIST_CAP} items for team ${this.cfg.teamId}`);
     }
     let issues = data.issues.nodes.map((n) => this.normalize(n));
-    if (filter?.state) issues = issues.filter((i) => i.state === filter.state);
+    if (filter?.state) issues = issues.filter((i) => matchesState(i, filter.state!));
     return issues;
   }
 

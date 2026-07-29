@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, paginate } from "../http.js";
+import { assertCanonicalState, matchesState } from "../types.js";
 import { milestonesUnsupported } from "../unsupported.js";
 const API = "https://api.github.com";
 const WIP_LABEL = "in-progress";
@@ -69,12 +70,12 @@ export class GitHubTracker {
     }
     normalize(raw) {
         const labels = raw.labels.map((l) => l.name);
-        let state = raw.state === "closed" ? "closed" : "open";
-        if (state === "open" && labels.includes(WIP_LABEL))
-            state = "in_progress";
+        let category = raw.state === "closed" ? "closed" : "open";
+        if (category === "open" && labels.includes(WIP_LABEL))
+            category = "in_progress";
         return {
             id: String(raw.number), title: raw.title, body: raw.body ?? "",
-            state, labels: labels.filter((l) => l !== WIP_LABEL),
+            state: category, category, labels: labels.filter((l) => l !== WIP_LABEL),
             phase: raw.milestone ? String(raw.milestone.number) : undefined,
             assignee: raw.assignee?.login,
             updatedAt: raw.updated_at, url: raw.html_url,
@@ -102,6 +103,7 @@ export class GitHubTracker {
         const body = {};
         if (patch.title !== undefined)
             body.title = patch.title;
+        assertCanonicalState(patch.state, "github");
         if (patch.body !== undefined)
             body.body = patch.body;
         if (patch.labels !== undefined)
@@ -135,7 +137,7 @@ export class GitHubTracker {
         const raw = (await paginate(this.fetchImpl, `${API}/repos/${this.cfg.repo}/issues?${params}`, { method: "GET", headers: this.headers() }, { context: "github issue_list" }));
         let issues = raw.filter((r) => !("pull_request" in r)).map((r) => this.normalize(r));
         if (filter?.state)
-            issues = issues.filter((i) => i.state === filter.state);
+            issues = issues.filter((i) => matchesState(i, filter.state));
         return issues;
     }
     async createPhase(name) {

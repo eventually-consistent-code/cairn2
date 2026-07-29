@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson } from "../http.js";
+import { matchesState } from "../types.js";
 // Issue keys look like PROJ-123 (letters + digits, dash, digits).
 const ID_RE = /^[A-Z][A-Z0-9]+-\d+$/i;
 const MAX_RESULTS = 100;
@@ -13,8 +14,11 @@ export const configSchema = z.object({
     issueType: z.string().default("Task"),
     emailEnv: z.string().default("JIRA_EMAIL"),
     tokenEnv: z.string().default("JIRA_API_TOKEN"),
-    transitions: z.object({ in_progress: z.string(), closed: z.string() })
-        .default({ in_progress: "In Progress", closed: "Done" }),
+    // Arbitrary extra keys are custom cairn states ("review": "In Review") —
+    // resolved through the same transition-by-name machinery (CRN-26).
+    transitions: z.record(z.string())
+        .default({ in_progress: "In Progress", closed: "Done" })
+        .refine((t) => typeof t.in_progress === "string" && typeof t.closed === "string", "transitions must include in_progress and closed"),
     // Board auto-discovers from the project; set this only when the project
     // has several boards and the first one is the wrong one.
     boardId: z.number().int().positive().optional(),
@@ -130,7 +134,8 @@ export class JiraTracker {
     }
     normalize(raw) {
         const f = raw.fields;
-        const state = STATUS_CATEGORY_MAP[f.status?.statusCategory?.key ?? "new"] ?? "open";
+        const category = STATUS_CATEGORY_MAP[f.status?.statusCategory?.key ?? "new"] ?? "open";
+        const state = f.status?.name ?? category;
         const seconds = f.timetracking?.originalEstimateSeconds;
         const points = this.storyPointField
             ? f[this.storyPointField] : undefined;
@@ -146,6 +151,7 @@ export class JiraTracker {
             title: f.summary,
             body: f.description ? adfToText(f.description) : "",
             state,
+            category,
             labels: f.labels ?? [],
             phase: f.parent?.key,
             assignee: f.assignee?.accountId ?? undefined,
@@ -281,6 +287,11 @@ export class JiraTracker {
         else if (patch.state === "open") {
             await this.transitionToOpenCategory(id);
         }
+        else if (patch.state !== undefined) {
+            // Custom state: transitions-map alias first, else the literal name —
+            // Jira's own transition list is the authority either way.
+            await this.transitionByName(id, this.cfg.transitions[patch.state] ?? patch.state);
+        }
         return this.getIssue(id);
     }
     async closeIssue(id) {
@@ -306,7 +317,7 @@ export class JiraTracker {
         }
         let issues = raw.issues.map((i) => this.normalize(i));
         if (filter?.state)
-            issues = issues.filter((i) => i.state === filter.state);
+            issues = issues.filter((i) => matchesState(i, filter.state));
         return issues;
     }
     async createPhase(name) {

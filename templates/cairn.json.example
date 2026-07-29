@@ -7,7 +7,8 @@
   "_tracker_local": {
     "$comment": "Zero-credential option — issues live in this repo (commit the dir). Copy over `tracker` to enable.",
     "type": "local",
-    "config": { "dir": ".tracker", "prefix": "proj" }
+    "config": { "dir": ".tracker", "prefix": "proj",
+      "states": { "review": "in_progress", "blocked": "open" } }
   },
   "_docs": {
     "$comment": "Optional documentation connector — publishes README + docs/ as a page tree. Copy to `docs` to enable. Credentials come from env vars named here, never this file. Alternative: `docusaurus` writes markdown into a local Docusaurus site checkout (no credentials; autoCommit commits in the site repo after publish, never pushes).",
@@ -54,7 +55,7 @@
         "issueType": "Task",
         "emailEnv": "JIRA_EMAIL",
         "tokenEnv": "JIRA_API_TOKEN",
-        "transitions": { "in_progress": "In Progress", "closed": "Done" }
+        "transitions": { "in_progress": "In Progress", "closed": "Done", "review": "In Review" }
       }
     },
     "asana": {

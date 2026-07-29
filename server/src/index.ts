@@ -42,7 +42,8 @@ import { findWorkspace, resolveProjectDir, setFocus } from "./workspace/context.
 import { boardGet, boardUpdate, type Workstream } from "./workspace/board.js";
 import { PROVIDERS, peerList, peerRun, type Provider } from "./peers/run.js";
 
-const StateEnum = z.enum(["open", "in_progress", "closed"]);
+// Widened (CRN-26): canonical three or a backend-defined custom state name.
+const StateEnum = z.string().min(1);
 const HandoffSourceEnum = z.enum(["tool", "posttooluse", "precompact", "waypoint"]);
 const HandoffPhaseRefSchema = z.object({ number: z.number().int(), slug: z.string() });
 
@@ -386,7 +387,7 @@ export function buildServer(deps: {
     }));
 
   server.registerTool("issue_list",
-    { description: "List issues, optionally by phase/state",
+    { description: "List issues, optionally by phase/state (state matches the semantic category — open/in_progress/closed — or an exact state name)",
       inputSchema: { phase: z.string().optional(), state: StateEnum.optional() } },
     wrap(async (a: { phase?: string; state?: IssueState }) => (await getTracker()).listIssues(a)));
 
