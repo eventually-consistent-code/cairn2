@@ -16,6 +16,16 @@ milestone (including just-archived `milestones/v<N>/`).
    provenance = the files+commits from the ledger range that prove it,
    confidence: `high` = verified by this scope's events, `medium` =
    plausible inference, `low` = hunch worth recording.
+   - **Observation review:** read `.cairn/observations/observations.jsonl`
+     (passive capture from the PostToolUse hook — tool, target, error flag
+     per call). Look for candidate patterns the ledger can't show: repeated
+     error→retry churn on one file or command (a gotcha hiding there),
+     hotspot files edited far more than their diff size explains. A pattern
+     worth keeping becomes a draft card like any other — confidence `low`
+     unless the ledger corroborates it, provenance pointing at the real
+     files. Observations NEVER become cards without this review, and after
+     the batch is approved, truncate the reviewed observations file —
+     retro is the gate and the garbage collector.
 3. Re-grade prior knowledge: `mem_card_recall` scoped to this phase — for
    each card, did this scope's events confirm or contradict it? Confirmed
    → `mem_card_update` confidence up one step. Contradicted → down to

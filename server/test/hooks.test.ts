@@ -516,3 +516,39 @@ describe("stop-costtracker + cost-report", () => {
     expect(existsSync(metrics)).toBe(false);
   });
 });
+
+describe("posttooluse-observe", () => {
+  const OBSERVE = join(scriptsDir, "posttooluse-observe.mjs");
+
+  it("appends an observation row in a cairn project; errors flagged", () => {
+    const proj = freshDir("cairn-obs-");
+    mkdirSync(join(proj, ".cairn"), { recursive: true });
+    const ok = runHookRaw(OBSERVE, proj, JSON.stringify({
+      session_id: "s1", tool_name: "Edit",
+      tool_input: { file_path: join(proj, "a.ts") },
+      tool_response: {},
+    }));
+    expect(ok.status).toBe(0);
+    const fail = runHookRaw(OBSERVE, proj, JSON.stringify({
+      session_id: "s1", tool_name: "Bash",
+      tool_input: { command: "npm test -- --watch" },
+      tool_response: { exit_code: 1 },
+    }));
+    expect(fail.status).toBe(0);
+    const rows = readFileSync(join(proj, ".cairn", "observations", "observations.jsonl"), "utf8")
+      .trim().split("\n").map((l) => JSON.parse(l));
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toMatchObject({ tool: "Edit", error: false });
+    expect(rows[1]).toMatchObject({ tool: "Bash", error: true });
+    expect(rows[1].target).toContain("npm test");
+  });
+
+  it("is a no-op outside cairn-initialized projects", () => {
+    const proj = freshDir("cairn-obs-");
+    const r = runHookRaw(OBSERVE, proj, JSON.stringify({
+      session_id: "s1", tool_name: "Edit", tool_input: { file_path: "x" }, tool_response: {},
+    }));
+    expect(r.status).toBe(0);
+    expect(existsSync(join(proj, ".cairn"))).toBe(false);
+  });
+});
