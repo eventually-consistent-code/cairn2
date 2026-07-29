@@ -62,6 +62,7 @@ export async function migrateTracker(src, dst) {
                 body: `${i.body}${i.body ? "\n\n" : ""}[migrated from ${i.id}]`,
                 labels: i.labels,
                 phase: i.phase ? phaseRemap[i.phase] : undefined,
+                estimate: i.estimate,
             });
             remap[i.id] = made.id;
             counts.issues++;

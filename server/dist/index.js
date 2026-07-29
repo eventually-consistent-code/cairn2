@@ -178,23 +178,35 @@ export function buildServer(deps) {
         writeBanner(d);
         return state;
     }));
-    server.registerTool("issue_create", { description: "Create an issue in the configured tracker",
+    server.registerTool("issue_create", { description: "Create an issue in the configured tracker. Estimates "
+            + "(story points / original minutes) land in the backend's native "
+            + "fields where supported, and are ignored elsewhere",
         inputSchema: { title: z.string(), body: z.string().optional(),
             labels: z.array(z.string()).optional(),
-            phase: z.string().optional() } }, wrap(async (a) => {
+            phase: z.string().optional(),
+            estimatePoints: z.number().positive().optional(),
+            estimateMinutes: z.number().int().positive().optional() } }, wrap(async (a) => {
         const d = dir();
-        const result = await (await getTracker(d)).createIssue(a);
+        const { estimatePoints, estimateMinutes, ...input } = a;
+        const estimate = estimatePoints !== undefined || estimateMinutes !== undefined
+            ? { points: estimatePoints, minutes: estimateMinutes } : undefined;
+        const result = await (await getTracker(d)).createIssue({ ...input, estimate });
         snapshotNote(d, result);
         return result;
     }));
     server.registerTool("issue_get", { description: "Fetch one issue", inputSchema: { id: z.string() } }, wrap(async (a) => (await getTracker()).getIssue(a.id)));
-    server.registerTool("issue_update", { description: "Update an issue (title/body/state/labels/assignee)",
+    server.registerTool("issue_update", { description: "Update an issue (title/body/state/labels/assignee/estimate)",
         inputSchema: { id: z.string(), title: z.string().optional(),
             body: z.string().optional(), state: StateEnum.optional(),
             labels: z.array(z.string()).optional(),
-            assignee: z.string().optional() } }, wrap(async (a) => {
+            assignee: z.string().optional(),
+            estimatePoints: z.number().positive().optional(),
+            estimateMinutes: z.number().int().positive().optional() } }, wrap(async (a) => {
         const d = dir();
-        const { id, ...patch } = a;
+        const { id, estimatePoints, estimateMinutes, ...rest } = a;
+        const patch = estimatePoints !== undefined || estimateMinutes !== undefined
+            ? { ...rest, estimate: { points: estimatePoints, minutes: estimateMinutes } }
+            : rest;
         const tracker = await getTracker(d);
         let autoAssigned = false;
         if (patch.state === "in_progress" && patch.assignee === undefined) {

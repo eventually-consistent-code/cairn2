@@ -9,6 +9,7 @@ export class GitLabTracker {
     capabilities = {
         hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
         hasMilestones: false, hasPhaseClose: true, hasComments: true, hasWorklog: false,
+        hasEstimates: false,
     };
     constructor(cfg, fetchImpl = fetch) {
         this.cfg = cfg;
