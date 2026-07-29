@@ -61,6 +61,7 @@ describe("JiraTracker mapping", () => {
   it("createIssue POSTs an ADF-wrapped body to /rest/api/3/issue", async () => {
     const { f, calls } = fixtureFetch([
       { status: 201, body: { key: "CHN-101" } },
+      { status: 200, body: { values: [] } }, // board detect: no board configured
       { status: 200, body: jiraIssue() },
     ]);
     const t = new JiraTracker(cfg, f, () => ({ email: "e@x.com", token: "tok" }));
@@ -81,6 +82,7 @@ describe("JiraTracker mapping", () => {
   it("createIssue with phase sets fields.parent = { key }", async () => {
     const { f, calls } = fixtureFetch([
       { status: 201, body: { key: "CHN-102" } },
+      { status: 200, body: { values: [] } }, // board detect: no board configured
       { status: 200, body: jiraIssue({ key: "CHN-102" }) },
     ]);
     const t = new JiraTracker(cfg, f, () => ({ email: "e@x.com", token: "tok" }));
@@ -425,5 +427,108 @@ describe("JiraTracker identity + assignee", () => {
     const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
     await t.updateIssue("CHN-101", { assignee: "acc-55" });
     expect(calls.some((c) => c.url.includes("user/search"))).toBe(false);
+  });
+});
+
+describe("JiraTracker sprint awareness", () => {
+  const scrumBoard = { values: [{ id: 7, type: "scrum" }] };
+  const activeSprint = { values: [{ id: 42 }] };
+
+  it("scrum board + active sprint: create lands the issue in the sprint", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 201, body: { key: "CHN-201" } },
+      { status: 200, body: scrumBoard },        // GET board?projectKeyOrId
+      { status: 200, body: activeSprint },      // GET board/7/sprint?state=active
+      { status: 204, body: null },              // POST sprint/42/issue
+      { status: 200, body: { ...jiraIssue(), key: "CHN-201" } },
+    ]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    const issue = await t.createIssue({ title: "t" });
+    expect(calls[1].url).toBe(`${BASE}/rest/agile/1.0/board?projectKeyOrId=CHN`);
+    expect(calls[2].url).toBe(`${BASE}/rest/agile/1.0/board/7/sprint?state=active`);
+    expect(calls[3].url).toBe(`${BASE}/rest/agile/1.0/sprint/42/issue`);
+    expect(calls[3].method).toBe("POST");
+    expect(calls[3].body).toEqual({ issues: ["CHN-201"] });
+    expect(issue.id).toBe("CHN-201");
+  });
+
+  it("kanban board: no sprint calls beyond board detect", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 201, body: { key: "CHN-202" } },
+      { status: 200, body: { values: [{ id: 8, type: "kanban" }] } },
+      { status: 200, body: { ...jiraIssue(), key: "CHN-202" } },
+    ]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    await t.createIssue({ title: "t" });
+    expect(calls).toHaveLength(3);
+    expect(calls.some((c) => c.url.includes("/sprint"))).toBe(false);
+  });
+
+  it("scrum board with no active sprint: create succeeds, no sprint POST", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 201, body: { key: "CHN-203" } },
+      { status: 200, body: scrumBoard },
+      { status: 200, body: { values: [] } },    // no active sprint
+      { status: 200, body: { ...jiraIssue(), key: "CHN-203" } },
+    ]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    await t.createIssue({ title: "t" });
+    expect(calls.filter((c) => c.method === "POST" && c.url.includes("/sprint/"))).toHaveLength(0);
+  });
+
+  it("board + active sprint are cached across creates (one detect, one sprint lookup)", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 201, body: { key: "CHN-204" } },
+      { status: 200, body: scrumBoard },
+      { status: 200, body: activeSprint },
+      { status: 204, body: null },
+      { status: 200, body: { ...jiraIssue(), key: "CHN-204" } },
+      { status: 201, body: { key: "CHN-205" } },
+      { status: 204, body: null },              // straight to sprint assign
+      { status: 200, body: { ...jiraIssue(), key: "CHN-205" } },
+    ]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    await t.createIssue({ title: "a" });
+    await t.createIssue({ title: "b" });
+    expect(calls.filter((c) => c.url.includes("/rest/agile/1.0/board?"))).toHaveLength(1);
+    expect(calls.filter((c) => c.url.includes("sprint?state=active"))).toHaveLength(1);
+    expect(calls.filter((c) => c.url.endsWith("/sprint/42/issue"))).toHaveLength(2);
+  });
+
+  it("agile API failure never aborts the create — warning only", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 201, body: { key: "CHN-206" } },
+      { status: 400, body: { errorMessages: ["agile unavailable"] } },
+      { status: 200, body: { ...jiraIssue(), key: "CHN-206" } },
+    ]);
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    const issue = await t.createIssue({ title: "t" });
+    expect(issue.id).toBe("CHN-206");
+    expect(errSpy).toHaveBeenCalled();
+    expect(calls).toHaveLength(3);
+    errSpy.mockRestore();
+  });
+
+  it("config boardId skips discovery and fetches that board directly", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 201, body: { key: "CHN-207" } },
+      { status: 200, body: { id: 5, type: "scrum" } },   // GET board/5
+      { status: 200, body: activeSprint },
+      { status: 204, body: null },
+      { status: 200, body: { ...jiraIssue(), key: "CHN-207" } },
+    ]);
+    const t = new JiraTracker({ ...cfg, boardId: 5 }, f, () => ({ email: "e", token: "t" }));
+    await t.createIssue({ title: "t" });
+    expect(calls[1].url).toBe(`${BASE}/rest/agile/1.0/board/5`);
+  });
+
+  it("createPhase (Epic) is never sprinted", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 201, body: { key: "CHN-300" } },
+    ]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    await t.createPhase("Phase 9");
+    expect(calls).toHaveLength(1);
   });
 });

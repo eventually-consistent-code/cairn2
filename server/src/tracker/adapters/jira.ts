@@ -21,6 +21,9 @@ export const configSchema = z.object({
   tokenEnv: z.string().default("JIRA_API_TOKEN"),
   transitions: z.object({ in_progress: z.string(), closed: z.string() })
     .default({ in_progress: "In Progress", closed: "Done" }),
+  // Board auto-discovers from the project; set this only when the project
+  // has several boards and the first one is the wrong one.
+  boardId: z.number().int().positive().optional(),
 });
 
 type JiraConfig = z.infer<typeof configSchema>;
@@ -181,6 +184,52 @@ export class JiraTracker implements Tracker {
       { transition: { id: match.id } }, "jira transition");
   }
 
+  // Board + active sprint, each resolved once per instance. `null` is a real
+  // answer ("no board" / "no active sprint"), `undefined` means not asked yet.
+  private boardCache: { id: number; type: string } | null | undefined;
+  private sprintCache: number | null | undefined;
+
+  private async board(): Promise<{ id: number; type: string } | null> {
+    if (this.boardCache === undefined) {
+      if (this.cfg.boardId) {
+        const raw = (await this.api("GET", `/rest/agile/1.0/board/${this.cfg.boardId}`,
+          undefined, "jira board_get")) as { id: number; type: string };
+        this.boardCache = { id: raw.id, type: raw.type };
+      } else {
+        const raw = (await this.api("GET",
+          `/rest/agile/1.0/board?projectKeyOrId=${encodeURIComponent(this.cfg.projectKey)}`,
+          undefined, "jira board_list")) as { values: Array<{ id: number; type: string }> };
+        this.boardCache = raw.values[0] ?? null;
+      }
+    }
+    return this.boardCache;
+  }
+
+  private async activeSprintId(): Promise<number | null> {
+    const board = await this.board();
+    if (!board || board.type !== "scrum") return null;
+    if (this.sprintCache === undefined) {
+      const raw = (await this.api("GET",
+        `/rest/agile/1.0/board/${board.id}/sprint?state=active`,
+        undefined, "jira sprint_list")) as { values: Array<{ id: number }> };
+      this.sprintCache = raw.values[0]?.id ?? null;
+    }
+    return this.sprintCache;
+  }
+
+  /** Scrum boards: new work belongs in the running sprint. Best-effort —
+   *  an Agile-API hiccup must never turn a successful create into a failure. */
+  private async assignToActiveSprint(key: string): Promise<void> {
+    try {
+      const sprint = await this.activeSprintId();
+      if (sprint === null) return;
+      await this.api("POST", `/rest/agile/1.0/sprint/${sprint}/issue`,
+        { issues: [key] }, "jira sprint_assign");
+    } catch (e) {
+      console.error(`[cairn] jira: sprint assignment for ${key} skipped: ${e}`);
+    }
+  }
+
   async createIssue(input: IssueCreate): Promise<Issue> {
     const fields: Record<string, unknown> = {
       project: { key: this.cfg.projectKey },
@@ -192,6 +241,7 @@ export class JiraTracker implements Tracker {
     if (input.phase) fields.parent = { key: input.phase };
     const created = (await this.api("POST", "/rest/api/3/issue", { fields },
       "jira issue_create")) as { key: string };
+    await this.assignToActiveSprint(created.key);
     return this.getIssue(created.key);
   }
 
