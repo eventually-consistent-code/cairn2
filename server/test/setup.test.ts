@@ -147,6 +147,88 @@ describe("cairn-setup", () => {
     }
   });
 
+  it("cursor: wires .cursor/mcp.json + hooks.json + adapter and hook scripts", () => {
+    const proj = fresh("cairn-setup-");
+    const home = fresh("cairn-home-");
+    run("cursor", proj, home);
+
+    const mcp = JSON.parse(readFileSync(join(proj, ".cursor", "mcp.json"), "utf8"));
+    expect(mcp.mcpServers.cairn).toBeTruthy();
+
+    const hooks = JSON.parse(readFileSync(join(proj, ".cursor", "hooks.json"), "utf8"));
+    expect(hooks.version).toBe(1);
+    for (const ev of ["sessionStart", "beforeShellExecution", "afterShellExecution", "afterFileEdit", "preCompact"]) {
+      expect(JSON.stringify(hooks.hooks[ev])).toContain("cursor-adapter.mjs");
+    }
+    expect(hooks.hooks.stop).toBeUndefined(); // cost tracker is Claude-only
+
+    expect(existsSync(join(proj, ".cursor", "hooks", "cairn", "cursor-adapter.mjs"))).toBe(true);
+    expect(existsSync(join(proj, ".cursor", "hooks", "cairn", "pretooluse-leakguard.mjs"))).toBe(true);
+    expect(existsSync(join(proj, ".cursor", "hooks", "cairn", "lib.mjs"))).toBe(true);
+
+    const first = readFileSync(join(proj, ".cursor", "hooks.json"), "utf8");
+    run("cursor", proj, home); // idempotent
+    expect(readFileSync(join(proj, ".cursor", "hooks.json"), "utf8")).toBe(first);
+  });
+
+  it("cursor: merges into an existing hooks.json without clobbering foreign entries", () => {
+    const proj = fresh("cairn-setup-");
+    const home = fresh("cairn-home-");
+    mkdirSync(join(proj, ".cursor"), { recursive: true });
+    writeFileSync(join(proj, ".cursor", "hooks.json"), JSON.stringify({
+      version: 1,
+      hooks: { beforeShellExecution: [{ command: "./my-audit.sh" }] },
+    }));
+    run("cursor", proj, home);
+    const hooks = JSON.parse(readFileSync(join(proj, ".cursor", "hooks.json"), "utf8"));
+    expect(JSON.stringify(hooks.hooks.beforeShellExecution)).toContain("my-audit.sh");
+    expect(JSON.stringify(hooks.hooks.beforeShellExecution)).toContain("cursor-adapter.mjs");
+    expect(JSON.stringify(hooks.hooks.sessionStart)).toContain("cursor-adapter.mjs");
+  });
+
+  it("opencode: merges opencode.json mcp block + installs command files", () => {
+    const proj = fresh("cairn-setup-");
+    const home = fresh("cairn-home-");
+    writeFileSync(join(proj, "opencode.json"),
+      JSON.stringify({ mcp: { other: { type: "local", command: ["x"] } }, theme: "dark" }));
+
+    run("opencode", proj, home);
+
+    const cfg = JSON.parse(readFileSync(join(proj, "opencode.json"), "utf8"));
+    expect(cfg.mcp.other).toEqual({ type: "local", command: ["x"] });
+    expect(cfg.theme).toBe("dark");
+    expect(cfg.mcp.cairn.type).toBe("local");
+    expect(cfg.mcp.cairn.command[0]).toBe("node");
+    for (const v of ["plan", "work", "status", "verify", "ship"]) {
+      const p = join(proj, ".opencode", "commands", `cairn-${v}.md`);
+      expect(existsSync(p)).toBe(true);
+      expect(readFileSync(p, "utf8")).toContain("$ARGUMENTS");
+    }
+
+    const first = readFileSync(join(proj, "opencode.json"), "utf8");
+    run("opencode", proj, home); // idempotent
+    expect(readFileSync(join(proj, "opencode.json"), "utf8")).toBe(first);
+  });
+
+  it("zed: merges context_servers into .zed/settings.json", () => {
+    const proj = fresh("cairn-setup-");
+    const home = fresh("cairn-home-");
+    mkdirSync(join(proj, ".zed"), { recursive: true });
+    writeFileSync(join(proj, ".zed", "settings.json"),
+      JSON.stringify({ context_servers: { other: { command: "x", args: [] } }, tab_size: 2 }));
+
+    run("zed", proj, home);
+
+    const cfg = JSON.parse(readFileSync(join(proj, ".zed", "settings.json"), "utf8"));
+    expect(cfg.context_servers.other).toEqual({ command: "x", args: [] });
+    expect(cfg.tab_size).toBe(2);
+    expect(cfg.context_servers.cairn.command).toBe("node");
+
+    const first = readFileSync(join(proj, ".zed", "settings.json"), "utf8");
+    run("zed", proj, home); // idempotent
+    expect(readFileSync(join(proj, ".zed", "settings.json"), "utf8")).toBe(first);
+  });
+
   it("an existing different cairn MCP entry is left untouched", () => {
     const proj = fresh("cairn-setup-");
     const home = fresh("cairn-home-");
