@@ -1,0 +1,47 @@
+########################################################
+# npm trusted publishing (OIDC) — cairn + cairn-server #
+# Registered as the trusted publisher workflow for     #
+# @eventually-consistent/cairn and                     #
+# @eventually-consistent/cairn-server on npmjs.com.    #
+########################################################
+
+name: publish
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # OIDC — this is what npm trusted publishing exchanges for auth
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: "https://registry.npmjs.org"
+
+      # Trusted publishing needs npm >= 11.5.1 for the OIDC exchange.
+      - name: update npm
+        run: npm install -g npm@latest && npm --version
+
+      - name: gate — tests must pass before anything ships
+        working-directory: server
+        run: npm ci && npm test
+
+      # Server first — the root package's cairn-setup falls back to
+      # `npx @eventually-consistent/cairn-server`, so it must exist.
+      - name: publish @eventually-consistent/cairn-server
+        working-directory: server
+        run: npm publish
+        continue-on-error: false
+
+      - name: publish @eventually-consistent/cairn
+        run: npm publish
