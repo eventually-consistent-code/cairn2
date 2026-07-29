@@ -26,7 +26,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
-const HARNESSES = ["grok", "copilot", "codex", "gemini", "cursor", "claude"];
+const HARNESSES = ["grok", "copilot", "codex", "gemini", "cursor", "opencode", "zed", "claude"];
 const BEGIN = "<!-- cairn:begin";
 const END = "<!-- cairn:end -->";
 
@@ -201,6 +201,89 @@ if (harness === "codex") {
 
 if (harness === "cursor") {
   mergeMcpJson(join(projectDir, ".cursor", "mcp.json"));
+
+  // Hooks port: adapter + the cairn hook scripts, then hooks.json entries.
+  const hooksOut = join(projectDir, ".cursor", "hooks", "cairn");
+  mkdirSync(hooksOut, { recursive: true });
+  copyFileSync(join(repoRoot, "harness", "cursor", "cursor-adapter.mjs"),
+    join(hooksOut, "cursor-adapter.mjs"));
+  for (const f of readdirSync(join(repoRoot, "hooks", "scripts"))) {
+    if (f.endsWith(".mjs")) copyFileSync(join(repoRoot, "hooks", "scripts", f), join(hooksOut, f));
+  }
+  console.log(`  .cursor/hooks/cairn/: adapter + hook scripts installed.`);
+
+  // Merge our adapter into .cursor/hooks.json, keeping any foreign entries.
+  const hooksJsonPath = join(projectDir, ".cursor", "hooks.json");
+  const template = JSON.parse(readFileSync(join(repoRoot, "harness", "cursor", "hooks.json"), "utf8"));
+  const existing = readJson(hooksJsonPath);
+  let next;
+  if (!existing) {
+    next = template;
+  } else {
+    next = { ...existing, version: existing.version ?? 1, hooks: { ...(existing.hooks ?? {}) } };
+    for (const [event, entries] of Object.entries(template.hooks)) {
+      const current = next.hooks[event] ?? [];
+      const present = current.some((e) => (e.command ?? "").includes("cursor-adapter.mjs"));
+      next.hooks[event] = present ? current : [...current, ...entries];
+    }
+  }
+  const serialized = JSON.stringify(next, null, 2) + "\n";
+  let prior = "";
+  try {
+    prior = readFileSync(hooksJsonPath, "utf8");
+  } catch { /* new file */ }
+  if (serialized === prior) {
+    console.log(`  ${hooksJsonPath}: cairn hooks already current...`);
+  } else {
+    writeFileSync(hooksJsonPath, serialized);
+    console.log(`  ${hooksJsonPath}: cairn hook entries merged (cost tracker stays Claude-only).`);
+  }
+}
+
+if (harness === "opencode") {
+  // opencode.json uses its own mcp shape: {mcp: {cairn: {type: "local", command: [...]}}}.
+  const cfgPath = join(projectDir, "opencode.json");
+  const existing = readJson(cfgPath) ?? {};
+  const { command, args: cmdArgs } = serverCommand();
+  const entry = { type: "local", command: [command, ...cmdArgs], enabled: true };
+  const mcp = existing.mcp ?? {};
+  if (mcp.cairn) {
+    if (JSON.stringify(mcp.cairn) !== JSON.stringify(entry)) {
+      console.log(`  ${cfgPath}: existing 'cairn' entry left untouched (differs from this install)`);
+    } else {
+      console.log(`  ${cfgPath}: cairn entry already present...`);
+    }
+  } else {
+    writeFileSync(cfgPath, JSON.stringify({ ...existing, mcp: { ...mcp, cairn: entry } }, null, 2) + "\n");
+    console.log(`  ${cfgPath}: cairn MCP entry added.`);
+  }
+  const cmdSrc = join(repoRoot, "harness", "opencode", "commands");
+  const cmdOut = join(projectDir, ".opencode", "commands");
+  mkdirSync(cmdOut, { recursive: true });
+  for (const f of readdirSync(cmdSrc)) {
+    copyFileSync(join(cmdSrc, f), join(cmdOut, f));
+  }
+  console.log(`  .opencode/commands/: cairn command files installed (/cairn-plan, /cairn-work, ...).`);
+}
+
+if (harness === "zed") {
+  // Zed's MCP config lives under context_servers in (project) settings.json.
+  const cfgPath = join(projectDir, ".zed", "settings.json");
+  const existing = readJson(cfgPath) ?? {};
+  const { command, args: cmdArgs } = serverCommand();
+  const entry = { command, args: cmdArgs, env: {} };
+  const servers = existing.context_servers ?? {};
+  if (servers.cairn) {
+    if (JSON.stringify(servers.cairn) !== JSON.stringify(entry)) {
+      console.log(`  ${cfgPath}: existing 'cairn' entry left untouched (differs from this install)`);
+    } else {
+      console.log(`  ${cfgPath}: cairn entry already present...`);
+    }
+  } else {
+    mkdirSync(dirname(cfgPath), { recursive: true });
+    writeFileSync(cfgPath, JSON.stringify({ ...existing, context_servers: { ...servers, cairn: entry } }, null, 2) + "\n");
+    console.log(`  ${cfgPath}: cairn context server added (Zed reads AGENTS.md natively).`);
+  }
 }
 
 if (harness === "grok") {

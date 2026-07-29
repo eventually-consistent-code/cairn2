@@ -1,0 +1,11 @@
+{
+  "$comment": "cairn hooks for Cursor (installed to .cursor/hooks.json by cairn-setup) -- one adapter for every event; see .cursor/hooks/cairn/cursor-adapter.mjs. stop/cost tracking is Claude Code-only.",
+  "version": 1,
+  "hooks": {
+    "sessionStart": [{ "command": "node .cursor/hooks/cairn/cursor-adapter.mjs" }],
+    "beforeShellExecution": [{ "command": "node .cursor/hooks/cairn/cursor-adapter.mjs" }],
+    "afterShellExecution": [{ "command": "node .cursor/hooks/cairn/cursor-adapter.mjs" }],
+    "afterFileEdit": [{ "command": "node .cursor/hooks/cairn/cursor-adapter.mjs" }],
+    "preCompact": [{ "command": "node .cursor/hooks/cairn/cursor-adapter.mjs" }]
+  }
+}
