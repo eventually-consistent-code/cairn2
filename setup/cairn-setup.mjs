@@ -121,6 +121,38 @@ function installVerbs() {
   console.log(`  .cairn/harness/: registry + ${n} verb subroutines installed.`);
 }
 
+/** Merge the [mcp_servers.cairn] block into ~/.codex/config.toml between
+ *  marker comments — no TOML parser needed, and re-runs stay byte-identical.
+ *  A hand-written cairn block outside the markers is left alone. */
+function mergeCodexToml(path) {
+  const TOML_BEGIN = "# cairn:begin — managed by cairn-setup; do not edit inside markers";
+  const TOML_END = "# cairn:end";
+  const { command, args: cmdArgs } = serverCommand();
+  const block = `${TOML_BEGIN}\n[mcp_servers.cairn]\ncommand = "${command}"\nargs = [${cmdArgs.map((a) => `"${a}"`).join(", ")}]\n${TOML_END}\n`;
+  let body = "";
+  try {
+    body = readFileSync(path, "utf8");
+  } catch { /* new file */ }
+  const start = body.indexOf(TOML_BEGIN);
+  const end = body.indexOf(TOML_END);
+  let next;
+  if (start >= 0 && end > start) {
+    next = body.slice(0, start) + block + body.slice(end + TOML_END.length + 1);
+  } else if (body.includes("[mcp_servers.cairn]")) {
+    console.log(`  ${path}: existing 'cairn' entry left untouched (outside cairn-setup markers)`);
+    return;
+  } else {
+    next = body.length ? `${body.trimEnd()}\n\n${block}` : block;
+  }
+  if (next === body) {
+    console.log(`  ${path}: cairn entry already current...`);
+    return;
+  }
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, next);
+  console.log(`  ${path}: [mcp_servers.cairn] block written.`);
+}
+
 // --- main --------------------------------------------------------------------
 
 const fragment = readFileSync(join(repoRoot, "harness", "AGENTS-cairn.md"), "utf8");
@@ -147,14 +179,24 @@ if (harness === "gemini") {
   const settingsPath = join(homedir(), ".gemini", "settings.json");
   mergeMcpJson(settingsPath);
   installFragment(join(projectDir, "GEMINI.md"), fragment);
+  const cmdSrc = join(repoRoot, "harness", "gemini", "commands", "cairn");
+  const cmdOut = join(projectDir, ".gemini", "commands", "cairn");
+  mkdirSync(cmdOut, { recursive: true });
+  for (const f of readdirSync(cmdSrc)) {
+    copyFileSync(join(cmdSrc, f), join(cmdOut, f));
+  }
+  console.log(`  .gemini/commands/cairn/: TOML commands installed (/cairn:plan, /cairn:work, ...).`);
 }
 
 if (harness === "codex") {
-  const { command, args: cmdArgs } = serverCommand();
-  console.log(`  add to ~/.codex/config.toml (Codex reads AGENTS.md from the project):\n`);
-  console.log(`  [mcp_servers.cairn]`);
-  console.log(`  command = "${command}"`);
-  console.log(`  args = [${cmdArgs.map((a) => `"${a}"`).join(", ")}]\n`);
+  mergeCodexToml(join(homedir(), ".codex", "config.toml"));
+  const promptsSrc = join(repoRoot, "harness", "codex", "prompts");
+  const promptsOut = join(homedir(), ".codex", "prompts");
+  mkdirSync(promptsOut, { recursive: true });
+  for (const f of readdirSync(promptsSrc)) {
+    copyFileSync(join(promptsSrc, f), join(promptsOut, f));
+  }
+  console.log(`  ~/.codex/prompts/: cairn prompt files installed (Codex reads AGENTS.md from the project).`);
 }
 
 if (harness === "cursor") {
