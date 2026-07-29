@@ -100,7 +100,9 @@ node setup/cairn-setup.mjs grok      # Grok Build — reads .mcp.json + AGENTS.m
 node setup/cairn-setup.mjs copilot   # Copilot CLI — mcp-config.json, instructions, /cairn-* prompts
 node setup/cairn-setup.mjs codex     # Codex — config.toml merged, ~/.codex/prompts/cairn-* installed
 node setup/cairn-setup.mjs gemini    # Gemini CLI — settings.json + GEMINI.md + /cairn:* TOML commands
-node setup/cairn-setup.mjs cursor    # Cursor — .cursor/mcp.json + AGENTS.md
+node setup/cairn-setup.mjs cursor    # Cursor — .cursor/mcp.json + AGENTS.md + hooks port
+node setup/cairn-setup.mjs opencode  # OpenCode — opencode.json + /cairn-* commands
+node setup/cairn-setup.mjs zed       # Zed — .zed/settings.json context server + AGENTS.md
 ```
 
 Every install gets the full 71-tool surface, the generated `AGENTS.md` verb
@@ -115,7 +117,9 @@ name ("run cairn status"). Honest capability table:
 | Copilot CLI | ✅ | ✅ by name | ✅ `/cairn-*` prompt files | — |
 | Codex | ✅ | ✅ by name | ✅ `/cairn-*` prompts | — |
 | Gemini CLI | ✅ | ✅ by name | ✅ `/cairn:*` TOML commands | — |
-| Cursor | ✅ | ✅ by name | — | wave 3 (has a hooks runtime) |
+| Cursor | ✅ | ✅ by name | — | ✅ continuity/leak-guard/observe (cost tracker Claude-only) |
+| OpenCode | ✅ | ✅ by name | ✅ `/cairn-*` commands | — |
+| Zed | ✅ | ✅ by name | — | — |
 
 ## Roadmap
 

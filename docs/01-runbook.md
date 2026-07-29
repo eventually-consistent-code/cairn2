@@ -1045,11 +1045,22 @@ prompt files; Gemini gets `settings.json` + `GEMINI.md` plus namespaced
 TOML commands in `.gemini/commands/cairn/` — `/cairn:plan` and friends,
 same spelling as Claude Code.
 
-What degrades, honestly: no slash-command ergonomics in Grok Build or
-Cursor yet (verbs run by name), and the hook layer (continuity
-breadcrumbs, leak guard, cost tracker, observation capture) is Claude
-Code-only for now — Grok Build claims Claude hook compatibility (untested)
-and Cursor's hooks runtime is the wave-3 port target. Everything the
+Cursor additionally gets the hooks port: `cairn-setup cursor` installs a
+single adapter (`.cursor/hooks/cairn/cursor-adapter.mjs`) plus the cairn
+hook scripts, and merges entries into `.cursor/hooks.json` — sessionStart
+resumes continuity (banner + handoff as `additional_context`),
+beforeShellExecution runs the leak guard (deny with the offending lines),
+afterShellExecution/afterFileEdit capture breadcrumbs + observations, and
+preCompact refreshes the handoff. OpenCode gets an `opencode.json` `mcp`
+entry plus `/cairn-plan|work|status|verify|ship` command files in
+`.opencode/commands/`; Zed gets a `context_servers.cairn` entry in
+`.zed/settings.json` and reads `AGENTS.md` natively.
+
+What degrades, honestly: no slash-command ergonomics in Grok Build, Cursor,
+or Zed (verbs run by name), and the cost tracker stays Claude Code-only
+everywhere — it reads Claude's transcript JSONL for token usage, which no
+other harness produces (Cursor exposes a transcript_path, but not in that
+format). Grok Build claims Claude hook compatibility (untested). Everything the
 SERVER owns — all 71 tools, mirroring, drift math, estimates, attachments,
 custom states — works identically everywhere, which is the point: the
 tracker paper trail doesn't care which model wrote it.
