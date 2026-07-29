@@ -139,3 +139,44 @@ describe("publishTree", () => {
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
 });
+
+describe("publishTree image attachments", () => {
+  function projectWithImage(): string {
+    const dir = tempProject("# Landing\n\n![root map](docs/diagrams/map.png)");
+    mkdirSync(join(dir, "docs", "diagrams"), { recursive: true });
+    writeFileSync(join(dir, "docs", "guide.md"),
+      "# Guide\n\n![map](diagrams/map.png)\n\n![gone](diagrams/missing.png)\n\n![ext](https://x.io/p.png)");
+    writeFileSync(join(dir, "docs", "diagrams", "map.png"), Buffer.from([137, 80, 78, 71]));
+    return dir;
+  }
+
+  it("existing local images ride the page spec; missing and remote refs are skipped", async () => {
+    const dir = projectWithImage();
+    const conn = new FakeDocsConnector();
+    try {
+      await publishTree(conn, dir, "proj");
+      const guide = [...conn.pages.values()].find((p) => p.title === "Guide")!;
+      expect(conn.attachments.get(guide.id)).toEqual(["map.png"]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("README images attach to the landing page", async () => {
+    const dir = projectWithImage();
+    const conn = new FakeDocsConnector();
+    try {
+      const result = await publishTree(conn, dir, "proj");
+      expect(conn.attachments.get(result.root.id)).toEqual(["map.png"]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("re-publish does not duplicate attachments", async () => {
+    const dir = projectWithImage();
+    const conn = new FakeDocsConnector();
+    try {
+      await publishTree(conn, dir, "proj");
+      await publishTree(conn, dir, "proj");
+      const guide = [...conn.pages.values()].find((p) => p.title === "Guide")!;
+      expect(conn.attachments.get(guide.id)).toEqual(["map.png"]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});

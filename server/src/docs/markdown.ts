@@ -14,6 +14,12 @@ function escapeCdata(s: string): string {
   return s.replace(/\]\]>/g, "]]]]><![CDATA[>");
 }
 
+// Image refs registered for the current conversion render as native
+// attachment images; everything else keeps the degraded-link behavior.
+// Module-level because inline() is called from every block renderer and the
+// conversion is synchronous — set and cleared by markdownToStorage.
+let imageAttachments: Map<string, string> | undefined;
+
 function inline(s: string): string {
   // Code spans opt out of all other inline processing.
   return s.split(/(`[^`]+`)/).map((part) => {
@@ -21,7 +27,12 @@ function inline(s: string): string {
       return `<code>${escapeHtml(part.slice(1, -1))}</code>`;
     }
     let t = escapeHtml(part);
-    t = t.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, '<a href="$2">$1</a>');
+    t = t.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_all, alt: string, ref: string) => {
+      const filename = imageAttachments?.get(ref);
+      return filename
+        ? `<ac:image><ri:attachment ri:filename="${escapeHtml(filename)}" /></ac:image>`
+        : `<a href="${ref}">${alt}</a>`;
+    });
     t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2">$1</a>');
     t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
     t = t.replace(/(^|[^*\w])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>");
@@ -81,7 +92,16 @@ function listHtml(items: Array<{ indent: number; ordered: boolean; text: string 
   return html;
 }
 
-export function markdownToStorage(md: string): string {
+export function markdownToStorage(md: string, images?: Map<string, string>): string {
+  imageAttachments = images;
+  try {
+    return convert(md);
+  } finally {
+    imageAttachments = undefined;
+  }
+}
+
+function convert(md: string): string {
   const lines = md.replace(/\r\n/g, "\n").split("\n");
   const out: string[] = [];
   let i = 0;

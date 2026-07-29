@@ -2,7 +2,7 @@ import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, paginateCursor, type FetchLike } from "../../tracker/http.js";
 import { markdownToStorage } from "../markdown.js";
-import type { DocsCapability, DocsConnector, Page, PageSpec } from "../types.js";
+import type { DocsCapability, DocsConnector, Page, PageImage, PageSpec } from "../types.js";
 
 export const configSchema = z.object({
   /** Site wiki base, e.g. https://your-domain.atlassian.net/wiki */
@@ -174,6 +174,47 @@ export class ConfluenceConnector implements DocsConnector {
     return raws.map((r) => this.normalize({ ...r, parentId }));
   }
 
+  /** ref → filename map for the storage conversion (renders ri:attachment). */
+  private static imageMap(spec: PageSpec): Map<string, string> | undefined {
+    if (!spec.images?.length) return undefined;
+    return new Map(spec.images.map((i) => [i.ref, i.filename]));
+  }
+
+  /**
+   * Upload one image as a page attachment — idempotent by filename: an
+   * existing attachment gets its data updated, never a duplicate. Best-effort:
+   * a failed upload logs one warning and the page publish stands (the body
+   * already references the filename; a later republish heals it).
+   */
+  private async uploadImages(pageId: string, images: PageImage[] | undefined): Promise<void> {
+    for (const img of images ?? []) {
+      try {
+        const existing = await this.api("GET",
+          `/rest/api/content/${encodeURIComponent(pageId)}/child/attachment?filename=${encodeURIComponent(img.filename)}`) as
+          { results?: Array<{ id: string }> };
+        const attId = existing.results?.[0]?.id;
+        const path = attId
+          ? `/rest/api/content/${encodeURIComponent(pageId)}/child/attachment/${encodeURIComponent(attId)}/data`
+          : `/rest/api/content/${encodeURIComponent(pageId)}/child/attachment`;
+        const form = new FormData();
+        form.append("file", new Blob([new Uint8Array(img.data)], { type: img.mediaType }), img.filename);
+        const { email, token } = this.authProvider();
+        await fetchJson(this.fetchImpl, this.url(path), {
+          method: "POST",
+          // No content-type — fetch sets the multipart boundary itself.
+          headers: {
+            authorization: `Basic ${Buffer.from(`${email}:${token}`).toString("base64")}`,
+            accept: "application/json",
+            "X-Atlassian-Token": "nocheck",
+          },
+          body: form,
+        }, { context: "confluence attachment" });
+      } catch (e) {
+        console.error(`[cairn] confluence: attachment '${img.filename}' on page ${pageId} skipped: ${e}`);
+      }
+    }
+  }
+
   async createPage(spec: PageSpec): Promise<Page> {
     const space = await this.getSpace();
     const raw = await this.api("POST", "/api/v2/pages", {
@@ -181,9 +222,12 @@ export class ConfluenceConnector implements DocsConnector {
       status: "current",
       title: spec.title,
       ...(spec.parentId ? { parentId: spec.parentId } : {}),
-      body: { representation: "storage", value: markdownToStorage(spec.markdown) },
+      body: { representation: "storage",
+        value: markdownToStorage(spec.markdown, ConfluenceConnector.imageMap(spec)) },
     }) as RawPage;
-    return this.normalize(raw);
+    const page = this.normalize(raw);
+    await this.uploadImages(page.id, spec.images);
+    return page;
   }
 
   async updatePage(id: string, spec: PageSpec): Promise<Page> {
@@ -192,9 +236,12 @@ export class ConfluenceConnector implements DocsConnector {
       id,
       status: "current",
       title: spec.title,
-      body: { representation: "storage", value: markdownToStorage(spec.markdown) },
+      body: { representation: "storage",
+        value: markdownToStorage(spec.markdown, ConfluenceConnector.imageMap(spec)) },
       version: { number: (current.version ?? 0) + 1 },
     }) as RawPage;
-    return this.normalize(raw);
+    const page = this.normalize(raw);
+    await this.uploadImages(id, spec.images);
+    return page;
   }
 }

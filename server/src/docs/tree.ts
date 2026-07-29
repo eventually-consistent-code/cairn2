@@ -2,7 +2,7 @@
 // the publisher walks this tree against a DocsConnector.
 
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 export interface DocNode {
   /** Page title — first H1 in the file, else derived from the file/dir name. */
@@ -11,10 +11,26 @@ export interface DocNode {
   markdown: string;
   /** Source file/dir basename — lets filesystem backends mirror the layout. */
   sourceName: string;
+  /** Local images the markdown references — ref as written + absolute path. */
+  images: Array<{ ref: string; path: string }>;
   children: DocNode[];
 }
 
 const H1_RE = /^#\s+(.+)$/m;
+const IMAGE_RE = /!\[[^\]]*\]\(([^)\s]+)\)/g;
+
+/** Local image refs in a markdown body, resolved against baseDir — remote
+ *  urls and refs that don't resolve to a real file are skipped. */
+export function scanImages(markdown: string, baseDir: string): Array<{ ref: string; path: string }> {
+  const out: Array<{ ref: string; path: string }> = [];
+  for (const m of markdown.matchAll(IMAGE_RE)) {
+    const ref = m[1];
+    if (/^[a-z][a-z0-9+.-]*:/i.test(ref)) continue; // http:, https:, data:, …
+    const path = join(baseDir, ref);
+    if (existsSync(path) && statSync(path).isFile()) out.push({ ref, path });
+  }
+  return out;
+}
 
 /** "0004-api-versioning" / "quick_start" → "Api Versioning" / "Quick Start". */
 export function nameToTitle(name: string): string {
@@ -34,6 +50,7 @@ function fileNode(path: string): DocNode {
     title: h1 ? h1[1].trim() : nameToTitle(basename(path)),
     markdown,
     sourceName: basename(path),
+    images: scanImages(markdown, dirname(path)),
     children: [],
   };
 }
@@ -52,7 +69,7 @@ function dirNode(path: string): DocNode | null {
   }
   if (children.length === 0) return null;
   return { title: nameToTitle(basename(path)), markdown: "",
-    sourceName: basename(path), children };
+    sourceName: basename(path), images: [], children };
 }
 
 /**

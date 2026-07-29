@@ -75,3 +75,18 @@ describe("markdownToStorage", () => {
     expect(markdownToStorage("")).toBe("");
   });
 });
+
+describe("image attachment refs", () => {
+  it("registered image refs render as ac:image ri:attachment", () => {
+    const out = markdownToStorage("![map](diagrams/x.png)",
+      new Map([["diagrams/x.png", "x.png"]]));
+    expect(out).toContain('<ac:image><ri:attachment ri:filename="x.png" /></ac:image>');
+    expect(out).not.toContain("<a href");
+  });
+
+  it("unregistered image refs keep degrading to links", () => {
+    const out = markdownToStorage("![ext](https://x.io/p.png)",
+      new Map([["diagrams/x.png", "x.png"]]));
+    expect(out).toContain('<a href="https://x.io/p.png">ext</a>');
+  });
+});
