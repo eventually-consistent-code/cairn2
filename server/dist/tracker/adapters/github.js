@@ -33,6 +33,7 @@ export class GitHubTracker {
         hasPhases: true, hasDependencies: false, hasLabels: true,
         hasMilestones: false, hasPhaseClose: true, hasComments: true, hasWorklog: false,
         hasEstimates: false,
+        hasIssueAttachments: false,
     };
     constructor(cfg, fetchImpl = fetch, tokenProvider = resolveGithubToken) {
         this.cfg = cfg;

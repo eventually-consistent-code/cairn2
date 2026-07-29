@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, readFileSync } from "node:fs";
 import { realpathSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, extname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -784,6 +784,36 @@ export function buildServer(deps: {
       inputSchema: { id: z.string(), text: z.string() } },
     wrap(async (a: { id: string; text: string }) =>
       (await getTracker()).commentIssue(a.id, a.text)));
+
+  const ATTACH_MEDIA_TYPES: Record<string, string> = {
+    ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+    ".gif": "image/gif", ".svg": "image/svg+xml", ".webp": "image/webp",
+    ".pdf": "application/pdf", ".txt": "text/plain",
+  };
+  server.registerTool("issue_attach",
+    { description: "Attach a file (screenshot, render, visual evidence) to a tracker issue. "
+        + "UNSUPPORTED on backends without native attachments",
+      inputSchema: { id: z.string(), path: z.string(),
+                     filename: z.string().optional() } },
+    wrap(async (a: { id: string; path: string; filename?: string }) => {
+      const d = dir();
+      const tracker = await getTracker(d);
+      if (!tracker.capabilities.hasIssueAttachments || !tracker.attachFile) {
+        throw new CairnError("UNSUPPORTED", "this tracker has no attachment support",
+          "attachments need a backend with hasIssueAttachments (jira, local)");
+      }
+      const abs = resolve(d, a.path);
+      let data: Buffer;
+      try {
+        data = readFileSync(abs);
+      } catch {
+        throw new CairnError("NOT_FOUND", `no file at ${abs}`,
+          "path resolves against the project directory");
+      }
+      const filename = a.filename ?? basename(abs);
+      const mediaType = ATTACH_MEDIA_TYPES[extname(abs).toLowerCase()];
+      return tracker.attachFile(a.id, filename, data, mediaType);
+    }));
 
   server.registerTool("trace_start",
     { description: "Open a persistent debugging session (.cairn/trace/<id>.md). Creates the tracker "

@@ -725,9 +725,13 @@ Status reports the connector and landing page, or shows you the config block
 shape if none is set. Publish: the project gets a folder named after it
 under the space root; README.md becomes the landing page inside it; `docs/`
 plus a root CHANGELOG.md become the child page tree; the landing page gains
-a generated Documentation contents section. Idempotent — re-publish updates
-in place. `--name` overrides the project name (default: repo directory
-name). Pairs naturally after `distill`. Full detail in section 5.
+a generated Documentation contents section. Images referenced by published
+pages upload as real attachments (Confluence) or copy alongside the page
+(Docusaurus) — the architecture diagrams under `docs/diagrams/` render
+inline, not as broken links. Idempotent — re-publish updates pages in place
+and never duplicates an attachment. `--name` overrides the project name
+(default: repo directory name). Pairs naturally after `distill`. Full
+detail in section 5.
 
 ### Configuration & health
 
@@ -967,6 +971,7 @@ by name. Listing capped at 100 items.
 | Assignee **writes** | Local, GitHub, Azure Boards (others accept the call but don't propagate) |
 | Worklog (real time entries on close) | Local, Jira |
 | Estimates (story points + original time) | Local, Jira — populated at plan time; others ignore silently |
+| Issue attachments (`issue_attach` — screenshots as evidence) | Local, Jira; audit ui/uat attach visual findings |
 | Sprint awareness (creates land in the active sprint) | Jira scrum boards, auto-detected (`boardId` overrides) |
 | Issue links + dependency graph | Local + Linear (`graph_report`; Linear lacks `supersedes`) |
 | Native milestones | backend-dependent; `summit` records a skip when the phase primitive can't close, and `milestone_*` degrades gracefully |

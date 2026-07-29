@@ -60,6 +60,10 @@ export declare class LocalTracker implements Tracker {
         url?: string;
     }>;
     logWork(id: string, minutes: number): Promise<void>;
+    attachFile(id: string, filename: string, data: Buffer, _mediaType?: string): Promise<{
+        id?: string;
+        url?: string;
+    }>;
     /** Parse "<stamp>-<author>.md" record filenames back into metadata. */
     private historyFiles;
     listComments(id: string): Promise<IssueComment[]>;

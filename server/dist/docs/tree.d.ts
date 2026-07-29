@@ -5,8 +5,19 @@ export interface DocNode {
     markdown: string;
     /** Source file/dir basename — lets filesystem backends mirror the layout. */
     sourceName: string;
+    /** Local images the markdown references — ref as written + absolute path. */
+    images: Array<{
+        ref: string;
+        path: string;
+    }>;
     children: DocNode[];
 }
+/** Local image refs in a markdown body, resolved against baseDir — remote
+ *  urls and refs that don't resolve to a real file are skipped. */
+export declare function scanImages(markdown: string, baseDir: string): Array<{
+    ref: string;
+    path: string;
+}>;
 /** "0004-api-versioning" / "quick_start" → "Api Versioning" / "Quick Start". */
 export declare function nameToTitle(name: string): string;
 /**

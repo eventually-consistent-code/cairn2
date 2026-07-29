@@ -17,6 +17,7 @@ export class CachedTracker {
     listLinks;
     listComments;
     listWorklogs;
+    attachFile;
     constructor(inner, cache) {
         this.inner = inner;
         this.capabilities = inner.capabilities;
@@ -50,6 +51,10 @@ export class CachedTracker {
         }
         if (inner.listWorklogs) {
             this.listWorklogs = (id) => this.inner.listWorklogs(id);
+        }
+        if (inner.attachFile) {
+            // Write, not a read — no cache entry to clear (attachments aren't cached).
+            this.attachFile = (id, filename, data, mediaType) => this.inner.attachFile(id, filename, data, mediaType);
         }
     }
     clone(value) {

@@ -22,6 +22,12 @@ same way: a record, then tracker issues for anything that matters.
 | `plans [phase]` | plan-quality scan | `plan_check(phase)` for contract drift and unanchored thresholds, findings translated into plain language before they go anywhere near a human |
 | `docs [scope]` | sweep README/docs claims against the codebase | read every claim a README or `docs/**` file makes about what's shipped (tool counts, verb lists, table shapes, file paths, commands) and check each one against the real codebase — `check-surface.mjs`'s numbers, `server/src/index.ts`'s registry, the actual files on disk. A claim that's drifted from what's actually there is a finding, same severity scale as every other mode. No `scope` means sweep every README + `docs/**` file; a `scope` narrows to one file or directory. |
 
+**Visual evidence:** when the tracker declares `hasIssueAttachments`
+(jira, local), `issue_attach` the walk's screenshots and renders to the
+finding's issue — visual findings get a tracker-visible home, not just a
+repo path. Backends without attachment support keep today's behavior:
+the evidence path lives in the audit record only.
+
 `security` / `ui` / `eval` / `validation` are the same shape: pull the
 phase's own stated criteria (PLAN.md, SPEC docs — whatever that phase
 committed to), check delivered state against it, don't substitute a

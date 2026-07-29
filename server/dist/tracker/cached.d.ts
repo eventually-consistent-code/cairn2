@@ -16,6 +16,10 @@ export declare class CachedTracker implements Tracker {
     listLinks?: (id?: string) => Promise<IssueLink[]>;
     listComments?: (id: string) => Promise<IssueComment[]>;
     listWorklogs?: (id: string) => Promise<WorklogEntry[]>;
+    attachFile?: (id: string, filename: string, data: Buffer, mediaType?: string) => Promise<{
+        id?: string;
+        url?: string;
+    }>;
     constructor(inner: Tracker, cache?: ReadCache);
     private clone;
     createIssue(input: IssueCreate): Promise<Issue>;

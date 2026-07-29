@@ -20,6 +20,7 @@ export class AsanaTracker {
         hasInProgress: false, hasPhases: true, hasDependencies: true, hasLabels: false,
         hasMilestones: false, hasPhaseClose: false, hasComments: true, hasWorklog: false,
         hasEstimates: false,
+        hasIssueAttachments: false,
     };
     constructor(cfg, fetchImpl = fetch, tokenProvider = () => resolveAsanaToken(cfg.tokenEnv)) {
         this.cfg = cfg;

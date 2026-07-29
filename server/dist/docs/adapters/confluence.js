@@ -133,6 +133,45 @@ export class ConfluenceConnector {
         // The children endpoint omits parentId — it is the queried parent by definition.
         return raws.map((r) => this.normalize({ ...r, parentId }));
     }
+    /** ref → filename map for the storage conversion (renders ri:attachment). */
+    static imageMap(spec) {
+        if (!spec.images?.length)
+            return undefined;
+        return new Map(spec.images.map((i) => [i.ref, i.filename]));
+    }
+    /**
+     * Upload one image as a page attachment — idempotent by filename: an
+     * existing attachment gets its data updated, never a duplicate. Best-effort:
+     * a failed upload logs one warning and the page publish stands (the body
+     * already references the filename; a later republish heals it).
+     */
+    async uploadImages(pageId, images) {
+        for (const img of images ?? []) {
+            try {
+                const existing = await this.api("GET", `/rest/api/content/${encodeURIComponent(pageId)}/child/attachment?filename=${encodeURIComponent(img.filename)}`);
+                const attId = existing.results?.[0]?.id;
+                const path = attId
+                    ? `/rest/api/content/${encodeURIComponent(pageId)}/child/attachment/${encodeURIComponent(attId)}/data`
+                    : `/rest/api/content/${encodeURIComponent(pageId)}/child/attachment`;
+                const form = new FormData();
+                form.append("file", new Blob([new Uint8Array(img.data)], { type: img.mediaType }), img.filename);
+                const { email, token } = this.authProvider();
+                await fetchJson(this.fetchImpl, this.url(path), {
+                    method: "POST",
+                    // No content-type — fetch sets the multipart boundary itself.
+                    headers: {
+                        authorization: `Basic ${Buffer.from(`${email}:${token}`).toString("base64")}`,
+                        accept: "application/json",
+                        "X-Atlassian-Token": "nocheck",
+                    },
+                    body: form,
+                }, { context: "confluence attachment" });
+            }
+            catch (e) {
+                console.error(`[cairn] confluence: attachment '${img.filename}' on page ${pageId} skipped: ${e}`);
+            }
+        }
+    }
     async createPage(spec) {
         const space = await this.getSpace();
         const raw = await this.api("POST", "/api/v2/pages", {
@@ -140,9 +179,12 @@ export class ConfluenceConnector {
             status: "current",
             title: spec.title,
             ...(spec.parentId ? { parentId: spec.parentId } : {}),
-            body: { representation: "storage", value: markdownToStorage(spec.markdown) },
+            body: { representation: "storage",
+                value: markdownToStorage(spec.markdown, ConfluenceConnector.imageMap(spec)) },
         });
-        return this.normalize(raw);
+        const page = this.normalize(raw);
+        await this.uploadImages(page.id, spec.images);
+        return page;
     }
     async updatePage(id, spec) {
         const current = await this.getPage(id);
@@ -150,9 +192,12 @@ export class ConfluenceConnector {
             id,
             status: "current",
             title: spec.title,
-            body: { representation: "storage", value: markdownToStorage(spec.markdown) },
+            body: { representation: "storage",
+                value: markdownToStorage(spec.markdown, ConfluenceConnector.imageMap(spec)) },
             version: { number: (current.version ?? 0) + 1 },
         });
-        return this.normalize(raw);
+        const page = this.normalize(raw);
+        await this.uploadImages(id, spec.images);
+        return page;
     }
 }

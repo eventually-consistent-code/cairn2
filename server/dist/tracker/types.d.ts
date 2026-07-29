@@ -32,6 +32,7 @@ export interface Capability {
     hasComments: boolean;
     hasWorklog: boolean;
     hasEstimates: boolean;
+    hasIssueAttachments: boolean;
 }
 export interface Milestone {
     id: string;
@@ -104,4 +105,10 @@ export interface Tracker {
      *  (migration sources). */
     listComments?(id: string): Promise<IssueComment[]>;
     listWorklogs?(id: string): Promise<WorklogEntry[]>;
+    /** Binary evidence (screenshots, renders) on an issue. Present only on
+     *  adapters with hasIssueAttachments. */
+    attachFile?(id: string, filename: string, data: Buffer, mediaType?: string): Promise<{
+        id?: string;
+        url?: string;
+    }>;
 }

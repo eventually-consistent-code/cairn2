@@ -8,7 +8,10 @@ interface StoredPage extends Page {
 export declare class FakeDocsConnector implements DocsConnector {
     readonly capabilities: DocsCapability;
     readonly pages: Map<string, StoredPage>;
+    /** pageId → attachment filenames, deduplicated like Confluence would. */
+    readonly attachments: Map<string, string[]>;
     private seq;
+    private storeImages;
     ensureRoot(projectName: string): Promise<Page>;
     getPage(id: string): Promise<Page>;
     findPage(title: string, parentId?: string): Promise<Page | null>;

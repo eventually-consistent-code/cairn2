@@ -66,6 +66,7 @@ export class JiraTracker {
         hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
         hasMilestones: true, hasPhaseClose: true, hasComments: true, hasWorklog: true,
         hasEstimates: true,
+        hasIssueAttachments: true,
     };
     // Story-point field id varies per site ("Story point estimate" on
     // team-managed projects, "Story Points" on company-managed) — discovered
@@ -372,5 +373,23 @@ export class JiraTracker {
     async logWork(id, minutes) {
         this.assertId(id);
         await this.api("POST", `/rest/api/3/issue/${id}/worklog`, { timeSpentSeconds: minutes * 60 }, "jira worklog");
+    }
+    async attachFile(id, filename, data, mediaType) {
+        this.assertId(id);
+        const form = new FormData();
+        form.append("file", new Blob([new Uint8Array(data)], { type: mediaType ?? "application/octet-stream" }), filename);
+        const { email, token } = this.authProvider();
+        // Multipart — no JSON content-type; fetch sets the boundary itself, and
+        // Jira demands the XSRF opt-out header on this endpoint.
+        const raw = (await fetchJson(this.fetchImpl, `${this.cfg.baseUrl.replace(/\/$/, "")}/rest/api/3/issue/${id}/attachments`, {
+            method: "POST",
+            headers: {
+                authorization: `Basic ${Buffer.from(`${email}:${token}`).toString("base64")}`,
+                accept: "application/json",
+                "X-Atlassian-Token": "no-check",
+            },
+            body: form,
+        }, { context: "jira issue_attach" }));
+        return { id: raw[0]?.id, url: raw[0]?.content };
     }
 }

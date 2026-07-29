@@ -17,10 +17,23 @@ export interface Page {
     version?: number;
     url: string;
 }
+/** A local image referenced by a page's markdown, resolved and read by the
+ *  publisher. Adapters that declare hasAttachments honor these natively
+ *  (upload + reference rewrite); others ignore them and the markdown's
+ *  degraded link rendering stands. */
+export interface PageImage {
+    /** The ref exactly as written in the markdown, e.g. "diagrams/map.png". */
+    ref: string;
+    filename: string;
+    data: Buffer;
+    mediaType: string;
+}
 export interface PageSpec {
     title: string;
     /** Markdown source — the adapter converts to its native body format. */
     markdown: string;
+    /** Local images the markdown references — see PageImage. */
+    images?: PageImage[];
     /** Omitted = top of the project tree (child of the project root page). */
     parentId?: string;
     /** Hint: this page will have child pages. Filesystem backends need to

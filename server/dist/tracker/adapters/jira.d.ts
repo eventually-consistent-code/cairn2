@@ -103,5 +103,9 @@ export declare class JiraTracker implements Tracker {
         url?: string;
     }>;
     logWork(id: string, minutes: number): Promise<void>;
+    attachFile(id: string, filename: string, data: Buffer, mediaType?: string): Promise<{
+        id?: string;
+        url?: string;
+    }>;
 }
 export {};
