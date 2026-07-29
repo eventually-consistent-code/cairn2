@@ -1039,10 +1039,14 @@ any verb by name — "run cairn status" reads and follows the same
 subroutine `/cairn:status` does. Copilot additionally gets
 `~/.copilot/mcp-config.json` wiring, a `copilot-instructions.md` section,
 and `/cairn-plan|work|status|verify|ship` prompt files; Codex gets its
-`config.toml` block printed; Gemini gets `settings.json` + `GEMINI.md`.
+`[mcp_servers.cairn]` block merged into `~/.codex/config.toml` (marker
+comments, hand-written entries left alone) plus `~/.codex/prompts/cairn-*`
+prompt files; Gemini gets `settings.json` + `GEMINI.md` plus namespaced
+TOML commands in `.gemini/commands/cairn/` — `/cairn:plan` and friends,
+same spelling as Claude Code.
 
-What degrades, honestly: no slash-command ergonomics outside Claude Code
-and Copilot (verbs run by name), and the hook layer (continuity
+What degrades, honestly: no slash-command ergonomics in Grok Build or
+Cursor yet (verbs run by name), and the hook layer (continuity
 breadcrumbs, leak guard, cost tracker, observation capture) is Claude
 Code-only for now — Grok Build claims Claude hook compatibility (untested)
 and Cursor's hooks runtime is the wave-3 port target. Everything the

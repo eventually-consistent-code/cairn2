@@ -90,6 +90,63 @@ describe("cairn-setup", () => {
     }
   });
 
+  it("codex: installs ~/.codex/prompts + merges config.toml between markers", () => {
+    const proj = fresh("cairn-setup-");
+    const home = fresh("cairn-home-");
+    mkdirSync(join(home, ".codex"), { recursive: true });
+    writeFileSync(join(home, ".codex", "config.toml"),
+      `model = "gpt-5"\n\n[mcp_servers.other]\ncommand = "x"\n`);
+
+    run("codex", proj, home);
+
+    for (const v of ["plan", "work", "status", "verify", "ship"]) {
+      expect(existsSync(join(home, ".codex", "prompts", `cairn-${v}.md`))).toBe(true);
+    }
+    const toml = readFileSync(join(home, ".codex", "config.toml"), "utf8");
+    expect(toml).toContain(`model = "gpt-5"`);
+    expect(toml).toContain("[mcp_servers.other]");
+    expect(toml).toContain("# cairn:begin");
+    expect(toml).toContain("[mcp_servers.cairn]");
+    expect(toml).toContain("# cairn:end");
+
+    run("codex", proj, home); // idempotent
+    expect(readFileSync(join(home, ".codex", "config.toml"), "utf8")).toBe(toml);
+  });
+
+  it("codex: an existing cairn block outside the markers is left untouched", () => {
+    const proj = fresh("cairn-setup-");
+    const home = fresh("cairn-home-");
+    mkdirSync(join(home, ".codex"), { recursive: true });
+    const before = `[mcp_servers.cairn]\ncommand = "custom"\n`;
+    writeFileSync(join(home, ".codex", "config.toml"), before);
+    const out = run("codex", proj, home);
+    expect(out).toContain("left untouched");
+    expect(readFileSync(join(home, ".codex", "config.toml"), "utf8")).toBe(before);
+  });
+
+  it("gemini: merges settings.json, installs GEMINI.md + namespaced TOML commands", () => {
+    const proj = fresh("cairn-setup-");
+    const home = fresh("cairn-home-");
+    mkdirSync(join(home, ".gemini"), { recursive: true });
+    writeFileSync(join(home, ".gemini", "settings.json"),
+      JSON.stringify({ mcpServers: { other: { command: "x" } }, theme: "dark" }));
+
+    run("gemini", proj, home);
+
+    const cfg = JSON.parse(readFileSync(join(home, ".gemini", "settings.json"), "utf8"));
+    expect(cfg.mcpServers.other).toEqual({ command: "x" });
+    expect(cfg.theme).toBe("dark");
+    expect(cfg.mcpServers.cairn).toBeTruthy();
+    expect(readFileSync(join(proj, "GEMINI.md"), "utf8")).toContain("cairn:begin");
+    for (const v of ["plan", "work", "status", "verify", "ship"]) {
+      const p = join(proj, ".gemini", "commands", "cairn", `${v}.toml`);
+      expect(existsSync(p)).toBe(true);
+      const body = readFileSync(p, "utf8");
+      expect(body).toContain("description =");
+      expect(body).toContain("{{args}}");
+    }
+  });
+
   it("an existing different cairn MCP entry is left untouched", () => {
     const proj = fresh("cairn-setup-");
     const home = fresh("cairn-home-");

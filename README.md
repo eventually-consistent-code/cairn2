@@ -98,8 +98,8 @@ runs anywhere an MCP-capable harness does. One installer wires a project:
 ```bash
 node setup/cairn-setup.mjs grok      # Grok Build — reads .mcp.json + AGENTS.md directly
 node setup/cairn-setup.mjs copilot   # Copilot CLI — mcp-config.json, instructions, /cairn-* prompts
-node setup/cairn-setup.mjs codex     # Codex — prints the config.toml block; AGENTS.md covers the rest
-node setup/cairn-setup.mjs gemini    # Gemini CLI — settings.json + GEMINI.md
+node setup/cairn-setup.mjs codex     # Codex — config.toml merged, ~/.codex/prompts/cairn-* installed
+node setup/cairn-setup.mjs gemini    # Gemini CLI — settings.json + GEMINI.md + /cairn:* TOML commands
 node setup/cairn-setup.mjs cursor    # Cursor — .cursor/mcp.json + AGENTS.md
 ```
 
@@ -113,8 +113,8 @@ name ("run cairn status"). Honest capability table:
 | Claude Code (plugin) | ✅ | ✅ | ✅ `/cairn:*` | ✅ |
 | Grok Build | ✅ | ✅ by name | via its Claude-compat layer | untested — claims hook compat |
 | Copilot CLI | ✅ | ✅ by name | ✅ `/cairn-*` prompt files | — |
-| Codex | ✅ | ✅ by name | — | — |
-| Gemini CLI | ✅ | ✅ by name | — | — |
+| Codex | ✅ | ✅ by name | ✅ `/cairn-*` prompts | — |
+| Gemini CLI | ✅ | ✅ by name | ✅ `/cairn:*` TOML commands | — |
 | Cursor | ✅ | ✅ by name | — | wave 3 (has a hooks runtime) |
 
 ## Roadmap
