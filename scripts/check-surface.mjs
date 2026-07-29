@@ -118,6 +118,17 @@ for (const c of commandFiles) {
     failures.push(`(f) commands/${c}.md has no live routing-table row (run scripts/gen-commands.mjs)`);
 }
 
+// --- (g) AGENTS spine freshness ---------------------------------------------
+
+import { spawnSync } from "node:child_process";
+{
+  const r = spawnSync(process.execPath, [join(root, "scripts", "gen-agents.mjs"), "--check"],
+    { encoding: "utf8" });
+  if (r.status !== 0) {
+    failures.push("(g) harness/AGENTS-cairn.md stale vs routing table (run scripts/gen-agents.mjs)");
+  }
+}
+
 // --- report ------------------------------------------------------------------
 
 if (failures.length) {
