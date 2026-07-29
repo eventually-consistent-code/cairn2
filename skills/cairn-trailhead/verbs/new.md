@@ -6,16 +6,27 @@ status: live
 
 Start a new cairn 2.0 project in this repo, per the `cairn-planning` skill.
 
-1. Confirm `cairn.json` exists. Missing → ask which tracker backs this
-   project (one AskUserQuestion): **local** first — "issues live in this
-   repo as plain files; no accounts, no credentials" — then the seven hosted
-   options. Local chosen → write a minimal `cairn.json`
-   (`{"tracker": {"type": "local", "config": {"prefix": "<project slug,
-   2–10 lowercase alphanumerics>"}}}`), then check `.gitignore`: if any
-   pattern matches `.tracker/`, show the offending line and stop until the
-   user removes it — the store only works committed. Hosted chosen → point
-   at that backend's block in `templates/cairn.json.example` and stop for
-   credentials setup as before.
+1. Confirm `cairn.json` exists. Missing → one AskUserQuestion batching two
+   choices: **tracker** — **local** first ("issues live in this repo as
+   plain files; no accounts, no credentials"), then the hosted backends
+   (github, gitlab, jira, asana, azure-boards, clickup, linear) — and
+   **docs platform** — none (default), confluence, or docusaurus. Then
+   cairn writes `cairn.json` itself from this plugin's
+   `templates/cairn.json.example`: copy the template, set `tracker` to the
+   chosen backend's block (top-level or from `_alternatives`), set `docs`
+   from `_docs`/`_docs_docusaurus` when a docs platform was chosen, and
+   drop every `_`-prefixed template key. Never tell the user to copy or
+   edit the file by hand. Fill the backend-specific fields before writing:
+   auto-detect what git already knows (`github`/`gitlab` repo from
+   `git remote get-url origin`), and batch the rest (Jira baseUrl +
+   projectKey, Confluence baseUrl + spaceKey, Docusaurus sitePath, …) in
+   one follow-up AskUserQuestion — no placeholder values left behind
+   silently. Credentials stay env vars: name the vars the chosen backends
+   read (from the template blocks) and continue; missing creds surface at
+   the first tracker call, not as a setup stop. Local tracker chosen →
+   also check `.gitignore`: if any pattern matches `.tracker/`, show the
+   offending line and stop until the user removes it — the store only
+   works committed.
 2. Interview the user briefly: vision, 3–10 requirements, phase breakdown. Native
    plan mode is appropriate for this conversation at standard/deep depth.
    The interview also asks the mode once (skip when cairn.json already

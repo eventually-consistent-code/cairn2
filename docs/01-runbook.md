@@ -106,8 +106,13 @@ summit`. Everything else supports this loop.
 
 Start here. From an empty repo to a routed plan in one verb.
 
-1. Confirms `cairn.json` exists (if not, it points you at
-   `templates/cairn.json.example` and stops).
+1. Confirms `cairn.json` exists. Missing → asks which tracker (local
+   first — zero credentials — then the hosted backends) and which docs
+   platform (none / Confluence / Docusaurus) back the project, then writes
+   `cairn.json` itself from the shipped template — auto-detecting what git
+   already knows (e.g. the GitHub repo from `origin`) and prompting for
+   the rest. You never copy the template by hand; credentials stay env
+   vars.
 2. A brief interview: vision, 3–10 requirements, phase breakdown. It also
    asks your collaboration mode once (skipped if `cairn.json` already sets
    `user.mode`): **vibe** — cairn drives end-to-end (default) — or
@@ -1521,7 +1526,7 @@ stack traces.
 
 | Code | Meaning | Your next move |
 |---|---|---|
-| `CONFIG_MISSING` | No readable `cairn.json` in the project dir | Create one from `templates/cairn.json.example` |
+| `CONFIG_MISSING` | No readable `cairn.json` in the project dir | Run `/cairn:new` — it writes one for you (manual fallback: `templates/cairn.json.example`) |
 | `CONFIG_INVALID` | `cairn.json` (or a config patch, workspace file, or stale focus) failed validation — bad JSON, wrong types, a secret where a secret doesn't belong, a malformed `cairn-workspace.json`, or a focus naming a vanished member | Read the message — it names the exact path and problem. The file is left untouched on a rejected patch, so fix and retry |
 | `AUTH_MISSING` | A required credential env var isn't set | The message names the exact env vars to export (and where to mint the token) |
 | `RATE_LIMITED` | The backend is throttling | Wait and retry; the shared HTTP core already retries with backoff before this surfaces |
