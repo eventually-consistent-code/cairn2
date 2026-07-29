@@ -584,7 +584,10 @@ decided direction and tokens.json), `tests` (find untested requirements and
 WRITE the missing tests, not just flag them), `plans` (the plan-quality scan
 for contract drift and unanchored thresholds, translated to plain language),
 `docs` (sweep README/docs claims — tool counts, verb lists, paths, commands
-— against the real codebase; drifted claims are findings). No target on a
+— against the real codebase; drifted claims are findings), `security
+--surface` (the agent-config attack surface — `.claude/` hooks and
+settings, plugin manifests, MCP configs, permission allowlists, credential
+literals in tool configs — the layer code audits never see). No target on a
 phase-scoped mode = the most recently active phase. Closing discipline,
 every mode, no exceptions: write the audit record (the record is the source
 of truth; the tracker is the summary — and a clean `pass` still gets a
