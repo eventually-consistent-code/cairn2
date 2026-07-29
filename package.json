@@ -1,0 +1,46 @@
+{
+  "name": "@eventually-consistent/cairn",
+  "version": "2.0.0",
+  "description": "cairn 2.0 — tracker-first project management for AI coding agents. Distribution mirror: the supported install is the Claude Code plugin (or cairn-setup for other harnesses).",
+  "type": "module",
+  "license": "MIT",
+  "homepage": "https://eventually-consistent.io/projects/cairn/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eventually-consistent-code/cairn2.git"
+  },
+  "bugs": {
+    "url": "https://github.com/eventually-consistent-code/cairn2/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "bin": {
+    "cairn-setup": "setup/cairn-setup.mjs"
+  },
+  "files": [
+    "setup",
+    "harness",
+    "skills",
+    "commands",
+    "hooks",
+    "templates",
+    ".claude-plugin",
+    "docs/00-quickstart.md",
+    "docs/01-runbook.md"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "claude-code",
+    "mcp",
+    "agent",
+    "project-management",
+    "issue-tracker",
+    "jira",
+    "github",
+    "linear",
+    "planning"
+  ]
+}

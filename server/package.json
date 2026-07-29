@@ -17,6 +17,15 @@
   "files": [
     "dist"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "homepage": "https://eventually-consistent.io/projects/cairn/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/eventually-consistent-code/cairn2.git",
+    "directory": "server"
+  },
   "scripts": {
     "build": "tsc",
     "test": "vitest run --exclude '**/*.live.test.ts'",
