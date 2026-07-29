@@ -9,7 +9,7 @@ import { execFileSync } from "node:child_process";
 import {
   existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync,
 } from "node:fs";
-import { join, posix, resolve } from "node:path";
+import { dirname, join, posix, resolve } from "node:path";
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { nameToTitle } from "../tree.js";
@@ -70,7 +70,7 @@ interface CategoryFile {
 
 export class DocusaurusConnector implements DocsConnector {
   readonly capabilities: DocsCapability = {
-    hasPageTree: true, hasAttachments: false, hasLabels: false, hasNativeToc: true,
+    hasPageTree: true, hasAttachments: true, hasLabels: false, hasNativeToc: true,
   };
 
   private readonly siteAbs: string;
@@ -223,11 +223,22 @@ export class DocusaurusConnector implements DocsConnector {
     return this.childPages(parentId);
   }
 
+  /** Filesystem attachment story: write each image under the page's dir at
+   *  its original relative ref — the markdown keeps resolving untouched. */
+  private writeImages(dirAbs: string, spec: PageSpec): void {
+    for (const img of spec.images ?? []) {
+      const target = join(dirAbs, img.ref);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, img.data);
+    }
+  }
+
   async createPage(spec: PageSpec): Promise<Page> {
     this.probeSite();
     const dirId = this.parentDirId(spec.parentId);
     const dirAbs = dirId === "" ? this.docsAbs : this.abs(dirId);
     mkdirSync(dirAbs, { recursive: true });
+    this.writeImages(dirAbs, spec);
     const position = this.nextPosition(dirAbs);
     if (spec.container) {
       const name = spec.sourceName ?? slugify(spec.title);
@@ -256,6 +267,7 @@ export class DocusaurusConnector implements DocsConnector {
       return this.pageFor(id);
     }
     const fm = readFrontMatter(readFileSync(this.abs(id), "utf8"));
+    this.writeImages(dirname(this.abs(id)), spec);
     writeFileSync(this.abs(id),
       frontMatter(spec.title, (fm.version ?? 0) + 1, fm.position) + this.body(spec.markdown));
     return this.pageFor(id);

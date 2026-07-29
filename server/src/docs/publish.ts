@@ -1,8 +1,32 @@
 import { readFileSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, extname, join } from "node:path";
 import { CairnError } from "../errors.js";
-import type { DocsConnector, Page } from "./types.js";
-import { dirTocMarkdown, scanDocs, tocMarkdown, type DocNode } from "./tree.js";
+import type { DocsConnector, Page, PageImage } from "./types.js";
+import { dirTocMarkdown, scanDocs, scanImages, tocMarkdown, type DocNode } from "./tree.js";
+
+const MEDIA_TYPES: Record<string, string> = {
+  ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+  ".gif": "image/gif", ".svg": "image/svg+xml", ".webp": "image/webp",
+};
+
+/** Resolve scanned image refs into PageImage payloads — unreadable files are
+ *  skipped with a warning, never a failed publish. */
+function loadImages(images: Array<{ ref: string; path: string }>): PageImage[] {
+  const out: PageImage[] = [];
+  for (const img of images) {
+    try {
+      out.push({
+        ref: img.ref,
+        filename: basename(img.path),
+        data: readFileSync(img.path),
+        mediaType: MEDIA_TYPES[extname(img.path).toLowerCase()] ?? "application/octet-stream",
+      });
+    } catch (e) {
+      console.error(`[cairn] docs publish: skipping unreadable image ${img.path}: ${e}`);
+    }
+  }
+  return out;
+}
 
 export interface PublishResult {
   root: Page;
@@ -40,18 +64,19 @@ async function upsert(
   context: string,
   container: boolean,
   sourceName?: string,
+  images?: PageImage[],
 ): Promise<Page> {
   const existing = await connector.findPage(title, parentId);
   if (existing) {
-    return connector.updatePage(existing.id, { title, markdown, parentId, container, sourceName });
+    return connector.updatePage(existing.id, { title, markdown, parentId, container, sourceName, images });
   }
   const taken = await connector.findPage(title);
-  if (!taken) return connector.createPage({ title, markdown, parentId, container, sourceName });
+  if (!taken) return connector.createPage({ title, markdown, parentId, container, sourceName, images });
   const alt = `${title} (${context})`;
   const existingAlt = await connector.findPage(alt, parentId);
   return existingAlt
-    ? connector.updatePage(existingAlt.id, { title: alt, markdown, parentId, container, sourceName })
-    : connector.createPage({ title: alt, markdown, parentId, container, sourceName });
+    ? connector.updatePage(existingAlt.id, { title: alt, markdown, parentId, container, sourceName, images })
+    : connector.createPage({ title: alt, markdown, parentId, container, sourceName, images });
 }
 
 /**
@@ -67,7 +92,7 @@ async function publishNode(
   sink: Array<{ title: string; url: string }>,
 ): Promise<Page> {
   let page = await upsert(connector, node.title, node.markdown, parentId, context,
-    node.children.length > 0, node.sourceName);
+    node.children.length > 0, node.sourceName, loadImages(node.images));
   sink.push({ title: page.title, url: page.url });
   if (node.children.length > 0) {
     const childEntries: Array<{ title: string; url: string }> = [];
@@ -114,6 +139,7 @@ export async function publishTree(
     : `${readme}${tocMarkdown(topEntries)}`;
   const updatedRoot = await connector.updatePage(root.id, {
     title: name, markdown: landing, container: true,
+    images: loadImages(scanImages(readme, projectDir)),
   });
   const warning = await connector.finalize?.();
   return { root: updatedRoot, published: 1 + pages.length, pages,

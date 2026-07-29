@@ -6,7 +6,7 @@
 // branches merge cleanly by construction. No database, no credentials.
 import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync, } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, extname, join, resolve } from "node:path";
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 export const configSchema = z.object({
@@ -84,6 +84,7 @@ export class LocalTracker {
         hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
         hasMilestones: true, hasPhaseClose: true, hasComments: true, hasWorklog: true,
         hasEstimates: true,
+        hasIssueAttachments: true,
     };
     root;
     initialized = false;
@@ -275,6 +276,19 @@ export class LocalTracker {
         const dir = join(this.issueDir(id), "worklog");
         mkdirSync(dir, { recursive: true });
         writeFileSync(join(dir, `${this.stamp()}-${await this.who()}.md`), `${minutes}m\n`);
+    }
+    async attachFile(id, filename, data, _mediaType) {
+        this.readFields(id); // NOT_FOUND guard
+        const dir = join(this.issueDir(id), "attachments");
+        mkdirSync(dir, { recursive: true });
+        let target = join(dir, basename(filename));
+        if (existsSync(target)) {
+            // Same name twice is a new piece of evidence, not an overwrite.
+            const ext = extname(filename);
+            target = join(dir, `${basename(filename, ext)}-${this.stamp()}${ext}`);
+        }
+        writeFileSync(target, data);
+        return { url: `file://${target}` };
     }
     /** Parse "<stamp>-<author>.md" record filenames back into metadata. */
     historyFiles(id, sub) {

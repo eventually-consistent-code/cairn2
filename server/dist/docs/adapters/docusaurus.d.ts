@@ -46,6 +46,9 @@ export declare class DocusaurusConnector implements DocsConnector {
     private findRecursive;
     private childPages;
     listChildren(parentId: string): Promise<Page[]>;
+    /** Filesystem attachment story: write each image under the page's dir at
+     *  its original relative ref — the markdown keeps resolving untouched. */
+    private writeImages;
     createPage(spec: PageSpec): Promise<Page>;
     updatePage(id: string, spec: PageSpec): Promise<Page>;
     /**

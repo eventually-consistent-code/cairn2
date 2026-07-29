@@ -5,7 +5,12 @@ export declare class FakeTracker implements Tracker {
     private phases;
     private milestones;
     private issueComments;
+    readonly issueAttachments: Map<string, string[]>;
     private seq;
+    attachFile(id: string, filename: string, _data: Buffer, _mediaType?: string): Promise<{
+        id?: string;
+        url?: string;
+    }>;
     createIssue(input: IssueCreate): Promise<Issue>;
     getIssue(id: string): Promise<Issue>;
     updateIssue(id: string, patch: IssuePatch): Promise<Issue>;

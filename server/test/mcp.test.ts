@@ -70,7 +70,7 @@ describe("cairn MCP server", () => {
       "milestone_create", "milestone_list", "milestone_complete",
       "plan_resync", "plan_tracker_delta", "plan_meta_set",
       "config_get", "config_set",
-      "issue_comment", "trace_start", "trace_log", "trace_list", "trace_close",
+      "issue_comment", "issue_attach", "trace_start", "trace_log", "trace_list", "trace_close",
       "probe_start", "probe_log", "probe_close",
       "draft_start", "draft_log", "draft_close",
       "thread_start", "thread_log", "thread_close",
@@ -84,8 +84,19 @@ describe("cairn MCP server", () => {
     ].sort());
   });
 
-  it("pins the tool count at 70", async () => {
-    expect((await listToolNames()).length).toBe(70);
+  it("pins the tool count at 71", async () => {
+    expect((await listToolNames()).length).toBe(71);
+  });
+
+  it("issue_attach reads the file and forwards to the tracker; missing file is NOT_FOUND", async () => {
+    const made = await call("issue_create", { title: "attach target" });
+    writeFileSync(join(projectDir, "shot.png"), Buffer.from([137, 80, 78, 71]));
+    const res = await call("issue_attach", { id: made.json.id, path: "shot.png" });
+    expect(res.json.id).toBeTruthy();
+    const missing = await client.callTool({ name: "issue_attach",
+      arguments: { id: made.json.id, path: "nope.png" } });
+    expect(missing.isError).toBe(true);
+    expect((missing.content as Array<{ text: string }>)[0].text).toContain("NOT_FOUND");
   });
 
   it("tracker_migrate refuses a non-local source", async () => {

@@ -11,6 +11,11 @@ function escapeHtml(s) {
 function escapeCdata(s) {
     return s.replace(/\]\]>/g, "]]]]><![CDATA[>");
 }
+// Image refs registered for the current conversion render as native
+// attachment images; everything else keeps the degraded-link behavior.
+// Module-level because inline() is called from every block renderer and the
+// conversion is synchronous — set and cleared by markdownToStorage.
+let imageAttachments;
 function inline(s) {
     // Code spans opt out of all other inline processing.
     return s.split(/(`[^`]+`)/).map((part) => {
@@ -18,7 +23,12 @@ function inline(s) {
             return `<code>${escapeHtml(part.slice(1, -1))}</code>`;
         }
         let t = escapeHtml(part);
-        t = t.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, '<a href="$2">$1</a>');
+        t = t.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (_all, alt, ref) => {
+            const filename = imageAttachments?.get(ref);
+            return filename
+                ? `<ac:image><ri:attachment ri:filename="${escapeHtml(filename)}" /></ac:image>`
+                : `<a href="${ref}">${alt}</a>`;
+        });
         t = t.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<a href="$2">$1</a>');
         t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
         t = t.replace(/(^|[^*\w])\*([^*\s][^*]*)\*/g, "$1<em>$2</em>");
@@ -75,7 +85,16 @@ function listHtml(items) {
     }
     return html;
 }
-export function markdownToStorage(md) {
+export function markdownToStorage(md, images) {
+    imageAttachments = images;
+    try {
+        return convert(md);
+    }
+    finally {
+        imageAttachments = undefined;
+    }
+}
+function convert(md) {
     const lines = md.replace(/\r\n/g, "\n").split("\n");
     const out = [];
     let i = 0;

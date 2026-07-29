@@ -4,12 +4,21 @@ export class FakeTracker {
         hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
         hasMilestones: true, hasPhaseClose: true, hasComments: true, hasWorklog: false,
         hasEstimates: true,
+        hasIssueAttachments: true,
     };
     issues = new Map();
     phases = new Map();
     milestones = new Map();
     issueComments = new Map();
+    issueAttachments = new Map();
     seq = 0;
+    async attachFile(id, filename, _data, _mediaType) {
+        await this.getIssue(id);
+        const names = this.issueAttachments.get(id) ?? [];
+        names.push(filename);
+        this.issueAttachments.set(id, names);
+        return { id: `att-${names.length}` };
+    }
     async createIssue(input) {
         const id = `FAKE-${++this.seq}`;
         const issue = {

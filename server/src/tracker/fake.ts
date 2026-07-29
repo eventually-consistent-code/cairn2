@@ -9,12 +9,23 @@ export class FakeTracker implements Tracker {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
     hasMilestones: true, hasPhaseClose: true, hasComments: true, hasWorklog: false,
     hasEstimates: true,
+    hasIssueAttachments: true,
   };
   private issues = new Map<string, Issue>();
   private phases = new Map<string, Phase>();
   private milestones = new Map<string, Milestone>();
   private issueComments = new Map<string, Array<{ id: string; text: string }>>();
+  readonly issueAttachments = new Map<string, string[]>();
   private seq = 0;
+
+  async attachFile(id: string, filename: string, _data: Buffer,
+    _mediaType?: string): Promise<{ id?: string; url?: string }> {
+    await this.getIssue(id);
+    const names = this.issueAttachments.get(id) ?? [];
+    names.push(filename);
+    this.issueAttachments.set(id, names);
+    return { id: `att-${names.length}` };
+  }
 
   async createIssue(input: IssueCreate): Promise<Issue> {
     const id = `FAKE-${++this.seq}`;

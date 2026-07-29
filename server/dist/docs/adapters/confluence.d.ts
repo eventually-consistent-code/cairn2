@@ -56,6 +56,15 @@ export declare class ConfluenceConnector implements DocsConnector {
     getPage(id: string): Promise<Page>;
     findPage(title: string, parentId?: string): Promise<Page | null>;
     listChildren(parentId: string): Promise<Page[]>;
+    /** ref → filename map for the storage conversion (renders ri:attachment). */
+    private static imageMap;
+    /**
+     * Upload one image as a page attachment — idempotent by filename: an
+     * existing attachment gets its data updated, never a duplicate. Best-effort:
+     * a failed upload logs one warning and the page publish stands (the body
+     * already references the filename; a later republish heals it).
+     */
+    private uploadImages;
     createPage(spec: PageSpec): Promise<Page>;
     updatePage(id: string, spec: PageSpec): Promise<Page>;
 }

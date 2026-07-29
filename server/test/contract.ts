@@ -170,6 +170,17 @@ export function trackerContract(name: string, factory: () => Promise<Tracker>): 
       }
     }, 30_000);
 
+    it("attachFile stores when hasIssueAttachments; method absent otherwise", async () => {
+      if (!t.capabilities.hasIssueAttachments) {
+        expect(t.attachFile).toBeUndefined();
+        return;
+      }
+      const made = await t.createIssue({ title: "contract: attach" });
+      const res = await t.attachFile!(made.id, "shot.png",
+        Buffer.from([137, 80, 78, 71]), "image/png");
+      expect(res).toBeTruthy();
+    });
+
     it("commentIssue posts and is UNSUPPORTED when hasComments is false", async () => {
       const made = await t.createIssue({ title: "contract: comment target" });
       if (!t.capabilities.hasComments) {

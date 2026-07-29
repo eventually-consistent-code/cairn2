@@ -1,17 +1,23 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { ConfluenceConnector } from "../src/docs/adapters/confluence.js";
 import type { FetchLike } from "../src/tracker/http.js";
 
-/** Records requests; replies from a queue of canned responses. */
+/** Records requests; replies from a queue of canned responses. Non-JSON
+ *  bodies (FormData multipart uploads) are recorded raw instead of parsed. */
 function fixtureFetch(fixtures: Array<{ status: number; body: unknown }>) {
-  const calls: Array<{ url: string; method: string; body?: unknown; auth?: string }> = [];
+  const calls: Array<{ url: string; method: string; body?: unknown; auth?: string;
+    headers?: Record<string, string> }> = [];
   const f: FetchLike = async (url, init) => {
     const headers = (init?.headers ?? {}) as Record<string, string>;
+    let body: unknown;
+    if (init?.body instanceof FormData) body = init.body;
+    else if (init?.body) { try { body = JSON.parse(String(init.body)); } catch { body = init.body; } }
     calls.push({
       url: String(url),
       method: init?.method ?? "GET",
-      body: init?.body ? JSON.parse(String(init.body)) : undefined,
+      body,
       auth: headers.authorization,
+      headers,
     });
     const fx = fixtures.shift()!;
     return new Response(JSON.stringify(fx.body), { status: fx.status });
@@ -152,5 +158,52 @@ describe("ConfluenceConnector", () => {
     expect(posts[0].body).toMatchObject({ spaceId: "111", title: "proj", parentId: "900" });
     expect(posts[1].url).toContain("/api/v2/pages");
     expect(posts[1].body).toMatchObject({ title: "proj", parentId: "555" });
+  });
+});
+
+describe("ConfluenceConnector image attachments", () => {
+  const img = { ref: "diagrams/x.png", filename: "x.png",
+    data: Buffer.from([1, 2, 3]), mediaType: "image/png" };
+
+  it("createPage with images uploads multipart with the nocheck header", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: SPACE },                       // GET spaces
+      { status: 200, body: rawPage({ id: 123 }) },        // POST pages
+      { status: 200, body: { results: [] } },             // GET existing attachment by filename
+      { status: 200, body: { results: [{ id: "att9" }] } }, // POST upload
+    ]);
+    await makeConn(f).createPage({ title: "T", markdown: "![m](diagrams/x.png)", images: [img] });
+    expect(calls[2].url).toContain("/rest/api/content/123/child/attachment?filename=x.png");
+    const upload = calls[3];
+    expect(upload.url).toContain("/rest/api/content/123/child/attachment");
+    expect(upload.method).toBe("POST");
+    expect(upload.headers!["X-Atlassian-Token"]).toBe("nocheck");
+    expect(upload.body).toBeInstanceOf(FormData);
+    // page body converted the registered ref to a native attachment image
+    expect(JSON.stringify(calls[1].body)).toContain("ri:attachment");
+  });
+
+  it("existing attachment with the same filename gets a data update, not a duplicate", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: SPACE },
+      { status: 200, body: rawPage({ id: 123 }) },
+      { status: 200, body: { results: [{ id: "att7" }] } }, // exists
+      { status: 200, body: {} },                            // POST .../att7/data
+    ]);
+    await makeConn(f).createPage({ title: "T", markdown: "![m](diagrams/x.png)", images: [img] });
+    expect(calls[3].url).toContain("/child/attachment/att7/data");
+  });
+
+  it("a failed upload degrades with a warning — the page still publishes", async () => {
+    const { f } = fixtureFetch([
+      { status: 200, body: SPACE },
+      { status: 200, body: rawPage({ id: 123 }) },
+      { status: 400, body: {} },                            // existing-check explodes
+    ]);
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const page = await makeConn(f).createPage({ title: "T", markdown: "x", images: [img] });
+    expect(page.id).toBe("123");
+    expect(errSpy).toHaveBeenCalled();
+    errSpy.mockRestore();
   });
 });
