@@ -25,6 +25,11 @@ cairn-server      tracker/ · planning/ · memory/ · core/   (one process)
 tracker API (work truth) · git repo (prose truth) · ~/.cairn/ (disposable cache)
 ```
 
+The full code relationship map — verb layer, MCP server, and the three
+subsystems underneath (sources in [`docs/diagrams/`](docs/diagrams/)):
+
+![cairn code relationships — verb layer to MCP server to tracker/memory/docs subsystems](docs/diagrams/cairn-code-map.png)
+
 ## Features (shipped — P0–P4)
 
 **Tracker layer** — eight adapters behind one normalized interface: GitHub,
