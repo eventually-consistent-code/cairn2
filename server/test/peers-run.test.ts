@@ -181,7 +181,11 @@ describe("peerRun", () => {
     const p = join(stubDir, "grok");
     writeFileSync(p, "#!/bin/sh\nexit 0\n");
     chmodSync(p, 0o644); // no execute bit
-    process.env.PATH = `${stubDir}${delimiter}${ORIGINAL_PATH}`;
+    // Isolated PATH, not a prepend: execvp skips non-executable entries and
+    // keeps searching, so a real grok later on PATH (any machine wired for
+    // multi-harness work) would get executed and hang the test. /usr/bin:/bin
+    // stay so exec resolution behaves normally; neither ever holds grok.
+    process.env.PATH = `${stubDir}${delimiter}/usr/bin${delimiter}/bin`;
 
     let caught: unknown;
     try {
