@@ -1,6 +1,22 @@
-# cairn-server
+# @eventually-consistent/cairn-server
 
-MCP server for cairn 2.0. See `docs/superpowers/specs/2026-07-12-cairn-2-design.md`.
+The cairn 2.0 MCP server — tracker-first project management for AI coding
+agents, speaking plain MCP over stdio.
+
+Most people want one of these installs instead of this package directly:
+
+- **Claude Code**: install the cairn plugin — it wires this server plus
+  hooks, slash commands, and skills.
+- **Grok Build, Copilot CLI, Codex, Gemini CLI, Cursor, OpenCode, Zed**:
+  `npx @eventually-consistent/cairn cairn-setup <harness>` wires your
+  project's MCP config at this server.
+
+Running it directly: `npx -y @eventually-consistent/cairn-server` — expects
+a `cairn.json` in the project directory (`CLAUDE_PROJECT_DIR` or cwd); see
+the [quickstart](https://github.com/eventually-consistent-code/cairn2/blob/main/docs/00-quickstart.md).
+
+Everything below is the developer reference. Design spec:
+`docs/superpowers/specs/2026-07-12-cairn-2-design.md`.
 
 71 tools total across planning, memory, continuity, collaboration, milestones, config, sessions (trace, probe, draft, thread), audits (plan_check, audit_record), the project knowledge graph (map_set, map_get), workspace/board (workspace_list, workspace_focus, workspace_status, board_get, board_update), peers (peer_list, peer_run), tracker-delta ingest (plan_tracker_delta), issue links + dependency graph (issue_link, issue_unlink, issue_links, graph_report), local-tracker promotion (tracker_migrate), and docs publishing (docs_publish, docs_status), and issue attachments (issue_attach).
 
