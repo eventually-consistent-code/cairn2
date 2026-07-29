@@ -5,11 +5,16 @@ export declare const configSchema: z.ZodObject<{
     dir: z.ZodDefault<z.ZodString>;
     /** Issue-id prefix, e.g. "crn" → crn-x7k2m. */
     prefix: z.ZodDefault<z.ZodString>;
+    /** Custom state vocabulary: name → semantic category (CRN-26).
+     *  e.g. { "review": "in_progress", "blocked": "open" } */
+    states: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodEnum<["open", "in_progress", "closed"]>>>;
 }, "strip", z.ZodTypeAny, {
     dir: string;
+    states: Record<string, "open" | "in_progress" | "closed">;
     prefix: string;
 }, {
     dir?: string | undefined;
+    states?: Record<string, "open" | "in_progress" | "closed"> | undefined;
     prefix?: string | undefined;
 }>;
 export type LocalConfig = z.infer<typeof configSchema>;
@@ -40,6 +45,9 @@ export declare class LocalTracker implements Tracker {
     getIssue(id: string): Promise<Issue>;
     updateIssue(id: string, patch: IssuePatch): Promise<Issue>;
     closeIssue(id: string): Promise<Issue>;
+    /** Stored name → semantic category: canonical passes through, the config
+     *  vocab maps custom names, anything unrecognized buckets to in_progress. */
+    private categoryOf;
     listIssues(filter?: {
         phase?: string;
         state?: IssueState;

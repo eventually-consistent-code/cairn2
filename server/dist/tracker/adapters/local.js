@@ -14,6 +14,9 @@ export const configSchema = z.object({
     dir: z.string().min(1).default(".tracker"),
     /** Issue-id prefix, e.g. "crn" → crn-x7k2m. */
     prefix: z.string().regex(/^[a-z0-9]{2,10}$/).default("lt"),
+    /** Custom state vocabulary: name → semantic category (CRN-26).
+     *  e.g. { "review": "in_progress", "blocked": "open" } */
+    states: z.record(z.enum(["open", "in_progress", "closed"])).default({}),
 });
 export function make(config, projectDir) {
     return new LocalTracker(config, projectDir);
@@ -155,6 +158,7 @@ export class LocalTracker {
             title: f.title,
             body: f.body,
             state: f.state,
+            category: this.categoryOf(f.state),
             labels: f.priority ? [...f.labels, `priority:${f.priority}`] : f.labels,
             phase: f.phase,
             assignee: f.assignee,
@@ -186,6 +190,11 @@ export class LocalTracker {
         return this.toIssue(this.readFields(id));
     }
     async updateIssue(id, patch) {
+        if (patch.state !== undefined
+            && !["open", "in_progress", "closed"].includes(patch.state)
+            && this.cfg.states[patch.state] === undefined) {
+            throw new CairnError("CONFIG_INVALID", `unknown state '${patch.state}'`, `add it to tracker.config.states in cairn.json (known: ${["open", "in_progress", "closed", ...Object.keys(this.cfg.states)].join(", ")})`);
+        }
         const f = this.readFields(id);
         const patched = patch.labels === undefined
             ? { labels: f.labels, priority: f.priority }
@@ -205,11 +214,19 @@ export class LocalTracker {
     async closeIssue(id) {
         return this.updateIssue(id, { state: "closed" });
     }
+    /** Stored name → semantic category: canonical passes through, the config
+     *  vocab maps custom names, anything unrecognized buckets to in_progress. */
+    categoryOf(state) {
+        if (state === "open" || state === "in_progress" || state === "closed")
+            return state;
+        return this.cfg.states[state] ?? "in_progress";
+    }
     async listIssues(filter) {
         return [...this.ids()]
             .map((id) => this.readFields(id))
             .filter((f) => (filter?.phase === undefined || f.phase === filter.phase)
-            && (filter?.state === undefined || f.state === filter.state))
+            && (filter?.state === undefined || f.state === filter.state
+                || this.categoryOf(f.state) === filter.state))
             .map((f) => this.toIssue(f));
     }
     listJson(dir) {

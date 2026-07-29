@@ -7,16 +7,7 @@ export declare const configSchema: z.ZodObject<{
     issueType: z.ZodDefault<z.ZodString>;
     emailEnv: z.ZodDefault<z.ZodString>;
     tokenEnv: z.ZodDefault<z.ZodString>;
-    transitions: z.ZodDefault<z.ZodObject<{
-        in_progress: z.ZodString;
-        closed: z.ZodString;
-    }, "strip", z.ZodTypeAny, {
-        in_progress: string;
-        closed: string;
-    }, {
-        in_progress: string;
-        closed: string;
-    }>>;
+    transitions: z.ZodEffects<z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodString>>, Record<string, string>, Record<string, string> | undefined>;
     boardId: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     baseUrl: string;
@@ -24,10 +15,7 @@ export declare const configSchema: z.ZodObject<{
     tokenEnv: string;
     projectKey: string;
     issueType: string;
-    transitions: {
-        in_progress: string;
-        closed: string;
-    };
+    transitions: Record<string, string>;
     boardId?: number | undefined;
 }, {
     baseUrl: string;
@@ -35,10 +23,7 @@ export declare const configSchema: z.ZodObject<{
     emailEnv?: string | undefined;
     tokenEnv?: string | undefined;
     issueType?: string | undefined;
-    transitions?: {
-        in_progress: string;
-        closed: string;
-    } | undefined;
+    transitions?: Record<string, string> | undefined;
     boardId?: number | undefined;
 }>;
 type JiraConfig = z.infer<typeof configSchema>;

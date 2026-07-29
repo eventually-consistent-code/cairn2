@@ -6,7 +6,7 @@ export const markerPath = (projectDir) => join(projectDir, ".cairn", "tracker-ma
 const bodyHash = (body) => createHash("sha256").update(body).digest("hex").slice(0, 16);
 const snap = (i) => ({
     title: i.title, bodyHash: bodyHash(i.body), labels: [...i.labels].sort(),
-    assignee: i.assignee, state: i.state, updatedAt: i.updatedAt,
+    assignee: i.assignee, state: i.category, updatedAt: i.updatedAt,
 });
 const readMarker = (projectDir) => {
     const p = markerPath(projectDir);

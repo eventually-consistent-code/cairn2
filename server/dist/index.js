@@ -37,7 +37,8 @@ import { mapGet, mapSet } from "./map/store.js";
 import { findWorkspace, resolveProjectDir, setFocus } from "./workspace/context.js";
 import { boardGet, boardUpdate } from "./workspace/board.js";
 import { PROVIDERS, peerList, peerRun } from "./peers/run.js";
-const StateEnum = z.enum(["open", "in_progress", "closed"]);
+// Widened (CRN-26): canonical three or a backend-defined custom state name.
+const StateEnum = z.string().min(1);
 const HandoffSourceEnum = z.enum(["tool", "posttooluse", "precompact", "waypoint"]);
 const HandoffPhaseRefSchema = z.object({ number: z.number().int(), slug: z.string() });
 // Zod mirrors of map/store.ts's NodeType/EdgeType/MapNode/MapEdge -- kept in
@@ -328,7 +329,7 @@ export function buildServer(deps) {
         refreshHandoff({ source: "tool", issue: a.id }, d);
         return { ...result, worklogLogged, ...(worklogError ? { worklogError } : {}) };
     }));
-    server.registerTool("issue_list", { description: "List issues, optionally by phase/state",
+    server.registerTool("issue_list", { description: "List issues, optionally by phase/state (state matches the semantic category — open/in_progress/closed — or an exact state name)",
         inputSchema: { phase: z.string().optional(), state: StateEnum.optional() } }, wrap(async (a) => (await getTracker()).listIssues(a)));
     server.registerTool("phase_create", { description: "Create a phase (milestone/epic/list per backend)",
         inputSchema: { name: z.string() } }, wrap(async (a) => (await getTracker()).createPhase(a.name)));

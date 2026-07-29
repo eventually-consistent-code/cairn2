@@ -975,7 +975,8 @@ by name. Listing capped at 100 items.
 | Sprint awareness (creates land in the active sprint) | Jira scrum boards, auto-detected (`boardId` overrides) |
 | Issue links + dependency graph | Local + Linear (`graph_report`; Linear lacks `supersedes`) |
 | Native milestones | backend-dependent; `summit` records a skip when the phase primitive can't close, and `milestone_*` degrades gracefully |
-| State mapping config | Jira `transitions`, Azure Boards `states`, ClickUp `statuses` (Linear resolves the team workflow automatically) |
+| State mapping config | Jira `transitions`, Azure Boards `states`, ClickUp `statuses` (Linear resolves the team workflow automatically) — all take extra keys as **custom states** ("review", "blocked"); the local backend uses a `states` vocab (name → category) |
+| Custom states (CRN-26) | `issue.state` is the board's real state name; `issue.category` (open/in_progress/closed) is what every gate and report reasons about. Writes accept the canonical three everywhere, plus any configured custom name — Jira/Linear/Azure/ClickUp/local; GitHub/GitLab/Asana have no custom surface and say so |
 | Issue-list cap (affects `plan_unplanned` completeness) | 1000 (GitHub/GitLab), 100 (Jira/Asana/Azure Boards/ClickUp/Linear) — truncation is logged to server stderr |
 
 Adapter maturity, honestly stated: GitHub is live-green against a real

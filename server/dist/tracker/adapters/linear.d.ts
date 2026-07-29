@@ -27,7 +27,8 @@ export declare class LinearTracker implements Tracker {
     private normalize;
     /** Team workflow states, fetched once. */
     private states;
-    /** SPI state → the team's canonical stateId for that bucket. */
+    /** SPI state → a team stateId: canonical three by bucket, anything else
+     *  matched against the team's workflow state names (CRN-26). */
     private stateId;
     /** Label names → ids, find-or-create against the team. */
     private labelIds;

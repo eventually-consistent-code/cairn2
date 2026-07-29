@@ -66,8 +66,8 @@ export async function migrateTracker(src, dst) {
             });
             remap[i.id] = made.id;
             counts.issues++;
-            if (i.state !== "open")
-                await dst.updateIssue(made.id, { state: i.state });
+            if (i.category !== "open")
+                await dst.updateIssue(made.id, { state: i.category });
             if (i.assignee) {
                 await attempt(`assignee on '${i.id}'`, () => dst.updateIssue(made.id, { assignee: i.assignee }).then(() => undefined));
             }
