@@ -2,7 +2,7 @@ import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, paginate, type FetchLike } from "../http.js";
 import type { Capability, StateCategory, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker } from "../types.js";
-import { matchesState } from "../types.js";
+import { assertCanonicalState, matchesState } from "../types.js";
 import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 
 const WIP = "in-progress";
@@ -81,6 +81,7 @@ export class GitLabTracker implements Tracker {
       body.labels = patch.labels.filter((l) => l !== WIP).join(",");
     }
 
+    assertCanonicalState(patch.state, "gitlab");
     if (patch.state === "closed") {
       body.state_event = "close";
     } else if (patch.state === "open") {

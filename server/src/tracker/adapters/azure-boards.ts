@@ -15,11 +15,11 @@ export const configSchema = z.object({
   workItemType: z.string().default("Issue"),
   patEnv: z.string().default("AZURE_DEVOPS_PAT"),
   apiVersion: z.string().default("7.0"),
-  states: z.object({
-    in_progress: z.string(),
-    closed: z.string(),
-    open: z.string().default("To Do"),
-  }).default({ in_progress: "Doing", closed: "Done", open: "To Do" }),
+  // Extra keys are custom cairn states ("review": "In Review") — CRN-26.
+  states: z.record(z.string())
+    .default({ in_progress: "Doing", closed: "Done", open: "To Do" })
+    .refine((s) => ["open", "in_progress", "closed"].every((k) => typeof s[k] === "string"),
+      "states must include open, in_progress, and closed"),
 });
 
 type Config = z.infer<typeof configSchema>;
@@ -277,10 +277,12 @@ export class AzureBoardsTracker implements Tracker {
     if (patch.labels !== undefined) ops.push({ op: "add", path: "/fields/System.Tags", value: patch.labels.join("; ") });
     if (patch.assignee !== undefined) ops.push({ op: "add", path: "/fields/System.AssignedTo", value: patch.assignee });
     if (patch.state) {
-      const { states } = this.cfg;
-      const stateValue = patch.state === "closed" ? states.closed
-        : patch.state === "in_progress" ? states.in_progress
-        : states.open;
+      const stateValue = this.cfg.states[patch.state];
+      if (!stateValue) {
+        throw new CairnError("CONFIG_INVALID",
+          `no azure-boards state mapped for '${patch.state}'`,
+          `add it to tracker.config.states in cairn.json (known: ${Object.keys(this.cfg.states).join(", ")})`);
+      }
       ops.push({ op: "add", path: "/fields/System.State", value: stateValue });
     }
     const raw = await this.api(

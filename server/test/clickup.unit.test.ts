@@ -301,3 +301,22 @@ describe("ClickUpTracker mapping", () => {
     expect(c.id).toBe("888");
   });
 });
+
+describe("ClickUpTracker custom states", () => {
+  it("custom statuses-map key writes the mapped native status", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: cuTask({ status: { status: "code review", type: "custom" } }) },
+    ]);
+    const t = new ClickUpTracker({ ...cfg, statuses: { ...cfg.statuses, review: "code review" } }, f, () => "tok");
+    await t.updateIssue("abc123", { state: "review" });
+    const put = calls.find((c) => c.method === "PUT")!;
+    expect(put.body).toMatchObject({ status: "code review" });
+  });
+
+  it("unknown custom state is CONFIG_INVALID", async () => {
+    const { f } = fixtureFetch([]);
+    const t = new ClickUpTracker(cfg, f, () => "tok");
+    await expect(t.updateIssue("abc123", { state: "wat" }))
+      .rejects.toMatchObject({ code: "CONFIG_INVALID" });
+  });
+});

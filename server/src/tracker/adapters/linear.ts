@@ -109,18 +109,20 @@ export class LinearTracker implements Tracker {
     return this.statesCache;
   }
 
-  /** SPI state → the team's canonical stateId for that bucket. */
+  /** SPI state → a team stateId: canonical three by bucket, anything else
+   *  matched against the team's workflow state names (CRN-26). */
   private async stateId(state: IssueState): Promise<string> {
     const all = await this.states();
     const byType = (t: string) =>
       all.filter((s) => s.type === t).sort((a, b) => a.position - b.position)[0];
     const hit = state === "closed" ? byType("completed")
       : state === "in_progress" ? byType("started")
-        : byType("unstarted") ?? byType("backlog");
+        : state === "open" ? byType("unstarted") ?? byType("backlog")
+          : all.find((s) => s.name.toLowerCase() === state.toLowerCase());
     if (!hit) {
       throw new CairnError("CONFIG_INVALID",
-        `linear team ${this.cfg.teamId} has no workflow state for '${state}'`,
-        "check the team's workflow configuration in Linear");
+        `linear team ${this.cfg.teamId} has no workflow state '${state}'`,
+        `team states: ${all.map((s) => s.name).join(", ") || "none"} — or use open/in_progress/closed`);
     }
     return hit.id;
   }

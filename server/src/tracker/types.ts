@@ -1,3 +1,5 @@
+import { CairnError } from "../errors.js";
+
 /** The semantic bucket every cairn mechanism reasons about — drift math,
  *  ship gates, ready frontier, filters. Never compare `Issue.state` to a
  *  literal; compare `Issue.category`. */
@@ -32,6 +34,16 @@ export interface IssueEstimate { points?: number; minutes?: number }
  *  semantic category OR by exact display name. */
 export function matchesState(issue: Issue, state: string): boolean {
   return issue.category === state || issue.state === state;
+}
+
+/** Guard for backends with NO custom-state surface — anything beyond the
+ *  canonical three is a config error there, never a silent no-op. */
+export function assertCanonicalState(state: string | undefined, backend: string): void {
+  if (state === undefined) return;
+  if (state === "open" || state === "in_progress" || state === "closed") return;
+  throw new CairnError("CONFIG_INVALID",
+    `${backend} has no custom-state surface — unknown state '${state}'`,
+    "use open/in_progress/closed on this backend");
 }
 
 export interface Phase {

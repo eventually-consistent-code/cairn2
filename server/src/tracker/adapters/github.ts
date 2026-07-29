@@ -5,7 +5,7 @@ import { fetchJson, paginate, type FetchLike } from "../http.js";
 import type {
   Capability, StateCategory, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
 } from "../types.js";
-import { matchesState } from "../types.js";
+import { assertCanonicalState, matchesState } from "../types.js";
 import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 
 const API = "https://api.github.com";
@@ -123,6 +123,7 @@ export class GitHubTracker implements Tracker {
     this.assertId(id);
     const body: Record<string, unknown> = {};
     if (patch.title !== undefined) body.title = patch.title;
+    assertCanonicalState(patch.state, "github");
     if (patch.body !== undefined) body.body = patch.body;
     if (patch.labels !== undefined) body.labels = patch.labels;
     if (patch.assignee !== undefined) body.assignees = [patch.assignee];

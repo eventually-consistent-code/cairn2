@@ -699,3 +699,38 @@ describe("JiraTracker state fidelity", () => {
     expect(issue.state).toBe("open");
   });
 });
+
+describe("JiraTracker custom states", () => {
+  const cfgReview = { ...cfg, transitions: { in_progress: "In Progress", closed: "Done", review: "In Review" } };
+
+  it("custom state key resolves through the transitions map", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: { transitions: [
+        { id: "41", name: "Review", to: { name: "In Review", statusCategory: { key: "indeterminate" } } },
+      ] } },
+      { status: 200, body: {} }, // POST transition
+      { status: 200, body: { ...jiraIssue(), fields: { ...jiraIssue().fields,
+        status: { name: "In Review", statusCategory: { key: "indeterminate" } } } } },
+    ]);
+    const t = new JiraTracker(cfgReview, f, () => ({ email: "e", token: "t" }));
+    const issue = await t.updateIssue("CHN-101", { state: "review" });
+    const post = calls.find((c) => c.method === "POST" && c.url.includes("/transitions"))!;
+    expect(post.body).toMatchObject({ transition: { id: "41" } });
+    expect(issue.state).toBe("In Review");
+    expect(issue.category).toBe("in_progress");
+  });
+
+  it("unmapped custom state falls through as a literal transition name", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: { transitions: [
+        { id: "9", name: "Blocked", to: { name: "Blocked", statusCategory: { key: "indeterminate" } } },
+      ] } },
+      { status: 200, body: {} },
+      { status: 200, body: jiraIssue() },
+    ]);
+    const t = new JiraTracker(cfgReview, f, () => ({ email: "e", token: "t" }));
+    await t.updateIssue("CHN-101", { state: "Blocked" });
+    const post = calls.find((c) => c.method === "POST" && c.url.includes("/transitions"))!;
+    expect(post.body).toMatchObject({ transition: { id: "9" } });
+  });
+});

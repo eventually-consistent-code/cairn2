@@ -4,7 +4,7 @@ import { fetchJson, type FetchLike } from "../http.js";
 import type {
   Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
 } from "../types.js";
-import { matchesState } from "../types.js";
+import { assertCanonicalState, matchesState } from "../types.js";
 import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 
 const API = "https://app.asana.com/api/1.0";
@@ -113,6 +113,7 @@ export class AsanaTracker implements Tracker {
     const body: Record<string, unknown> = {};
     if (patch.title !== undefined) body.name = patch.title;
     if (patch.body !== undefined) body.notes = patch.body;
+    assertCanonicalState(patch.state, "asana");
     // Asana has no native in-progress state: in_progress and open both map
     // to completed:false. Never write completed:true except for an explicit close.
     if (patch.state === "closed") body.completed = true;

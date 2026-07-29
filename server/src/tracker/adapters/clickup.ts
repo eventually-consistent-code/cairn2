@@ -15,11 +15,11 @@ export const configSchema = z.object({
   folderId: z.string().optional(), // phases become Lists in this folder…
   spaceId: z.string().optional(), // …or directly in this space (exactly one required)
   tokenEnv: z.string().default("CLICKUP_TOKEN"),
-  statuses: z.object({
-    open: z.string().default("to do"),
-    in_progress: z.string(),
-    closed: z.string(),
-  }).default({ open: "to do", in_progress: "in progress", closed: "complete" }),
+  // Extra keys are custom cairn states ("review": "code review") — CRN-26.
+  statuses: z.record(z.string())
+    .default({ open: "to do", in_progress: "in progress", closed: "complete" })
+    .refine((s) => ["open", "in_progress", "closed"].every((k) => typeof s[k] === "string"),
+      "statuses must include open, in_progress, and closed"),
 }).refine((c) => Boolean(c.folderId) !== Boolean(c.spaceId), {
   message: "exactly one of folderId or spaceId is required",
 });
@@ -161,9 +161,15 @@ export class ClickUpTracker implements Tracker {
     if (patch.title !== undefined) body.name = patch.title;
     if (patch.body !== undefined) body.description = patch.body;
     // assignee writes need numeric user-id resolution — deferred until assignee semantics are speced
-    if (patch.state === "closed") body.status = this.cfg.statuses.closed;
-    if (patch.state === "open") body.status = this.cfg.statuses.open;
-    if (patch.state === "in_progress") body.status = this.cfg.statuses.in_progress;
+    if (patch.state !== undefined) {
+      const native = this.cfg.statuses[patch.state];
+      if (!native) {
+        throw new CairnError("CONFIG_INVALID",
+          `no clickup status mapped for state '${patch.state}'`,
+          `add it to tracker.config.statuses in cairn.json (known: ${Object.keys(this.cfg.statuses).join(", ")})`);
+      }
+      body.status = native;
+    }
 
     const raw = (Object.keys(body).length > 0
       ? await this.api("PUT", `/task/${id}`, body, "clickup updateIssue")

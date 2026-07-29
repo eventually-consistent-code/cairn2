@@ -169,3 +169,29 @@ describe("LocalTracker attachments", () => {
     expect(files.some((f) => /^shot-.+\.png$/.test(f))).toBe(true);
   });
 });
+
+describe("LocalTracker custom states", () => {
+  function vocab() {
+    const dir = mkdtempSync(join(tmpdir(), "cairn-lu-"));
+    return { dir, t: make(configSchema.parse({ prefix: "lt",
+      states: { review: "in_progress", blocked: "open" } }), dir) };
+  }
+
+  it("vocab states store verbatim and read back with the configured category", async () => {
+    const { t } = vocab();
+    const i = await t.createIssue({ title: "V" });
+    await t.updateIssue(i.id, { state: "review" });
+    const got = await t.getIssue(i.id);
+    expect(got.state).toBe("review");
+    expect(got.category).toBe("in_progress");
+    expect((await t.listIssues({ state: "in_progress" })).map((x) => x.id)).toContain(i.id);
+    expect((await t.listIssues({ state: "review" })).map((x) => x.id)).toContain(i.id);
+  });
+
+  it("unknown custom state is CONFIG_INVALID", async () => {
+    const { t } = vocab();
+    const i = await t.createIssue({ title: "V" });
+    await expect(t.updateIssue(i.id, { state: "wat" }))
+      .rejects.toMatchObject({ code: "CONFIG_INVALID" });
+  });
+});

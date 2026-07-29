@@ -379,3 +379,21 @@ describe("LinearTracker links", () => {
     expect(calls[0].variables).toMatchObject({ id: "ENG-2", input: { parentId: null } });
   });
 });
+
+describe("LinearTracker custom states", () => {
+  it("custom state name matches a team workflow state case-insensitively", async () => {
+    const { f, calls } = gqlFetch([
+      statesFixture,
+      { data: { issueUpdate: { issue: node({ state: { name: "In Progress", type: "started" } }) } } },
+    ]);
+    const issue = await t(f).updateIssue("ENG-1", { state: "in progress" });
+    expect(calls[1].variables).toMatchObject({ input: { stateId: "st-doing" } });
+    expect(issue.category).toBe("in_progress");
+  });
+
+  it("unknown state name is CONFIG_INVALID naming the team's states", async () => {
+    const { f } = gqlFetch([statesFixture]);
+    await expect(t(f).updateIssue("ENG-1", { state: "Nope" }))
+      .rejects.toMatchObject({ code: "CONFIG_INVALID" });
+  });
+});
