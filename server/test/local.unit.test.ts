@@ -132,3 +132,26 @@ describe("LocalTracker edges", () => {
       .rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 });
+
+describe("LocalTracker estimates", () => {
+  it("declares hasEstimates and stores points/minutes in spaced frontmatter", async () => {
+    const { dir, t } = fresh();
+    expect(t.capabilities.hasEstimates).toBe(true);
+    const i = await t.createIssue({ title: "Est", estimate: { points: 3, minutes: 90 } });
+    const raw = readFileSync(join(dir, ".tracker", "issues", i.id, "issue.md"), "utf8");
+    expect(raw).toMatch(/^points: 3$/m);
+    expect(raw).toMatch(/^minutes: 90$/m);
+    expect(i.estimate).toEqual({ points: 3, minutes: 90 });
+  });
+
+  it("reads estimates back and patches them; absent stays undefined", async () => {
+    const { t } = fresh();
+    const bare = await t.createIssue({ title: "No est" });
+    expect((await t.getIssue(bare.id)).estimate).toBeUndefined();
+
+    const i = await t.createIssue({ title: "Est", estimate: { points: 5 } });
+    expect((await t.getIssue(i.id)).estimate).toEqual({ points: 5 });
+    await t.updateIssue(i.id, { estimate: { points: 8, minutes: 120 } });
+    expect((await t.getIssue(i.id)).estimate).toEqual({ points: 8, minutes: 120 });
+  });
+});
