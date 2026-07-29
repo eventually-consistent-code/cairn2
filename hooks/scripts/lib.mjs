@@ -32,6 +32,11 @@ export function bannerPath(projectDir) {
   return join(homedir(), ".cairn", "banner", `${base}-${hash}.md`);
 }
 
+export function metricsPath(projectDir) {
+  const { base, hash } = pathHash(projectDir);
+  return join(homedir(), ".cairn", "metrics", `${base}-${hash}.jsonl`);
+}
+
 /** mtime in ms of `path`, or null when it doesn't exist. */
 export function mtimeMs(path) {
   try {

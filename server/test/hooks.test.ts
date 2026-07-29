@@ -449,3 +449,70 @@ describe("leak guard hook", () => {
     expect(r.status).toBe(0);
   });
 });
+
+describe("stop-costtracker + cost-report", () => {
+  const COSTTRACKER = join(scriptsDir, "stop-costtracker.mjs");
+  const COSTREPORT = join(scriptsDir, "cost-report.mjs");
+
+  function metricsPathFor(projectDir: string): string {
+    const { base, hash } = hashAndBaseForEnvDir(projectDir);
+    return join(process.env.HOME ?? "", ".cairn", "metrics", `${base}-${hash}.jsonl`);
+  }
+
+  function transcriptWith(dir: string): string {
+    const lines = [
+      JSON.stringify({ type: "assistant", message: { model: "claude-opus-4-8",
+        usage: { input_tokens: 1000, output_tokens: 2000, cache_creation_input_tokens: 500, cache_read_input_tokens: 10000 } } }),
+      JSON.stringify({ type: "user", message: { content: "hi" } }),
+      JSON.stringify({ type: "assistant", message: { model: "claude-sonnet-5",
+        usage: { input_tokens: 4000, output_tokens: 1000 } } }),
+    ];
+    const p = join(dir, "transcript.jsonl");
+    writeFileSync(p, lines.join("\n") + "\n");
+    return p;
+  }
+
+  it("writes a snapshot row tagged with the active phase/issue; report rolls it up", () => {
+    const proj = freshDir("cairn-cost-");
+    mkdirSync(join(proj, ".cairn", "state"), { recursive: true });
+    writeFileSync(join(proj, ".cairn", "state", "active-context.json"),
+      JSON.stringify({ phase: 4, issueId: "CRN-99" }));
+    const transcript = transcriptWith(proj);
+    const metrics = metricsPathFor(proj);
+    rmSync(metrics, { force: true });
+
+    const r = runHookRaw(COSTTRACKER, proj,
+      JSON.stringify({ session_id: "s1", transcript_path: transcript }));
+    expect(r.status).toBe(0);
+    const rows = readFileSync(metrics, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ session_id: "s1", phase: 4, issue: "CRN-99" });
+    expect(rows[0].input_tokens).toBe(5000);
+    expect(rows[0].output_tokens).toBe(3000);
+    expect(rows[0].est_cost_usd).toBeGreaterThan(0);
+    expect(rows[0].models).toContain("claude-opus-4-8");
+
+    // throttled second run -- still one row
+    const r2 = runHookRaw(COSTTRACKER, proj,
+      JSON.stringify({ session_id: "s1", transcript_path: transcript }));
+    expect(r2.status).toBe(0);
+    expect(readFileSync(metrics, "utf8").trim().split("\n")).toHaveLength(1);
+
+    // report: per-issue roll-up returns a positive number
+    const rep = spawnSync(process.execPath, [COSTREPORT, "--issue", "CRN-99"], {
+      cwd: proj, env: { ...process.env, CLAUDE_PROJECT_DIR: proj }, encoding: "utf8",
+    });
+    expect(Number(rep.stdout.trim())).toBeGreaterThan(0);
+    rmSync(metrics, { force: true });
+  });
+
+  it("is a silent no-op on a missing transcript or empty payload", () => {
+    const proj = freshDir("cairn-cost-");
+    const metrics = metricsPathFor(proj);
+    rmSync(metrics, { force: true });
+    expect(runHookRaw(COSTTRACKER, proj, "{}").status).toBe(0);
+    expect(runHookRaw(COSTTRACKER, proj,
+      JSON.stringify({ session_id: "s", transcript_path: join(proj, "nope.jsonl") })).status).toBe(0);
+    expect(existsSync(metrics)).toBe(false);
+  });
+});

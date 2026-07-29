@@ -62,6 +62,11 @@ remembered count from an earlier session:
   thread), phase groupings.
 - `.cairn/audit/` records dir — count of audit/review/triage records on
   disk, most recent scope + date per mode.
+- Agent spend: run the plugin's `hooks/scripts/cost-report.mjs` (Bash,
+  `node "$CLAUDE_PLUGIN_ROOT/hooks/scripts/cost-report.mjs"`) — approximate
+  session-cost totals rolled up by phase and issue from the Stop-hook
+  metrics log. Say "approximate" when rendering; no log yet → skip the
+  line silently.
 
 Render as a compact table, one line per source above. State plainly that
 these are live reads, not a cached snapshot — the whole point of folding
