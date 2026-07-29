@@ -2,8 +2,9 @@ import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, type FetchLike } from "../http.js";
 import type {
-  Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
+  Capability, StateCategory, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
 } from "../types.js";
+import { matchesState } from "../types.js";
 import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 
 const API = "https://api.clickup.com/api/v2";
@@ -97,7 +98,7 @@ export class ClickUpTracker implements Tracker {
     }
   }
 
-  private normalizeState(status: CuStatus): IssueState {
+  private normalizeState(status: CuStatus): StateCategory {
     if (status.type === "open") return "open";
     if (status.type === "done" || status.type === "closed") return "closed";
     // custom: compare to the configured in_progress status name, case-insensitively
@@ -111,7 +112,8 @@ export class ClickUpTracker implements Tracker {
       id: raw.id,
       title: raw.name,
       body: raw.description ?? "",
-      state: this.normalizeState(raw.status),
+      state: raw.status?.status ?? this.normalizeState(raw.status),
+      category: this.normalizeState(raw.status),
       labels: raw.tags.map((t) => t.name),
       phase: raw.list?.id,
       assignee: raw.assignees[0]?.username ?? raw.assignees[0]?.email,
@@ -192,7 +194,7 @@ export class ClickUpTracker implements Tracker {
       console.error(`[cairn] clickup listIssues truncated at ${LIST_CAP} items for list ${listId}`);
     }
     let issues = tasks.slice(0, LIST_CAP).map((t) => this.normalize(t));
-    if (filter?.state) issues = issues.filter((i) => i.state === filter.state);
+    if (filter?.state) issues = issues.filter((i) => matchesState(i, filter.state!));
     return issues;
   }
 

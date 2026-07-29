@@ -66,7 +66,7 @@ describe("AzureBoardsTracker mapping", () => {
         { op: "add", path: "/fields/System.Tags", value: "cairn-test" },
       ]),
     );
-    expect(issue).toMatchObject({ id: "7", title: "t", state: "open", labels: ["cairn-test"] });
+    expect(issue).toMatchObject({ id: "7", title: "t", state: "To Do", category: "open", labels: ["cairn-test"] });
   });
 
   it("createIssue with phase adds System.IterationPath op using the stored id->path map", async () => {
@@ -90,7 +90,7 @@ describe("AzureBoardsTracker mapping", () => {
       { status: 200, body: wi({ fields: { "System.StateCategory": "InProgress" } }) },
     ]);
     const t = new AzureBoardsTracker(cfg, f, () => "pat123");
-    expect((await t.getIssue("7")).state).toBe("in_progress");
+    expect((await t.getIssue("7")).category).toBe("in_progress");
   });
 
   it("getIssue falls back to states map when StateCategory absent", async () => {
@@ -98,7 +98,7 @@ describe("AzureBoardsTracker mapping", () => {
       { status: 200, body: wi({ fields: { "System.State": "Done" } }) },
     ]);
     const t = new AzureBoardsTracker(cfg, f, () => "pat123");
-    expect((await t.getIssue("7")).state).toBe("closed");
+    expect((await t.getIssue("7")).category).toBe("closed");
   });
 
   it("StateCategory Completed/Removed -> closed, Proposed -> open", async () => {
@@ -106,19 +106,19 @@ describe("AzureBoardsTracker mapping", () => {
       { status: 200, body: wi({ fields: { "System.StateCategory": "Completed" } }) },
     ]);
     const t1 = new AzureBoardsTracker(cfg, f1, () => "pat123");
-    expect((await t1.getIssue("7")).state).toBe("closed");
+    expect((await t1.getIssue("7")).category).toBe("closed");
 
     const { f: f2 } = fixtureFetch([
       { status: 200, body: wi({ fields: { "System.StateCategory": "Removed" } }) },
     ]);
     const t2 = new AzureBoardsTracker(cfg, f2, () => "pat123");
-    expect((await t2.getIssue("7")).state).toBe("closed");
+    expect((await t2.getIssue("7")).category).toBe("closed");
 
     const { f: f3 } = fixtureFetch([
       { status: 200, body: wi({ fields: { "System.StateCategory": "Proposed" } }) },
     ]);
     const t3 = new AzureBoardsTracker(cfg, f3, () => "pat123");
-    expect((await t3.getIssue("7")).state).toBe("open");
+    expect((await t3.getIssue("7")).category).toBe("open");
   });
 
   it("updateIssue(state=in_progress) PATCHes System.State to states.in_progress", async () => {

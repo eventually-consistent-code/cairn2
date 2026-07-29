@@ -28,7 +28,9 @@ export function trackerContract(name: string, factory: () => Promise<Tracker>): 
       const got = await t.getIssue(made.id);
       expect(got.title).toBe("contract: roundtrip");
       expect(got.body).toContain("b1");
-      expect(got.state).toBe("open");
+      expect(got.category).toBe("open");
+      expect(typeof got.state).toBe("string");
+      expect(got.state.length).toBeGreaterThan(0);
       if (t.capabilities.hasLabels) expect(got.labels).toContain("cairn-test");
     });
 
@@ -47,8 +49,8 @@ export function trackerContract(name: string, factory: () => Promise<Tracker>): 
       const made = await t.createIssue({ title: "contract: wip" });
       await t.updateIssue(made.id, { state: "in_progress" });
       const got = await t.getIssue(made.id);
-      if (t.capabilities.hasInProgress) expect(got.state).toBe("in_progress");
-      else expect(got.state).toBe("open"); // degraded but never 'closed'
+      if (t.capabilities.hasInProgress) expect(got.category).toBe("in_progress");
+      else expect(got.category).toBe("open"); // degraded but never 'closed'
     });
 
     it("in_progress → open transition reads back open", async () => {
@@ -57,7 +59,7 @@ export function trackerContract(name: string, factory: () => Promise<Tracker>): 
       await t.updateIssue(made.id, { state: "in_progress" });
       await t.updateIssue(made.id, { state: "open" });
       await eventually(async () => {
-        expect((await t.getIssue(made.id)).state).toBe("open");
+        expect((await t.getIssue(made.id)).category).toBe("open");
       });
     }, 30_000);
 
@@ -66,7 +68,7 @@ export function trackerContract(name: string, factory: () => Promise<Tracker>): 
       await t.closeIssue(made.id);
       await t.updateIssue(made.id, { state: "open" });
       await eventually(async () => {
-        expect((await t.getIssue(made.id)).state).toBe("open");
+        expect((await t.getIssue(made.id)).category).toBe("open");
       });
     }, 30_000);
 
@@ -74,7 +76,7 @@ export function trackerContract(name: string, factory: () => Promise<Tracker>): 
       const made = await t.createIssue({ title: "contract: close" });
       await t.closeIssue(made.id);
       await t.closeIssue(made.id); // second close must not throw
-      expect((await t.getIssue(made.id)).state).toBe("closed");
+      expect((await t.getIssue(made.id)).category).toBe("closed");
     });
 
     it("phase create + assignment + list filter", async () => {

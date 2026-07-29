@@ -1,10 +1,22 @@
-export type IssueState = "open" | "in_progress" | "closed";
+/** The semantic bucket every cairn mechanism reasons about — drift math,
+ *  ship gates, ready frontier, filters. Never compare `Issue.state` to a
+ *  literal; compare `Issue.category`. */
+export type StateCategory = "open" | "in_progress" | "closed";
+
+/** Widened (CRN-26): an issue's state is its REAL workflow state name —
+ *  "In Review", "Blocked", whatever the board says. The canonical three are
+ *  always valid values and always writable on every backend. */
+export type IssueState = string;
 
 export interface Issue {
   id: string;
   title: string;
   body: string;
+  /** Display-fidelity state name; falls back to the category string on
+   *  backends with no richer name. */
   state: IssueState;
+  /** Semantic bucket — the thing to branch on. */
+  category: StateCategory;
   labels: string[];
   phase?: string;
   assignee?: string;
@@ -15,6 +27,12 @@ export interface Issue {
 
 /** Story points and/or an original time estimate — hasEstimates backends only. */
 export interface IssueEstimate { points?: number; minutes?: number }
+
+/** List-filter semantics after the widening: a state filter matches by
+ *  semantic category OR by exact display name. */
+export function matchesState(issue: Issue, state: string): boolean {
+  return issue.category === state || issue.state === state;
+}
 
 export interface Phase {
   id: string;

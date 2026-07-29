@@ -2,8 +2,9 @@ import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, type FetchLike } from "../http.js";
 import type {
-  Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
+  Capability, StateCategory, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
 } from "../types.js";
+import { matchesState } from "../types.js";
 import { phaseCloseUnsupported } from "../unsupported.js";
 
 const MAX_IDS = 100;
@@ -137,7 +138,7 @@ export class AzureBoardsTracker implements Tracker {
     return encodeURIComponent(this.cfg.project);
   }
 
-  private normalizeState(fields: WorkItemFields): IssueState {
+  private normalizeState(fields: WorkItemFields): StateCategory {
     const category = fields["System.StateCategory"];
     if (category) {
       const c = category.toLowerCase();
@@ -171,7 +172,8 @@ export class AzureBoardsTracker implements Tracker {
       id: String(raw.id),
       title: f["System.Title"] ?? "",
       body: f["System.Description"] ?? "",
-      state: this.normalizeState(f),
+      state: f["System.State"] ?? this.normalizeState(f),
+      category: this.normalizeState(f),
       labels,
       phase,
       assignee,
@@ -335,7 +337,7 @@ export class AzureBoardsTracker implements Tracker {
       }
     }
 
-    if (filter?.state) issues = issues.filter((i) => i.state === filter.state);
+    if (filter?.state) issues = issues.filter((i) => matchesState(i, filter.state!));
     return issues;
   }
 

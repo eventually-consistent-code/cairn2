@@ -42,7 +42,7 @@ const bodyHash = (body: string) =>
 
 const snap = (i: Issue): IssueSnap => ({
   title: i.title, bodyHash: bodyHash(i.body), labels: [...i.labels].sort(),
-  assignee: i.assignee, state: i.state, updatedAt: i.updatedAt,
+  assignee: i.assignee, state: i.category, updatedAt: i.updatedAt,
 });
 
 const readMarker = (projectDir: string): Marker | null => {

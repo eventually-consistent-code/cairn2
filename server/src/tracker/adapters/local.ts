@@ -14,7 +14,7 @@ import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import type {
   Capability, Issue, IssueComment, IssueCreate, IssueLink, IssuePatch, IssueState,
-  LinkType, Milestone, Phase, Tracker, WorklogEntry,
+  LinkType, Milestone, Phase, Tracker, StateCategory, WorklogEntry,
 } from "../types.js";
 
 export const configSchema = z.object({
@@ -187,6 +187,10 @@ export class LocalTracker implements Tracker {
       title: f.title,
       body: f.body,
       state: f.state,
+      // Stored states are the canonical three until the vocab config lands;
+      // anything else buckets to in_progress as the safe middle.
+      category: (["open", "in_progress", "closed"].includes(f.state)
+        ? f.state : "in_progress") as StateCategory,
       labels: f.priority ? [...f.labels, `priority:${f.priority}`] : f.labels,
       phase: f.phase,
       assignee: f.assignee,

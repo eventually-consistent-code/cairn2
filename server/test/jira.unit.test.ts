@@ -678,3 +678,24 @@ describe("JiraTracker attachments", () => {
     expect(t.capabilities.hasIssueAttachments).toBe(true);
   });
 });
+
+describe("JiraTracker state fidelity", () => {
+  it("surfaces the real status name as state, category from the status category", async () => {
+    const { f } = fixtureFetch([
+      { status: 200, body: { ...jiraIssue(), fields: { ...jiraIssue().fields,
+        status: { name: "In Review", statusCategory: { key: "indeterminate" } } } } },
+    ]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    const issue = await t.getIssue("CHN-101");
+    expect(issue.state).toBe("In Review");
+    expect(issue.category).toBe("in_progress");
+  });
+
+  it("falls back to the category string when the status has no name", async () => {
+    const { f } = fixtureFetch([{ status: 200, body: jiraIssue() }]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    const issue = await t.getIssue("CHN-101");
+    expect(issue.category).toBe("open");
+    expect(issue.state).toBe("open");
+  });
+});
