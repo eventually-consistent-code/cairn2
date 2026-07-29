@@ -90,6 +90,33 @@ dispatched by existing verbs, zero new tools or verbs.
 | `cairn-designer` | Turns a design question into a decided direction with artifacts — wireframes, design tokens (`themes/default.css` + `tokens.json`, always both), coded prototypes — inside a `draft` session, recording `implements`/`decided-in` map edges as it goes | `draft` (non-trivial design questions) |
 | `cairn-uat` | Proves shipped flows meet requirements, platform-aware — walks each flow as a user on a named viewport matrix, sweeps requirement traceability via map edges, hands fidelity divergence off to `audit ui` | `audit uat` (acceptance walks), `audit ui` (fidelity checks) |
 
+## Beyond Claude Code
+
+The server speaks plain MCP over stdio and the verbs are markdown — cairn
+runs anywhere an MCP-capable harness does. One installer wires a project:
+
+```bash
+node setup/cairn-setup.mjs grok      # Grok Build — reads .mcp.json + AGENTS.md directly
+node setup/cairn-setup.mjs copilot   # Copilot CLI — mcp-config.json, instructions, /cairn-* prompts
+node setup/cairn-setup.mjs codex     # Codex — prints the config.toml block; AGENTS.md covers the rest
+node setup/cairn-setup.mjs gemini    # Gemini CLI — settings.json + GEMINI.md
+node setup/cairn-setup.mjs cursor    # Cursor — .cursor/mcp.json + AGENTS.md
+```
+
+Every install gets the full 71-tool surface, the generated `AGENTS.md` verb
+registry (from `scripts/gen-agents.mjs`, drift-checked in CI), and the verb
+subroutines copied to `.cairn/harness/` so any harness can execute them by
+name ("run cairn status"). Honest capability table:
+
+| Harness | Tools (71) | Verbs | Slash commands | Continuity/cost/observe hooks |
+|---|---|---|---|---|
+| Claude Code (plugin) | ✅ | ✅ | ✅ `/cairn:*` | ✅ |
+| Grok Build | ✅ | ✅ by name | via its Claude-compat layer | untested — claims hook compat |
+| Copilot CLI | ✅ | ✅ by name | ✅ `/cairn-*` prompt files | — |
+| Codex | ✅ | ✅ by name | — | — |
+| Gemini CLI | ✅ | ✅ by name | — | — |
+| Cursor | ✅ | ✅ by name | — | wave 3 (has a hooks runtime) |
+
 ## Roadmap
 
 Full parity with GSD's ~60-command surface, restructured behind a per-verb

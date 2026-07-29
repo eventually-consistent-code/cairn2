@@ -64,9 +64,11 @@ profile:
 
 ## Step 3 — write cairn.json
 
-Drop a `cairn.json` at your repo root. The plugin ships
-`templates/cairn.json.example` with copy-paste blocks for every backend.
-Jira, for instance:
+Easiest path: skip straight to `/cairn:new` — it asks which tracker and
+docs platform you want and writes `cairn.json` for you from the shipped
+template. Prefer doing it by hand? Drop a `cairn.json` at your repo root;
+the plugin ships `templates/cairn.json.example` with copy-paste blocks for
+every backend. Jira, for instance:
 
 ```json
 {

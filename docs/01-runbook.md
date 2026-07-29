@@ -106,8 +106,13 @@ summit`. Everything else supports this loop.
 
 Start here. From an empty repo to a routed plan in one verb.
 
-1. Confirms `cairn.json` exists (if not, it points you at
-   `templates/cairn.json.example` and stops).
+1. Confirms `cairn.json` exists. Missing → asks which tracker (local
+   first — zero credentials — then the hosted backends) and which docs
+   platform (none / Confluence / Docusaurus) back the project, then writes
+   `cairn.json` itself from the shipped template — auto-detecting what git
+   already knows (e.g. the GitHub repo from `origin`) and prompting for
+   the rest. You never copy the template by hand; credentials stay env
+   vars.
 2. A brief interview: vision, 3–10 requirements, phase breakdown. It also
    asks your collaboration mode once (skipped if `cairn.json` already sets
    `user.mode`): **vibe** — cairn drives end-to-end (default) — or
@@ -1015,6 +1020,36 @@ graph functions compute over the neutral SPI shapes, not the store.
 
 ---
 
+## 4.5 Running cairn outside Claude Code
+
+Cairn's mechanism layer is a plain MCP server over stdio and its judgment
+layer is markdown — neither cares which harness is driving. `cairn-setup`
+wires a project for Grok Build, GitHub Copilot CLI, Codex, Gemini CLI, or
+Cursor:
+
+```bash
+node setup/cairn-setup.mjs <harness> [--project <dir>]
+```
+
+Three things happen everywhere: a `cairn` entry merges into the project's
+`.mcp.json` (never clobbering yours), the generated verb-registry fragment
+installs into `AGENTS.md` between `cairn:begin`/`cairn:end` markers, and
+the verb subroutines copy to `.cairn/harness/` so the harness can execute
+any verb by name — "run cairn status" reads and follows the same
+subroutine `/cairn:status` does. Copilot additionally gets
+`~/.copilot/mcp-config.json` wiring, a `copilot-instructions.md` section,
+and `/cairn-plan|work|status|verify|ship` prompt files; Codex gets its
+`config.toml` block printed; Gemini gets `settings.json` + `GEMINI.md`.
+
+What degrades, honestly: no slash-command ergonomics outside Claude Code
+and Copilot (verbs run by name), and the hook layer (continuity
+breadcrumbs, leak guard, cost tracker, observation capture) is Claude
+Code-only for now — Grok Build claims Claude hook compatibility (untested)
+and Cursor's hooks runtime is the wave-3 port target. Everything the
+SERVER owns — all 71 tools, mirroring, drift math, estimates, attachments,
+custom states — works identically everywhere, which is the point: the
+tracker paper trail doesn't care which model wrote it.
+
 ## 5. Docs connectors — Confluence and Docusaurus, end to end
 
 The docs connector publishes your repo's documentation outward to a team
@@ -1491,7 +1526,7 @@ stack traces.
 
 | Code | Meaning | Your next move |
 |---|---|---|
-| `CONFIG_MISSING` | No readable `cairn.json` in the project dir | Create one from `templates/cairn.json.example` |
+| `CONFIG_MISSING` | No readable `cairn.json` in the project dir | Run `/cairn:new` — it writes one for you (manual fallback: `templates/cairn.json.example`) |
 | `CONFIG_INVALID` | `cairn.json` (or a config patch, workspace file, or stale focus) failed validation — bad JSON, wrong types, a secret where a secret doesn't belong, a malformed `cairn-workspace.json`, or a focus naming a vanished member | Read the message — it names the exact path and problem. The file is left untouched on a rejected patch, so fix and retry |
 | `AUTH_MISSING` | A required credential env var isn't set | The message names the exact env vars to export (and where to mint the token) |
 | `RATE_LIMITED` | The backend is throttling | Wait and retry; the shared HTTP core already retries with backoff before this surfaces |
