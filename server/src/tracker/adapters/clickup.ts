@@ -57,6 +57,7 @@ export class ClickUpTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
     hasMilestones: false, hasPhaseClose: false, hasComments: true, hasWorklog: false,
+    hasEstimates: false,
   };
 
   constructor(

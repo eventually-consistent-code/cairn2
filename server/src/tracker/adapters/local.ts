@@ -103,6 +103,7 @@ export class LocalTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
     hasMilestones: true, hasPhaseClose: true, hasComments: true, hasWorklog: true,
+    hasEstimates: false,
   };
 
   private readonly root: string;
