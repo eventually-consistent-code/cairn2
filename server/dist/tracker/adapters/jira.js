@@ -15,6 +15,9 @@ export const configSchema = z.object({
     tokenEnv: z.string().default("JIRA_API_TOKEN"),
     transitions: z.object({ in_progress: z.string(), closed: z.string() })
         .default({ in_progress: "In Progress", closed: "Done" }),
+    // Board auto-discovers from the project; set this only when the project
+    // has several boards and the first one is the wrong one.
+    boardId: z.number().int().positive().optional(),
 });
 export function make(config, fetchImpl) {
     return new JiraTracker(config, fetchImpl);
@@ -62,7 +65,41 @@ export class JiraTracker {
     capabilities = {
         hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
         hasMilestones: true, hasPhaseClose: true, hasComments: true, hasWorklog: true,
+        hasEstimates: true,
     };
+    // Story-point field id varies per site ("Story point estimate" on
+    // team-managed projects, "Story Points" on company-managed) — discovered
+    // once, `null` = site has none (points skipped with one warning).
+    storyPointField;
+    async storyPointFieldId() {
+        if (this.storyPointField === undefined) {
+            const raw = (await this.api("GET", "/rest/api/3/field", undefined, "jira field_list"));
+            const hit = raw.find((f) => /^story points?( estimate)?$/i.test(f.name));
+            if (!hit) {
+                console.error("[cairn] jira: no story-point field on this site — points estimates skipped");
+            }
+            this.storyPointField = hit?.id ?? null;
+        }
+        return this.storyPointField;
+    }
+    /** SPI estimate → Jira write fields (timetracking + discovered points field). */
+    async estimateFields(est) {
+        const out = {};
+        if (est.minutes !== undefined)
+            out.timetracking = { originalEstimate: `${est.minutes}m` };
+        if (est.points !== undefined) {
+            const fld = await this.storyPointFieldId();
+            if (fld)
+                out[fld] = est.points;
+        }
+        return out;
+    }
+    /** Read-field list: timetracking always; the points field once discovered. */
+    readFields() {
+        const base = ["summary", "description", "status", "updated", "labels",
+            "parent", "assignee", "timetracking"];
+        return this.storyPointField ? [...base, this.storyPointField] : base;
+    }
     projectId;
     constructor(cfg, fetchImpl = fetch, authProvider = () => resolveJiraAuth(cfg)) {
         this.cfg = cfg;
@@ -93,7 +130,17 @@ export class JiraTracker {
     normalize(raw) {
         const f = raw.fields;
         const state = STATUS_CATEGORY_MAP[f.status?.statusCategory?.key ?? "new"] ?? "open";
+        const seconds = f.timetracking?.originalEstimateSeconds;
+        const points = this.storyPointField
+            ? f[this.storyPointField] : undefined;
+        const estimate = seconds !== undefined || typeof points === "number"
+            ? {
+                ...(typeof points === "number" ? { points } : {}),
+                ...(seconds !== undefined ? { minutes: Math.round(seconds / 60) } : {}),
+            }
+            : undefined;
         return {
+            estimate,
             id: raw.key,
             title: f.summary,
             body: f.description ? adfToText(f.description) : "",
@@ -126,6 +173,46 @@ export class JiraTracker {
         }
         await this.api("POST", `/rest/api/3/issue/${key}/transitions`, { transition: { id: match.id } }, "jira transition");
     }
+    // Board + active sprint, each resolved once per instance. `null` is a real
+    // answer ("no board" / "no active sprint"), `undefined` means not asked yet.
+    boardCache;
+    sprintCache;
+    async board() {
+        if (this.boardCache === undefined) {
+            if (this.cfg.boardId) {
+                const raw = (await this.api("GET", `/rest/agile/1.0/board/${this.cfg.boardId}`, undefined, "jira board_get"));
+                this.boardCache = { id: raw.id, type: raw.type };
+            }
+            else {
+                const raw = (await this.api("GET", `/rest/agile/1.0/board?projectKeyOrId=${encodeURIComponent(this.cfg.projectKey)}`, undefined, "jira board_list"));
+                this.boardCache = raw.values[0] ?? null;
+            }
+        }
+        return this.boardCache;
+    }
+    async activeSprintId() {
+        const board = await this.board();
+        if (!board || board.type !== "scrum")
+            return null;
+        if (this.sprintCache === undefined) {
+            const raw = (await this.api("GET", `/rest/agile/1.0/board/${board.id}/sprint?state=active`, undefined, "jira sprint_list"));
+            this.sprintCache = raw.values[0]?.id ?? null;
+        }
+        return this.sprintCache;
+    }
+    /** Scrum boards: new work belongs in the running sprint. Best-effort —
+     *  an Agile-API hiccup must never turn a successful create into a failure. */
+    async assignToActiveSprint(key) {
+        try {
+            const sprint = await this.activeSprintId();
+            if (sprint === null)
+                return;
+            await this.api("POST", `/rest/agile/1.0/sprint/${sprint}/issue`, { issues: [key] }, "jira sprint_assign");
+        }
+        catch (e) {
+            console.error(`[cairn] jira: sprint assignment for ${key} skipped: ${e}`);
+        }
+    }
     async createIssue(input) {
         const fields = {
             project: { key: this.cfg.projectKey },
@@ -137,12 +224,15 @@ export class JiraTracker {
             fields.labels = input.labels;
         if (input.phase)
             fields.parent = { key: input.phase };
+        if (input.estimate)
+            Object.assign(fields, await this.estimateFields(input.estimate));
         const created = (await this.api("POST", "/rest/api/3/issue", { fields }, "jira issue_create"));
+        await this.assignToActiveSprint(created.key);
         return this.getIssue(created.key);
     }
     async getIssue(id) {
         this.assertId(id);
-        const raw = await this.api("GET", `/rest/api/3/issue/${id}?fields=summary,description,status,updated,labels,parent,assignee`, undefined, "jira issue_get");
+        const raw = await this.api("GET", `/rest/api/3/issue/${id}?fields=${this.readFields().join(",")}`, undefined, "jira issue_get");
         return this.normalize(raw);
     }
     self;
@@ -176,6 +266,8 @@ export class JiraTracker {
         if (patch.assignee !== undefined) {
             fields.assignee = { accountId: await this.toAccountId(patch.assignee) };
         }
+        if (patch.estimate)
+            Object.assign(fields, await this.estimateFields(patch.estimate));
         if (Object.keys(fields).length > 0) {
             await this.api("PUT", `/rest/api/3/issue/${id}`, { fields }, "jira issue_update");
         }
@@ -206,7 +298,7 @@ export class JiraTracker {
         const raw = (await this.api("POST", "/rest/api/3/search/jql", {
             jql,
             maxResults: MAX_RESULTS,
-            fields: ["summary", "description", "status", "updated", "labels", "parent", "assignee"],
+            fields: this.readFields(),
         }, "jira issue_list"));
         if (raw.issues.length === MAX_RESULTS) {
             console.error(`[cairn] jira issue_list truncated at ${MAX_RESULTS} results (total: ${raw.total ?? "unknown"})`);

@@ -870,6 +870,19 @@ writes a real worklog entry (a worklog failure never fails a close that
 already succeeded — the close comment's time line is the fallback
 everywhere). Assignee writes: not yet mapped. Listing capped at 100 items.
 
+**Sprint awareness:** cairn detects the project's board via the Agile API.
+On a scrum board, new issues land in the active sprint automatically (no
+active sprint → backlog); kanban boards behave as before. Multiple boards
+on one project? Set `"boardId": <n>` in the config to pin the right one.
+Sprint assignment is best-effort — an Agile-API hiccup logs a warning and
+never fails the create. Epics are never sprinted.
+
+**Estimates:** `issue_create`/`issue_update` accept story points + original
+time estimates; points land in the site's story-point field (discovered
+automatically, team- and company-managed variants), time in Jira's native
+original-estimate — so burndown, velocity, and workload reports have real
+data. Paired with worklog on close, estimate-vs-actual comes for free.
+
 ### Asana
 
 ```json
@@ -953,6 +966,8 @@ by name. Listing capped at 100 items.
 | Issue comments | all eight |
 | Assignee **writes** | Local, GitHub, Azure Boards (others accept the call but don't propagate) |
 | Worklog (real time entries on close) | Local, Jira |
+| Estimates (story points + original time) | Local, Jira — populated at plan time; others ignore silently |
+| Sprint awareness (creates land in the active sprint) | Jira scrum boards, auto-detected (`boardId` overrides) |
 | Issue links + dependency graph | Local + Linear (`graph_report`; Linear lacks `supersedes`) |
 | Native milestones | backend-dependent; `summit` records a skip when the phase primitive can't close, and `milestone_*` degrades gracefully |
 | State mapping config | Jira `transitions`, Azure Boards `states`, ClickUp `statuses` (Linear resolves the team workflow automatically) |

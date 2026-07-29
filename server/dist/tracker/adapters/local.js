@@ -42,6 +42,8 @@ function renderIssue(f) {
         `assignee: ${f.assignee ?? ""}`,
         `phase: ${f.phase ?? ""}`,
         `priority: ${f.priority ?? ""}`,
+        `points: ${f.points ?? ""}`,
+        `minutes: ${f.minutes ?? ""}`,
     ];
     // updatedAt is deliberately NOT stored — a stored timestamp would make
     // every concurrent update-pair a same-field merge conflict. It derives
@@ -62,6 +64,8 @@ function parseIssueFile(raw) {
         assignee: get("assignee") || undefined,
         phase: get("phase") || undefined,
         priority: get("priority") || undefined,
+        points: get("points") ? Number(get("points")) : undefined,
+        minutes: get("minutes") ? Number(get("minutes")) : undefined,
         body: raw.slice(m[0].length).replace(/^\n/, "").replace(/\n$/, ""),
     };
 }
@@ -79,6 +83,7 @@ export class LocalTracker {
     capabilities = {
         hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
         hasMilestones: true, hasPhaseClose: true, hasComments: true, hasWorklog: true,
+        hasEstimates: true,
     };
     root;
     initialized = false;
@@ -152,6 +157,12 @@ export class LocalTracker {
             labels: f.priority ? [...f.labels, `priority:${f.priority}`] : f.labels,
             phase: f.phase,
             assignee: f.assignee,
+            estimate: f.points !== undefined || f.minutes !== undefined
+                ? {
+                    ...(f.points !== undefined ? { points: f.points } : {}),
+                    ...(f.minutes !== undefined ? { minutes: f.minutes } : {}),
+                }
+                : undefined,
             updatedAt,
             url: `file://${this.issuePath(f.id)}`,
         };
@@ -165,6 +176,8 @@ export class LocalTracker {
             labels,
             priority,
             phase: input.phase,
+            points: input.estimate?.points,
+            minutes: input.estimate?.minutes,
             body: input.body ?? "",
         });
     }
@@ -184,6 +197,8 @@ export class LocalTracker {
             labels: patched.labels,
             priority: patched.priority,
             assignee: patch.assignee ?? f.assignee,
+            points: patch.estimate ? patch.estimate.points : f.points,
+            minutes: patch.estimate ? patch.estimate.minutes : f.minutes,
         });
     }
     async closeIssue(id) {

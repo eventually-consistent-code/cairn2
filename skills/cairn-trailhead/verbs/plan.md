@@ -20,6 +20,12 @@ Plan the given phase per the `cairn-planning` skill's depth dial.
 3. Write the task breakdown into the phase's PLAN.md body. Keep decisions in
    CONTEXT.md (precedence per shared rules — the tracker gets updated, not
    followed).
+   - Estimate every issue this verb creates (`issue_create` here and in
+     steps 4–5): `estimatePoints` from task complexity (quick/mechanical
+     1–2, standard 3–5, deep/cross-cutting 8), `estimateMinutes` as an
+     honest wall-clock guess. Backends without estimate fields ignore them
+     silently — always pass both. Worklog on close records the actual;
+     together they make burndown/velocity/estimate-vs-actual reports real.
 4. Flags (combinable; all task-list changes still flow through `plan_issues_set`
    / `plan_meta_set`, never hand-edits):
    - `--mvp`: shape tasks per the cairn-planning skill's vertical-slice-first

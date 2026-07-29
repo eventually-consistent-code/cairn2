@@ -16,7 +16,10 @@ async function seededLocal(): Promise<{ src: Tracker; ids: Record<string, string
   const dir = mkdtempSync(join(tmpdir(), "cairn-mig-"));
   const src = make(configSchema.parse({ prefix: "lt" }), dir);
   const phase = await src.createPhase("Phase 1");
-  const open = await src.createIssue({ title: "Open one", body: "body A", labels: ["x"], phase: phase.id });
+  const open = await src.createIssue({
+    title: "Open one", body: "body A", labels: ["x"], phase: phase.id,
+    estimate: { points: 3, minutes: 90 },
+  });
   const done = await src.createIssue({ title: "Done one", labels: ["priority:P1"] });
   await src.updateIssue(done.id, { assignee: "jsreed" });
   await src.closeIssue(done.id);
@@ -44,6 +47,7 @@ describe("migrateTracker", () => {
     expect(open.body).toContain(`[migrated from ${ids.open}]`);
     expect(open.phase).toBe(r.phaseRemap[ids.phase]);
     expect(open.labels).toEqual(["x"]);
+    expect(open.estimate).toEqual({ points: 3, minutes: 90 });
 
     const done = await dst.getIssue(r.remap[ids.done]);
     expect(done.state).toBe("closed");

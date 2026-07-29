@@ -17,6 +17,7 @@ export declare const configSchema: z.ZodObject<{
         in_progress: string;
         closed: string;
     }>>;
+    boardId: z.ZodOptional<z.ZodNumber>;
 }, "strip", z.ZodTypeAny, {
     baseUrl: string;
     emailEnv: string;
@@ -27,6 +28,7 @@ export declare const configSchema: z.ZodObject<{
         in_progress: string;
         closed: string;
     };
+    boardId?: number | undefined;
 }, {
     baseUrl: string;
     projectKey: string;
@@ -37,6 +39,7 @@ export declare const configSchema: z.ZodObject<{
         in_progress: string;
         closed: string;
     } | undefined;
+    boardId?: number | undefined;
 }>;
 type JiraConfig = z.infer<typeof configSchema>;
 export declare function make(config: JiraConfig, fetchImpl?: FetchLike): Tracker;
@@ -49,6 +52,12 @@ export declare class JiraTracker implements Tracker {
     private readonly fetchImpl;
     private readonly authProvider;
     readonly capabilities: Capability;
+    private storyPointField;
+    private storyPointFieldId;
+    /** SPI estimate → Jira write fields (timetracking + discovered points field). */
+    private estimateFields;
+    /** Read-field list: timetracking always; the points field once discovered. */
+    private readFields;
     private projectId;
     constructor(cfg: JiraConfig, fetchImpl?: FetchLike, authProvider?: () => {
         email: string;
@@ -62,6 +71,13 @@ export declare class JiraTracker implements Tracker {
     private transitionByName;
     /** in_progress -> open has no fixed target name; find any transition whose target category is 'new'. */
     private transitionToOpenCategory;
+    private boardCache;
+    private sprintCache;
+    private board;
+    private activeSprintId;
+    /** Scrum boards: new work belongs in the running sprint. Best-effort —
+     *  an Agile-API hiccup must never turn a successful create into a failure. */
+    private assignToActiveSprint;
     createIssue(input: IssueCreate): Promise<Issue>;
     getIssue(id: string): Promise<Issue>;
     private self;

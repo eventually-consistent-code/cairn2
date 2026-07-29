@@ -43,6 +43,7 @@ export class GitHubTracker implements Tracker {
     hasInProgress: true, // via label convention
     hasPhases: true, hasDependencies: false, hasLabels: true,
     hasMilestones: false, hasPhaseClose: true, hasComments: true, hasWorklog: false,
+    hasEstimates: false,
   };
 
   constructor(

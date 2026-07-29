@@ -7,8 +7,14 @@ export interface Issue {
     labels: string[];
     phase?: string;
     assignee?: string;
+    estimate?: IssueEstimate;
     updatedAt: string;
     url: string;
+}
+/** Story points and/or an original time estimate — hasEstimates backends only. */
+export interface IssueEstimate {
+    points?: number;
+    minutes?: number;
 }
 export interface Phase {
     id: string;
@@ -25,6 +31,7 @@ export interface Capability {
     hasPhaseClose: boolean;
     hasComments: boolean;
     hasWorklog: boolean;
+    hasEstimates: boolean;
 }
 export interface Milestone {
     id: string;
@@ -37,6 +44,7 @@ export interface IssueCreate {
     body?: string;
     labels?: string[];
     phase?: string;
+    estimate?: IssueEstimate;
 }
 export interface IssuePatch {
     title?: string;
@@ -44,6 +52,7 @@ export interface IssuePatch {
     state?: IssueState;
     labels?: string[];
     assignee?: string;
+    estimate?: IssueEstimate;
 }
 export interface IssueComment {
     at?: string;

@@ -12,7 +12,7 @@ import type { CairnConfig } from "./config.js";
 import { ActiveContext } from "./active-context.js";
 import { makeTracker } from "./tracker/registry.js";
 import { CachedTracker } from "./tracker/cached.js";
-import type { Tracker, IssueState, LinkType } from "./tracker/types.js";
+import type { Tracker, IssuePatch, IssueState, LinkType } from "./tracker/types.js";
 import { danglingEdges, effectivePriorities, lineage, readyFrontier } from "./tracker/graph.js";
 import { finalizeMigration, migrateTracker } from "./tracker/migrate.js";
 import { makeDocsConnector } from "./docs/registry.js";
@@ -208,13 +208,21 @@ export function buildServer(deps: {
     }));
 
   server.registerTool("issue_create",
-    { description: "Create an issue in the configured tracker",
+    { description: "Create an issue in the configured tracker. Estimates "
+        + "(story points / original minutes) land in the backend's native "
+        + "fields where supported, and are ignored elsewhere",
       inputSchema: { title: z.string(), body: z.string().optional(),
                      labels: z.array(z.string()).optional(),
-                     phase: z.string().optional() } },
-    wrap(async (a: { title: string; body?: string; labels?: string[]; phase?: string }) => {
+                     phase: z.string().optional(),
+                     estimatePoints: z.number().positive().optional(),
+                     estimateMinutes: z.number().int().positive().optional() } },
+    wrap(async (a: { title: string; body?: string; labels?: string[]; phase?: string;
+      estimatePoints?: number; estimateMinutes?: number }) => {
       const d = dir();
-      const result = await (await getTracker(d)).createIssue(a);
+      const { estimatePoints, estimateMinutes, ...input } = a;
+      const estimate = estimatePoints !== undefined || estimateMinutes !== undefined
+        ? { points: estimatePoints, minutes: estimateMinutes } : undefined;
+      const result = await (await getTracker(d)).createIssue({ ...input, estimate });
       snapshotNote(d, result);
       return result;
     }));
@@ -224,15 +232,21 @@ export function buildServer(deps: {
     wrap(async (a: { id: string }) => (await getTracker()).getIssue(a.id)));
 
   server.registerTool("issue_update",
-    { description: "Update an issue (title/body/state/labels/assignee)",
+    { description: "Update an issue (title/body/state/labels/assignee/estimate)",
       inputSchema: { id: z.string(), title: z.string().optional(),
                      body: z.string().optional(), state: StateEnum.optional(),
                      labels: z.array(z.string()).optional(),
-                     assignee: z.string().optional() } },
+                     assignee: z.string().optional(),
+                     estimatePoints: z.number().positive().optional(),
+                     estimateMinutes: z.number().int().positive().optional() } },
     wrap(async (a: { id: string; title?: string; body?: string; state?: IssueState;
-               labels?: string[]; assignee?: string }) => {
+               labels?: string[]; assignee?: string;
+               estimatePoints?: number; estimateMinutes?: number }) => {
       const d = dir();
-      const { id, ...patch } = a;
+      const { id, estimatePoints, estimateMinutes, ...rest } = a;
+      const patch: IssuePatch = estimatePoints !== undefined || estimateMinutes !== undefined
+        ? { ...rest, estimate: { points: estimatePoints, minutes: estimateMinutes } }
+        : rest;
       const tracker = await getTracker(d);
       let autoAssigned = false;
       if (patch.state === "in_progress" && patch.assignee === undefined) {

@@ -8,6 +8,7 @@ export class FakeTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
     hasMilestones: true, hasPhaseClose: true, hasComments: true, hasWorklog: false,
+    hasEstimates: true,
   };
   private issues = new Map<string, Issue>();
   private phases = new Map<string, Phase>();
@@ -19,7 +20,7 @@ export class FakeTracker implements Tracker {
     const id = `FAKE-${++this.seq}`;
     const issue: Issue = {
       id, title: input.title, body: input.body ?? "", state: "open",
-      labels: input.labels ?? [], phase: input.phase,
+      labels: input.labels ?? [], phase: input.phase, estimate: input.estimate,
       updatedAt: new Date().toISOString(), url: `fake://issue/${id}`,
     };
     this.issues.set(id, issue);
@@ -41,6 +42,7 @@ export class FakeTracker implements Tracker {
       state: (patch.state ?? i.state) as IssueState,
       labels: patch.labels ?? i.labels,
       assignee: patch.assignee ?? i.assignee,
+      estimate: patch.estimate ?? i.estimate,
       updatedAt: new Date().toISOString(),
     };
     this.issues.set(id, next);

@@ -153,6 +153,23 @@ export function trackerContract(name: string, factory: () => Promise<Tracker>): 
         .rejects.toMatchObject({ code: "CONFIG_INVALID" });
     });
 
+    it("estimate roundtrips when hasEstimates; silently ignored otherwise", async () => {
+      const made = await t.createIssue({
+        title: "contract: estimate", estimate: { points: 3, minutes: 90 },
+      });
+      if (t.capabilities.hasEstimates) {
+        await eventually(async () => {
+          expect((await t.getIssue(made.id)).estimate).toMatchObject({ points: 3, minutes: 90 });
+        });
+        await t.updateIssue(made.id, { estimate: { points: 5, minutes: 120 } });
+        await eventually(async () => {
+          expect((await t.getIssue(made.id)).estimate).toMatchObject({ points: 5, minutes: 120 });
+        });
+      } else {
+        expect((await t.getIssue(made.id)).estimate).toBeUndefined();
+      }
+    }, 30_000);
+
     it("commentIssue posts and is UNSUPPORTED when hasComments is false", async () => {
       const made = await t.createIssue({ title: "contract: comment target" });
       if (!t.capabilities.hasComments) {

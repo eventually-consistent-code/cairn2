@@ -33,6 +33,7 @@ export class AsanaTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: false, hasPhases: true, hasDependencies: true, hasLabels: false,
     hasMilestones: false, hasPhaseClose: false, hasComments: true, hasWorklog: false,
+    hasEstimates: false,
   };
 
   constructor(

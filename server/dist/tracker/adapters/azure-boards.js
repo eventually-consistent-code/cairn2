@@ -31,6 +31,7 @@ export class AzureBoardsTracker {
     capabilities = {
         hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
         hasMilestones: true, hasPhaseClose: false, hasComments: true, hasWorklog: false,
+        hasEstimates: false,
     };
     /** id (GUID) -> full iteration path, refreshed from listPhases() when an unknown id shows up. */
     phasePaths = new Map();
