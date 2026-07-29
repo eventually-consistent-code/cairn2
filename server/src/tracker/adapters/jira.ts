@@ -2,7 +2,8 @@ import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, type FetchLike } from "../http.js";
 import type {
-  Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
+  Capability, Issue, IssueCreate, IssueEstimate, IssuePatch, IssueState, Milestone,
+  Phase, Tracker,
 } from "../types.js";
 
 // Issue keys look like PROJ-123 (letters + digits, dash, digits).
@@ -63,6 +64,7 @@ interface JiraIssueFields {
   labels?: string[];
   parent?: { key: string };
   assignee?: { accountId?: string } | null;
+  timetracking?: { originalEstimateSeconds?: number } | null;
 }
 
 interface JiraIssue {
@@ -103,8 +105,44 @@ export class JiraTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
     hasMilestones: true, hasPhaseClose: true, hasComments: true, hasWorklog: true,
-    hasEstimates: false,
+    hasEstimates: true,
   };
+
+  // Story-point field id varies per site ("Story point estimate" on
+  // team-managed projects, "Story Points" on company-managed) — discovered
+  // once, `null` = site has none (points skipped with one warning).
+  private storyPointField: string | null | undefined;
+
+  private async storyPointFieldId(): Promise<string | null> {
+    if (this.storyPointField === undefined) {
+      const raw = (await this.api("GET", "/rest/api/3/field", undefined,
+        "jira field_list")) as Array<{ id: string; name: string }>;
+      const hit = raw.find((f) => /^story points?( estimate)?$/i.test(f.name));
+      if (!hit) {
+        console.error("[cairn] jira: no story-point field on this site — points estimates skipped");
+      }
+      this.storyPointField = hit?.id ?? null;
+    }
+    return this.storyPointField;
+  }
+
+  /** SPI estimate → Jira write fields (timetracking + discovered points field). */
+  private async estimateFields(est: IssueEstimate): Promise<Record<string, unknown>> {
+    const out: Record<string, unknown> = {};
+    if (est.minutes !== undefined) out.timetracking = { originalEstimate: `${est.minutes}m` };
+    if (est.points !== undefined) {
+      const fld = await this.storyPointFieldId();
+      if (fld) out[fld] = est.points;
+    }
+    return out;
+  }
+
+  /** Read-field list: timetracking always; the points field once discovered. */
+  private readFields(): string[] {
+    const base = ["summary", "description", "status", "updated", "labels",
+      "parent", "assignee", "timetracking"];
+    return this.storyPointField ? [...base, this.storyPointField] : base;
+  }
 
   private projectId: number | undefined;
 
@@ -142,7 +180,18 @@ export class JiraTracker implements Tracker {
   private normalize(raw: JiraIssue): Issue {
     const f = raw.fields;
     const state = STATUS_CATEGORY_MAP[f.status?.statusCategory?.key ?? "new"] ?? "open";
+    const seconds = f.timetracking?.originalEstimateSeconds;
+    const points = this.storyPointField
+      ? (f as unknown as Record<string, unknown>)[this.storyPointField] : undefined;
+    const estimate: IssueEstimate | undefined =
+      seconds !== undefined || typeof points === "number"
+        ? {
+          ...(typeof points === "number" ? { points } : {}),
+          ...(seconds !== undefined ? { minutes: Math.round(seconds / 60) } : {}),
+        }
+        : undefined;
     return {
+      estimate,
       id: raw.key,
       title: f.summary,
       body: f.description ? adfToText(f.description) : "",
@@ -239,6 +288,7 @@ export class JiraTracker implements Tracker {
     };
     if (input.labels?.length) fields.labels = input.labels;
     if (input.phase) fields.parent = { key: input.phase };
+    if (input.estimate) Object.assign(fields, await this.estimateFields(input.estimate));
     const created = (await this.api("POST", "/rest/api/3/issue", { fields },
       "jira issue_create")) as { key: string };
     await this.assignToActiveSprint(created.key);
@@ -248,7 +298,7 @@ export class JiraTracker implements Tracker {
   async getIssue(id: string): Promise<Issue> {
     this.assertId(id);
     const raw = await this.api("GET",
-      `/rest/api/3/issue/${id}?fields=summary,description,status,updated,labels,parent,assignee`,
+      `/rest/api/3/issue/${id}?fields=${this.readFields().join(",")}`,
       undefined, "jira issue_get");
     return this.normalize(raw as JiraIssue);
   }
@@ -286,6 +336,7 @@ export class JiraTracker implements Tracker {
     if (patch.assignee !== undefined) {
       fields.assignee = { accountId: await this.toAccountId(patch.assignee) };
     }
+    if (patch.estimate) Object.assign(fields, await this.estimateFields(patch.estimate));
     if (Object.keys(fields).length > 0) {
       await this.api("PUT", `/rest/api/3/issue/${id}`, { fields }, "jira issue_update");
     }
@@ -317,7 +368,7 @@ export class JiraTracker implements Tracker {
     const raw = (await this.api("POST", "/rest/api/3/search/jql", {
       jql,
       maxResults: MAX_RESULTS,
-      fields: ["summary", "description", "status", "updated", "labels", "parent", "assignee"],
+      fields: this.readFields(),
     }, "jira issue_list")) as { issues: JiraIssue[]; total?: number };
     if (raw.issues.length === MAX_RESULTS) {
       console.error(`[cairn] jira issue_list truncated at ${MAX_RESULTS} results (total: ${raw.total ?? "unknown"})`);

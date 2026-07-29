@@ -532,3 +532,111 @@ describe("JiraTracker sprint awareness", () => {
     expect(calls).toHaveLength(1);
   });
 });
+
+describe("JiraTracker estimates", () => {
+  const fieldList = [
+    { id: "customfield_10016", name: "Story point estimate" },
+    { id: "customfield_10020", name: "Sprint" },
+  ];
+  const estimated = (key: string) => ({
+    ...jiraIssue(), key,
+    fields: {
+      ...jiraIssue().fields,
+      customfield_10016: 3,
+      timetracking: { originalEstimateSeconds: 5400 },
+    },
+  });
+
+  it("createIssue with points+minutes discovers the story-point field and writes both", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: fieldList },                 // GET /rest/api/3/field
+      { status: 201, body: { key: "CHN-401" } },
+      { status: 200, body: { values: [] } },            // board detect
+      { status: 200, body: estimated("CHN-401") },
+    ]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    const issue = await t.createIssue({ title: "t", estimate: { points: 3, minutes: 90 } });
+    expect(calls[0].url).toBe(`${BASE}/rest/api/3/field`);
+    expect(calls[1].body).toMatchObject({ fields: {
+      customfield_10016: 3,
+      timetracking: { originalEstimate: "90m" },
+    } });
+    expect(issue.estimate).toMatchObject({ points: 3, minutes: 90 });
+  });
+
+  it("minutes-only estimate skips field discovery entirely", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 201, body: { key: "CHN-402" } },
+      { status: 200, body: { values: [] } },
+      { status: 200, body: { ...jiraIssue(), key: "CHN-402" } },
+    ]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    await t.createIssue({ title: "t", estimate: { minutes: 45 } });
+    expect(calls.some((c) => c.url.endsWith("/rest/api/3/field"))).toBe(false);
+    expect(calls[0].body).toMatchObject({ fields: { timetracking: { originalEstimate: "45m" } } });
+  });
+
+  it("story-point field not found: points skipped with a warning, minutes still write", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: [{ id: "customfield_9", name: "Unrelated" }] },
+      { status: 201, body: { key: "CHN-403" } },
+      { status: 200, body: { values: [] } },
+      { status: 200, body: { ...jiraIssue(), key: "CHN-403" } },
+    ]);
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    await t.createIssue({ title: "t", estimate: { points: 8, minutes: 30 } });
+    const created = calls.find((c) => c.method === "POST" && c.url.endsWith("/rest/api/3/issue"))!;
+    expect(JSON.stringify(created.body)).not.toContain("customfield");
+    expect(created.body).toMatchObject({ fields: { timetracking: { originalEstimate: "30m" } } });
+    expect(errSpy).toHaveBeenCalled();
+    errSpy.mockRestore();
+  });
+
+  it("updateIssue(estimate) writes the discovered field + timetracking", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: fieldList },
+      { status: 204, body: null },                      // PUT
+      { status: 200, body: estimated("CHN-101") },
+    ]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    await t.updateIssue("CHN-101", { estimate: { points: 5, minutes: 120 } });
+    const put = calls.find((c) => c.method === "PUT")!;
+    expect(put.body).toMatchObject({ fields: {
+      customfield_10016: 5,
+      timetracking: { originalEstimate: "120m" },
+    } });
+  });
+
+  it("readback: minutes always (timetracking); points once the field cache is warm", async () => {
+    // Cold instance — no discovery on plain reads, minutes still map.
+    const { f: cold } = fixtureFetch([
+      { status: 200, body: { ...jiraIssue(), fields: {
+        ...jiraIssue().fields, timetracking: { originalEstimateSeconds: 5400 },
+      } } },
+    ]);
+    const t1 = new JiraTracker(cfg, cold, () => ({ email: "e", token: "t" }));
+    const got = await t1.getIssue("CHN-101");
+    expect(got.estimate).toMatchObject({ minutes: 90 });
+    expect(got.estimate?.points).toBeUndefined();
+
+    // Warm instance — after an estimate write, reads request + map the custom field.
+    const { f: warm, calls } = fixtureFetch([
+      { status: 200, body: fieldList },
+      { status: 204, body: null },
+      { status: 200, body: estimated("CHN-101") },
+      { status: 200, body: estimated("CHN-101") },
+    ]);
+    const t2 = new JiraTracker(cfg, warm, () => ({ email: "e", token: "t" }));
+    await t2.updateIssue("CHN-101", { estimate: { points: 3 } });
+    const again = await t2.getIssue("CHN-101");
+    expect(calls[3].url).toContain("customfield_10016");
+    expect(again.estimate).toMatchObject({ points: 3, minutes: 90 });
+  });
+
+  it("capabilities declare hasEstimates", () => {
+    const { f } = fixtureFetch([]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    expect(t.capabilities.hasEstimates).toBe(true);
+  });
+});
