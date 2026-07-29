@@ -1239,7 +1239,12 @@ per-machine handoff file, write-through, on every call. Hooks cover the
 gaps: a throttled breadcrumb after Edit/Write/Bash calls, an unthrottled
 refresh right before compaction, and a session-start hook that prints the
 handoff and — per `continuity.resume` — offers (`prompt`), auto-runs
-(`auto`), or suppresses (`off`) the resume. Every hook is fire-and-forget
+(`auto`), or suppresses (`off`) the resume. Two more ride the same rails:
+a Stop-hook cost tracker that snapshots session spend (tokens +
+approximate dollars) tagged with the active phase and issue — surfaced by
+`status --stats` and the close comment's agent-cost line — and a passive
+observation log (tool, target, error flag) that `retro` reviews for
+candidate lessons and then clears. Every hook is fire-and-forget
 and targets under 100ms; a hook failure is never visible to your session.
 
 Guard rails worth knowing:

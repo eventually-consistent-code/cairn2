@@ -711,6 +711,8 @@ Four dependency-free, fire-and-forget Node scripts, registered in
 | 2 | `PreCompact` | — | `precompact-refresh.mjs` | Unthrottled handoff refresh before compaction discards context |
 | 3 | `SessionStart` | — | `sessionstart-continuity.mjs` | Cat the handoff + recall banner; offer/auto-run/suppress resume per `continuity.resume` |
 | 4 | `PreToolUse` | `Bash` | `pretooluse-leakguard.mjs` | Leak guard — scan a staged `git commit`'s diff for cairn-internal refs before it lands |
+| 5 | `PostToolUse` | `Edit\|Write\|Bash` | `posttooluse-observe.mjs` | Passive observation capture (tool, target, error flag) to `.cairn/observations/` — cairn projects only, capped, reviewed and cleared by `retro` |
+| 6 | `Stop` | — | `stop-costtracker.mjs` | Cumulative session cost snapshot (tokens + approximate $) tagged with the active phase/issue, to `~/.cairn/metrics/`; `cost-report.mjs` rolls it up |
 
 ### Leak guard (hook #4)
 
