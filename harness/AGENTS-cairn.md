@@ -13,9 +13,9 @@ server; call tools rather than editing `.cairn/` state by hand.
 
 **Running a verb:** this harness has no `/cairn:<verb>` slash commands —
 ask for the verb by name ("run cairn status", "cairn work phase 2"). Each
-verb's full subroutine lives at
-`skills/cairn-trailhead/verbs/<verb>.md` in the cairn install; read it and
-follow it exactly when executing that verb.
+verb's full subroutine lives at `.cairn/harness/verbs/<verb>.md` in this
+project (installed by `cairn-setup`); read it and follow it exactly when
+executing that verb.
 
 ## Verb registry
 
