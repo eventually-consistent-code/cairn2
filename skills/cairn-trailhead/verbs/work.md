@@ -80,7 +80,11 @@ pairing overlay applies:
    `issue_comment(id, ...)`: what shipped in plain language, the commit
    range as short refs on their own line, the test evidence (suite name +
    pass count), and "time spent: ~Xm (approximate)" computed from
-   `startedAt`. Then `issue_close(id, timeSpentMinutes: <X>)` — backends
+   `startedAt`. When the cost log has rows for this issue
+   (`node "$CLAUDE_PLUGIN_ROOT/hooks/scripts/cost-report.mjs" --issue <id>`
+   returns > 0), add "agent cost: ~$X (approximate)" beside the time
+   line — estimate vs actual vs spend in one comment.
+   Then `issue_close(id, timeSpentMinutes: <X>)` — backends
    with worklog support (`worklogLogged: true` in the result) get a real
    worklog entry; the comment line covers the rest. On stopping early:
    leave in_progress and post a parked comment — why it stopped, what
