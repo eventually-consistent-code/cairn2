@@ -1015,6 +1015,36 @@ graph functions compute over the neutral SPI shapes, not the store.
 
 ---
 
+## 4.5 Running cairn outside Claude Code
+
+Cairn's mechanism layer is a plain MCP server over stdio and its judgment
+layer is markdown — neither cares which harness is driving. `cairn-setup`
+wires a project for Grok Build, GitHub Copilot CLI, Codex, Gemini CLI, or
+Cursor:
+
+```bash
+node setup/cairn-setup.mjs <harness> [--project <dir>]
+```
+
+Three things happen everywhere: a `cairn` entry merges into the project's
+`.mcp.json` (never clobbering yours), the generated verb-registry fragment
+installs into `AGENTS.md` between `cairn:begin`/`cairn:end` markers, and
+the verb subroutines copy to `.cairn/harness/` so the harness can execute
+any verb by name — "run cairn status" reads and follows the same
+subroutine `/cairn:status` does. Copilot additionally gets
+`~/.copilot/mcp-config.json` wiring, a `copilot-instructions.md` section,
+and `/cairn-plan|work|status|verify|ship` prompt files; Codex gets its
+`config.toml` block printed; Gemini gets `settings.json` + `GEMINI.md`.
+
+What degrades, honestly: no slash-command ergonomics outside Claude Code
+and Copilot (verbs run by name), and the hook layer (continuity
+breadcrumbs, leak guard, cost tracker, observation capture) is Claude
+Code-only for now — Grok Build claims Claude hook compatibility (untested)
+and Cursor's hooks runtime is the wave-3 port target. Everything the
+SERVER owns — all 71 tools, mirroring, drift math, estimates, attachments,
+custom states — works identically everywhere, which is the point: the
+tracker paper trail doesn't care which model wrote it.
+
 ## 5. Docs connectors — Confluence and Docusaurus, end to end
 
 The docs connector publishes your repo's documentation outward to a team
