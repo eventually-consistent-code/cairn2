@@ -651,21 +651,24 @@ four are assumed present anywhere in the server.
 ### Templates (fixed argv, stdin-only input)
 
 Each provider has exactly one argv template, a constant, never built from
-user input:
+user input; input reaches the CLI per its verified prompt convention:
 
 | provider | argv | input |
 |---|---|---|
-| `codex` | `codex exec -` | stdin |
-| `opencode` | `opencode run -` | stdin |
-| `gemini` | `gemini -p -` | stdin |
-| `grok` | `grok -p -` | stdin |
+| `codex` | `codex exec -` | stdin (documented `-` convention) |
+| `opencode` | `opencode run <input>` | argv — `run [message..]` is positional |
+| `gemini` | `gemini -p "<instruction>"` | stdin — piped input is read; `-p`'s text is appended after it |
+| `grok` | `grok -p <input>` | argv — grok's headless mode does not consume piped stdin (verified live, CRN-76) |
 
-Input NEVER rides in argv and is NEVER shell-interpolated — `execFile`
-resolves the binary via PATH itself, and the trailing `-`/`-p -` tells
-each CLI to read its prompt from stdin, which is where all caller-supplied
-content goes, full stop. The child-process surface is exactly these four
-templates; there is no path from any tool argument to a shell command
-string.
+Input is NEVER shell-interpolated — `execFile` takes an argv array and
+resolves the binary via PATH itself; no shell ever parses any of it. For
+stdin-mode peers (codex, gemini) caller-supplied content goes in via
+stdin; for argv-mode peers (grok, opencode — their CLIs don't read piped
+stdin) the capped input is the single final argv element, which is data
+to `execFile`, not command line to a shell. The child-process surface is
+exactly these four templates; there is no path from any tool argument to
+a shell command string. The 200k default cap keeps argv-mode input well
+under ARG_MAX.
 
 ### Caps (`cairn.json` → `peers` block)
 
