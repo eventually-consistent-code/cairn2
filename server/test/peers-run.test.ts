@@ -171,6 +171,35 @@ describe("peerRun", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  // CRN-76: grok's headless mode takes the prompt as `-p`'s value and does
+  // NOT read piped stdin — input must arrive as the final argv element.
+  it("grok: delivers input via argv, not stdin", async () => {
+    runnableStubPath({ grok: "#!/bin/sh\nstdin=$(cat)\necho \"argv2:$2\"\necho \"stdinlen:${#stdin}\"\n" });
+    const d = projectDir();
+    const result = await peerRun(d, "grok", "hello grok");
+    expect(result.output).toContain("argv2:hello grok");
+    expect(result.output).toContain("stdinlen:0");
+  });
+
+  // CRN-76: opencode's `run [message..]` takes the prompt positionally.
+  it("opencode: delivers input via argv, not stdin", async () => {
+    runnableStubPath({ opencode: "#!/bin/sh\necho \"argv2:$2\"\n" });
+    const d = projectDir();
+    const result = await peerRun(d, "opencode", "hello oc");
+    expect(result.output).toContain("argv2:hello oc");
+  });
+
+  // gemini reads piped stdin and appends -p's value after it — the template
+  // carries a real instruction there, never a bare "-".
+  it("gemini: delivers input via stdin with the headless -p instruction in argv", async () => {
+    runnableStubPath({ gemini: "#!/bin/sh\nstdin=$(cat)\necho \"p:$2\"\necho \"stdin:$stdin\"\n" });
+    const d = projectDir();
+    const result = await peerRun(d, "gemini", "hello gem");
+    expect(result.output).toContain("stdin:hello gem");
+    expect(result.output).toContain("p:Respond to the request");
+    expect(result.output).not.toContain("p:-");
+  });
+
   // A staged binary that exists on PATH but isn't executable fails at
   // exec-time with a string errno (EACCES), not a numeric exit code. That's
   // not a genuine peer exit, so it must throw PRECONDITION_FAILED naming

@@ -30,8 +30,10 @@ jobs:
           registry-url: "https://registry.npmjs.org"
 
       # Trusted publishing needs npm >= 11.5.1 for the OIDC exchange.
+      # Pinned exactly — an unpinned npm@latest in the release path is
+      # supply-chain surface at the worst possible moment.
       - name: update npm
-        run: npm install -g npm@latest && npm --version
+        run: npm install -g npm@11.5.1 && npm --version
 
       - name: gate — tests must pass before anything ships
         working-directory: server

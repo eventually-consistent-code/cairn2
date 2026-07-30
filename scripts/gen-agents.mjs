@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const OUT = join(root, "harness", "AGENTS-cairn.md");
-const SENTINEL = "";
+const SENTINEL = "\u0001"; // control byte no cell can contain -- placeholder while splitting on |
 
 const skillMd = readFileSync(join(root, "skills/cairn-trailhead/SKILL.md"), "utf8");
 

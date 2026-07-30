@@ -1,9 +1,10 @@
 /**
  * Purpose: allow-listed external-CLI adapters (codex/opencode/gemini/grok) —
- * runs each as a fixed-argv, stdin-only child process with a hard cap on
- * input size and a timeout. Never exec, never shell interpolation — argv is
- * always one of the four fixed templates below, and the only data that ever
- * crosses the child-process boundary goes in via stdin. A peer's non-zero
+ * runs each as a fixed-argv child process with a hard cap on input size and
+ * a timeout. Never exec, never shell interpolation — argv is always one of
+ * the four fixed templates below plus (for argv-mode peers) the capped input
+ * as the single final element; stdin-mode peers get input piped instead,
+ * per each CLI's verified prompt convention. A peer's non-zero
  * exit is a result, not an error: peers are advisory, and the caller (the
  * `peers` verb) is the one that judges what they say. Missing binaries and
  * disabled providers degrade to PRECONDITION_FAILED — nothing here assumes

@@ -2,7 +2,7 @@
 
 // cairn-setup — wire cairn into a non-Claude harness (CRN-71).
 //
-//   node setup/cairn-setup.mjs <harness> [--project <dir>]
+//   node setup/cairn-setup.mjs <harness> [--project <dir>] [--local]
 //   harness: grok | copilot | codex | gemini | cursor | claude
 //
 // What it does, per project:
@@ -32,7 +32,7 @@ const END = "<!-- cairn:end -->";
 
 function usage(msg) {
   if (msg) console.error(msg);
-  console.error(`usage: node setup/cairn-setup.mjs <${HARNESSES.join("|")}> [--project <dir>]`);
+  console.error(`usage: node setup/cairn-setup.mjs <${HARNESSES.join("|")}> [--project <dir>] [--local]`);
   process.exit(msg ? 1 : 0);
 }
 
@@ -44,14 +44,23 @@ if (!harness || harness.startsWith("--")) usage("missing harness");
 if (!HARNESSES.includes(harness)) usage(`unknown harness: ${harness}`);
 const projIdx = args.indexOf("--project");
 const projectDir = resolve(projIdx >= 0 ? args[projIdx + 1] : process.cwd());
+const useLocal = args.includes("--local");
 
 // --- helpers -----------------------------------------------------------------
 
-/** The command that launches the server: the npm bin when this script runs
- *  from the published package, else this clone's built server. */
+/** The command that launches the server. Default is the portable npx form —
+ *  the configs this script writes get committed and shared, and an absolute
+ *  clone path breaks for every teammate who isn't this machine (CRN-75).
+ *  `--local` opts into this clone's built server for cairn development. */
 function serverCommand() {
-  const dist = join(repoRoot, "server", "dist", "index.js");
-  if (existsSync(dist)) return { command: "node", args: [dist] };
+  if (useLocal) {
+    const dist = join(repoRoot, "server", "dist", "index.js");
+    if (!existsSync(dist)) {
+      console.error("--local: no built server at server/dist/index.js — run `cd server && npm run build` first");
+      process.exit(1);
+    }
+    return { command: "node", args: [dist] };
+  }
   return { command: "npx", args: ["-y", "@eventually-consistent/cairn-server"] };
 }
 
@@ -137,7 +146,10 @@ function mergeCodexToml(path) {
   const end = body.indexOf(TOML_END);
   let next;
   if (start >= 0 && end > start) {
-    next = body.slice(0, start) + block + body.slice(end + TOML_END.length + 1);
+    // block ends with \n, so drop at most one leading newline from the
+    // remainder — never a content byte (a hand-edit may omit the newline).
+    const after = body.slice(end + TOML_END.length).replace(/^\n/, "");
+    next = body.slice(0, start) + block + after;
   } else if (body.includes("[mcp_servers.cairn]")) {
     console.log(`  ${path}: existing 'cairn' entry left untouched (outside cairn-setup markers)`);
     return;
@@ -170,6 +182,7 @@ if (harness === "copilot") {
   const promptsOut = join(projectDir, ".github", "prompts");
   mkdirSync(promptsOut, { recursive: true });
   for (const f of readdirSync(promptsSrc)) {
+    if (f.startsWith(".")) continue; // never ship stray dotfiles (.DS_Store) into a project
     copyFileSync(join(promptsSrc, f), join(promptsOut, f));
   }
   console.log(`  .github/prompts/: cairn prompt files installed.`);
@@ -183,6 +196,7 @@ if (harness === "gemini") {
   const cmdOut = join(projectDir, ".gemini", "commands", "cairn");
   mkdirSync(cmdOut, { recursive: true });
   for (const f of readdirSync(cmdSrc)) {
+    if (f.startsWith(".")) continue; // never ship stray dotfiles (.DS_Store) into a project
     copyFileSync(join(cmdSrc, f), join(cmdOut, f));
   }
   console.log(`  .gemini/commands/cairn/: TOML commands installed (/cairn:plan, /cairn:work, ...).`);
@@ -194,6 +208,7 @@ if (harness === "codex") {
   const promptsOut = join(homedir(), ".codex", "prompts");
   mkdirSync(promptsOut, { recursive: true });
   for (const f of readdirSync(promptsSrc)) {
+    if (f.startsWith(".")) continue; // never ship stray dotfiles (.DS_Store) into a project
     copyFileSync(join(promptsSrc, f), join(promptsOut, f));
   }
   console.log(`  ~/.codex/prompts/: cairn prompt files installed (Codex reads AGENTS.md from the project).`);
@@ -261,6 +276,7 @@ if (harness === "opencode") {
   const cmdOut = join(projectDir, ".opencode", "commands");
   mkdirSync(cmdOut, { recursive: true });
   for (const f of readdirSync(cmdSrc)) {
+    if (f.startsWith(".")) continue; // never ship stray dotfiles (.DS_Store) into a project
     copyFileSync(join(cmdSrc, f), join(cmdOut, f));
   }
   console.log(`  .opencode/commands/: cairn command files installed (/cairn-plan, /cairn-work, ...).`);
