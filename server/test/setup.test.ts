@@ -23,8 +23,8 @@ afterEach(() => {
   for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
 });
 
-function run(harness: string, project: string, home: string): string {
-  return execFileSync(process.execPath, [SETUP, harness, "--project", project], {
+function run(harness: string, project: string, home: string, ...extra: string[]): string {
+  return execFileSync(process.execPath, [SETUP, harness, "--project", project, ...extra], {
     encoding: "utf8", env: { ...process.env, HOME: home },
   });
 }
@@ -35,9 +35,11 @@ describe("cairn-setup", () => {
     const home = fresh("cairn-home-");
     run("grok", proj, home);
 
+    // Default is the PORTABLE form — these configs get committed and shared;
+    // an absolute clone path breaks for every other machine (CRN-75).
     const mcp = JSON.parse(readFileSync(join(proj, ".mcp.json"), "utf8"));
-    expect(mcp.mcpServers.cairn.command).toBe("node");
-    expect(mcp.mcpServers.cairn.args[0]).toContain("dist/index.js");
+    expect(mcp.mcpServers.cairn.command).toBe("npx");
+    expect(mcp.mcpServers.cairn.args).toContain("@eventually-consistent/cairn-server");
 
     const agents = readFileSync(join(proj, "AGENTS.md"), "utf8");
     expect(agents).toContain("cairn:begin");
@@ -45,6 +47,15 @@ describe("cairn-setup", () => {
 
     expect(existsSync(join(proj, ".cairn", "harness", "verbs", "status.md"))).toBe(true);
     expect(existsSync(join(proj, ".cairn", "harness", "SKILL.md"))).toBe(true);
+  });
+
+  it("--local opts into this clone's built server (cairn development only)", () => {
+    const proj = fresh("cairn-setup-");
+    const home = fresh("cairn-home-");
+    run("grok", proj, home, "--local");
+    const mcp = JSON.parse(readFileSync(join(proj, ".mcp.json"), "utf8"));
+    expect(mcp.mcpServers.cairn.command).toBe("node");
+    expect(mcp.mcpServers.cairn.args[0]).toContain("dist/index.js");
   });
 
   it("never clobbers existing config or unrelated AGENTS content; idempotent re-run", () => {
@@ -198,7 +209,7 @@ describe("cairn-setup", () => {
     expect(cfg.mcp.other).toEqual({ type: "local", command: ["x"] });
     expect(cfg.theme).toBe("dark");
     expect(cfg.mcp.cairn.type).toBe("local");
-    expect(cfg.mcp.cairn.command[0]).toBe("node");
+    expect(cfg.mcp.cairn.command[0]).toBe("npx");
     for (const v of ["plan", "work", "status", "verify", "ship"]) {
       const p = join(proj, ".opencode", "commands", `cairn-${v}.md`);
       expect(existsSync(p)).toBe(true);
@@ -222,7 +233,7 @@ describe("cairn-setup", () => {
     const cfg = JSON.parse(readFileSync(join(proj, ".zed", "settings.json"), "utf8"));
     expect(cfg.context_servers.other).toEqual({ command: "x", args: [] });
     expect(cfg.tab_size).toBe(2);
-    expect(cfg.context_servers.cairn.command).toBe("node");
+    expect(cfg.context_servers.cairn.command).toBe("npx");
 
     const first = readFileSync(join(proj, ".zed", "settings.json"), "utf8");
     run("zed", proj, home); // idempotent
