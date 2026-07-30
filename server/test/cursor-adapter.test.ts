@@ -87,6 +87,23 @@ describe("cursor-adapter", () => {
     expect(resp.additional_context).toContain("cairn banner test");
   });
 
+  // Documented posture, now pinned by a test: when the leak guard ITSELF
+  // breaks (corrupt cairn.json here), the answer is allow — the guard must
+  // never block work because it broke. Same fail-open rule as the Claude
+  // Code hook it wraps.
+  it("beforeShellExecution fails OPEN when the guard itself errors", () => {
+    const proj = fresh("cairn-cursor-");
+    const home = fresh("cairn-home-");
+    writeFileSync(join(proj, "cairn.json"), "{ not json");
+    const out = runAdapter({
+      hook_event_name: "beforeShellExecution",
+      command: "git commit -m 'x'",
+      cwd: proj,
+      workspace_roots: [proj],
+    }, home);
+    expect(JSON.parse(out)).toEqual({ permission: "allow" });
+  });
+
   it("unknown events and adapter-internal errors never fail the hook", () => {
     const home = fresh("cairn-home-");
     const out = runAdapter({ hook_event_name: "someFutureEvent" }, home);

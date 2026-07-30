@@ -43,6 +43,9 @@ const harness = args[0];
 if (!harness || harness.startsWith("--")) usage("missing harness");
 if (!HARNESSES.includes(harness)) usage(`unknown harness: ${harness}`);
 const projIdx = args.indexOf("--project");
+if (projIdx >= 0 && (!args[projIdx + 1] || args[projIdx + 1].startsWith("--"))) {
+  usage("--project needs a directory");
+}
 const projectDir = resolve(projIdx >= 0 ? args[projIdx + 1] : process.cwd());
 const useLocal = args.includes("--local");
 
@@ -64,11 +67,21 @@ function serverCommand() {
   return { command: "npx", args: ["-y", "@eventually-consistent/cairn-server"] };
 }
 
+/** Missing file → null (fine, we create it). A file that EXISTS but doesn't
+ *  parse is never treated as absent — overwriting it would silently destroy
+ *  whatever the user had in it (other MCP servers, settings). Stop instead. */
 function readJson(path) {
+  let raw;
   try {
-    return JSON.parse(readFileSync(path, "utf8"));
+    raw = readFileSync(path, "utf8");
   } catch {
     return null;
+  }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    console.error(`  ${path}: exists but is not valid JSON — refusing to touch it. Fix or remove it, then re-run cairn-setup.`);
+    process.exit(1);
   }
 }
 
@@ -100,6 +113,12 @@ function installFragment(path, fragment) {
   } catch { /* new file */ }
   const start = body.indexOf(BEGIN);
   const end = body.indexOf(END);
+  if (start >= 0 && end < start) {
+    // Orphaned begin marker (truncated file / hand edit): appending would
+    // duplicate the whole fragment. Stop rather than guess.
+    console.error(`  ${path}: has a cairn:begin marker with no matching end — fix the markers, then re-run cairn-setup.`);
+    process.exit(1);
+  }
   let next;
   if (start >= 0 && end > start) {
     next = body.slice(0, start) + fragment.trimEnd() + body.slice(end + END.length);

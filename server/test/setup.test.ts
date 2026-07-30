@@ -240,6 +240,35 @@ describe("cairn-setup", () => {
     expect(readFileSync(join(proj, ".zed", "settings.json"), "utf8")).toBe(first);
   });
 
+  it("refuses to touch an existing config that doesn't parse (never wipes user MCP servers)", () => {
+    const proj = fresh("cairn-setup-");
+    const home = fresh("cairn-home-");
+    const corrupt = `{ "mcpServers": { /* jsonc comment */ "other": { "command": "x" } } }`;
+    writeFileSync(join(proj, ".mcp.json"), corrupt);
+    expect(() => run("grok", proj, home)).toThrow();
+    expect(readFileSync(join(proj, ".mcp.json"), "utf8")).toBe(corrupt);
+  });
+
+  it("refuses an orphaned cairn:begin marker instead of appending a duplicate fragment", () => {
+    const proj = fresh("cairn-setup-");
+    const home = fresh("cairn-home-");
+    const truncated = "# My project\n\n<!-- cairn:begin\ntruncated, no end marker\n";
+    writeFileSync(join(proj, "AGENTS.md"), truncated);
+    expect(() => run("grok", proj, home)).toThrow();
+    expect(readFileSync(join(proj, "AGENTS.md"), "utf8")).toBe(truncated);
+  });
+
+  it("--project without a directory prints usage instead of crashing", () => {
+    let err = "";
+    try {
+      execFileSync(process.execPath, [SETUP, "grok", "--project"], { encoding: "utf8" });
+    } catch (e) {
+      err = String((e as { stderr?: string }).stderr ?? e);
+    }
+    expect(err).toContain("--project needs a directory");
+    expect(err).not.toContain("TypeError");
+  });
+
   it("an existing different cairn MCP entry is left untouched", () => {
     const proj = fresh("cairn-setup-");
     const home = fresh("cairn-home-");
