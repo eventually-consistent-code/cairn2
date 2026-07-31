@@ -52,6 +52,17 @@ const HandoffSourceEnum = z.enum(["tool", "posttooluse", "precompact", "waypoint
 // converts correctly. continuity_checkpoint has no such downstream guard
 // (writeHandoff doesn't validate), so its handler checks explicitly below.
 const HandoffPhaseRefSchema = z.object({ number: z.number(), slug: z.string() });
+// Shared handler-level guard for every plain-number phase param above (CRN-40:
+// plan_check's phase filter, mem_index/mem_search's phase, mem_card_create/
+// mem_card_list/mem_card_recall's scopePhase, context_set's phase all
+// converge on this instead of each hand-rolling the same isValidPhaseNumber
+// check). null/undefined pass through untouched -- context_set relies on
+// null surviving here to still mean "clear the field".
+const assertValidPhase = (n) => {
+    if (n !== null && n !== undefined && !isValidPhaseNumber(n)) {
+        throw new CairnError("CONFIG_INVALID", PHASE_NUMBER_ERROR(n));
+    }
+};
 // Zod mirrors of map/store.ts's NodeType/EdgeType/MapNode/MapEdge -- kept in
 // sync by hand (the store module owns the types; this is just the MCP-layer
 // schema for them, same duplication tradeoff as the mem_timeline helpers above).
@@ -160,6 +171,11 @@ export function buildServer(deps) {
     server.registerTool("context_set", { description: "Set/clear active cairn context fields (null clears)",
         inputSchema: { phase: z.number().nullable().optional(),
             issueId: z.string().nullable().optional() } }, wrap((a) => {
+        // CRN-40: reject an invalid phase number (over-precise decimal, etc.)
+        // as a structured CONFIG_INVALID before it ever reaches active-context
+        // -- null still passes through untouched (that's the clear-the-field
+        // signal handled below).
+        assertValidPhase(a.phase);
         // Snapshot once -- this handler touches active-context, handoff, and the
         // banner; a workspace_focus flip mid-call must not split those three
         // writes across two different member projects.
@@ -391,7 +407,13 @@ export function buildServer(deps) {
     };
     server.registerTool("mem_index", { description: "Index reference material into the searchable memory store (disposable, rebuildable)",
         inputSchema: { content: z.string(), source: z.string(),
-            phase: z.number().int().optional(), issueId: z.string().optional() } }, wrap((a) => {
+            // CRN-40: widened from .int() -- a decimal phase (1.5) must
+            // tag a memory chunk same as an integer one. Deliberately not
+            // a Zod .refine() -- see the HandoffPhaseRefSchema comment
+            // above for why that produces a raw SDK -32602 instead of a
+            // structured CONFIG_INVALID envelope.
+            phase: z.number().optional(), issueId: z.string().optional() } }, wrap((a) => {
+        assertValidPhase(a.phase);
         getMemIndex().index({
             content: a.content, source: a.source,
             phase: a.phase ?? null, issueId: a.issueId ?? null,
@@ -400,8 +422,11 @@ export function buildServer(deps) {
         return { ok: true };
     }));
     server.registerTool("mem_search", { description: "Full-text search the memory index, optionally scoped to a phase/issue",
-        inputSchema: { query: z.string(), phase: z.number().int().optional(),
-            issueId: z.string().optional(), limit: z.number().int().positive().optional() } }, wrap((a) => getMemIndex().search(a.query, { phase: a.phase, issueId: a.issueId }, a.limit ?? 10)));
+        inputSchema: { query: z.string(), phase: z.number().optional(), // CRN-40: widened from .int()
+            issueId: z.string().optional(), limit: z.number().int().positive().optional() } }, wrap((a) => {
+        assertValidPhase(a.phase);
+        return getMemIndex().search(a.query, { phase: a.phase, issueId: a.issueId }, a.limit ?? 10);
+    }));
     server.registerTool("mem_stats", { description: "Memory index size — chunk count and approximate token usage (capacity guard signal), "
             + "plus recall-banner token accounting",
         inputSchema: {} }, wrap(() => {
@@ -412,11 +437,12 @@ export function buildServer(deps) {
         inputSchema: {
             type: z.enum(["decision", "constraint", "gotcha", "reference", "note"]),
             body: z.string(),
-            scopePhase: z.number().int().optional(),
+            scopePhase: z.number().optional(), // CRN-40: widened from .int()
             scopeIssue: z.string().optional(),
             confidence: z.enum(["high", "medium", "low"]).optional(),
             provenance: z.array(z.object({ file: z.string(), commit: z.string() })).optional(),
         } }, wrap((a) => {
+        assertValidPhase(a.scopePhase);
         const d = dir();
         const card = createCard(d, a);
         const patch = { source: "tool" };
@@ -432,9 +458,15 @@ export function buildServer(deps) {
         return card;
     }));
     server.registerTool("mem_card_list", { description: "List memory cards, optionally filtered by phase/issue scope",
-        inputSchema: { scopePhase: z.number().int().optional(), scopeIssue: z.string().optional() } }, wrap((a) => listCards(dir(), a)));
+        inputSchema: { scopePhase: z.number().optional(), scopeIssue: z.string().optional() } }, // CRN-40: widened from .int()
+    wrap((a) => {
+        assertValidPhase(a.scopePhase);
+        return listCards(dir(), a);
+    }));
     server.registerTool("mem_card_recall", { description: "List memory cards with staleness checked against their provenance (the anti-rot check)",
-        inputSchema: { scopePhase: z.number().int().optional(), scopeIssue: z.string().optional() } }, wrap((a) => {
+        inputSchema: { scopePhase: z.number().optional(), scopeIssue: z.string().optional() } }, // CRN-40: widened from .int()
+    wrap((a) => {
+        assertValidPhase(a.scopePhase);
         const d = dir();
         return listCards(d, a).map((card) => {
             const provenance = card.frontmatter.provenanceFiles.map((file, i) => ({
@@ -768,7 +800,12 @@ export function buildServer(deps) {
         inputSchema: {} }, wrap(() => sessionLandscape(dir())));
     server.registerTool("plan_check", { description: "Deterministic plan-quality scan (#2891): cross-plan contract drift "
             + "(Produces/Consumes without a shared fixture) and unanchored quantitative thresholds",
-        inputSchema: { phase: z.number().int().positive().optional() } }, wrap((a) => planCheck(dir(), a.phase)));
+        // CRN-40: widened from .int().positive() -- a decimal phase filter (1.5)
+        // must match its real 01.5-slug dir instead of dying as a raw SDK -32602.
+        inputSchema: { phase: z.number().optional() } }, wrap((a) => {
+        assertValidPhase(a.phase);
+        return planCheck(dir(), a.phase);
+    }));
     server.registerTool("audit_record", { description: "Write the audit record file (.cairn/audit/<scope>-<date>.md) — single writer; "
             + "same scope+date supersedes, prior dates immutable",
         inputSchema: { scope: z.string(), verdict: z.enum(["pass", "findings"]),

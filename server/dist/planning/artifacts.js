@@ -26,7 +26,13 @@ export function isValidPhaseNumber(number) {
     return frac === 0 ? intPart >= 1 && intPart <= 99 : intPart >= 1 && intPart <= 98;
 }
 export const PHASE_NUMBER_ERROR = (number) => `phase number must be 1..99, or N.1-N.9 with N=1..98, got ${number}`;
-export function phaseDirName(number, slug) {
+// Shared prefix scheme -- pad the integer part to two digits, append the
+// fractional digit if present (1.5 -> "01.5-", 3 -> "03-"). phaseDirName
+// below is just this prefix plus a slug; any other caller that needs to
+// *match* a phase's directory (a filter, a glob) should reuse this instead
+// of re-deriving the padding by hand (CRN-40 -- planCheck's filter used to
+// do exactly that, and it broke on decimal phases).
+export function phaseDirPrefix(number) {
     if (!isValidPhaseNumber(number)) {
         throw new CairnError("CONFIG_INVALID", PHASE_NUMBER_ERROR(number));
     }
@@ -34,7 +40,10 @@ export function phaseDirName(number, slug) {
     const intPart = Math.trunc(scaled / 10);
     const frac = scaled - intPart * 10;
     const padded = String(intPart).padStart(2, "0");
-    return frac === 0 ? `${padded}-${slug}` : `${padded}.${frac}-${slug}`;
+    return frac === 0 ? `${padded}-` : `${padded}.${frac}-`;
+}
+export function phaseDirName(number, slug) {
+    return `${phaseDirPrefix(number)}${slug}`;
 }
 // Round-trips a dir name back to its exact phase number + slug -- the
 // counterpart to phaseDirName above. Shared by every caller that recovers a
