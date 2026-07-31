@@ -860,6 +860,14 @@ writes: not yet mapped. Listing paginates up to 1000 items.
 
 ### Jira
 
+> **Classic API tokens are retired.** Atlassian killed classic API tokens —
+> anything issued before Dec 2024 expired between Mar and May 2026. The
+> replacement scoped tokens (`ATCTT`-prefixed) authenticate through a
+> different gateway URL this adapter doesn't speak yet, so a fresh scoped
+> token won't work here either. If `JIRA_API_TOKEN` is a legacy classic
+> token, Jira auth on this connector is currently broken — no workaround.
+> Scoped-token support is tracked in #49, phase 7.
+
 ```json
 "tracker": {
   "type": "jira",
@@ -984,7 +992,7 @@ by name. Listing capped at 100 items.
 | Issue links + dependency graph | Local + Linear (`graph_report`; Linear lacks `supersedes`) |
 | Native milestones | backend-dependent; `summit` records a skip when the phase primitive can't close, and `milestone_*` degrades gracefully |
 | State mapping config | Jira `transitions`, Azure Boards `states`, ClickUp `statuses` (Linear resolves the team workflow automatically) — all take extra keys as **custom states** ("review", "blocked"); the local backend uses a `states` vocab (name → category) |
-| Custom states (CRN-26) | `issue.state` is the board's real state name; `issue.category` (open/in_progress/closed) is what every gate and report reasons about. Writes accept the canonical three everywhere, plus any configured custom name — Jira/Linear/Azure/ClickUp/local; GitHub/GitLab/Asana have no custom surface and say so |
+| Custom states (formerly CRN-26 on the retired Jira tracker) | `issue.state` is the board's real state name; `issue.category` (open/in_progress/closed) is what every gate and report reasons about. Writes accept the canonical three everywhere, plus any configured custom name — Jira/Linear/Azure/ClickUp/local; GitHub/GitLab/Asana have no custom surface and say so |
 | Issue-list cap (affects `plan_unplanned` completeness) | 1000 (GitHub/GitLab), 100 (Jira/Asana/Azure Boards/ClickUp/Linear) — truncation is logged to server stderr |
 
 Adapter maturity, honestly stated: GitHub is live-green against a real
@@ -1074,8 +1082,8 @@ documentation, and they share nothing but the HTTP core and the config
 pattern. Two connectors ship today — Confluence (remote wiki, HTTP) and
 Docusaurus (local static-site checkout, filesystem) — and the interface is
 product-neutral (bodies cross it as markdown; each adapter owns conversion),
-so Notion, GitBook, Slite, and SharePoint connectors can slot in behind the
-same contract suite.
+so new targets can slot in behind the same contract suite on demand — no
+Notion/GitBook/Slite/SharePoint connector is currently shipped or scheduled.
 
 ### Setup
 

@@ -51,16 +51,18 @@ Cairn never stores secrets in config files — only the *names* of environment
 variables. Create a token for your backend and export it in your shell
 profile:
 
-- **Jira**: create an API token at
-  https://id.atlassian.com/manage-profile/security/api-tokens, then
-  `export JIRA_EMAIL="you@example.com"` and
-  `export JIRA_API_TOKEN="<token>"`.
 - **GitHub**: `gh auth login`, or export `GITHUB_TOKEN` with a PAT that has
   repo + issues scope.
 - **GitLab / Asana / Azure Boards / ClickUp**: create a personal access
   token in the product's settings and export it under the env var named in
   your config (`GITLAB_TOKEN`, `ASANA_TOKEN`, `AZURE_DEVOPS_PAT`,
   `CLICKUP_TOKEN`).
+- **Jira**: create an API token at
+  https://id.atlassian.com/manage-profile/security/api-tokens, then
+  `export JIRA_EMAIL="you@example.com"` and
+  `export JIRA_API_TOKEN="<token>"`. Caveat: this only works with a
+  **classic** token — Atlassian retired those, and the new scoped
+  (`ATCTT`) tokens aren't supported by this adapter yet (tracked in #49).
 
 ## Step 3 — write cairn.json
 
@@ -68,7 +70,32 @@ Easiest path: skip straight to `/cairn:new` — it asks which tracker and
 docs platform you want and writes `cairn.json` for you from the shipped
 template. Prefer doing it by hand? Drop a `cairn.json` at your repo root;
 the plugin ships `templates/cairn.json.example` with copy-paste blocks for
-every backend. Jira, for instance:
+every backend. GitHub, for instance:
+
+```json
+{
+  "tracker": {
+    "type": "github",
+    "config": { "repo": "owner/name" }
+  }
+}
+```
+
+No hosted tracker yet, or just kicking the tires? The zero-credential local
+backend stores issues as plain files in your repo — promote to a hosted
+tracker whenever you're ready:
+
+```json
+{
+  "tracker": {
+    "type": "local",
+    "config": { "dir": ".tracker", "prefix": "proj" }
+  }
+}
+```
+
+Jira works too, once you've got a token (see the classic-token caveat
+above):
 
 ```json
 {
