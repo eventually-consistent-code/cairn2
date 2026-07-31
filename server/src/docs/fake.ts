@@ -4,6 +4,7 @@
 
 import { z } from "zod";
 import { CairnError } from "../errors.js";
+import type { ProbeResult } from "../tracker/types.js";
 import type { DocsCapability, DocsConnector, Page, PageSpec } from "./types.js";
 
 export const configSchema = z.object({});
@@ -84,5 +85,9 @@ export class FakeDocsConnector implements DocsConnector {
     this.pages.set(id, page);
     this.storeImages(id, spec);
     return page;
+  }
+
+  async probe(): Promise<ProbeResult> {
+    return { verdict: "ok" };
   }
 }

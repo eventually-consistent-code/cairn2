@@ -11,6 +11,7 @@ import { loadConfig, writeConfigPatch } from "./config.js";
 import { ActiveContext } from "./active-context.js";
 import { makeTracker } from "./tracker/registry.js";
 import { CachedTracker } from "./tracker/cached.js";
+import { probeVerdictForError } from "./tracker/probe.js";
 import { danglingEdges, effectivePriorities, lineage, readyFrontier } from "./tracker/graph.js";
 import { finalizeMigration, migrateTracker } from "./tracker/migrate.js";
 import { makeDocsConnector } from "./docs/registry.js";
@@ -682,6 +683,39 @@ export function buildServer(deps) {
         if (!(deps.docsConnector && d === launchDir))
             docsConnectors.delete(d);
         return result;
+    }));
+    // Best-effort probe runner: construction failures (bad adapter type/config,
+    // CONFIG_MISSING, an import that fails to load) are exactly as much "the
+    // backend isn't reachable right now" as a network error mid-call, so they
+    // fold into the same verdict mapping instead of a distinct failure shape.
+    const safeProbe = async (fn) => {
+        try {
+            return await fn();
+        }
+        catch (e) {
+            return probeVerdictForError(e);
+        }
+    };
+    server.registerTool("config_probe", { description: "Credential preflight (CRN-48) -- one cheap authenticated call to the configured "
+            + "tracker (and docs connector, when configured), each mapped to a specific verdict: "
+            + "ok / bad_host / bad_token / missing_scope / rate_limited / down. A probe failure IS "
+            + "the result -- this tool never throws for a bad backend",
+        inputSchema: {} }, wrap(async () => {
+        const d = dir();
+        const tracker = {
+            tracker: await safeProbe(async () => {
+                const t = await getTracker(d);
+                return t.probe ? t.probe() : { verdict: "ok" };
+            }),
+        };
+        const cfg = loadConfig(d);
+        if (!cfg.docs)
+            return tracker;
+        const docs = await safeProbe(async () => {
+            const connector = await getDocsConnector(d);
+            return connector.probe ? connector.probe() : { verdict: "ok" };
+        });
+        return { ...tracker, docs };
     }));
     server.registerTool("issue_comment", { description: "Post a plain-language comment on a tracker issue (management-visible progress note)",
         inputSchema: { id: z.string(), text: z.string() } }, wrap(async (a) => (await getTracker()).commentIssue(a.id, a.text)));

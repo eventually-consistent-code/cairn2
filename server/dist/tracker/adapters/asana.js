@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson } from "../http.js";
+import { runProbe } from "../probe.js";
 import { assertCanonicalState, matchesState } from "../types.js";
 import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 const API = "https://app.asana.com/api/1.0";
@@ -46,6 +47,10 @@ export class AsanaTracker {
         if (!/^\d+$/.test(id)) {
             throw new CairnError("NOT_FOUND", `invalid task id: ${id}`, "task id must be a numeric gid");
         }
+    }
+    /** Preflight: /users/me is Asana's cheapest authenticated call. */
+    async probe() {
+        return runProbe(() => this.api("GET", "/users/me", undefined, "probe"));
     }
     normalize(raw) {
         const sectionGid = raw.memberships?.[0]?.section?.gid;

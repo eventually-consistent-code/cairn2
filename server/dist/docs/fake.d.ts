@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ProbeResult } from "../tracker/types.js";
 import type { DocsCapability, DocsConnector, Page, PageSpec } from "./types.js";
 export declare const configSchema: z.ZodObject<{}, "strip", z.ZodTypeAny, {}, {}>;
 export declare function make(): DocsConnector;
@@ -18,5 +19,6 @@ export declare class FakeDocsConnector implements DocsConnector {
     listChildren(parentId: string): Promise<Page[]>;
     createPage(spec: PageSpec): Promise<Page>;
     updatePage(id: string, spec: PageSpec): Promise<Page>;
+    probe(): Promise<ProbeResult>;
 }
 export {};

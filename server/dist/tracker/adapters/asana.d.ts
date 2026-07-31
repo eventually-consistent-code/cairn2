@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { type FetchLike } from "../http.js";
-import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker } from "../types.js";
+import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, ProbeResult, Tracker } from "../types.js";
 export declare const configSchema: z.ZodObject<{
     projectGid: z.ZodString;
     tokenEnv: z.ZodDefault<z.ZodString>;
@@ -24,6 +24,8 @@ export declare class AsanaTracker implements Tracker {
     private headers;
     private api;
     private assertId;
+    /** Preflight: /users/me is Asana's cheapest authenticated call. */
+    probe(): Promise<ProbeResult>;
     private normalize;
     createIssue(input: IssueCreate): Promise<Issue>;
     getIssue(id: string): Promise<Issue>;

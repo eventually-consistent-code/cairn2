@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, paginateCursor } from "../../tracker/http.js";
+import { runProbe } from "../../tracker/probe.js";
 import { markdownToStorage } from "../markdown.js";
 export const configSchema = z.object({
     /** Site wiki base, e.g. https://your-domain.atlassian.net/wiki */
@@ -75,6 +76,11 @@ export class ConfluenceConnector {
             homepageId: found.homepageId == null ? "" : String(found.homepageId),
         };
         return this.space;
+    }
+    /** Preflight: resolving the configured space is the cheapest authenticated
+     *  call this connector has — the same one every other method needs first. */
+    async probe() {
+        return runProbe(() => this.getSpace());
     }
     /**
      * Find the project's folder by title (case-insensitive) anywhere in the

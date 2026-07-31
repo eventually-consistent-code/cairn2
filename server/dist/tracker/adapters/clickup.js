@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson } from "../http.js";
+import { runProbe } from "../probe.js";
 import { matchesState } from "../types.js";
 import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 const API = "https://api.clickup.com/api/v2";
@@ -58,6 +59,10 @@ export class ClickUpTracker {
         if (!/^[a-z0-9]+$/i.test(id)) {
             throw new CairnError("NOT_FOUND", `invalid task id: ${id}`, "task id must be alphanumeric");
         }
+    }
+    /** Preflight: /team is ClickUp's cheapest authenticated call. */
+    async probe() {
+        return runProbe(() => this.api("GET", "/team", undefined, "clickup probe"));
     }
     /** Validates a caller-supplied phase (list) id before it reaches a URL. defaultListId is trusted config, not user input. */
     assertPhaseId(id) {

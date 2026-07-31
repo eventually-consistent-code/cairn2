@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, paginateCursor, type FetchLike } from "../../tracker/http.js";
+import { runProbe } from "../../tracker/probe.js";
+import type { ProbeResult } from "../../tracker/types.js";
 import { markdownToStorage } from "../markdown.js";
 import type { DocsCapability, DocsConnector, Page, PageImage, PageSpec } from "../types.js";
 
@@ -100,6 +102,12 @@ export class ConfluenceConnector implements DocsConnector {
       homepageId: found.homepageId == null ? "" : String(found.homepageId),
     };
     return this.space;
+  }
+
+  /** Preflight: resolving the configured space is the cheapest authenticated
+   *  call this connector has — the same one every other method needs first. */
+  async probe(): Promise<ProbeResult> {
+    return runProbe(() => this.getSpace());
   }
 
   /**

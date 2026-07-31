@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { type FetchLike } from "../http.js";
-import type { Capability, Issue, IssueCreate, IssueLink, IssuePatch, IssueState, LinkType, Milestone, Phase, Tracker } from "../types.js";
+import type { Capability, Issue, IssueCreate, IssueLink, IssuePatch, IssueState, LinkType, Milestone, Phase, ProbeResult, Tracker } from "../types.js";
 export declare const configSchema: z.ZodObject<{
     teamId: z.ZodString;
     apiKeyEnv: z.ZodDefault<z.ZodString>;
@@ -24,6 +24,10 @@ export declare class LinearTracker implements Tracker {
         apiKeyEnv: string;
     }, fetchImpl?: FetchLike, keyProvider?: () => string);
     private gql;
+    /** Preflight: {viewer{id}} is the cheapest authenticated GraphQL call —
+     *  Linear has no resolveSelf here (viewer id isn't otherwise useful), so
+     *  this is the probe's own dedicated cheap call. */
+    probe(): Promise<ProbeResult>;
     private normalize;
     /** Team workflow states, fetched once. */
     private states;

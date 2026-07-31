@@ -1,8 +1,10 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, type FetchLike } from "../http.js";
+import { runProbe } from "../probe.js";
 import type {
-  Capability, StateCategory, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
+  Capability, StateCategory, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase,
+  ProbeResult, Tracker,
 } from "../types.js";
 import { matchesState } from "../types.js";
 import { phaseCloseUnsupported } from "../unsupported.js";
@@ -132,6 +134,12 @@ export class AzureBoardsTracker implements Tracker {
     this.self = data.authenticatedUser?.properties?.Account?.$value
       ?? data.authenticatedUser?.providerDisplayName;
     return this.self;
+  }
+
+  /** Preflight: connectionData is the cheapest authenticated call this
+   *  backend has — the same one resolveSelf already makes. */
+  async probe(): Promise<ProbeResult> {
+    return runProbe(() => this.resolveSelf());
   }
 
   private get projectPath(): string {

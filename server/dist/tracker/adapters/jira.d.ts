@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { type FetchLike } from "../http.js";
-import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker } from "../types.js";
+import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, ProbeResult, Tracker } from "../types.js";
 export declare const configSchema: z.ZodObject<{
     baseUrl: z.ZodString;
     projectKey: z.ZodString;
@@ -67,6 +67,9 @@ export declare class JiraTracker implements Tracker {
     getIssue(id: string): Promise<Issue>;
     private self;
     resolveSelf(): Promise<string | undefined>;
+    /** Preflight: /myself is the cheapest authenticated call this backend has —
+     *  the same one resolveSelf already makes. */
+    probe(): Promise<ProbeResult>;
     /** Assignee values may arrive as an email (user.handle) — Jira wants accountId. */
     private toAccountId;
     updateIssue(id: string, patch: IssuePatch): Promise<Issue>;
