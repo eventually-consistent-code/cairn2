@@ -2,7 +2,11 @@ import { basename, resolve } from "node:path";
 import { CairnError } from "../errors.js";
 import { phaseDirName, scaffoldPhase, scaffoldProject, slugify, writePlanIssues, } from "./artifacts.js";
 import { projectStatus } from "./status.js";
-const CANONICAL_RE = /^Phase (\d+): (.+)$/;
+// Accepts an optional single-digit fraction so a decimal-numbered phase
+// mirrored to the tracker ("Phase 1.5: gamma", written by mirror.ts's
+// canonicalPhaseName) round-trips back through plan_import instead of
+// falling through to the prior/max+1 guess below.
+const CANONICAL_RE = /^Phase (\d+(?:\.\d)?): (.+)$/;
 export async function importPhase(tracker, projectDir, phaseRef) {
     const phases = await tracker.listPhases();
     let phase = phases.find((p) => p.id === phaseRef);

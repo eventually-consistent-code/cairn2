@@ -15,7 +15,11 @@ export interface ImportResult {
   created: string[];
 }
 
-const CANONICAL_RE = /^Phase (\d+): (.+)$/;
+// Accepts an optional single-digit fraction so a decimal-numbered phase
+// mirrored to the tracker ("Phase 1.5: gamma", written by mirror.ts's
+// canonicalPhaseName) round-trips back through plan_import instead of
+// falling through to the prior/max+1 guess below.
+const CANONICAL_RE = /^Phase (\d+(?:\.\d)?): (.+)$/;
 
 export async function importPhase(
   tracker: Tracker, projectDir: string, phaseRef: string,

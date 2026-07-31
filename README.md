@@ -70,15 +70,15 @@ unplanned-work surfacing (tracker issues no plan references), `import`
 assignee-aware claiming, and plans/cards that collaborate through ordinary
 git PRs.
 
-**Verbs (37 live):** `plan` `work` `verify` `ship` `status` `new` `import`
-`remember` `recall` `help` `do` `waypoint` `scout` `route` `summit` `auto`
+**Verbs (38 live):** `plan` `work` `verify` `ship` `status` `new` `import`
+`remember` `recall` `help` `do` `waypoint` `scout` `survey` `route` `summit` `auto`
 `fast` `resync` `mark` `retro` `distill` `brief` `tune` `trace` `probe`
 `draft` `audit` `review` `triage` `map` `thread` `profile` `medic`
 `backtrack` `basecamp` `peers` `docs` — each a `/cairn:<verb>` command, generated
 from the routing table.
 The routing table is complete: the reserved verb set is now empty.
 
-**Server:** 65 typed MCP tools, 555 passing tests (env-gated live-backend
+**Server:** 71 typed MCP tools, 766 passing tests (env-gated live-backend
 suites skip without creds), three dependencies (`@modelcontextprotocol/sdk`,
 `better-sqlite3`, `zod`). Fail loud, never fake state.
 

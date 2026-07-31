@@ -1,5 +1,5 @@
 ---
-description: "Cross-phase quality audits — uat/milestone/security/ui/eval/validation/tests/plans (cairn — /cairn:help for the verb reference)"
+description: "Cross-phase quality audits — uat/milestone/security[--surface]/ui/eval/validation/tests/plans/docs (cairn — /cairn:help for the verb reference)"
 argument-hint: "<mode> [target] | --fix"
 ---
 

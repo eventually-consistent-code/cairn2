@@ -15,7 +15,7 @@ import { danglingEdges, effectivePriorities, lineage, readyFrontier } from "./tr
 import { finalizeMigration, migrateTracker } from "./tracker/migrate.js";
 import { makeDocsConnector } from "./docs/registry.js";
 import { defaultProjectName, publishTree } from "./docs/publish.js";
-import { scaffoldProject, scaffoldPhase, writePlanIssues, readPlanMeta, writePlanMeta } from "./planning/artifacts.js";
+import { scaffoldProject, scaffoldPhase, writePlanIssues, readPlanMeta, writePlanMeta, isValidPhaseNumber, parsePhaseDirName, PHASE_NUMBER_ERROR, } from "./planning/artifacts.js";
 import { projectStatus } from "./planning/status.js";
 import { driftReport, ensurePhase } from "./planning/mirror.js";
 import { unplannedReport } from "./planning/collab.js";
@@ -40,7 +40,18 @@ import { PROVIDERS, peerList, peerRun } from "./peers/run.js";
 // Widened (CRN-26): canonical three or a backend-defined custom state name.
 const StateEnum = z.string().min(1);
 const HandoffSourceEnum = z.enum(["tool", "posttooluse", "precompact", "waypoint"]);
-const HandoffPhaseRefSchema = z.object({ number: z.number().int(), slug: z.string() });
+// Phase numbers are widened to accept decimals (integers 1..99, or exactly
+// one fractional digit .1-.9 with integer part 1..98 -- lets a phase slot in
+// (1.5) between 1 and 2 without renumbering the roadmap). Deliberately NOT a
+// Zod .refine() here: MCP SDK schema rejection happens before wrap() ever
+// runs, so a refine failure surfaces as a raw SDK -32602 string, never the
+// structured {code, message, nextAction} envelope every other CONFIG_INVALID
+// case produces. plan_scaffold_phase/plan_phase_ensure let a bare z.number()
+// through and rely on phaseDirName/ensurePhase (both call isValidPhaseNumber
+// from planning/artifacts.ts) to throw a genuine CairnError, which wrap()
+// converts correctly. continuity_checkpoint has no such downstream guard
+// (writeHandoff doesn't validate), so its handler checks explicitly below.
+const HandoffPhaseRefSchema = z.object({ number: z.number(), slug: z.string() });
 // Zod mirrors of map/store.ts's NodeType/EdgeType/MapNode/MapEdge -- kept in
 // sync by hand (the store module owns the types; this is just the MCP-layer
 // schema for them, same duplication tradeoff as the mem_timeline helpers above).
@@ -143,7 +154,7 @@ export function buildServer(deps) {
     // same spirit as the rest of write-through refresh.
     const phaseHandoffRef = (number, d = dir()) => {
         const match = projectStatus(d).phases.find((p) => p.number === number);
-        return match ? { number, slug: match.dir.slice(3) } : undefined;
+        return match ? { number, slug: parsePhaseDirName(match.dir)?.slug ?? match.dir } : undefined;
     };
     server.registerTool("context_get", { description: "Get the active cairn context (phase, issue)", inputSchema: {} }, wrap(() => getCtx().get()));
     server.registerTool("context_set", { description: "Set/clear active cairn context fields (null clears)",
@@ -336,23 +347,24 @@ export function buildServer(deps) {
     server.registerTool("phase_list", { description: "List phases", inputSchema: {} }, wrap(async () => (await getTracker()).listPhases()));
     server.registerTool("plan_scaffold_project", { description: "Create .cairn/plans/PROJECT.md + roadmap.md (never overwrites)",
         inputSchema: { name: z.string() } }, wrap((a) => scaffoldProject(dir(), a.name)));
-    server.registerTool("plan_scaffold_phase", { description: "Create phases/NN-slug/ with CONTEXT.md + PLAN.md (+RESEARCH.md)",
-        inputSchema: { number: z.number().int(), name: z.string(),
+    server.registerTool("plan_scaffold_phase", { description: "Create phases/NN-slug/ (or NN.F-slug/ for a decimal insert) with "
+            + "CONTEXT.md + PLAN.md (+RESEARCH.md)",
+        inputSchema: { number: z.number(), name: z.string(),
             research: z.boolean().optional() } }, wrap((a) => scaffoldPhase(dir(), a.number, a.name, { research: a.research })));
     server.registerTool("plan_status", { description: "Phases, artifact presence, and referenced tracker issues",
         inputSchema: {} }, wrap(() => projectStatus(dir())));
     server.registerTool("plan_phase_ensure", { description: "Ensure the tracker has a phase named 'Phase N: <name>' (idempotent)",
-        inputSchema: { number: z.number().int(), name: z.string() } }, wrap(async (a) => ensurePhase(await getTracker(), a.number, a.name)));
+        inputSchema: { number: z.number(), name: z.string() } }, wrap(async (a) => ensurePhase(await getTracker(), a.number, a.name)));
     server.registerTool("plan_drift", { description: "Flag plan-referenced issues that are missing or closed-unverified",
         inputSchema: {} }, wrap(async () => {
         const d = dir();
         return driftReport(await getTracker(d), d);
     }));
-    const PHASE_DIR_RE = /^\d{2}-[a-z0-9-]+$/;
     server.registerTool("plan_issues_set", { description: "Set the tracker issue ids a phase's PLAN.md advances",
         inputSchema: { phaseDir: z.string(), issues: z.array(z.string()) } }, wrap((a) => {
-        if (!PHASE_DIR_RE.test(a.phaseDir)) {
-            throw new CairnError("CONFIG_INVALID", `phaseDir must look like 01-name, got '${a.phaseDir}'`);
+        const parsed = parsePhaseDirName(a.phaseDir);
+        if (!parsed) {
+            throw new CairnError("CONFIG_INVALID", `phaseDir must look like 01-name or 01.5-name, got '${a.phaseDir}'`);
         }
         const d = dir();
         const planPath = join(d, ".cairn", "plans", "phases", a.phaseDir, "PLAN.md");
@@ -362,7 +374,7 @@ export function buildServer(deps) {
         writePlanIssues(d, a.phaseDir, a.issues);
         refreshHandoff({
             source: "tool",
-            phase: { number: Number(a.phaseDir.slice(0, 2)), slug: a.phaseDir.slice(3) },
+            phase: { number: parsed.number, slug: parsed.slug },
             plan: join(".cairn", "plans", "phases", a.phaseDir, "PLAN.md"),
         }, d);
         return { ok: true };
@@ -506,7 +518,7 @@ export function buildServer(deps) {
         const result = await importPhase(await getTracker(d), d, a.phaseRef);
         refreshHandoff({
             source: "tool",
-            phase: { number: result.number, slug: result.dir.slice(3) },
+            phase: { number: result.number, slug: parsePhaseDirName(result.dir)?.slug ?? result.dir },
             plan: join(".cairn", "plans", "phases", result.dir, "PLAN.md"),
         }, d);
         return result;
@@ -527,6 +539,12 @@ export function buildServer(deps) {
             notes: z.string().optional(),
             partial: z.boolean().optional(),
         } }, wrap((a) => {
+        // writeHandoff doesn't independently validate -- unlike phaseDirName/
+        // ensurePhase, there's no downstream CairnError to catch a bad phase
+        // number here, so check explicitly before it ever reaches disk.
+        if (a.phase && !isValidPhaseNumber(a.phase.number)) {
+            throw new CairnError("CONFIG_INVALID", PHASE_NUMBER_ERROR(a.phase.number));
+        }
         const d = dir();
         writeHandoff(d, { ...a, source: a.source ?? "tool" });
         return readHandoff(d);
@@ -550,9 +568,11 @@ export function buildServer(deps) {
         const d = dir();
         const { phaseDir, ...entry } = a;
         const result = appendLedger(d, phaseDir, entry);
+        const parsed = parsePhaseDirName(phaseDir);
         refreshHandoff({
             source: "tool",
-            phase: { number: Number(phaseDir.slice(0, 2)), slug: phaseDir.slice(3) },
+            phase: { number: parsed?.number ?? Number(phaseDir.slice(0, 2)),
+                slug: parsed?.slug ?? phaseDir.slice(3) },
             issue: entry.issueId,
         }, d);
         return result;
@@ -588,14 +608,15 @@ export function buildServer(deps) {
         inputSchema: { phaseDir: z.string(),
             waves: z.array(z.array(z.string())).optional(),
             tdd: z.array(z.string()).optional() } }, wrap((a) => {
-        if (!PHASE_DIR_RE.test(a.phaseDir)) {
-            throw new CairnError("CONFIG_INVALID", `phaseDir must look like 01-name, got '${a.phaseDir}'`);
+        const parsed = parsePhaseDirName(a.phaseDir);
+        if (!parsed) {
+            throw new CairnError("CONFIG_INVALID", `phaseDir must look like 01-name or 01.5-name, got '${a.phaseDir}'`);
         }
         const d = dir();
         writePlanMeta(d, a.phaseDir, { waves: a.waves, tdd: a.tdd });
         refreshHandoff({
             source: "tool",
-            phase: { number: Number(a.phaseDir.slice(0, 2)), slug: a.phaseDir.slice(3) },
+            phase: { number: parsed.number, slug: parsed.slug },
         }, d);
         return { ok: true, ...readPlanMeta(d, a.phaseDir) };
     }));

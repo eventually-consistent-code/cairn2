@@ -3,7 +3,7 @@ import { mkdtempSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  slugify, phaseDirName, scaffoldProject, scaffoldPhase,
+  slugify, phaseDirName, parsePhaseDirName, isValidPhaseNumber, scaffoldProject, scaffoldPhase,
   readPlanIssues, writePlanIssues, readPlanMeta, writePlanMeta,
 } from "../src/planning/artifacts.js";
 
@@ -21,6 +21,46 @@ describe("slugify / phaseDirName", () => {
       expect.objectContaining({ code: "CONFIG_INVALID" }));
     expect(() => phaseDirName(100, "x")).toThrowError(
       expect.objectContaining({ code: "CONFIG_INVALID" }));
+  });
+});
+
+describe("decimal phase numbers (CRN — insert without renumbering)", () => {
+  it("accepts integers 1..99 and N.1-N.9 with N=1..98", () => {
+    for (const n of [1, 99, 1.5, 12.3, 98.9, 1.1, 1.9]) {
+      expect(isValidPhaseNumber(n)).toBe(true);
+    }
+  });
+  it("treats a float that equals an integer (1.0) as that integer", () => {
+    expect(isValidPhaseNumber(1.0)).toBe(true);
+    expect(phaseDirName(1.0, "gamma")).toBe(phaseDirName(1, "gamma"));
+  });
+  it("rejects out-of-range, over-precise, negative, and boundary-breaking numbers", () => {
+    for (const n of [1.55, 0.5, 99.5, -1, 0, 100, 99.1, 1.23]) {
+      expect(isValidPhaseNumber(n)).toBe(false);
+      expect(() => phaseDirName(n, "x")).toThrowError(
+        expect.objectContaining({ code: "CONFIG_INVALID" }));
+    }
+  });
+  it("pads the integer part only, two digits, fraction appended before the slug", () => {
+    expect(phaseDirName(1.5, "gamma")).toBe("01.5-gamma");
+    expect(phaseDirName(12.3, "beta")).toBe("12.3-beta");
+    expect(phaseDirName(98.9, "x")).toBe("98.9-x");
+  });
+  it("lexical ordering holds: 01-... < 01.5-... < 02-...", () => {
+    const a = phaseDirName(1, "gamma");
+    const b = phaseDirName(1.5, "gamma");
+    const c = phaseDirName(2, "gamma");
+    expect([c, a, b].sort()).toEqual([a, b, c]);
+  });
+  it("parsePhaseDirName round-trips a decimal dir name to its exact float", () => {
+    expect(parsePhaseDirName("01.5-gamma")).toEqual({ number: 1.5, slug: "gamma" });
+    expect(parsePhaseDirName("12.3-beta")).toEqual({ number: 12.3, slug: "beta" });
+    expect(parsePhaseDirName("03-tracker-core")).toEqual({ number: 3, slug: "tracker-core" });
+  });
+  it("parsePhaseDirName returns null for malformed dir names", () => {
+    expect(parsePhaseDirName("../evil")).toBeNull();
+    expect(parsePhaseDirName("1-x")).toBeNull();
+    expect(parsePhaseDirName("01.55-x")).toBeNull();
   });
 });
 

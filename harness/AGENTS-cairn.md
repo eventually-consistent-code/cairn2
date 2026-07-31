@@ -58,6 +58,7 @@ executing that verb.
 | basecamp | Multi-project workspaces — dispatch board, focus, parallel workstreams | init \| focus <member> \| dispatch \| claim\|update\|done <id> |
 | peers | Convene external AI CLIs as reviewers — convergence with adversarial judgment | (none = status) \| review [target] \| plan <phase> |
 | docs | Publish repo docs to the configured docs connector (Confluence) — landing page + page tree | publish [--name "<project>"] \| (none = status) |
+| survey | Project-wide research — findings, then discussed roadmap changes | ["<topic>"] |
 
 ## Shared rules (inherited by every subroutine)
 
