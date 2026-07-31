@@ -57,10 +57,25 @@ jobs:
 
       # Server first — the root package's cairn-setup falls back to
       # `npx @eventually-consistent/cairn-server`, so it must exist.
+      # Both publishes skip when the exact version already exists, so a
+      # partial-failure rerun finishes the release instead of dying on
+      # "cannot publish over previously published versions".
       - name: publish @eventually-consistent/cairn-server
         working-directory: server
-        run: npm publish
+        run: |
+          v="$(node -p "require('./package.json').version")"
+          if npm view "@eventually-consistent/cairn-server@$v" version >/dev/null 2>&1; then
+            echo "cairn-server@$v already on the registry — skipping..."
+          else
+            npm publish
+          fi
         continue-on-error: false
 
       - name: publish @eventually-consistent/cairn
-        run: npm publish
+        run: |
+          v="$(node -p "require('./package.json').version")"
+          if npm view "@eventually-consistent/cairn@$v" version >/dev/null 2>&1; then
+            echo "cairn@$v already on the registry — skipping..."
+          else
+            npm publish
+          fi
