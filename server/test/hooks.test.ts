@@ -155,6 +155,29 @@ describe("posttooluse-breadcrumb", () => {
     expect(existsSync(join(home, ".cairn"))).toBe(false);
   });
 
+  it("is hermetic: a CLAUDE_PROJECT_DIR leaked from the runner's env cannot redirect the fixture", () => {
+    const proj = freshDir("cairn-hooks-proj-");
+    const home = freshDir("cairn-hooks-home-");
+    const elsewhere = freshDir("cairn-hooks-elsewhere-");
+    const path = writeHandoffFixture(home, proj, baseHandoff());
+    backdateMtime(path, 70_000);
+
+    const before = readFileSync(path, "utf8");
+    // Simulate a polluted runner (context-mode sandbox, subagent shells):
+    // the parent process carries CLAUDE_PROJECT_DIR pointing somewhere else.
+    const saved = process.env.CLAUDE_PROJECT_DIR;
+    process.env.CLAUDE_PROJECT_DIR = elsewhere;
+    try {
+      runHook(BREADCRUMB, proj, home);
+    } finally {
+      if (saved === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+      else process.env.CLAUDE_PROJECT_DIR = saved;
+    }
+
+    // The write must land at the fixture's cwd-derived path, not elsewhere's.
+    expect(readFileSync(path, "utf8")).not.toBe(before);
+  });
+
   it("storm test: 5 rapid invocations produce at most 1 write (60s throttle)", () => {
     const proj = freshDir("cairn-hooks-proj-");
     const home = freshDir("cairn-hooks-home-");
