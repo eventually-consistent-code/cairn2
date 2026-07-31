@@ -55,27 +55,53 @@ await call("plan_scaffold_project", { name: "survey-drill" });
 const p1 = await call("plan_scaffold_phase", { number: 1, name: "alpha" });
 const p2 = await call("plan_scaffold_phase", { number: 2, name: "beta" });
 
-// -- marker discipline: done sections survive a resume ------------------------
-console.log("SURVEY.md marker discipline...");
+// -- marker discipline: done sections survive a resume, two real temporal
+// states -- write the pre-resume file, then simulate what a resume actually
+// does (rewrite the pending section, leave done sections alone, append a
+// fresh pending section), and assert against the POST-resume file. A resume
+// that clobbers a done section, or that fails to flip the researched
+// section's marker, fails these checks for real. -----------------------------
+console.log("SURVEY.md marker discipline: two-state resume...");
 const surveyPath = join(PROJECT, ".cairn", "plans", "SURVEY.md");
-const before = [
-  "# Survey",
-  "",
+
+const doneSection = [
   "## finished topic",
   "<!-- survey: done -->",
   "finding: keep me",
   "",
+].join("\n");
+const pendingSection = [
   "## unfinished topic",
   "<!-- survey: pending -->",
   "",
 ].join("\n");
-writeFileSync(surveyPath, before);
+const preResume = ["# Survey", "", doneSection, pendingSection].join("\n");
+writeFileSync(surveyPath, preResume);
+
+// simulate the resume: done section carried over byte-identical, the
+// formerly-pending section is now researched (content filled, marker
+// flipped to done), and a brand-new pending section is appended
+const resumedSection = [
+  "## unfinished topic",
+  "<!-- survey: done -->",
+  "finding: now resolved",
+  "",
+].join("\n");
+const appendedSection = [
+  "## newly discovered topic",
+  "<!-- survey: pending -->",
+  "",
+].join("\n");
+const postResume = ["# Survey", "", doneSection, resumedSection, appendedSection].join("\n");
+writeFileSync(surveyPath, postResume);
 const readBack = readFileSync(surveyPath, "utf8");
-check("SURVEY.md done marker parses",
-  /## finished topic\n<!-- survey: done -->/.test(readBack));
-check("SURVEY.md pending marker parses",
-  /## unfinished topic\n<!-- survey: pending -->/.test(readBack));
-check("done section content intact", readBack.includes("finding: keep me"));
+
+check("resume: original done section survives byte-identical (not clobbered)",
+  readBack.includes(doneSection));
+check("resume: formerly-pending section now carries the done marker + new content",
+  /## unfinished topic\n<!-- survey: done -->\nfinding: now resolved/.test(readBack));
+check("resume: newly appended section carries the pending marker",
+  /## newly discovered topic\n<!-- survey: pending -->/.test(readBack));
 
 // -- decimal insert: phase 1.5 between 1 and 2, no renumber -------------------
 console.log("decimal insert (1.5) between the existing neighbors...");
@@ -131,4 +157,4 @@ check("mem_index accepted SURVEY.md", idx.ok === true);
 await client.close();
 const failed = checks.filter(([, ok]) => !ok);
 console.log(`\n${failed.length === 0 ? "DRILL PASS" : "DRILL FAIL"} — ${checks.length - failed.length}/${checks.length} checks`);
-process.exit(failed.length === 0 ? 0 : 1);
+process.exit(failed.length);
