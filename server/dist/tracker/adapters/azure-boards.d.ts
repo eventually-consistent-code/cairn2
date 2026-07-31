@@ -42,8 +42,9 @@ export declare class AzureBoardsTracker implements Tracker {
     private assertId;
     private self;
     resolveSelf(): Promise<string | undefined>;
-    /** Preflight: connectionData is the cheapest authenticated call this
-     *  backend has — the same one resolveSelf already makes. */
+    /** Preflight: /_apis/projects/{project} over resolveSelf's connectionData
+     *  -- connectionData only proves the PAT is valid, not that the configured
+     *  project exists. A typo'd project now 404s instead of reading "ok". */
     probe(): Promise<ProbeResult>;
     private get projectPath();
     private normalizeState;

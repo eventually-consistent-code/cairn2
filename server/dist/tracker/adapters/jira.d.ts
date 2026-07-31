@@ -67,8 +67,9 @@ export declare class JiraTracker implements Tracker {
     getIssue(id: string): Promise<Issue>;
     private self;
     resolveSelf(): Promise<string | undefined>;
-    /** Preflight: /myself is the cheapest authenticated call this backend has —
-     *  the same one resolveSelf already makes. */
+    /** Preflight: /project/{projectKey} over resolveSelf's /myself -- /myself
+     *  only proves the token is valid, not that the configured project exists.
+     *  A typo'd projectKey now 404s instead of reading "ok". */
     probe(): Promise<ProbeResult>;
     /** Assignee values may arrive as an email (user.handle) — Jira wants accountId. */
     private toAccountId;

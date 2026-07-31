@@ -48,9 +48,11 @@ export class AsanaTracker {
             throw new CairnError("NOT_FOUND", `invalid task id: ${id}`, "task id must be a numeric gid");
         }
     }
-    /** Preflight: /users/me is Asana's cheapest authenticated call. */
+    /** Preflight: /projects/{projectGid} over /users/me -- /users/me only
+     *  proves the token is valid, not that the configured project exists.
+     *  A typo'd projectGid now 404s instead of reading "ok". */
     async probe() {
-        return runProbe(() => this.api("GET", "/users/me", undefined, "probe"));
+        return runProbe(() => this.api("GET", `/projects/${this.cfg.projectGid}`, undefined, "probe"));
     }
     normalize(raw) {
         const sectionGid = raw.memberships?.[0]?.section?.gid;

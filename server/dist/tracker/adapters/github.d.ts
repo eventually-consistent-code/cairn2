@@ -23,8 +23,9 @@ export declare class GitHubTracker implements Tracker {
     private assertId;
     private self;
     resolveSelf(): Promise<string | undefined>;
-    /** Preflight: /user is the cheapest authenticated call this backend has —
-     *  the same one resolveSelf already makes. */
+    /** Preflight: /repos/{repo} over resolveSelf's /user -- /user only proves
+     *  the token is valid, not that the configured repo exists. One cheap
+     *  call, same cost, but a typo'd repo now 404s instead of reading "ok". */
     probe(): Promise<ProbeResult>;
     private normalize;
     createIssue(input: IssueCreate): Promise<Issue>;

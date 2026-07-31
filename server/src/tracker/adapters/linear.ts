@@ -82,12 +82,14 @@ export class LinearTracker implements Tracker {
     return data as T;
   }
 
-  /** Preflight: {viewer{id}} is the cheapest authenticated GraphQL call —
-   *  Linear has no resolveSelf here (viewer id isn't otherwise useful), so
-   *  this is the probe's own dedicated cheap call. */
+  /** Preflight: team(id) over a bare {viewer{id}} -- viewer only proves the
+   *  API key is valid, not that the configured teamId exists. A typo'd
+   *  teamId now comes back as a GraphQL not-found error (-> bad_host)
+   *  instead of reading "ok". */
   async probe(): Promise<ProbeResult> {
-    return runProbe(() => this.gql<{ viewer: { id: string } }>(
-      `query Viewer { viewer { id } }`, {}, "probe"));
+    return runProbe(() => this.gql<{ team: { id: string } }>(
+      `query Team($teamId: String!) { team(id: $teamId) { id } }`,
+      { teamId: this.cfg.teamId }, "probe"));
   }
 
   private normalize(raw: LinearIssueNode): Issue {

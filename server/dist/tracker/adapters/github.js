@@ -69,10 +69,11 @@ export class GitHubTracker {
         this.self = me.login;
         return this.self;
     }
-    /** Preflight: /user is the cheapest authenticated call this backend has —
-     *  the same one resolveSelf already makes. */
+    /** Preflight: /repos/{repo} over resolveSelf's /user -- /user only proves
+     *  the token is valid, not that the configured repo exists. One cheap
+     *  call, same cost, but a typo'd repo now 404s instead of reading "ok". */
     async probe() {
-        return runProbe(() => this.resolveSelf());
+        return runProbe(() => this.api("GET", `/repos/${this.cfg.repo}`));
     }
     normalize(raw) {
         const labels = raw.labels.map((l) => l.name);
