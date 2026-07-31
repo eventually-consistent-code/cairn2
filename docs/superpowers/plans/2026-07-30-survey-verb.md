@@ -499,3 +499,31 @@ Implements docs/superpowers/specs/2026-07-30-cairn-2-survey-verb-design.md.
 EOF
 )"
 ```
+
+---
+
+## Amendment (2026-07-30, mid-execution): Task 6a — server decimal-phase support
+
+Task 6 exposed that `plan_scaffold_phase` rejects decimals (`z.number().int()`
+in server/src/index.ts; integer guard in `phaseDirName`,
+server/src/planning/artifacts.ts) — route.md's `insert <N.5>` was
+aspirational. Human ruling: implement decimal support on this branch; the
+"no server code changes" constraint is lifted for exactly this.
+
+Requirements (TDD — failing tests first):
+- Accept phase numbers with exactly one fractional digit (N.1–N.9),
+  integer part 1..98, alongside integers 1..99. Anything else still errors
+  (CONFIG_INVALID).
+- Dir form pads the integer part only: `01.5-slug` — lexically sorts
+  between `01-…` and `02-…`. Roadmap/status/drift code that parses phase
+  numbers from dir names must round-trip decimals: sweep phaseDirName
+  callers and any `parseInt`/`Number(` on phase dirs, fix + test each.
+- Widen the schemas: `plan_scaffold_phase`, `plan_phase_ensure`, and any
+  other tool taking a phase `number`.
+- Tests: artifacts unit tests (accept 1.5 → `01.5-slug`; reject 1.55,
+  0.5, 99.5), tool-layer test via the MCP harness pattern used by
+  server/test/mcp.test.ts, and a round-trip (scaffold 1, 1.5, 2 → status
+  lists them ordered 1, 1.5, 2).
+- Full suite green; dist rebuilt (`npm run build`) so the drift gate passes.
+
+Task 6 (drill) then proceeds unchanged.
