@@ -85,9 +85,17 @@ function writeHandoffFixture(home: string, projectDir: string, data: Record<stri
 
 /** Runs a hook script with cwd=projectDir, HOME=home, plus any extra env (e.g. CLAUDE_PROJECT_DIR). Returns trimmed stdout. */
 function runHook(script: string, projectDir: string, home: string, extraEnv: Record<string, string> = {}): string {
+  // Hermetic child env: some runners (context-mode sandbox, subagent shells)
+  // export CLAUDE_PROJECT_DIR, which every hook script prefers over cwd --
+  // inherited unstripped it silently redirects every fixture path to the
+  // real repo. Strip it and CAIRN_* unless a test passes one via extraEnv.
+  const env: Record<string, string | undefined> = { ...process.env, HOME: home, ...extraEnv };
+  for (const k of Object.keys(env)) {
+    if ((k === "CLAUDE_PROJECT_DIR" || k.startsWith("CAIRN_")) && !(k in extraEnv)) delete env[k];
+  }
   return execFileSync(process.execPath, [script], {
     cwd: projectDir,
-    env: { ...process.env, HOME: home, ...extraEnv },
+    env,
     encoding: "utf8",
     timeout: 5000,
   }).trim();
