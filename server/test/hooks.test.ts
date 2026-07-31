@@ -85,9 +85,17 @@ function writeHandoffFixture(home: string, projectDir: string, data: Record<stri
 
 /** Runs a hook script with cwd=projectDir, HOME=home, plus any extra env (e.g. CLAUDE_PROJECT_DIR). Returns trimmed stdout. */
 function runHook(script: string, projectDir: string, home: string, extraEnv: Record<string, string> = {}): string {
+  // Hermetic child env: some runners (context-mode sandbox, subagent shells)
+  // export CLAUDE_PROJECT_DIR, which every hook script prefers over cwd --
+  // inherited unstripped it silently redirects every fixture path to the
+  // real repo. Strip it and CAIRN_* unless a test passes one via extraEnv.
+  const env: Record<string, string | undefined> = { ...process.env, HOME: home, ...extraEnv };
+  for (const k of Object.keys(env)) {
+    if ((k === "CLAUDE_PROJECT_DIR" || k.startsWith("CAIRN_")) && !(k in extraEnv)) delete env[k];
+  }
   return execFileSync(process.execPath, [script], {
     cwd: projectDir,
-    env: { ...process.env, HOME: home, ...extraEnv },
+    env,
     encoding: "utf8",
     timeout: 5000,
   }).trim();
@@ -153,6 +161,29 @@ describe("posttooluse-breadcrumb", () => {
     const stdout = runHook(BREADCRUMB, proj, home);
     expect(stdout).toBe("");
     expect(existsSync(join(home, ".cairn"))).toBe(false);
+  });
+
+  it("is hermetic: a CLAUDE_PROJECT_DIR leaked from the runner's env cannot redirect the fixture", () => {
+    const proj = freshDir("cairn-hooks-proj-");
+    const home = freshDir("cairn-hooks-home-");
+    const elsewhere = freshDir("cairn-hooks-elsewhere-");
+    const path = writeHandoffFixture(home, proj, baseHandoff());
+    backdateMtime(path, 70_000);
+
+    const before = readFileSync(path, "utf8");
+    // Simulate a polluted runner (context-mode sandbox, subagent shells):
+    // the parent process carries CLAUDE_PROJECT_DIR pointing somewhere else.
+    const saved = process.env.CLAUDE_PROJECT_DIR;
+    process.env.CLAUDE_PROJECT_DIR = elsewhere;
+    try {
+      runHook(BREADCRUMB, proj, home);
+    } finally {
+      if (saved === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+      else process.env.CLAUDE_PROJECT_DIR = saved;
+    }
+
+    // The write must land at the fixture's cwd-derived path, not elsewhere's.
+    expect(readFileSync(path, "utf8")).not.toBe(before);
   });
 
   it("storm test: 5 rapid invocations produce at most 1 write (60s throttle)", () => {
