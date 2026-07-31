@@ -734,3 +734,94 @@ describe("JiraTracker custom states", () => {
     expect(post.body).toMatchObject({ transition: { id: "9" } });
   });
 });
+
+describe("JiraTracker scoped-token gateway", () => {
+  /** Header-capturing fetch (JSON or FormData bodies) — same idiom as the attachments block. */
+  function gatewayFetch(fixtures: Array<{ status: number; body: unknown }>) {
+    const calls: Array<{ url: string; method: string; body?: unknown;
+      headers: Record<string, string> }> = [];
+    const f: FetchLike = async (url, init) => {
+      const h: Record<string, string> = {};
+      new Headers(init?.headers).forEach((v, k) => { h[k] = v; });
+      let body: unknown = init?.body;
+      if (typeof body === "string") { try { body = JSON.parse(body); } catch { /* raw */ } }
+      calls.push({ url: String(url), method: init?.method ?? "GET", body, headers: h });
+      const fx = fixtures.shift()!;
+      return new Response(JSON.stringify(fx.body), { status: fx.status });
+    };
+    return { f, calls };
+  }
+
+  const GW_BASE = "https://o.atlassian.net";
+  const CLOUD_ID = "cid-123";
+  const FIELDS = "summary,description,status,updated,labels,parent,assignee,timetracking";
+
+  function makeGwJira(f: FetchLike, token: string, authMode?: "site" | "gateway") {
+    return new JiraTracker(
+      { ...cfg, baseUrl: GW_BASE, ...(authMode ? { authMode } : {}) },
+      f,
+      () => ({ email: "e@x.io", token }),
+    );
+  }
+
+  it("ATCTT token resolves cloudId via unauthenticated tenant_info, then routes API calls through the gateway with Basic auth", async () => {
+    const { f, calls } = gatewayFetch([
+      { status: 200, body: { cloudId: CLOUD_ID } },
+      { status: 200, body: jiraIssue() },
+    ]);
+    const t = makeGwJira(f, "ATCTTsecret");
+    const issue = await t.getIssue("CHN-101");
+
+    expect(calls[0].url).toBe(`${GW_BASE}/_edge/tenant_info`);
+    expect(calls[0].headers.authorization).toBeUndefined();
+
+    expect(calls[1].url).toBe(`https://api.atlassian.com/ex/jira/${CLOUD_ID}/rest/api/3/issue/CHN-101?fields=${FIELDS}`);
+    expect(calls[1].headers.authorization).toBe(`Basic ${Buffer.from("e@x.io:ATCTTsecret").toString("base64")}`);
+
+    // Human-facing link stays on the site host in gateway mode.
+    expect(issue.url).toBe(`${GW_BASE}/browse/CHN-101`);
+  });
+
+  it("memoizes cloudId across multiple operations — tenant_info fetched exactly once", async () => {
+    const { f, calls } = gatewayFetch([
+      { status: 200, body: { cloudId: CLOUD_ID } },
+      { status: 200, body: jiraIssue() },
+      { status: 200, body: jiraIssue() },
+    ]);
+    const t = makeGwJira(f, "ATCTTsecret");
+    await t.getIssue("CHN-101");
+    await t.getIssue("CHN-101");
+    expect(calls.filter((c) => c.url.includes("/_edge/tenant_info")).length).toBe(1);
+    expect(calls.filter((c) => c.url.includes("api.atlassian.com")).length).toBe(2);
+  });
+
+  it("classic token: zero behavior change — no tenant_info call, site routing as before", async () => {
+    const { f, calls } = gatewayFetch([{ status: 200, body: jiraIssue() }]);
+    const t = makeGwJira(f, "classic-token-123");
+    await t.getIssue("CHN-101");
+    expect(calls.length).toBe(1);
+    expect(calls[0].url).toBe(`${GW_BASE}/rest/api/3/issue/CHN-101?fields=${FIELDS}`);
+  });
+
+  it("attachFile routes through the gateway too, sharing cloudId resolution with api()", async () => {
+    const { f, calls } = gatewayFetch([
+      { status: 200, body: { cloudId: CLOUD_ID } },
+      { status: 200, body: [{ id: "10001", filename: "shot.png" }] },
+    ]);
+    const t = makeGwJira(f, "ATCTTsecret");
+    const res = await t.attachFile!("CHN-101", "shot.png", Buffer.from([1, 2]), "image/png");
+    expect(calls[0].url).toBe(`${GW_BASE}/_edge/tenant_info`);
+    expect(calls[1].url).toBe(`https://api.atlassian.com/ex/jira/${CLOUD_ID}/rest/api/3/issue/CHN-101/attachments`);
+    expect(calls[1].headers["x-atlassian-token"]).toBe("no-check");
+    expect(calls[1].body).toBeInstanceOf(FormData);
+    expect(res.id).toBe("10001");
+  });
+
+  it('authMode: "site" forces site routing even with an ATCTT token', async () => {
+    const { f, calls } = gatewayFetch([{ status: 200, body: jiraIssue() }]);
+    const t = makeGwJira(f, "ATCTTsecret", "site");
+    await t.getIssue("CHN-101");
+    expect(calls.length).toBe(1);
+    expect(calls[0].url).toBe(`${GW_BASE}/rest/api/3/issue/CHN-101?fields=${FIELDS}`);
+  });
+});

@@ -207,3 +207,81 @@ describe("ConfluenceConnector image attachments", () => {
     errSpy.mockRestore();
   });
 });
+
+describe("ConfluenceConnector scoped-token gateway", () => {
+  const GW_BASE = "https://x.atlassian.net/wiki";
+  const SITE_ORIGIN = "https://x.atlassian.net";
+  const CLOUD_ID = "cid-456";
+
+  function makeGwConn(f: FetchLike, token: string, authMode?: "site" | "gateway") {
+    return new ConfluenceConnector(
+      { baseUrl: GW_BASE, spaceKey: "DOCS", emailEnv: "CONFLUENCE_EMAIL",
+        tokenEnv: "CONFLUENCE_API_TOKEN", ...(authMode ? { authMode } : {}) },
+      f,
+      () => ({ email: "e@x.io", token }),
+    );
+  }
+
+  it("ATCTT token resolves cloudId via unauthenticated tenant_info at the site origin (no /wiki), then routes API calls through the gateway with Basic auth", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: { cloudId: CLOUD_ID } },
+      { status: 200, body: rawPage() },
+    ]);
+    const t = makeGwConn(f, "ATCTTsecret");
+    const page = await t.getPage("123");
+
+    expect(calls[0].url).toBe(`${SITE_ORIGIN}/_edge/tenant_info`);
+    expect(calls[0].auth).toBeUndefined();
+
+    expect(calls[1].url).toBe(`https://api.atlassian.com/ex/confluence/${CLOUD_ID}/wiki/api/v2/pages/123`);
+    expect(calls[1].auth).toBe(`Basic ${Buffer.from("e@x.io:ATCTTsecret").toString("base64")}`);
+
+    // Human-facing link stays on the site host in gateway mode.
+    expect(page.url).toBe(`${GW_BASE}/spaces/DOCS/pages/123/T`);
+  });
+
+  it("memoizes cloudId across multiple operations — tenant_info fetched exactly once", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: { cloudId: CLOUD_ID } },
+      { status: 200, body: rawPage() },
+      { status: 200, body: rawPage() },
+    ]);
+    const t = makeGwConn(f, "ATCTTsecret");
+    await t.getPage("123");
+    await t.getPage("123");
+    expect(calls.filter((c) => c.url.includes("/_edge/tenant_info")).length).toBe(1);
+    expect(calls.filter((c) => c.url.includes("api.atlassian.com")).length).toBe(2);
+  });
+
+  it("classic token: zero behavior change — no tenant_info call, site routing as before", async () => {
+    const { f, calls } = fixtureFetch([{ status: 200, body: rawPage() }]);
+    const t = makeGwConn(f, "classic-token-123");
+    await t.getPage("123");
+    expect(calls.length).toBe(1);
+    expect(calls[0].url).toBe(`${GW_BASE}/api/v2/pages/123`);
+  });
+
+  it("attachment uploads route through the gateway too, sharing cloudId resolution with api()", async () => {
+    const img = { ref: "diagrams/x.png", filename: "x.png",
+      data: Buffer.from([1, 2, 3]), mediaType: "image/png" };
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: { cloudId: CLOUD_ID } },
+      { status: 200, body: SPACE },
+      { status: 200, body: rawPage({ id: 123 }) },
+      { status: 200, body: { results: [] } },
+      { status: 200, body: { results: [{ id: "att9" }] } },
+    ]);
+    const t = makeGwConn(f, "ATCTTsecret");
+    await t.createPage({ title: "T", markdown: "![m](diagrams/x.png)", images: [img] });
+    const upload = calls.find((c) => c.method === "POST" && c.url.includes("/child/attachment") && !c.url.includes("filename="))!;
+    expect(upload.url).toBe(`https://api.atlassian.com/ex/confluence/${CLOUD_ID}/wiki/rest/api/content/123/child/attachment`);
+  });
+
+  it('authMode: "site" forces site routing even with an ATCTT token', async () => {
+    const { f, calls } = fixtureFetch([{ status: 200, body: rawPage() }]);
+    const t = makeGwConn(f, "ATCTTsecret", "site");
+    await t.getPage("123");
+    expect(calls.length).toBe(1);
+    expect(calls[0].url).toBe(`${GW_BASE}/api/v2/pages/123`);
+  });
+});
