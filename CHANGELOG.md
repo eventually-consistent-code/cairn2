@@ -6,7 +6,12 @@
   `SURVEY.md` (scout's done/pending markers), a hard discussion gate, then
   approved roadmap changes applied via route mechanics (decimal phase
   insert — never renumber, locked-decision CONTEXT.md edits, mirrored
-  issues). Composition of existing tools; no server changes (38 verbs).
+  issues). Composition of existing verbs plus targeted server support (38 verbs).
+- Decimal phase numbers land server-side to back route's `insert <N.5>` and
+  survey's apply stage: `plan_scaffold_phase` / `plan_phase_ensure` accept
+  one fractional digit (N.1–N.9), dirs sort as `01.5-slug` between
+  neighbors, status/import/continuity round-trip them, and invalid numbers
+  return structured `CONFIG_INVALID` errors (766 tests).
 - Research fan-out is now mandatory and multi-agent for `scout`, `survey`,
   and `plan --deep`: one subagent per pending topic, model routed per the
   work class of the topic (mechanical → haiku-tier, synthesis →

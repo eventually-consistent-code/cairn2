@@ -78,7 +78,7 @@ git PRs.
 from the routing table.
 The routing table is complete: the reserved verb set is now empty.
 
-**Server:** 65 typed MCP tools, 555 passing tests (env-gated live-backend
+**Server:** 71 typed MCP tools, 766 passing tests (env-gated live-backend
 suites skip without creds), three dependencies (`@modelcontextprotocol/sdk`,
 `better-sqlite3`, `zod`). Fail loud, never fake state.
 
