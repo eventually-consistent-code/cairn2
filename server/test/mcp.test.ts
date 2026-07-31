@@ -322,6 +322,74 @@ describe("cairn MCP server", () => {
     expect(closed.json.worklogError).toMatch(/no worklog support/);
   });
 
+  it("issue_create passes an estimate through on a hasEstimates backend, no skip note", async () => {
+    const made = await call("issue_create",
+      { title: "estimated on jira-like", estimatePoints: 3, estimateMinutes: 90 });
+    expect(made.json.estimate).toEqual({ points: 3, minutes: 90 });
+    expect(made.json.estimateSkipped).toBeUndefined();
+  });
+
+  it("issue_create with no estimate requested carries no skip note", async () => {
+    const made = await call("issue_create", { title: "no estimate requested" });
+    expect(made.json.estimate).toBeUndefined();
+    expect(made.json.estimateSkipped).toBeUndefined();
+  });
+
+  describe("estimates capability gate (no-hasEstimates backend)", () => {
+    // FakeTracker defaults to hasEstimates: true (it stands in for jira/local
+    // in the rest of this suite) -- these tests need the OTHER six backends'
+    // posture, so a dedicated tracker + server/client pair overrides it, same
+    // pattern as the git-fixture server above.
+    class NoEstimatesFake extends FakeTracker {
+      override readonly capabilities = { ...new FakeTracker().capabilities, hasEstimates: false };
+    }
+
+    let neClient: Client;
+    const neCall = async (name: string, args: Record<string, unknown> = {}) => {
+      const res = await neClient.callTool({ name, arguments: args });
+      const text = (res.content as Array<{ type: string; text: string }>)[0].text;
+      return { ...res, json: JSON.parse(text) };
+    };
+
+    beforeAll(async () => {
+      const dir = mkdtempSync(join(tmpdir(), "cairn-mcp-no-estimates-"));
+      const server = buildServer({ projectDir: dir, tracker: new NoEstimatesFake() });
+      const [ct, st] = InMemoryTransport.createLinkedPair();
+      neClient = new Client({ name: "test-no-estimates", version: "0.0.0" });
+      await Promise.all([server.connect(st), neClient.connect(ct)]);
+    });
+
+    it("issue_create drops the estimate and reports estimateSkipped", async () => {
+      const made = await neCall("issue_create",
+        { title: "unestimatable", estimatePoints: 5, estimateMinutes: 120 });
+      expect(made.json.estimate).toBeUndefined();
+      expect(made.json.estimateSkipped)
+        .toBe("backend has no estimate support; fold points/minutes into the issue body");
+    });
+
+    it("issue_create with no estimate requested carries no skip note", async () => {
+      const made = await neCall("issue_create", { title: "plain, no estimate" });
+      expect(made.json.estimate).toBeUndefined();
+      expect(made.json.estimateSkipped).toBeUndefined();
+    });
+
+    it("issue_update drops the estimate and reports estimateSkipped", async () => {
+      const made = await neCall("issue_create", { title: "update target" });
+      const updated = await neCall("issue_update",
+        { id: made.json.id, estimatePoints: 8 });
+      expect(updated.json.estimate).toBeUndefined();
+      expect(updated.json.estimateSkipped)
+        .toBe("backend has no estimate support; fold points/minutes into the issue body");
+    });
+
+    it("issue_update with no estimate requested carries no skip note", async () => {
+      const made = await neCall("issue_create", { title: "update target, no estimate" });
+      const updated = await neCall("issue_update", { id: made.json.id, title: "renamed" });
+      expect(updated.json.estimate).toBeUndefined();
+      expect(updated.json.estimateSkipped).toBeUndefined();
+    });
+  });
+
   it("context_set then context_get roundtrips", async () => {
     await call("context_set", { phase: 1, issueId: "FAKE-1" });
     const got = await call("context_get");
