@@ -207,3 +207,21 @@ describe("ConfluenceConnector image attachments", () => {
     errSpy.mockRestore();
   });
 });
+
+describe("ConfluenceConnector probe (CRN-48)", () => {
+  it("ok when the configured space resolves", async () => {
+    const { f, calls } = fixtureFetch([{ status: 200, body: SPACE }]);
+    await expect(makeConn(f).probe!()).resolves.toEqual({ verdict: "ok" });
+    expect(calls[0].url).toContain("/api/v2/spaces");
+  });
+
+  it("bad_host when the configured space isn't found", async () => {
+    const { f } = fixtureFetch([{ status: 200, body: { results: [] } }]);
+    await expect(makeConn(f).probe!()).resolves.toMatchObject({ verdict: "bad_host" });
+  });
+
+  it("bad_token on a 401 with a plain-rejected-credentials body", async () => {
+    const { f } = fixtureFetch([{ status: 401, body: { message: "the token was rejected" } }]);
+    await expect(makeConn(f).probe!()).resolves.toMatchObject({ verdict: "bad_token" });
+  });
+});

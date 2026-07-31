@@ -397,3 +397,17 @@ describe("LinearTracker custom states", () => {
       .rejects.toMatchObject({ code: "CONFIG_INVALID" });
   });
 });
+
+describe("LinearTracker probe (CRN-48)", () => {
+  it("ok on a {viewer{id}} 200", async () => {
+    const { f, calls } = gqlFetch([{ data: { viewer: { id: "u-1" } } }]);
+    await expect(t(f).probe!()).resolves.toEqual({ verdict: "ok" });
+    expect(calls[0].query).toContain("viewer");
+  });
+
+  it("bad_token on a 401 rejecting the personal API key", async () => {
+    const f: FetchLike = async () =>
+      new Response(JSON.stringify({ message: "the token was rejected" }), { status: 401 });
+    await expect(t(f).probe!()).resolves.toMatchObject({ verdict: "bad_token" });
+  });
+});

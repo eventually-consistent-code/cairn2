@@ -282,3 +282,47 @@ describe("GitLabTracker mapping", () => {
     expect(c.id).toBe("55");
   });
 });
+
+describe("GitLabTracker probe (CRN-48)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("ok on a 200 from the site-root /user (not project-scoped)", async () => {
+    vi.stubEnv("GITLAB_TOKEN", "tok");
+    const { f, calls } = fixtureFetch([{ status: 200, body: { id: 1, username: "dev" } }]);
+    const t = new GitLabTracker(baseCfg, f);
+    await expect(t.probe!()).resolves.toEqual({ verdict: "ok" });
+    expect(calls[0].url).toBe("https://gitlab.com/api/v4/user");
+  });
+
+  it("bad_host on a network error", async () => {
+    vi.stubEnv("GITLAB_TOKEN", "tok");
+    const f: FetchLike = async () => { throw new Error("ENOTFOUND gitlab.com"); };
+    const t = new GitLabTracker(baseCfg, f);
+    await expect(t.probe!()).resolves.toMatchObject({ verdict: "bad_host" });
+  });
+
+  it("bad_token on a 401 with a plain-rejected-credentials body", async () => {
+    vi.stubEnv("GITLAB_TOKEN", "tok");
+    const { f } = fixtureFetch([{ status: 401, body: { message: "the token was rejected" } }]);
+    const t = new GitLabTracker(baseCfg, f);
+    await expect(t.probe!()).resolves.toMatchObject({ verdict: "bad_token" });
+  });
+
+  it("missing_scope on a 403 with a scope-shaped body", async () => {
+    vi.stubEnv("GITLAB_TOKEN", "tok");
+    const { f } = fixtureFetch([
+      { status: 403, body: { message: "missing required scope for this operation" } },
+    ]);
+    const t = new GitLabTracker(baseCfg, f);
+    await expect(t.probe!()).resolves.toMatchObject({ verdict: "missing_scope" });
+  });
+
+  it("rate_limited on a 429 (single fast attempt -- probe never retries)", async () => {
+    vi.stubEnv("GITLAB_TOKEN", "tok");
+    const { f } = fixtureFetch([{ status: 429, body: {} }]);
+    const t = new GitLabTracker(baseCfg, f);
+    await expect(t.probe!()).resolves.toMatchObject({ verdict: "rate_limited" });
+  });
+});

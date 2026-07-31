@@ -199,6 +199,21 @@ describe("finalize / autoCommit", () => {
   });
 });
 
+describe("DocusaurusConnector probe (CRN-48)", () => {
+  it("ok when sitePath holds a docusaurus config", async () => {
+    const site = tempSite();
+    const { c } = connectorAt(site);
+    await expect(c.probe!()).resolves.toEqual({ verdict: "ok" });
+  });
+
+  it("maps a missing docusaurus config to a non-ok verdict", async () => {
+    const bare = mkdtempSync(join(tmpdir(), "cairn-bare-probe-"));
+    const { c } = connectorAt(bare);
+    const r = await c.probe!();
+    expect(r.verdict).not.toBe("ok");
+  });
+});
+
 docsConnectorContract("docusaurus (temp dir)", () => {
   const { c } = connectorAt(tempSite());
   return c;
