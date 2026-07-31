@@ -3,7 +3,7 @@ import { mkdtempSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  slugify, phaseDirName, parsePhaseDirName, isValidPhaseNumber, scaffoldProject, scaffoldPhase,
+  slugify, phaseDirName, phaseDirPrefix, parsePhaseDirName, isValidPhaseNumber, scaffoldProject, scaffoldPhase,
   readPlanIssues, writePlanIssues, readPlanMeta, writePlanMeta,
 } from "../src/planning/artifacts.js";
 
@@ -61,6 +61,17 @@ describe("decimal phase numbers (CRN — insert without renumbering)", () => {
     expect(parsePhaseDirName("../evil")).toBeNull();
     expect(parsePhaseDirName("1-x")).toBeNull();
     expect(parsePhaseDirName("01.55-x")).toBeNull();
+  });
+  it("phaseDirPrefix shares phaseDirName's pad-and-append scheme (CRN-40)", () => {
+    expect(phaseDirPrefix(1)).toBe("01-");
+    expect(phaseDirPrefix(1.5)).toBe("01.5-");
+    expect(phaseDirPrefix(12.3)).toBe("12.3-");
+    // Every phaseDirName is exactly phaseDirPrefix + slug -- same helper, no duplication.
+    expect(phaseDirName(1.5, "gamma")).toBe(`${phaseDirPrefix(1.5)}gamma`);
+  });
+  it("phaseDirPrefix rejects an over-precise decimal as CONFIG_INVALID", () => {
+    expect(() => phaseDirPrefix(1.55)).toThrowError(
+      expect.objectContaining({ code: "CONFIG_INVALID" }));
   });
 });
 
