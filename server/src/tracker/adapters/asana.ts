@@ -68,9 +68,11 @@ export class AsanaTracker implements Tracker {
     }
   }
 
-  /** Preflight: /users/me is Asana's cheapest authenticated call. */
+  /** Preflight: /projects/{projectGid} over /users/me -- /users/me only
+   *  proves the token is valid, not that the configured project exists.
+   *  A typo'd projectGid now 404s instead of reading "ok". */
   async probe(): Promise<ProbeResult> {
-    return runProbe(() => this.api("GET", "/users/me", undefined, "probe"));
+    return runProbe(() => this.api("GET", `/projects/${this.cfg.projectGid}`, undefined, "probe"));
   }
 
   private normalize(raw: AsanaTask): Issue {

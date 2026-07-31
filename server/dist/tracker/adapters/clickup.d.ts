@@ -44,7 +44,9 @@ export declare class ClickUpTracker implements Tracker {
     private headers;
     private api;
     private assertId;
-    /** Preflight: /team is ClickUp's cheapest authenticated call. */
+    /** Preflight: /list/{defaultListId} over /team -- /team only proves the
+     *  token is valid, not that the configured list exists. A typo'd
+     *  defaultListId now 404s instead of reading "ok". */
     probe(): Promise<ProbeResult>;
     /** Validates a caller-supplied phase (list) id before it reaches a URL. defaultListId is trusted config, not user input. */
     private assertPhaseId;

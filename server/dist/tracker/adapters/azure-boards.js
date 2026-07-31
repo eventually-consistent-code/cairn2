@@ -84,10 +84,11 @@ export class AzureBoardsTracker {
             ?? data.authenticatedUser?.providerDisplayName;
         return this.self;
     }
-    /** Preflight: connectionData is the cheapest authenticated call this
-     *  backend has — the same one resolveSelf already makes. */
+    /** Preflight: /_apis/projects/{project} over resolveSelf's connectionData
+     *  -- connectionData only proves the PAT is valid, not that the configured
+     *  project exists. A typo'd project now 404s instead of reading "ok". */
     async probe() {
-        return runProbe(() => this.resolveSelf());
+        return runProbe(() => this.api("GET", `/_apis/projects/${this.projectPath}`, undefined, { context: "azure-boards probe" }));
     }
     get projectPath() {
         return encodeURIComponent(this.cfg.project);

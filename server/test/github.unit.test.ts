@@ -186,11 +186,27 @@ describe("GitHubTracker identity", () => {
 });
 
 describe("GitHubTracker probe (CRN-48)", () => {
-  it("ok on a 200 from /user", async () => {
-    const { f, calls } = fixtureFetch([{ status: 200, body: { login: "octo-dev" } }]);
+  it("ok on a 200 from /repos/{repo} -- validates the target, not just the token", async () => {
+    const { f, calls } = fixtureFetch([{ status: 200, body: { full_name: "o/r" } }]);
     const t = new GitHubTracker({ repo: "o/r" }, f, () => "tok");
     await expect(t.probe!()).resolves.toEqual({ verdict: "ok" });
-    expect(calls[0].url).toBe("https://api.github.com/user");
+    expect(calls[0].url).toBe("https://api.github.com/repos/o/r");
+  });
+
+  it("bad_host on a valid token but a nonexistent repo (live-verification gap)", async () => {
+    // A valid token passes /user every time -- probing /user alone can never
+    // catch a typo'd repo. This is the exact live-verification finding: same
+    // token, /user succeeds, but the configured repo doesn't exist.
+    const f: FetchLike = async (url) => {
+      const u = String(url);
+      if (u.endsWith("/user")) return new Response(JSON.stringify({ login: "octo-dev" }), { status: 200 });
+      if (u.endsWith("/repos/o/does-not-exist-xyz")) {
+        return new Response(JSON.stringify({ message: "Not Found" }), { status: 404 });
+      }
+      throw new Error(`unexpected url in test: ${u}`);
+    };
+    const t = new GitHubTracker({ repo: "o/does-not-exist-xyz" }, f, () => "tok");
+    await expect(t.probe!()).resolves.toMatchObject({ verdict: "bad_host" });
   });
 
   it("bad_host on a network error", async () => {

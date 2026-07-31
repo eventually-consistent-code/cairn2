@@ -291,10 +291,11 @@ export class JiraTracker {
         this.self = me.accountId;
         return this.self;
     }
-    /** Preflight: /myself is the cheapest authenticated call this backend has —
-     *  the same one resolveSelf already makes. */
+    /** Preflight: /project/{projectKey} over resolveSelf's /myself -- /myself
+     *  only proves the token is valid, not that the configured project exists.
+     *  A typo'd projectKey now 404s instead of reading "ok". */
     async probe() {
-        return runProbe(() => this.resolveSelf());
+        return runProbe(() => this.resolveProjectId());
     }
     /** Assignee values may arrive as an email (user.handle) — Jira wants accountId. */
     async toAccountId(value) {

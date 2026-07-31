@@ -24,7 +24,9 @@ export declare class AsanaTracker implements Tracker {
     private headers;
     private api;
     private assertId;
-    /** Preflight: /users/me is Asana's cheapest authenticated call. */
+    /** Preflight: /projects/{projectGid} over /users/me -- /users/me only
+     *  proves the token is valid, not that the configured project exists.
+     *  A typo'd projectGid now 404s instead of reading "ok". */
     probe(): Promise<ProbeResult>;
     private normalize;
     createIssue(input: IssueCreate): Promise<Issue>;

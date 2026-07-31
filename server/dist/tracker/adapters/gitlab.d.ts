@@ -11,9 +11,11 @@ export declare class GitLabTracker implements Tracker {
     private headers;
     private api;
     private assertId;
-    /** Preflight: /user (site root, not project-scoped) is GitLab's cheapest
-     *  authenticated call -- a single attempt, no retry backoff, since a probe
-     *  wants a fast verdict rather than resilience. */
+    /** Preflight: GET /projects/{project} (project-scoped, same URL base()
+     *  already builds) over the site-root /user -- /user only proves the
+     *  token is valid, not that the configured project exists. A typo'd
+     *  project now 404s instead of reading "ok". Single attempt, no retry
+     *  backoff -- a probe wants a fast verdict, not resilience. */
     probe(): Promise<ProbeResult>;
     private normalize;
     createIssue(input: IssueCreate): Promise<Issue>;
