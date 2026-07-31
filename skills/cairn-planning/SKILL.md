@@ -23,6 +23,7 @@ work items; git owns plans and memory.
 | roadmap.md | phase table + status | /cairn:new, updated at verify/ship |
 | phases/NN/CONTEXT.md | locked decisions | planning discussion |
 | phases/NN/RESEARCH.md | deep-mode research brief | research fan-out |
+| SURVEY.md | project-wide research brief (survey markers) | /cairn:survey fan-out |
 | phases/NN/PLAN.md | task breakdown + `issues:` frontmatter | /cairn:plan |
 | phases/NN/VERIFICATION.md | goal-backward check results; its EXISTENCE marks the phase verified | /cairn:verify |
 
@@ -54,7 +55,7 @@ Eligibility is per task, decided at plan time, stored in PLAN.md `tdd:`
 frontmatter via `plan_meta_set`; work-time enforcement is the RED/GREEN
 commit pair in the ledger, checked at verify.
 
-## Model routing (deep-mode fan-out)
+## Model routing (research fan-out)
 
 `cairn.json` → `agents.model`: `auto | inherit | haiku | sonnet | opus`.
 `inherit` = session model everywhere; explicit value pins everything; `auto`
@@ -68,6 +69,12 @@ routes per work class:
 
 Blast radius rules: output that gates a lifecycle transition (verify/ship)
 routes UP, never down. Downgrade only mechanical work. Uncertain → inherit.
+
+The rubric governs ALL research fan-out — `scout`, `survey`, and
+`plan --deep` — not only deep mode. Research verbs dispatch one subagent
+per pending topic, in parallel, classifying each TOPIC by work class to
+pick its model; the main thread writes results and flips markers as each
+agent completes.
 
 ## Lifecycle
 
