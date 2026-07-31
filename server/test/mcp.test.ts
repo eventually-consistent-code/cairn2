@@ -167,19 +167,15 @@ describe("cairn MCP server", () => {
   });
 
   it("plan_scaffold_phase rejects an over-precise decimal (1.55) as CONFIG_INVALID", async () => {
-    const res = await client.callTool({ name: "plan_scaffold_phase",
-      arguments: { number: 1.55, name: "Bad" } });
+    const res = await call("plan_scaffold_phase", { number: 1.55, name: "Bad" });
     expect(res.isError).toBe(true);
-    const text = (res.content as Array<{ type: string; text: string }>)[0].text;
-    expect(text).toContain("CONFIG_INVALID");
+    expect(res.json.code).toBe("CONFIG_INVALID");
   });
 
   it("plan_phase_ensure rejects an over-precise decimal (1.55) as CONFIG_INVALID", async () => {
-    const res = await client.callTool({ name: "plan_phase_ensure",
-      arguments: { number: 1.55, name: "Bad" } });
+    const res = await call("plan_phase_ensure", { number: 1.55, name: "Bad" });
     expect(res.isError).toBe(true);
-    const text = (res.content as Array<{ type: string; text: string }>)[0].text;
-    expect(text).toContain("CONFIG_INVALID");
+    expect(res.json.code).toBe("CONFIG_INVALID");
   });
 
   it("round-trip: scaffold 1, 1.5, 2 → plan_status lists them ordered 1, 1.5, 2 with correct numbers", async () => {
@@ -627,6 +623,15 @@ describe("continuity: write-through + tools", () => {
     expect(got.json.handoff.next_action).toBe("finish the write-through wiring");
     expect(got.json.handoff.notes).toBe("task 2");
     expect(got.json.stale).toBe(false);
+  });
+
+  it("continuity_checkpoint accepts a decimal phase ref and rejects an over-precise one as CONFIG_INVALID", async () => {
+    const ok = await call("continuity_checkpoint", { phase: { number: 1.5, slug: "gamma" } });
+    expect(ok.isError).toBeFalsy();
+    expect(ok.json.handoff.phase).toEqual({ number: 1.5, slug: "gamma" });
+    const bad = await call("continuity_checkpoint", { phase: { number: 1.55, slug: "gamma" } });
+    expect(bad.isError).toBe(true);
+    expect(bad.json.code).toBe("CONFIG_INVALID");
   });
 
   it("continuity_clear deletes the handoff", async () => {

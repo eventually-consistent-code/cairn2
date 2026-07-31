@@ -15,7 +15,7 @@ import { danglingEdges, effectivePriorities, lineage, readyFrontier } from "./tr
 import { finalizeMigration, migrateTracker } from "./tracker/migrate.js";
 import { makeDocsConnector } from "./docs/registry.js";
 import { defaultProjectName, publishTree } from "./docs/publish.js";
-import { scaffoldProject, scaffoldPhase, writePlanIssues, readPlanMeta, writePlanMeta, isValidPhaseNumber, parsePhaseDirName, } from "./planning/artifacts.js";
+import { scaffoldProject, scaffoldPhase, writePlanIssues, readPlanMeta, writePlanMeta, isValidPhaseNumber, parsePhaseDirName, PHASE_NUMBER_ERROR, } from "./planning/artifacts.js";
 import { projectStatus } from "./planning/status.js";
 import { driftReport, ensurePhase } from "./planning/mirror.js";
 import { unplannedReport } from "./planning/collab.js";
@@ -40,13 +40,18 @@ import { PROVIDERS, peerList, peerRun } from "./peers/run.js";
 // Widened (CRN-26): canonical three or a backend-defined custom state name.
 const StateEnum = z.string().min(1);
 const HandoffSourceEnum = z.enum(["tool", "posttooluse", "precompact", "waypoint"]);
-// Widened for decimal phase numbers: integers 1..99, or
-// exactly one fractional digit .1-.9 with integer part 1..98 -- lets a phase
-// slot in (1.5) between 1 and 2 without renumbering the roadmap. Shared
-// between every tool that takes a phase number so the rule lives in one
-// place (see isValidPhaseNumber in planning/artifacts.ts).
-const PhaseNumberSchema = z.number().refine(isValidPhaseNumber, { message: "CONFIG_INVALID: phase number must be 1..99, or N.1-N.9 with N=1..98" });
-const HandoffPhaseRefSchema = z.object({ number: PhaseNumberSchema, slug: z.string() });
+// Phase numbers are widened to accept decimals (integers 1..99, or exactly
+// one fractional digit .1-.9 with integer part 1..98 -- lets a phase slot in
+// (1.5) between 1 and 2 without renumbering the roadmap). Deliberately NOT a
+// Zod .refine() here: MCP SDK schema rejection happens before wrap() ever
+// runs, so a refine failure surfaces as a raw SDK -32602 string, never the
+// structured {code, message, nextAction} envelope every other CONFIG_INVALID
+// case produces. plan_scaffold_phase/plan_phase_ensure let a bare z.number()
+// through and rely on phaseDirName/ensurePhase (both call isValidPhaseNumber
+// from planning/artifacts.ts) to throw a genuine CairnError, which wrap()
+// converts correctly. continuity_checkpoint has no such downstream guard
+// (writeHandoff doesn't validate), so its handler checks explicitly below.
+const HandoffPhaseRefSchema = z.object({ number: z.number(), slug: z.string() });
 // Zod mirrors of map/store.ts's NodeType/EdgeType/MapNode/MapEdge -- kept in
 // sync by hand (the store module owns the types; this is just the MCP-layer
 // schema for them, same duplication tradeoff as the mem_timeline helpers above).
@@ -344,12 +349,12 @@ export function buildServer(deps) {
         inputSchema: { name: z.string() } }, wrap((a) => scaffoldProject(dir(), a.name)));
     server.registerTool("plan_scaffold_phase", { description: "Create phases/NN-slug/ (or NN.F-slug/ for a decimal insert) with "
             + "CONTEXT.md + PLAN.md (+RESEARCH.md)",
-        inputSchema: { number: PhaseNumberSchema, name: z.string(),
+        inputSchema: { number: z.number(), name: z.string(),
             research: z.boolean().optional() } }, wrap((a) => scaffoldPhase(dir(), a.number, a.name, { research: a.research })));
     server.registerTool("plan_status", { description: "Phases, artifact presence, and referenced tracker issues",
         inputSchema: {} }, wrap(() => projectStatus(dir())));
     server.registerTool("plan_phase_ensure", { description: "Ensure the tracker has a phase named 'Phase N: <name>' (idempotent)",
-        inputSchema: { number: PhaseNumberSchema, name: z.string() } }, wrap(async (a) => ensurePhase(await getTracker(), a.number, a.name)));
+        inputSchema: { number: z.number(), name: z.string() } }, wrap(async (a) => ensurePhase(await getTracker(), a.number, a.name)));
     server.registerTool("plan_drift", { description: "Flag plan-referenced issues that are missing or closed-unverified",
         inputSchema: {} }, wrap(async () => {
         const d = dir();
@@ -534,6 +539,12 @@ export function buildServer(deps) {
             notes: z.string().optional(),
             partial: z.boolean().optional(),
         } }, wrap((a) => {
+        // writeHandoff doesn't independently validate -- unlike phaseDirName/
+        // ensurePhase, there's no downstream CairnError to catch a bad phase
+        // number here, so check explicitly before it ever reaches disk.
+        if (a.phase && !isValidPhaseNumber(a.phase.number)) {
+            throw new CairnError("CONFIG_INVALID", PHASE_NUMBER_ERROR(a.phase.number));
+        }
         const d = dir();
         writeHandoff(d, { ...a, source: a.source ?? "tool" });
         return readHandoff(d);

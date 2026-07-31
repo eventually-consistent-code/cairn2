@@ -66,6 +66,20 @@ describe("importPhase", () => {
     expect(readPlanIssues(d, "03-billing-engine")).toEqual(ids);
   });
 
+  it("imports a canonical decimal-numbered phase (Phase 1.5: gamma) keeping its exact number", async () => {
+    const t = new FakeTracker();
+    const ph = await t.createPhase("Phase 1.5: Gamma");
+    const a = await t.createIssue({ title: "decimal req", phase: ph.id });
+    const d = dir();
+    scaffoldPhase(d, 1, "One"); // occupies 01- so a wrong fallback (max+1) would collide/mis-number
+    const result = await importPhase(t, d, ph.id);
+    expect(result).toMatchObject({
+      dir: "01.5-gamma", number: 1.5, name: "Gamma",
+      trackerPhaseId: ph.id, issues: [a.id],
+    });
+    expect(readPlanIssues(d, "01.5-gamma")).toEqual([a.id]);
+  });
+
   it("re-importing a non-canonical phase reuses its number (no silent duplicate)", async () => {
     const t = new FakeTracker();
     const ph = await t.createPhase("Sprint 12");
