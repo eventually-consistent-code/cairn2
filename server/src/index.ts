@@ -225,7 +225,8 @@ export function buildServer(deps: {
   server.registerTool("issue_create",
     { description: "Create an issue in the configured tracker. Estimates "
         + "(story points / original minutes) land in the backend's native "
-        + "fields where supported, and are ignored elsewhere",
+        + "fields where supported; elsewhere they're skipped and the result "
+        + "says so via estimateSkipped",
       inputSchema: { title: z.string(), body: z.string().optional(),
                      labels: z.array(z.string()).optional(),
                      phase: z.string().optional(),
@@ -235,11 +236,18 @@ export function buildServer(deps: {
       estimatePoints?: number; estimateMinutes?: number }) => {
       const d = dir();
       const { estimatePoints, estimateMinutes, ...input } = a;
-      const estimate = estimatePoints !== undefined || estimateMinutes !== undefined
+      const wantsEstimate = estimatePoints !== undefined || estimateMinutes !== undefined;
+      const tracker = await getTracker(d);
+      const estimate = wantsEstimate && tracker.capabilities.hasEstimates
         ? { points: estimatePoints, minutes: estimateMinutes } : undefined;
-      const result = await (await getTracker(d)).createIssue({ ...input, estimate });
+      const result = await tracker.createIssue({ ...input, estimate });
       snapshotNote(d, result);
-      return result;
+      // mirrors the worklogError note on issue_close -- a silently dropped
+      // estimate reads as a bug, so say why it never reached the backend.
+      const estimateSkipped = wantsEstimate && !tracker.capabilities.hasEstimates
+        ? "backend has no estimate support; fold points/minutes into the issue body"
+        : undefined;
+      return { ...result, ...(estimateSkipped ? { estimateSkipped } : {}) };
     }));
 
   server.registerTool("issue_get",
@@ -259,10 +267,11 @@ export function buildServer(deps: {
                estimatePoints?: number; estimateMinutes?: number }) => {
       const d = dir();
       const { id, estimatePoints, estimateMinutes, ...rest } = a;
-      const patch: IssuePatch = estimatePoints !== undefined || estimateMinutes !== undefined
+      const wantsEstimate = estimatePoints !== undefined || estimateMinutes !== undefined;
+      const tracker = await getTracker(d);
+      const patch: IssuePatch = wantsEstimate && tracker.capabilities.hasEstimates
         ? { ...rest, estimate: { points: estimatePoints, minutes: estimateMinutes } }
         : rest;
-      const tracker = await getTracker(d);
       let autoAssigned = false;
       if (patch.state === "in_progress" && patch.assignee === undefined) {
         // best-effort claim attribution — identity failures never block the claim
@@ -277,7 +286,13 @@ export function buildServer(deps: {
       const result = await tracker.updateIssue(id, patch);
       snapshotNote(d, result);
       refreshHandoff({ source: "tool", issue: id }, d);
-      return { ...result, ...(autoAssigned ? { autoAssigned: true } : {}) };
+      // mirrors the worklogError note on issue_close -- a silently dropped
+      // estimate reads as a bug, so say why it never reached the backend.
+      const estimateSkipped = wantsEstimate && !tracker.capabilities.hasEstimates
+        ? "backend has no estimate support; fold points/minutes into the issue body"
+        : undefined;
+      return { ...result, ...(autoAssigned ? { autoAssigned: true } : {}),
+        ...(estimateSkipped ? { estimateSkipped } : {}) };
     }));
 
   const LinkTypeEnum = z.enum(["blocks", "parent-of", "relates-to", "supersedes"]);
