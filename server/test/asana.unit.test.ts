@@ -248,3 +248,20 @@ describe("AsanaTracker mapping", () => {
     expect(c.id).toBe("777");
   });
 });
+
+describe("AsanaTracker probe (CRN-48)", () => {
+  it("ok on a 200 from /users/me", async () => {
+    const { f, calls } = fixtureFetch([{ status: 200, body: { data: { gid: "1", name: "Dev" } } }]);
+    const t = new AsanaTracker({ projectGid: "999", tokenEnv: "ASANA_TOKEN" }, f, () => "tok");
+    await expect(t.probe!()).resolves.toEqual({ verdict: "ok" });
+    expect(calls[0].url).toContain("/users/me");
+  });
+
+  it("missing_scope on a 403 with a scope-shaped body", async () => {
+    const { f } = fixtureFetch([
+      { status: 403, body: { message: "missing required scope for this operation" } },
+    ]);
+    const t = new AsanaTracker({ projectGid: "999", tokenEnv: "ASANA_TOKEN" }, f, () => "tok");
+    await expect(t.probe!()).resolves.toMatchObject({ verdict: "missing_scope" });
+  });
+});

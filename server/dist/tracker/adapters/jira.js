@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson } from "../http.js";
+import { runProbe } from "../probe.js";
 import { matchesState } from "../types.js";
 // Issue keys look like PROJ-123 (letters + digits, dash, digits).
 const ID_RE = /^[A-Z][A-Z0-9]+-\d+$/i;
@@ -289,6 +290,11 @@ export class JiraTracker {
         const me = await this.api("GET", "/rest/api/3/myself", undefined, "jira myself");
         this.self = me.accountId;
         return this.self;
+    }
+    /** Preflight: /myself is the cheapest authenticated call this backend has —
+     *  the same one resolveSelf already makes. */
+    async probe() {
+        return runProbe(() => this.resolveSelf());
     }
     /** Assignee values may arrive as an email (user.handle) — Jira wants accountId. */
     async toAccountId(value) {

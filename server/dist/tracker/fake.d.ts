@@ -1,4 +1,4 @@
-import type { Capability, Issue, IssueComment, IssueCreate, IssueLink, IssuePatch, IssueState, LinkType, Milestone, Phase, Tracker } from "./types.js";
+import type { Capability, Issue, IssueComment, IssueCreate, IssueLink, IssuePatch, IssueState, LinkType, Milestone, Phase, ProbeResult, Tracker } from "./types.js";
 export declare class FakeTracker implements Tracker {
     readonly capabilities: Capability;
     private issues;
@@ -30,6 +30,7 @@ export declare class FakeTracker implements Tracker {
         url?: string;
     }>;
     resolveSelf(): Promise<string | undefined>;
+    probe(): Promise<ProbeResult>;
     private links;
     private wouldCycle;
     linkIssues(from: string, type: LinkType, to: string): Promise<void>;

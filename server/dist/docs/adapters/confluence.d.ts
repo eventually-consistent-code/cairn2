@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { type FetchLike } from "../../tracker/http.js";
+import type { ProbeResult } from "../../tracker/types.js";
 import type { DocsCapability, DocsConnector, Page, PageSpec } from "../types.js";
 export declare const configSchema: z.ZodObject<{
     /** Site wiki base, e.g. https://your-domain.atlassian.net/wiki */
@@ -59,6 +60,9 @@ export declare class ConfluenceConnector implements DocsConnector {
     private normalize;
     /** Resolve and memoize the configured space (id + homepage). */
     private getSpace;
+    /** Preflight: resolving the configured space is the cheapest authenticated
+     *  call this connector has — the same one every other method needs first. */
+    probe(): Promise<ProbeResult>;
     /**
      * Find the project's folder by title (case-insensitive) anywhere in the
      * space. Folders have no title-filtered v2 listing, so this goes through

@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, paginate } from "../http.js";
+import { runProbe } from "../probe.js";
 import { assertCanonicalState, matchesState } from "../types.js";
 import { milestonesUnsupported } from "../unsupported.js";
 const WIP = "in-progress";
@@ -32,6 +33,12 @@ export class GitLabTracker {
         if (!/^\d+$/.test(id)) {
             throw new CairnError("NOT_FOUND", `invalid issue id: ${id}`, "issue id must be a numeric string");
         }
+    }
+    /** Preflight: /user (site root, not project-scoped) is GitLab's cheapest
+     *  authenticated call -- a single attempt, no retry backoff, since a probe
+     *  wants a fast verdict rather than resilience. */
+    async probe() {
+        return runProbe(() => fetchJson(this.fetchImpl, `${this.cfg.baseUrl.replace(/\/$/, "")}/api/v4/user`, { method: "GET", headers: this.headers() }, { context: "gitlab probe", retries: 0 }));
     }
     normalize(raw) {
         let category = raw.state === "closed" ? "closed" : "open";

@@ -69,7 +69,7 @@ describe("cairn MCP server", () => {
       "ledger_append",
       "milestone_create", "milestone_list", "milestone_complete",
       "plan_resync", "plan_tracker_delta", "plan_meta_set",
-      "config_get", "config_set",
+      "config_get", "config_set", "config_probe",
       "issue_comment", "issue_attach", "trace_start", "trace_log", "trace_list", "trace_close",
       "probe_start", "probe_log", "probe_close",
       "draft_start", "draft_log", "draft_close",
@@ -84,8 +84,8 @@ describe("cairn MCP server", () => {
     ].sort());
   });
 
-  it("pins the tool count at 71", async () => {
-    expect((await listToolNames()).length).toBe(71);
+  it("pins the tool count at 72", async () => {
+    expect((await listToolNames()).length).toBe(72);
   });
 
   it("issue_attach reads the file and forwards to the tracker; missing file is NOT_FOUND", async () => {
@@ -434,6 +434,12 @@ describe("cairn MCP server", () => {
     const got = await call("config_get", {});
     expect(got.json.continuity.resume).toBe("auto");
     expect(got.json.leakGuard.enabled).toBe(true); // defaults visible in effective view
+  });
+
+  it("config_probe reports {tracker:{verdict:'ok'}} with no docs block configured (CRN-48)", async () => {
+    const res = await call("config_probe", {});
+    expect(res.isError).toBeFalsy();
+    expect(res.json).toEqual({ tracker: { verdict: "ok" } });
   });
 
   it("CairnError surfaces as isError with code + nextAction", async () => {
@@ -1069,6 +1075,28 @@ describe("docs tools over an injected fake connector", () => {
       const status = await c.callTool({ name: "docs_status", arguments: {} });
       const statusJson = JSON.parse((status.content as Array<{ text: string }>)[0].text);
       expect(statusJson.configured).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("config_probe also probes a configured docs connector (CRN-48)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cairn-docs-probe-"));
+    writeFileSync(join(dir, "cairn.json"), JSON.stringify({
+      tracker: { type: "github", config: { repo: "o/r" } },
+      docs: { connector: "confluence", config: { baseUrl: "https://x.atlassian.net/wiki", spaceKey: "D" } },
+    }));
+    const { FakeDocsConnector } = await import("../src/docs/fake.js");
+    const fake = new FakeDocsConnector();
+    try {
+      const server = buildServer({ projectDir: dir, tracker: new FakeTracker(), docsConnector: fake });
+      const [ct, st] = InMemoryTransport.createLinkedPair();
+      const c = new Client({ name: "docs-probe-test", version: "0.0.0" });
+      await Promise.all([server.connect(st), c.connect(ct)]);
+      const res = await c.callTool({ name: "config_probe", arguments: {} });
+      const json = JSON.parse((res.content as Array<{ text: string }>)[0].text);
+      expect(res.isError).toBeFalsy();
+      expect(json).toEqual({ tracker: { verdict: "ok" }, docs: { verdict: "ok" } });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

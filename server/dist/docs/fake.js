@@ -74,4 +74,7 @@ export class FakeDocsConnector {
         this.storeImages(id, spec);
         return page;
     }
+    async probe() {
+        return { verdict: "ok" };
+    }
 }

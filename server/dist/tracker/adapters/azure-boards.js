@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson } from "../http.js";
+import { runProbe } from "../probe.js";
 import { matchesState } from "../types.js";
 import { phaseCloseUnsupported } from "../unsupported.js";
 const MAX_IDS = 100;
@@ -82,6 +83,11 @@ export class AzureBoardsTracker {
         this.self = data.authenticatedUser?.properties?.Account?.$value
             ?? data.authenticatedUser?.providerDisplayName;
         return this.self;
+    }
+    /** Preflight: connectionData is the cheapest authenticated call this
+     *  backend has — the same one resolveSelf already makes. */
+    async probe() {
+        return runProbe(() => this.resolveSelf());
     }
     get projectPath() {
         return encodeURIComponent(this.cfg.project);

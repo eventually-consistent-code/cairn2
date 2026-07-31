@@ -9,6 +9,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, wri
 import { dirname, join, posix, resolve } from "node:path";
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
+import { runProbe } from "../../tracker/probe.js";
 import { nameToTitle } from "../tree.js";
 export const configSchema = z.object({
     /** Docusaurus site checkout, absolute or relative to the cairn project. */
@@ -72,6 +73,11 @@ export class DocusaurusConnector {
             throw new CairnError("CONFIG_INVALID", `no docusaurus.config.{js,ts,mjs} in ${this.siteAbs}`, "point docs.config.sitePath in cairn.json at a Docusaurus site checkout");
         }
         this.probed = true;
+    }
+    /** Preflight: no network here — the "cheap authenticated call" is the same
+     *  sitePath existence check every other method runs first. */
+    async probe() {
+        return runProbe(async () => this.probeSite());
     }
     abs(id) {
         return join(this.docsAbs, ...id.split("/"));

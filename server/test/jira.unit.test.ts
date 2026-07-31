@@ -430,6 +430,55 @@ describe("JiraTracker identity + assignee", () => {
   });
 });
 
+describe("JiraTracker probe (CRN-48)", () => {
+  it("ok on a 200 from /myself", async () => {
+    const { f, calls } = fixtureFetch([{ status: 200, body: { accountId: "acc-123" } }]);
+    const t = makeJira(f);
+    await expect(t.probe!()).resolves.toEqual({ verdict: "ok" });
+    expect(calls[0].url).toContain("/rest/api/3/myself");
+  });
+
+  it("bad_host on a network error", async () => {
+    vi.useFakeTimers();
+    try {
+      const f: FetchLike = async () => { throw new Error("ENOTFOUND o.atlassian.net"); };
+      const t = makeJira(f);
+      const pending = t.probe!();
+      await vi.runAllTimersAsync();
+      await expect(pending).resolves.toMatchObject({ verdict: "bad_host" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("bad_token on a 401 with a plain-rejected-credentials body", async () => {
+    const { f } = fixtureFetch([{ status: 401, body: { message: "the token was rejected" } }]);
+    const t = makeJira(f);
+    await expect(t.probe!()).resolves.toMatchObject({ verdict: "bad_token" });
+  });
+
+  it("missing_scope on a 403 with a scope-shaped body", async () => {
+    const { f } = fixtureFetch([
+      { status: 403, body: { message: "missing required scope for this operation" } },
+    ]);
+    const t = makeJira(f);
+    await expect(t.probe!()).resolves.toMatchObject({ verdict: "missing_scope" });
+  });
+
+  it("rate_limited on an exhausted 429", async () => {
+    vi.useFakeTimers();
+    try {
+      const f: FetchLike = async () => new Response(JSON.stringify({}), { status: 429 });
+      const t = makeJira(f);
+      const pending = t.probe!();
+      await vi.runAllTimersAsync();
+      await expect(pending).resolves.toMatchObject({ verdict: "rate_limited" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("JiraTracker sprint awareness", () => {
   const scrumBoard = { values: [{ id: 7, type: "scrum" }] };
   const activeSprint = { values: [{ id: 42 }] };

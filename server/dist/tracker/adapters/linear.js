@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson } from "../http.js";
+import { runProbe } from "../probe.js";
 import { matchesState } from "../types.js";
 import { milestonesUnsupported } from "../unsupported.js";
 const API = "https://api.linear.app/graphql";
@@ -55,6 +56,12 @@ export class LinearTracker {
             throw new CairnError("TRACKER_DOWN", `linear ${context}: ${msg}`);
         }
         return data;
+    }
+    /** Preflight: {viewer{id}} is the cheapest authenticated GraphQL call —
+     *  Linear has no resolveSelf here (viewer id isn't otherwise useful), so
+     *  this is the probe's own dedicated cheap call. */
+    async probe() {
+        return runProbe(() => this.gql(`query Viewer { viewer { id } }`, {}, "probe"));
     }
     normalize(raw) {
         const type = raw.state.type;

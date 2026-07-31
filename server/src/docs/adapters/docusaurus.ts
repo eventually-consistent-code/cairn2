@@ -12,6 +12,8 @@ import {
 import { dirname, join, posix, resolve } from "node:path";
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
+import { runProbe } from "../../tracker/probe.js";
+import type { ProbeResult } from "../../tracker/types.js";
 import { nameToTitle } from "../tree.js";
 import type { DocsCapability, DocsConnector, Page, PageSpec } from "../types.js";
 
@@ -93,6 +95,12 @@ export class DocusaurusConnector implements DocsConnector {
         "point docs.config.sitePath in cairn.json at a Docusaurus site checkout");
     }
     this.probed = true;
+  }
+
+  /** Preflight: no network here — the "cheap authenticated call" is the same
+   *  sitePath existence check every other method runs first. */
+  async probe(): Promise<ProbeResult> {
+    return runProbe(async () => this.probeSite());
   }
 
   private abs(id: string): string {

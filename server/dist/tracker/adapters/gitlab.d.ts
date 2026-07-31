@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { type FetchLike } from "../http.js";
-import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker } from "../types.js";
+import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, ProbeResult, Tracker } from "../types.js";
 export declare class GitLabTracker implements Tracker {
     private cfg;
     private fetchImpl;
@@ -11,6 +11,10 @@ export declare class GitLabTracker implements Tracker {
     private headers;
     private api;
     private assertId;
+    /** Preflight: /user (site root, not project-scoped) is GitLab's cheapest
+     *  authenticated call -- a single attempt, no retry backoff, since a probe
+     *  wants a fast verdict rather than resilience. */
+    probe(): Promise<ProbeResult>;
     private normalize;
     createIssue(input: IssueCreate): Promise<Issue>;
     getIssue(id: string): Promise<Issue>;

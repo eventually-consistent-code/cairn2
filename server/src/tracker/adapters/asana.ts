@@ -1,8 +1,9 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, type FetchLike } from "../http.js";
+import { runProbe } from "../probe.js";
 import type {
-  Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
+  Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, ProbeResult, Tracker,
 } from "../types.js";
 import { assertCanonicalState, matchesState } from "../types.js";
 import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
@@ -65,6 +66,11 @@ export class AsanaTracker implements Tracker {
       throw new CairnError("NOT_FOUND", `invalid task id: ${id}`,
         "task id must be a numeric gid");
     }
+  }
+
+  /** Preflight: /users/me is Asana's cheapest authenticated call. */
+  async probe(): Promise<ProbeResult> {
+    return runProbe(() => this.api("GET", "/users/me", undefined, "probe"));
   }
 
   private normalize(raw: AsanaTask): Issue {

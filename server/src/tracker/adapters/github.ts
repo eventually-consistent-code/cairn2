@@ -2,8 +2,10 @@ import { execFileSync } from "node:child_process";
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, paginate, type FetchLike } from "../http.js";
+import { runProbe } from "../probe.js";
 import type {
-  Capability, StateCategory, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
+  Capability, StateCategory, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase,
+  ProbeResult, Tracker,
 } from "../types.js";
 import { assertCanonicalState, matchesState } from "../types.js";
 import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
@@ -84,6 +86,12 @@ export class GitHubTracker implements Tracker {
     const me = await this.api("GET", "/user") as { login?: string };
     this.self = me.login;
     return this.self;
+  }
+
+  /** Preflight: /user is the cheapest authenticated call this backend has —
+   *  the same one resolveSelf already makes. */
+  async probe(): Promise<ProbeResult> {
+    return runProbe(() => this.resolveSelf());
   }
 
   private normalize(raw: GhIssue): Issue {

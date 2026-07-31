@@ -3,6 +3,8 @@
 // The SPI stays product-agnostic: bodies cross the boundary as markdown and
 // each adapter owns the conversion to its native storage format.
 
+import type { ProbeResult } from "../tracker/types.js";
+
 export interface DocsCapability {
   /** Pages can nest under parent pages (tree, not flat list). */
   hasPageTree: boolean;
@@ -69,4 +71,7 @@ export interface DocsConnector {
   /** Post-publish hook (e.g. auto-commit). Returns a warning string when the
    *  step degraded, undefined when clean or not applicable. */
   finalize?(): Promise<string | undefined>;
+  /** Cheap credential preflight -- one authenticated call, mapped to a
+   *  specific verdict. A probe failure IS the result: this never throws. */
+  probe?(): Promise<ProbeResult>;
 }

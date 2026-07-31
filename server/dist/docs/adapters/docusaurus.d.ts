@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { ProbeResult } from "../../tracker/types.js";
 import type { DocsCapability, DocsConnector, Page, PageSpec } from "../types.js";
 export declare const configSchema: z.ZodObject<{
     /** Docusaurus site checkout, absolute or relative to the cairn project. */
@@ -31,6 +32,9 @@ export declare class DocusaurusConnector implements DocsConnector {
     constructor(cfg: DocusaurusConfig);
     /** Sanity probe: sitePath must hold a Docusaurus site. Cached after first pass. */
     private probeSite;
+    /** Preflight: no network here — the "cheap authenticated call" is the same
+     *  sitePath existence check every other method runs first. */
+    probe(): Promise<ProbeResult>;
     private abs;
     private isDir;
     private readCategory;

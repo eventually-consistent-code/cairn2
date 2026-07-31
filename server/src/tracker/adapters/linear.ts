@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, type FetchLike } from "../http.js";
+import { runProbe } from "../probe.js";
 import type {
   Capability, StateCategory, Issue, IssueCreate, IssueLink, IssuePatch, IssueState, LinkType,
-  Milestone, Phase, Tracker,
+  Milestone, Phase, ProbeResult, Tracker,
 } from "../types.js";
 import { matchesState } from "../types.js";
 import { milestonesUnsupported } from "../unsupported.js";
@@ -79,6 +80,14 @@ export class LinearTracker implements Tracker {
       throw new CairnError("TRACKER_DOWN", `linear ${context}: ${msg}`);
     }
     return data as T;
+  }
+
+  /** Preflight: {viewer{id}} is the cheapest authenticated GraphQL call —
+   *  Linear has no resolveSelf here (viewer id isn't otherwise useful), so
+   *  this is the probe's own dedicated cheap call. */
+  async probe(): Promise<ProbeResult> {
+    return runProbe(() => this.gql<{ viewer: { id: string } }>(
+      `query Viewer { viewer { id } }`, {}, "probe"));
   }
 
   private normalize(raw: LinearIssueNode): Issue {

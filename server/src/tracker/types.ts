@@ -98,6 +98,13 @@ export type LinkType = "blocks" | "parent-of" | "relates-to" | "supersedes";
 
 export interface IssueLink { from: string; type: LinkType; to: string }
 
+/** Credential-preflight verdict (CRN-48) — one cheap authenticated call,
+ *  mapped onto a specific, actionable bucket instead of a generic failure. */
+export type ProbeVerdict =
+  | "ok" | "bad_host" | "bad_token" | "missing_scope" | "rate_limited" | "down";
+
+export interface ProbeResult { verdict: ProbeVerdict; detail?: string }
+
 export interface Tracker {
   readonly capabilities: Capability;
   createIssue(input: IssueCreate): Promise<Issue>;
@@ -117,6 +124,9 @@ export interface Tracker {
   /** Backend-native identifier for the authenticated user (assignee form).
    *  Present only on adapters that can derive it. Memoized per instance. */
   resolveSelf?(): Promise<string | undefined>;
+  /** Cheap credential preflight -- one authenticated call, mapped to a
+   *  specific verdict. A probe failure IS the result: this never throws. */
+  probe?(): Promise<ProbeResult>;
   /** Issue links. Present only on adapters with hasDependencies. */
   linkIssues?(from: string, type: LinkType, to: string): Promise<void>;
   unlinkIssues?(from: string, type: LinkType, to: string): Promise<void>;

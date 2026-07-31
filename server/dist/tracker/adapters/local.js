@@ -396,4 +396,8 @@ export class LocalTracker {
         this.self ??= process.env.USER || undefined;
         return this.self;
     }
+    /** Repo-resident, zero-network backend — nothing to preflight. Always ok. */
+    async probe() {
+        return { verdict: "ok" };
+    }
 }

@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, type FetchLike } from "../http.js";
+import { runProbe } from "../probe.js";
 import type {
   Capability, Issue, IssueCreate, IssueEstimate, IssuePatch, IssueState, Milestone,
-  Phase, StateCategory, Tracker,
+  Phase, ProbeResult, StateCategory, Tracker,
 } from "../types.js";
 import { matchesState } from "../types.js";
 
@@ -362,6 +363,12 @@ export class JiraTracker implements Tracker {
       "jira myself") as { accountId?: string };
     this.self = me.accountId;
     return this.self;
+  }
+
+  /** Preflight: /myself is the cheapest authenticated call this backend has —
+   *  the same one resolveSelf already makes. */
+  async probe(): Promise<ProbeResult> {
+    return runProbe(() => this.resolveSelf());
   }
 
   /** Assignee values may arrive as an email (user.handle) — Jira wants accountId. */

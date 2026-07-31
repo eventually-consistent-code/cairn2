@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, paginate } from "../http.js";
+import { runProbe } from "../probe.js";
 import { assertCanonicalState, matchesState } from "../types.js";
 import { milestonesUnsupported } from "../unsupported.js";
 const API = "https://api.github.com";
@@ -67,6 +68,11 @@ export class GitHubTracker {
         const me = await this.api("GET", "/user");
         this.self = me.login;
         return this.self;
+    }
+    /** Preflight: /user is the cheapest authenticated call this backend has —
+     *  the same one resolveSelf already makes. */
+    async probe() {
+        return runProbe(() => this.resolveSelf());
     }
     normalize(raw) {
         const labels = raw.labels.map((l) => l.name);

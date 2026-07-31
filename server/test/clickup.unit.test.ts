@@ -320,3 +320,18 @@ describe("ClickUpTracker custom states", () => {
       .rejects.toMatchObject({ code: "CONFIG_INVALID" });
   });
 });
+
+describe("ClickUpTracker probe (CRN-48)", () => {
+  it("ok on a 200 from /team", async () => {
+    const { f, calls } = fixtureFetch([{ status: 200, body: { teams: [{ id: "1" }] } }]);
+    const t = new ClickUpTracker(cfg, f, () => "tok");
+    await expect(t.probe!()).resolves.toEqual({ verdict: "ok" });
+    expect(calls[0].url).toContain("/team");
+  });
+
+  it("bad_token on a 401 with a plain-rejected-credentials body", async () => {
+    const { f } = fixtureFetch([{ status: 401, body: { err: "Token invalid" } }]);
+    const t = new ClickUpTracker(cfg, f, () => "tok");
+    await expect(t.probe!()).resolves.toMatchObject({ verdict: "bad_token" });
+  });
+});

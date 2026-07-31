@@ -12,6 +12,7 @@ export class CachedTracker {
     // caller's "capabilities.hasWorklog && tracker.logWork" gate keeps working.
     logWork;
     resolveSelf;
+    probe;
     linkIssues;
     unlinkIssues;
     listLinks;
@@ -30,6 +31,9 @@ export class CachedTracker {
         }
         if (inner.resolveSelf) {
             this.resolveSelf = () => this.inner.resolveSelf();
+        }
+        if (inner.probe) {
+            this.probe = () => this.inner.probe();
         }
         if (inner.linkIssues) {
             this.linkIssues = async (f, ty, to) => {

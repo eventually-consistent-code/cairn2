@@ -1,8 +1,10 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, type FetchLike } from "../http.js";
+import { runProbe } from "../probe.js";
 import type {
-  Capability, StateCategory, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
+  Capability, StateCategory, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase,
+  ProbeResult, Tracker,
 } from "../types.js";
 import { matchesState } from "../types.js";
 import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
@@ -88,6 +90,11 @@ export class ClickUpTracker implements Tracker {
       throw new CairnError("NOT_FOUND", `invalid task id: ${id}`,
         "task id must be alphanumeric");
     }
+  }
+
+  /** Preflight: /team is ClickUp's cheapest authenticated call. */
+  async probe(): Promise<ProbeResult> {
+    return runProbe(() => this.api("GET", "/team", undefined, "clickup probe"));
   }
 
   /** Validates a caller-supplied phase (list) id before it reaches a URL. defaultListId is trusted config, not user input. */
