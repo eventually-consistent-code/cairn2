@@ -1,6 +1,12 @@
 export declare const plansRoot: (projectDir: string) => string;
 export declare function slugify(name: string): string;
+export declare function isValidPhaseNumber(number: number): boolean;
+export declare const PHASE_NUMBER_ERROR: (number: number) => string;
 export declare function phaseDirName(number: number, slug: string): string;
+export declare function parsePhaseDirName(dirName: string): {
+    number: number;
+    slug: string;
+} | null;
 export declare const PROJECT_TEMPLATE: (name: string) => string;
 export declare const ROADMAP_TEMPLATE: (name: string) => string;
 export declare const CONTEXT_TEMPLATE: (number: number, name: string) => string;

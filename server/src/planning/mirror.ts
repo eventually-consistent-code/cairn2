@@ -1,5 +1,6 @@
 import { CairnError } from "../errors.js";
 import type { Phase, Tracker } from "../tracker/types.js";
+import { isValidPhaseNumber, PHASE_NUMBER_ERROR } from "./artifacts.js";
 import { projectStatus } from "./status.js";
 
 export const canonicalPhaseName = (number: number, name: string) =>
@@ -8,6 +9,9 @@ export const canonicalPhaseName = (number: number, name: string) =>
 export async function ensurePhase(
   tracker: Tracker, number: number, name: string,
 ): Promise<Phase> {
+  if (!isValidPhaseNumber(number)) {
+    throw new CairnError("CONFIG_INVALID", PHASE_NUMBER_ERROR(number));
+  }
   if (!tracker.capabilities.hasPhases) {
     throw new CairnError("CONFIG_INVALID",
       "the configured tracker does not support phases",

@@ -1,7 +1,6 @@
 import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { plansRoot, readPlanIssues } from "./artifacts.js";
-const PHASE_DIR_RE = /^(\d{2})-([a-z0-9-]+)$/;
+import { parsePhaseDirName, plansRoot, readPlanIssues } from "./artifacts.js";
 export function projectStatus(projectDir) {
     const root = plansRoot(projectDir);
     const hasProject = existsSync(join(root, "PROJECT.md"));
@@ -10,8 +9,8 @@ export function projectStatus(projectDir) {
     const phases = [];
     if (existsSync(phasesDir)) {
         for (const entry of readdirSync(phasesDir)) {
-            const m = PHASE_DIR_RE.exec(entry);
-            if (!m)
+            const parsed = parsePhaseDirName(entry);
+            if (!parsed)
                 continue;
             const base = join(phasesDir, entry);
             let issues = [];
@@ -24,9 +23,9 @@ export function projectStatus(projectDir) {
                 parseError = `${entry}: ${message}`;
             }
             phases.push({
-                number: Number(m[1]),
+                number: parsed.number,
                 dir: entry,
-                name: m[2].replace(/-/g, " "),
+                name: parsed.slug.replace(/-/g, " "),
                 hasContext: existsSync(join(base, "CONTEXT.md")),
                 hasResearch: existsSync(join(base, "RESEARCH.md")),
                 hasPlan: existsSync(join(base, "PLAN.md")),

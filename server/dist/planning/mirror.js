@@ -1,7 +1,11 @@
 import { CairnError } from "../errors.js";
+import { isValidPhaseNumber, PHASE_NUMBER_ERROR } from "./artifacts.js";
 import { projectStatus } from "./status.js";
 export const canonicalPhaseName = (number, name) => `Phase ${number}: ${name}`;
 export async function ensurePhase(tracker, number, name) {
+    if (!isValidPhaseNumber(number)) {
+        throw new CairnError("CONFIG_INVALID", PHASE_NUMBER_ERROR(number));
+    }
     if (!tracker.capabilities.hasPhases) {
         throw new CairnError("CONFIG_INVALID", "the configured tracker does not support phases", "phase mirroring requires a backend with milestones/epics/sections/lists");
     }

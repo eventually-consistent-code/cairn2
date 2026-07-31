@@ -10,11 +10,43 @@ export function slugify(name) {
     }
     return slug;
 }
+// Accepts integers 1..99, or a number with exactly one fractional digit
+// .1-.9 whose integer part is 1..98 -- lets a phase slot in (1.5) between
+// 1 and 2 without renumbering the rest of the roadmap. A float that just
+// happens to equal an integer (1.0) is treated as that integer.
+export function isValidPhaseNumber(number) {
+    if (typeof number !== "number" || !Number.isFinite(number))
+        return false;
+    const scaled = number * 10;
+    const rounded = Math.round(scaled);
+    if (Math.abs(scaled - rounded) > 1e-6)
+        return false; // more than one fractional digit
+    const intPart = Math.trunc(rounded / 10);
+    const frac = rounded - intPart * 10;
+    return frac === 0 ? intPart >= 1 && intPart <= 99 : intPart >= 1 && intPart <= 98;
+}
+export const PHASE_NUMBER_ERROR = (number) => `phase number must be 1..99, or N.1-N.9 with N=1..98, got ${number}`;
 export function phaseDirName(number, slug) {
-    if (!Number.isInteger(number) || number < 1 || number > 99) {
-        throw new CairnError("CONFIG_INVALID", `phase number must be 1..99, got ${number}`);
+    if (!isValidPhaseNumber(number)) {
+        throw new CairnError("CONFIG_INVALID", PHASE_NUMBER_ERROR(number));
     }
-    return `${String(number).padStart(2, "0")}-${slug}`;
+    const scaled = Math.round(number * 10);
+    const intPart = Math.trunc(scaled / 10);
+    const frac = scaled - intPart * 10;
+    const padded = String(intPart).padStart(2, "0");
+    return frac === 0 ? `${padded}-${slug}` : `${padded}.${frac}-${slug}`;
+}
+// Round-trips a dir name back to its exact phase number + slug -- the
+// counterpart to phaseDirName above. Shared by every caller that recovers a
+// phase number from a directory name so a decimal dir (01.5-slug) parses
+// back to 1.5, not 1. Returns null (never throws) for anything malformed --
+// callers decide whether that's a skip (readdir scan) or a CONFIG_INVALID.
+const PHASE_DIR_PATTERN = /^(\d{2})(\.\d)?-([a-z0-9-]+)$/;
+export function parsePhaseDirName(dirName) {
+    const m = PHASE_DIR_PATTERN.exec(dirName);
+    if (!m)
+        return null;
+    return { number: Number(m[1] + (m[2] ?? "")), slug: m[3] };
 }
 export const PROJECT_TEMPLATE = (name) => `# ${name}
 

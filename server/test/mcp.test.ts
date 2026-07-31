@@ -159,6 +159,50 @@ describe("cairn MCP server", () => {
     expect(drift.json.flagged).toEqual([]);
   });
 
+  it("plan_scaffold_phase accepts a decimal phase number (1.5) — dir is 01.5-slug", async () => {
+    const ph = await call("plan_scaffold_phase", { number: 1.5, name: "Gamma" });
+    expect(ph.json.dir).toBe("01.5-gamma");
+    const ensured = await call("plan_phase_ensure", { number: 1.5, name: "Gamma" });
+    expect(ensured.json.name).toBe("Phase 1.5: Gamma");
+  });
+
+  it("plan_scaffold_phase rejects an over-precise decimal (1.55) as CONFIG_INVALID", async () => {
+    const res = await client.callTool({ name: "plan_scaffold_phase",
+      arguments: { number: 1.55, name: "Bad" } });
+    expect(res.isError).toBe(true);
+    const text = (res.content as Array<{ type: string; text: string }>)[0].text;
+    expect(text).toContain("CONFIG_INVALID");
+  });
+
+  it("plan_phase_ensure rejects an over-precise decimal (1.55) as CONFIG_INVALID", async () => {
+    const res = await client.callTool({ name: "plan_phase_ensure",
+      arguments: { number: 1.55, name: "Bad" } });
+    expect(res.isError).toBe(true);
+    const text = (res.content as Array<{ type: string; text: string }>)[0].text;
+    expect(text).toContain("CONFIG_INVALID");
+  });
+
+  it("round-trip: scaffold 1, 1.5, 2 → plan_status lists them ordered 1, 1.5, 2 with correct numbers", async () => {
+    await call("plan_scaffold_phase", { number: 1, name: "One" });
+    await call("plan_scaffold_phase", { number: 1.5, name: "OnePointFive" });
+    await call("plan_scaffold_phase", { number: 2, name: "Two" });
+    const status = await call("plan_status", {});
+    const relevant = (status.json.phases as Array<{ number: number; dir: string }>)
+      .filter((p) => ["01-one", "01.5-onepointfive", "02-two"].includes(p.dir));
+    expect(relevant.map((p) => p.dir)).toEqual(["01-one", "01.5-onepointfive", "02-two"]);
+    expect(relevant.map((p) => p.number)).toEqual([1, 1.5, 2]);
+  });
+
+  it("plan_issues_set on a decimal phaseDir round-trips the phase number into the handoff (not the slice(0,2) bug)", async () => {
+    await call("plan_scaffold_phase", { number: 1.5, name: "Handoff Check" });
+    const made = await call("issue_create", { title: "decimal handoff req" });
+    const res = await call("plan_issues_set",
+      { phaseDir: "01.5-handoff-check", issues: [made.json.id] });
+    expect(res.isError).toBeFalsy();
+    const handoff = await call("continuity_get", {});
+    expect(handoff.json.handoff.phase).toEqual({ number: 1.5, slug: "handoff-check" });
+  });
+
   it("plan_issues_set rejects traversal-shaped phaseDir", async () => {
     const res = await call("plan_issues_set", { phaseDir: "../evil", issues: [] });
     expect(res.isError).toBe(true);

@@ -7,6 +7,7 @@ import {
 import { basename, dirname, join, resolve } from "node:path";
 import { CairnError } from "../errors.js";
 import { loadConfig } from "../config.js";
+import { isValidPhaseNumber } from "../planning/artifacts.js";
 
 const STALE_MS = 14 * 24 * 60 * 60 * 1000; // 14 days
 
@@ -51,7 +52,9 @@ export const HandoffSchema: z.ZodType<Handoff> = z.object({
   created: z.string(),
   source: z.enum(["tool", "posttooluse", "precompact", "waypoint"]),
   project: z.string(),
-  phase: z.object({ number: z.number().int(), slug: z.string() }).optional(),
+  // Widened for decimal phase numbers -- same rule 1 as
+  // isValidPhaseNumber: integers 1..99, or N.1-N.9 with N=1..98.
+  phase: z.object({ number: z.number().refine(isValidPhaseNumber), slug: z.string() }).optional(),
   issue: z.string().optional(),
   plan: z.string().optional(),
   task: z.object({ current: z.string(), title: z.string() }),
