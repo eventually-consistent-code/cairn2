@@ -859,15 +859,29 @@ export function buildServer(deps) {
         const d = dir();
         return publishTree(await getDocsConnector(d), d, a.projectName);
     }));
-    server.registerTool("docs_status", { description: "Docs connector status — configured connector and the project's landing page, when one exists",
+    server.registerTool("docs_status", { description: "Docs connector status — configured connector and the project's landing page, when one exists. "
+            + "A configured-but-unreachable connector reports {configured:true, reachable:false, error, message} "
+            + "instead of throwing",
         inputSchema: { projectName: z.string().optional() } }, wrap(async (a) => {
         const d = dir();
         const cfg = loadConfig(d);
         if (!cfg.docs)
             return { configured: false };
-        const connector = await getDocsConnector(d);
-        const root = await connector.findPage(a.projectName ?? defaultProjectName(d));
-        return { configured: true, connector: cfg.docs.connector, root };
+        try {
+            const connector = await getDocsConnector(d);
+            const root = await connector.findPage(a.projectName ?? defaultProjectName(d));
+            return { configured: true, connector: cfg.docs.connector, root };
+        }
+        catch (e) {
+            // The connector is configured but couldn't be reached (auth, network,
+            // rate limit, ...) -- report that gracefully rather than rethrowing;
+            // an unreachable docs backend shouldn't look like a crashed tool.
+            if (e instanceof CairnError) {
+                const message = e.message.length > 200 ? `${e.message.slice(0, 200)}…` : e.message;
+                return { configured: true, reachable: false, error: e.code, message };
+            }
+            throw e;
+        }
     }));
     return server;
 }
