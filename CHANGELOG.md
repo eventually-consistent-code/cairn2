@@ -1,5 +1,20 @@
 # Changelog
 
+## v2 — survey verb: project-wide research (2026-07-30)
+
+- New `/cairn:survey ["<topic>"]`: project-wide research into a resumable
+  `SURVEY.md` (scout's done/pending markers), a hard discussion gate, then
+  approved roadmap changes applied via route mechanics (decimal phase
+  insert — never renumber, locked-decision CONTEXT.md edits, mirrored
+  issues). Composition of existing tools; no server changes (38 verbs).
+- Research fan-out is now mandatory and multi-agent for `scout`, `survey`,
+  and `plan --deep`: one subagent per pending topic, model routed per the
+  work class of the topic (mechanical → haiku-tier, synthesis →
+  sonnet-tier, judgment → opus-tier); sections commit as each agent
+  finishes, so a killed run keeps everything completed.
+- `/cairn:new` now recommends `/cairn:survey` before `/cairn:plan 1` —
+  whole-project research is cheapest when nothing is planned yet.
+
 ## v2 — Confluence documentation connector (2026-07-24)
 
 - Docs connector SPI: normalized `DocsConnector` interface, capability

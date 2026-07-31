@@ -70,8 +70,8 @@ unplanned-work surfacing (tracker issues no plan references), `import`
 assignee-aware claiming, and plans/cards that collaborate through ordinary
 git PRs.
 
-**Verbs (37 live):** `plan` `work` `verify` `ship` `status` `new` `import`
-`remember` `recall` `help` `do` `waypoint` `scout` `route` `summit` `auto`
+**Verbs (38 live):** `plan` `work` `verify` `ship` `status` `new` `import`
+`remember` `recall` `help` `do` `waypoint` `scout` `survey` `route` `summit` `auto`
 `fast` `resync` `mark` `retro` `distill` `brief` `tune` `trace` `probe`
 `draft` `audit` `review` `triage` `map` `thread` `profile` `medic`
 `backtrack` `basecamp` `peers` `docs` — each a `/cairn:<verb>` command, generated
