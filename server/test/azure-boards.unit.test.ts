@@ -419,3 +419,40 @@ describe("AzureBoardsTracker identity", () => {
     expect(await t2.resolveSelf!()).toBeUndefined();
   });
 });
+
+describe("AzureBoardsTracker probe (CRN-48)", () => {
+  it("ok on a 200 from /_apis/projects/{project} -- validates the target, not just the token", async () => {
+    const { f, calls } = fixtureFetch([{ status: 200, body: { id: "guid-1", name: "Proj" } }]);
+    const t = makeAzure(f);
+    await expect(t.probe!()).resolves.toEqual({ verdict: "ok" });
+    expect(calls[0].url).toContain("/_apis/projects/Proj");
+  });
+
+  it("bad_host on a valid PAT but a nonexistent project (live-verification gap)", async () => {
+    // A valid PAT passes connectionData every time -- probing connectionData
+    // alone can never catch a typo'd project. /_apis/projects/{project}
+    // catches both.
+    const f: FetchLike = async (url) => {
+      const u = String(url);
+      if (u.includes("connectionData")) {
+        return new Response(JSON.stringify({
+          authenticatedUser: { properties: { Account: { $value: "me@corp.com" } } },
+        }), { status: 200 });
+      }
+      if (u.includes("/_apis/projects/")) {
+        return new Response(JSON.stringify({ message: "project does not exist" }), { status: 404 });
+      }
+      throw new Error(`unexpected url in test: ${u}`);
+    };
+    const t = makeAzure(f);
+    await expect(t.probe!()).resolves.toMatchObject({ verdict: "bad_host" });
+  });
+
+  it("missing_scope on a 403 with a scope-shaped body", async () => {
+    const { f } = fixtureFetch([
+      { status: 403, body: { message: "missing required scope for this operation" } },
+    ]);
+    const t = makeAzure(f);
+    await expect(t.probe!()).resolves.toMatchObject({ verdict: "missing_scope" });
+  });
+});

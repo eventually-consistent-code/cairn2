@@ -69,7 +69,7 @@ describe("cairn MCP server", () => {
       "ledger_append",
       "milestone_create", "milestone_list", "milestone_complete",
       "plan_resync", "plan_tracker_delta", "plan_meta_set",
-      "config_get", "config_set",
+      "config_get", "config_set", "config_probe",
       "issue_comment", "issue_attach", "trace_start", "trace_log", "trace_list", "trace_close",
       "probe_start", "probe_log", "probe_close",
       "draft_start", "draft_log", "draft_close",
@@ -84,8 +84,8 @@ describe("cairn MCP server", () => {
     ].sort());
   });
 
-  it("pins the tool count at 71", async () => {
-    expect((await listToolNames()).length).toBe(71);
+  it("pins the tool count at 72", async () => {
+    expect((await listToolNames()).length).toBe(72);
   });
 
   it("issue_attach reads the file and forwards to the tracker; missing file is NOT_FOUND", async () => {
@@ -132,6 +132,19 @@ describe("cairn MCP server", () => {
   it("plan_check runs clean on an empty project", async () => {
     const out = await call("plan_check", {});
     expect(out.json).toEqual({ findings: [], scanned: 0 });
+  });
+
+  it("plan_check phase filter matches a decimal phase (1.5) — real dir is 01.5-slug (#40)", async () => {
+    await call("plan_scaffold_phase", { number: 1.5, name: "Decimal Check" });
+    const out = await call("plan_check", { phase: 1.5 });
+    expect(out.isError).toBeFalsy();
+    expect(out.json.scanned).toBe(1);
+  });
+
+  it("plan_check rejects an over-precise decimal (1.55) as CONFIG_INVALID (#40)", async () => {
+    const res = await call("plan_check", { phase: 1.55 });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("CONFIG_INVALID");
   });
 
   it("audit_record writes and validates", async () => {
@@ -322,10 +335,97 @@ describe("cairn MCP server", () => {
     expect(closed.json.worklogError).toMatch(/no worklog support/);
   });
 
+  it("issue_create passes an estimate through on a hasEstimates backend, no skip note", async () => {
+    const made = await call("issue_create",
+      { title: "estimated on jira-like", estimatePoints: 3, estimateMinutes: 90 });
+    expect(made.json.estimate).toEqual({ points: 3, minutes: 90 });
+    expect(made.json.estimateSkipped).toBeUndefined();
+  });
+
+  it("issue_create with no estimate requested carries no skip note", async () => {
+    const made = await call("issue_create", { title: "no estimate requested" });
+    expect(made.json.estimate).toBeUndefined();
+    expect(made.json.estimateSkipped).toBeUndefined();
+  });
+
+  describe("estimates capability gate (no-hasEstimates backend)", () => {
+    // FakeTracker defaults to hasEstimates: true (it stands in for jira/local
+    // in the rest of this suite) -- these tests need the OTHER six backends'
+    // posture, so a dedicated tracker + server/client pair overrides it, same
+    // pattern as the git-fixture server above.
+    class NoEstimatesFake extends FakeTracker {
+      override readonly capabilities = { ...new FakeTracker().capabilities, hasEstimates: false };
+    }
+
+    let neClient: Client;
+    const neCall = async (name: string, args: Record<string, unknown> = {}) => {
+      const res = await neClient.callTool({ name, arguments: args });
+      const text = (res.content as Array<{ type: string; text: string }>)[0].text;
+      return { ...res, json: JSON.parse(text) };
+    };
+
+    beforeAll(async () => {
+      const dir = mkdtempSync(join(tmpdir(), "cairn-mcp-no-estimates-"));
+      const server = buildServer({ projectDir: dir, tracker: new NoEstimatesFake() });
+      const [ct, st] = InMemoryTransport.createLinkedPair();
+      neClient = new Client({ name: "test-no-estimates", version: "0.0.0" });
+      await Promise.all([server.connect(st), neClient.connect(ct)]);
+    });
+
+    it("issue_create drops the estimate and reports estimateSkipped", async () => {
+      const made = await neCall("issue_create",
+        { title: "unestimatable", estimatePoints: 5, estimateMinutes: 120 });
+      expect(made.json.estimate).toBeUndefined();
+      expect(made.json.estimateSkipped)
+        .toBe("backend has no estimate support; fold points/minutes into the issue body");
+    });
+
+    it("issue_create with no estimate requested carries no skip note", async () => {
+      const made = await neCall("issue_create", { title: "plain, no estimate" });
+      expect(made.json.estimate).toBeUndefined();
+      expect(made.json.estimateSkipped).toBeUndefined();
+    });
+
+    it("issue_update drops the estimate and reports estimateSkipped", async () => {
+      const made = await neCall("issue_create", { title: "update target" });
+      const updated = await neCall("issue_update",
+        { id: made.json.id, estimatePoints: 8 });
+      expect(updated.json.estimate).toBeUndefined();
+      expect(updated.json.estimateSkipped)
+        .toBe("backend has no estimate support; fold points/minutes into the issue body");
+    });
+
+    it("issue_update with no estimate requested carries no skip note", async () => {
+      const made = await neCall("issue_create", { title: "update target, no estimate" });
+      const updated = await neCall("issue_update", { id: made.json.id, title: "renamed" });
+      expect(updated.json.estimate).toBeUndefined();
+      expect(updated.json.estimateSkipped).toBeUndefined();
+    });
+  });
+
   it("context_set then context_get roundtrips", async () => {
     await call("context_set", { phase: 1, issueId: "FAKE-1" });
     const got = await call("context_get");
     expect(got.json).toEqual({ phase: 1, issueId: "FAKE-1" });
+  });
+
+  it("context_set accepts a decimal phase (1.5) and persists it (#40)", async () => {
+    await call("context_set", { phase: 1.5 });
+    const got = await call("context_get");
+    expect(got.json.phase).toBe(1.5);
+  });
+
+  it("context_set rejects an over-precise decimal phase (1.55) as CONFIG_INVALID (#40)", async () => {
+    const res = await call("context_set", { phase: 1.55 });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("CONFIG_INVALID");
+  });
+
+  it("context_set({phase: null}) still clears the phase after the decimal guard lands (#40)", async () => {
+    await call("context_set", { phase: 1.5 });
+    await call("context_set", { phase: null });
+    const got = await call("context_get");
+    expect(got.json.phase).toBeUndefined();
   });
 
   it("config_set merges and config_get reflects it", async () => {
@@ -334,6 +434,12 @@ describe("cairn MCP server", () => {
     const got = await call("config_get", {});
     expect(got.json.continuity.resume).toBe("auto");
     expect(got.json.leakGuard.enabled).toBe(true); // defaults visible in effective view
+  });
+
+  it("config_probe reports {tracker:{verdict:'ok'}} with no docs block configured (CRN-48)", async () => {
+    const res = await call("config_probe", {});
+    expect(res.isError).toBeFalsy();
+    expect(res.json).toEqual({ tracker: { verdict: "ok" } });
   });
 
   it("CairnError surfaces as isError with code + nextAction", async () => {
@@ -455,6 +561,48 @@ describe("cairn MCP server", () => {
 
     const recall = await call("mem_card_recall", {});
     expect(recall.json.find((c: { id: string }) => c.id === card.json.id).stale).toBe(false);
+  });
+
+  it("mem_index/mem_search accept a decimal phase (1.5) and round-trip the scoped search (#40)", async () => {
+    await call("mem_index", { content: "decimal phase gremlin", source: "research", phase: 1.5 });
+    const found = await call("mem_search", { query: "gremlin", phase: 1.5 });
+    expect(found.json.length).toBeGreaterThan(0);
+  });
+
+  it("mem_index rejects an over-precise decimal phase (1.55) as CONFIG_INVALID (#40)", async () => {
+    const res = await call("mem_index", { content: "x", source: "research", phase: 1.55 });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("CONFIG_INVALID");
+  });
+
+  it("mem_search rejects an over-precise decimal phase (1.55) as CONFIG_INVALID (#40)", async () => {
+    const res = await call("mem_search", { query: "x", phase: 1.55 });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("CONFIG_INVALID");
+  });
+
+  it("mem_card_create/mem_card_list accept a decimal scopePhase (1.5) and recall it (#40)", async () => {
+    const card = await call("mem_card_create", {
+      type: "note", body: "decimal-scoped card", scopePhase: 1.5,
+    });
+    expect(card.isError).toBeFalsy();
+    const list = await call("mem_card_list", { scopePhase: 1.5 });
+    expect(list.json.some((c: { id: string }) => c.id === card.json.id)).toBe(true);
+  });
+
+  it("mem_card_create rejects an over-precise decimal scopePhase (1.55) as CONFIG_INVALID (#40)", async () => {
+    const res = await call("mem_card_create", { type: "note", body: "bad", scopePhase: 1.55 });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("CONFIG_INVALID");
+  });
+
+  it("mem_card_list/mem_card_recall reject an over-precise decimal scopePhase (1.55) as CONFIG_INVALID (#40)", async () => {
+    const list = await call("mem_card_list", { scopePhase: 1.55 });
+    expect(list.isError).toBe(true);
+    expect(list.json.code).toBe("CONFIG_INVALID");
+    const recall = await call("mem_card_recall", { scopePhase: 1.55 });
+    expect(recall.isError).toBe(true);
+    expect(recall.json.code).toBe("CONFIG_INVALID");
   });
 
   it("mem_search rejects a negative limit at the schema boundary", async () => {
@@ -880,6 +1028,41 @@ describe("docs tools over an injected fake connector", () => {
     }
   });
 
+  it("docs_status reports a graceful shape when a configured connector is unreachable (#46)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cairn-docs-down-"));
+    writeFileSync(join(dir, "cairn.json"), JSON.stringify({
+      tracker: { type: "github", config: { repo: "o/r" } },
+      docs: { connector: "confluence", config: { baseUrl: "https://x.atlassian.net/wiki", spaceKey: "D" } },
+    }));
+    const { CairnError } = await import("../src/errors.js");
+    const unreachable: import("../src/docs/types.js").DocsConnector = {
+      capabilities: { hasPageTree: true, hasAttachments: false, hasLabels: false, hasNativeToc: false },
+      ensureRoot: () => { throw new CairnError("AUTH_MISSING", "HTTP 401 from https://x — body: invalid token",
+        "token was rejected — regenerate or check it matches the account"); },
+      getPage: () => { throw new Error("not used"); },
+      findPage: async () => { throw new CairnError("AUTH_MISSING", "HTTP 401 from https://x — body: invalid token",
+        "token was rejected — regenerate or check it matches the account"); },
+      listChildren: () => { throw new Error("not used"); },
+      createPage: () => { throw new Error("not used"); },
+      updatePage: () => { throw new Error("not used"); },
+    };
+    try {
+      const server = buildServer({ projectDir: dir, tracker: new FakeTracker(), docsConnector: unreachable });
+      const [ct, st] = InMemoryTransport.createLinkedPair();
+      const c = new Client({ name: "docs-test-3", version: "0.0.0" });
+      await Promise.all([server.connect(st), c.connect(ct)]);
+      const status = await c.callTool({ name: "docs_status", arguments: { projectName: "proj" } });
+      const statusJson = JSON.parse((status.content as Array<{ text: string }>)[0].text);
+      expect(status.isError).toBeFalsy();
+      expect(statusJson.configured).toBe(true);
+      expect(statusJson.reachable).toBe(false);
+      expect(statusJson.error).toBe("AUTH_MISSING");
+      expect(statusJson.message).toContain("invalid token");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("docs_status reports configured:false without a docs block", async () => {
     const dir = mkdtempSync(join(tmpdir(), "cairn-nodocs-"));
     writeFileSync(join(dir, "cairn.json"),
@@ -892,6 +1075,28 @@ describe("docs tools over an injected fake connector", () => {
       const status = await c.callTool({ name: "docs_status", arguments: {} });
       const statusJson = JSON.parse((status.content as Array<{ text: string }>)[0].text);
       expect(statusJson.configured).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("config_probe also probes a configured docs connector (CRN-48)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cairn-docs-probe-"));
+    writeFileSync(join(dir, "cairn.json"), JSON.stringify({
+      tracker: { type: "github", config: { repo: "o/r" } },
+      docs: { connector: "confluence", config: { baseUrl: "https://x.atlassian.net/wiki", spaceKey: "D" } },
+    }));
+    const { FakeDocsConnector } = await import("../src/docs/fake.js");
+    const fake = new FakeDocsConnector();
+    try {
+      const server = buildServer({ projectDir: dir, tracker: new FakeTracker(), docsConnector: fake });
+      const [ct, st] = InMemoryTransport.createLinkedPair();
+      const c = new Client({ name: "docs-probe-test", version: "0.0.0" });
+      await Promise.all([server.connect(st), c.connect(ct)]);
+      const res = await c.callTool({ name: "config_probe", arguments: {} });
+      const json = JSON.parse((res.content as Array<{ text: string }>)[0].text);
+      expect(res.isError).toBeFalsy();
+      expect(json).toEqual({ tracker: { verdict: "ok" }, docs: { verdict: "ok" } });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

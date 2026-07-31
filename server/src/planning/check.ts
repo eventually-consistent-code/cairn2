@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
-import { plansRoot } from "./artifacts.js";
+import { phaseDirPrefix, plansRoot } from "./artifacts.js";
 
 export interface PlanFinding {
   type: "contract-drift" | "unanchored-threshold";
@@ -127,7 +127,12 @@ export function planCheck(projectDir: string, phase?: number):
   const phasesDir = join(plansRoot(projectDir), "phases");
   if (!existsSync(phasesDir)) return { findings: [], scanned: 0 };
 
-  const prefix = phase !== undefined ? `${String(phase).padStart(2, "0")}-` : null;
+  // Reuse phaseDirName's own pad-and-append scheme instead of re-deriving it
+  // here -- the old String(phase).padStart(2,"0") built "1.5-", which never
+  // matches the real "01.5-slug" directory a decimal phase actually scaffolds
+  // to (CRN-40). phaseDirPrefix throws CONFIG_INVALID for an invalid phase
+  // (e.g. 1.55), same as every other phase-consuming call in this codebase.
+  const prefix = phase !== undefined ? phaseDirPrefix(phase) : null;
   const plans: ScannedPlan[] = [];
   for (const entry of readdirSync(phasesDir)) {
     if (prefix && !entry.startsWith(prefix)) continue;

@@ -8,6 +8,11 @@
 //   (d) every prefixed tool reference in verb docs exists in the server registry
 //   (e) the reserved verb set matches the Tier 0 spec exactly
 //   (f) commands/ holds exactly one shim per live verb (gen-commands.mjs output)
+//   (h) verb docs claiming "decimal" support near a numeric tool param must not
+//       find that param still `.int()`-restricted server-side (the drift class
+//       that let route.md document decimal phase inserts for ~12 days while the
+//       server rejected them). Gap: this catches ONLY the int-vs-decimal drift
+//       class -- other doc/behavior drift shapes are explicitly out of scope.
 // Exit 0 clean, exit 1 with one line per failure.
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -126,6 +131,74 @@ import { spawnSync } from "node:child_process";
     { encoding: "utf8" });
   if (r.status !== 0) {
     failures.push("(g) harness/AGENTS-cairn.md stale vs routing table (run scripts/gen-agents.mjs)");
+  }
+}
+
+// --- (h) decimal-claim vs int-schema drift -----------------------------------
+//
+// Same regex-over-source technique as the registry build above: no dist
+// import, no server boot. For each literal-named registerTool() call, slice
+// the source from its call site to the next wrap( (its handler) -- that
+// slice holds just the description + inputSchema object literal -- and pull
+// every `paramName: z.number()...` chain out of it, noting whether `.int()`
+// is present.
+//
+// Gap (recorded per issue #45 scope decision): this rule targets ONLY the
+// int-vs-decimal drift class -- a verb doc claiming decimal support for a
+// param the server still restricts to whole numbers. It does not attempt
+// general documented-behavior-vs-code verification; that's a research
+// problem, not a CI check.
+
+const NUMERIC_PARAM_NAMES = ["phase", "number", "scopePhase"];
+
+const toolNumericParams = {};
+{
+  const toolCalls = [...serverSrc.matchAll(/server\.registerTool\("([a-z_]+)"/g)];
+  const wrapStarts = [...serverSrc.matchAll(/\bwrap\(/g)].map((m) => m.index);
+  for (const tm of toolCalls) {
+    const start = tm.index;
+    const wrapIdx = wrapStarts.find((idx) => idx > start);
+    const block = serverSrc.slice(start, wrapIdx ?? serverSrc.length);
+    const params = {};
+    for (const pm of block.matchAll(
+      /([A-Za-z_]+):\s*z\.number\(\)((?:\.[a-zA-Z]+\([^)]*\))*)/g)) {
+      params[pm[1]] = pm[2].includes(".int(");
+    }
+    toolNumericParams[tm[1]] = params;
+  }
+}
+
+for (const v of verbFiles) {
+  const doc = readFileSync(join(root, `skills/cairn-trailhead/verbs/${v}.md`), "utf8");
+  const lines = doc.split("\n");
+  for (let i = 0; i < lines.length; i++) {
+    if (!/decimal/i.test(lines[i])) continue;
+
+    const lo = Math.max(0, i - 2);
+    const hi = Math.min(lines.length - 1, i + 2);
+    const windowText = lines.slice(lo, hi + 1).join("\n");
+
+    const toolsInWindow = [...new Set(
+      [...windowText.matchAll(/`([a-z_]+)`/g)]
+        .map((m) => m[1])
+        .filter((name) => name in toolNumericParams))];
+    const paramsInWindow = NUMERIC_PARAM_NAMES.filter(
+      (p) => new RegExp(`\\b${p}\\b`).test(windowText));
+
+    if (toolsInWindow.length === 0 && paramsInWindow.length === 0) continue;
+
+    for (const tool of toolsInWindow) {
+      const schema = toolNumericParams[tool];
+      const named = paramsInWindow.filter((p) => p in schema);
+      const toCheck = named.length ? named : Object.keys(schema);
+      for (const p of toCheck) {
+        if (schema[p]) {
+          failures.push(
+            `(h) verbs/${v}.md:${i + 1} claims decimal support near '${tool}' `
+            + `but its '${p}' param is still z.number().int() server-side`);
+        }
+      }
+    }
   }
 }
 

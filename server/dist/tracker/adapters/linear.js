@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson } from "../http.js";
+import { runProbe } from "../probe.js";
 import { matchesState } from "../types.js";
 import { milestonesUnsupported } from "../unsupported.js";
 const API = "https://api.linear.app/graphql";
@@ -55,6 +56,13 @@ export class LinearTracker {
             throw new CairnError("TRACKER_DOWN", `linear ${context}: ${msg}`);
         }
         return data;
+    }
+    /** Preflight: team(id) over a bare {viewer{id}} -- viewer only proves the
+     *  API key is valid, not that the configured teamId exists. A typo'd
+     *  teamId now comes back as a GraphQL not-found error (-> bad_host)
+     *  instead of reading "ok". */
+    async probe() {
+        return runProbe(() => this.gql(`query Team($teamId: String!) { team(id: $teamId) { id } }`, { teamId: this.cfg.teamId }, "probe"));
     }
     normalize(raw) {
         const type = raw.state.type;

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { type FetchLike } from "../http.js";
-import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker } from "../types.js";
+import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, ProbeResult, Tracker } from "../types.js";
 export declare const configSchema: z.ZodEffects<z.ZodObject<{
     defaultListId: z.ZodString;
     folderId: z.ZodOptional<z.ZodString>;
@@ -44,6 +44,10 @@ export declare class ClickUpTracker implements Tracker {
     private headers;
     private api;
     private assertId;
+    /** Preflight: /list/{defaultListId} over /team -- /team only proves the
+     *  token is valid, not that the configured list exists. A typo'd
+     *  defaultListId now 404s instead of reading "ok". */
+    probe(): Promise<ProbeResult>;
     /** Validates a caller-supplied phase (list) id before it reaches a URL. defaultListId is trusted config, not user input. */
     private assertPhaseId;
     private normalizeState;

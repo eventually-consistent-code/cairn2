@@ -1,7 +1,11 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, paginate, type FetchLike } from "../http.js";
-import type { Capability, StateCategory, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker } from "../types.js";
+import { runProbe } from "../probe.js";
+import type {
+  Capability, StateCategory, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase,
+  ProbeResult, Tracker,
+} from "../types.js";
 import { assertCanonicalState, matchesState } from "../types.js";
 import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 
@@ -40,6 +44,18 @@ export class GitLabTracker implements Tracker {
     if (!/^\d+$/.test(id)) {
       throw new CairnError("NOT_FOUND", `invalid issue id: ${id}`, "issue id must be a numeric string");
     }
+  }
+
+  /** Preflight: GET /projects/{project} (project-scoped, same URL base()
+   *  already builds) over the site-root /user -- /user only proves the
+   *  token is valid, not that the configured project exists. A typo'd
+   *  project now 404s instead of reading "ok". Single attempt, no retry
+   *  backoff -- a probe wants a fast verdict, not resilience. */
+  async probe(): Promise<ProbeResult> {
+    return runProbe(() => fetchJson(this.fetchImpl,
+      this.base(),
+      { method: "GET", headers: this.headers() },
+      { context: "gitlab probe", retries: 0 }));
   }
   private normalize(raw: GlIssue): Issue {
     let category: StateCategory = raw.state === "closed" ? "closed" : "open";

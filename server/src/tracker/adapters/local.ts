@@ -14,7 +14,7 @@ import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import type {
   Capability, Issue, IssueComment, IssueCreate, IssueLink, IssuePatch, IssueState,
-  LinkType, Milestone, Phase, Tracker, StateCategory, WorklogEntry,
+  LinkType, Milestone, Phase, ProbeResult, Tracker, StateCategory, WorklogEntry,
 } from "../types.js";
 
 export const configSchema = z.object({
@@ -448,5 +448,10 @@ export class LocalTracker implements Tracker {
     } catch { /* not a git repo or no identity configured */ }
     this.self ??= process.env.USER || undefined;
     return this.self;
+  }
+
+  /** Repo-resident, zero-network backend — nothing to preflight. Always ok. */
+  async probe(): Promise<ProbeResult> {
+    return { verdict: "ok" };
   }
 }

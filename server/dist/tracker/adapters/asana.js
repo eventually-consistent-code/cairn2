@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson } from "../http.js";
+import { runProbe } from "../probe.js";
 import { assertCanonicalState, matchesState } from "../types.js";
 import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
 const API = "https://app.asana.com/api/1.0";
@@ -46,6 +47,12 @@ export class AsanaTracker {
         if (!/^\d+$/.test(id)) {
             throw new CairnError("NOT_FOUND", `invalid task id: ${id}`, "task id must be a numeric gid");
         }
+    }
+    /** Preflight: /projects/{projectGid} over /users/me -- /users/me only
+     *  proves the token is valid, not that the configured project exists.
+     *  A typo'd projectGid now 404s instead of reading "ok". */
+    async probe() {
+        return runProbe(() => this.api("GET", `/projects/${this.cfg.projectGid}`, undefined, "probe"));
     }
     normalize(raw) {
         const sectionGid = raw.memberships?.[0]?.section?.gid;

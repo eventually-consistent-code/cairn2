@@ -2,8 +2,10 @@ import { execFileSync } from "node:child_process";
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, paginate, type FetchLike } from "../http.js";
+import { runProbe } from "../probe.js";
 import type {
-  Capability, StateCategory, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
+  Capability, StateCategory, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase,
+  ProbeResult, Tracker,
 } from "../types.js";
 import { assertCanonicalState, matchesState } from "../types.js";
 import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
@@ -84,6 +86,13 @@ export class GitHubTracker implements Tracker {
     const me = await this.api("GET", "/user") as { login?: string };
     this.self = me.login;
     return this.self;
+  }
+
+  /** Preflight: /repos/{repo} over resolveSelf's /user -- /user only proves
+   *  the token is valid, not that the configured repo exists. One cheap
+   *  call, same cost, but a typo'd repo now 404s instead of reading "ok". */
+  async probe(): Promise<ProbeResult> {
+    return runProbe(() => this.api("GET", `/repos/${this.cfg.repo}`));
   }
 
   private normalize(raw: GhIssue): Issue {

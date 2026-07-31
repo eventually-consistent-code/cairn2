@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson } from "../http.js";
+import { runProbe } from "../probe.js";
 import { matchesState } from "../types.js";
 // Issue keys look like PROJ-123 (letters + digits, dash, digits).
 const ID_RE = /^[A-Z][A-Z0-9]+-\d+$/i;
@@ -22,6 +23,11 @@ export const configSchema = z.object({
     // Board auto-discovers from the project; set this only when the project
     // has several boards and the first one is the wrong one.
     boardId: z.number().int().positive().optional(),
+    // Atlassian's scoped tokens (ATCTT-prefixed) only authenticate through the
+    // api.atlassian.com/ex/jira/{cloudId} gateway, never the site URL directly.
+    // Detected automatically from the token shape; set this to force one mode
+    // or the other (e.g. a non-standard token that still needs gateway routing).
+    authMode: z.enum(["site", "gateway"]).optional(),
 });
 export function make(config, fetchImpl) {
     return new JiraTracker(config, fetchImpl);
@@ -120,8 +126,43 @@ export class JiraTracker {
             "content-type": "application/json",
         };
     }
+    siteOrigin() {
+        return this.cfg.baseUrl.replace(/\/$/, "");
+    }
+    // Scoped-token gateway support (CRN-49). Classic tokens keep hitting the
+    // site URL directly; ATCTT-prefixed scoped tokens only authenticate
+    // through api.atlassian.com/ex/jira/{cloudId} — cloudId is resolved once
+    // per instance via an *unauthenticated* GET against the site's own
+    // /_edge/tenant_info (same trick every Atlassian Connect app uses).
+    cloudId;
+    gatewayActive(token) {
+        if (this.cfg.authMode === "site")
+            return false;
+        if (this.cfg.authMode === "gateway")
+            return true;
+        return token.startsWith("ATCTT");
+    }
+    async resolveCloudId() {
+        if (this.cloudId === undefined) {
+            const info = (await fetchJson(this.fetchImpl, `${this.siteOrigin()}/_edge/tenant_info`, { method: "GET" }, { context: "jira tenant_info" }));
+            this.cloudId = info.cloudId;
+        }
+        return this.cloudId;
+    }
+    /** Resolves the base URL for an API call — site origin, or the scoped-token
+     *  gateway once cloudId is known. The single site every API call (including
+     *  attachFile's multipart upload) routes through, so a third URL site can't
+     *  quietly diverge from this decision again. */
+    async apiBase() {
+        const { token } = this.authProvider();
+        if (!this.gatewayActive(token))
+            return this.siteOrigin();
+        const cloudId = await this.resolveCloudId();
+        return `https://api.atlassian.com/ex/jira/${cloudId}`;
+    }
     async api(method, path, body, context = "jira") {
-        return fetchJson(this.fetchImpl, `${this.cfg.baseUrl.replace(/\/$/, "")}${path}`, {
+        const base = await this.apiBase();
+        return fetchJson(this.fetchImpl, `${base}${path}`, {
             method,
             headers: this.headers(),
             body: body === undefined ? undefined : JSON.stringify(body),
@@ -249,6 +290,12 @@ export class JiraTracker {
         const me = await this.api("GET", "/rest/api/3/myself", undefined, "jira myself");
         this.self = me.accountId;
         return this.self;
+    }
+    /** Preflight: /project/{projectKey} over resolveSelf's /myself -- /myself
+     *  only proves the token is valid, not that the configured project exists.
+     *  A typo'd projectKey now 404s instead of reading "ok". */
+    async probe() {
+        return runProbe(() => this.resolveProjectId());
     }
     /** Assignee values may arrive as an email (user.handle) — Jira wants accountId. */
     async toAccountId(value) {
@@ -390,9 +437,10 @@ export class JiraTracker {
         const form = new FormData();
         form.append("file", new Blob([new Uint8Array(data)], { type: mediaType ?? "application/octet-stream" }), filename);
         const { email, token } = this.authProvider();
+        const base = await this.apiBase();
         // Multipart — no JSON content-type; fetch sets the boundary itself, and
         // Jira demands the XSRF opt-out header on this endpoint.
-        const raw = (await fetchJson(this.fetchImpl, `${this.cfg.baseUrl.replace(/\/$/, "")}/rest/api/3/issue/${id}/attachments`, {
+        const raw = (await fetchJson(this.fetchImpl, `${base}/rest/api/3/issue/${id}/attachments`, {
             method: "POST",
             headers: {
                 authorization: `Basic ${Buffer.from(`${email}:${token}`).toString("base64")}`,

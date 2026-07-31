@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { type FetchLike } from "../http.js";
-import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker } from "../types.js";
+import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, ProbeResult, Tracker } from "../types.js";
 export declare const configSchema: z.ZodObject<{
     orgUrl: z.ZodString;
     project: z.ZodString;
@@ -42,6 +42,10 @@ export declare class AzureBoardsTracker implements Tracker {
     private assertId;
     private self;
     resolveSelf(): Promise<string | undefined>;
+    /** Preflight: /_apis/projects/{project} over resolveSelf's connectionData
+     *  -- connectionData only proves the PAT is valid, not that the configured
+     *  project exists. A typo'd project now 404s instead of reading "ok". */
+    probe(): Promise<ProbeResult>;
     private get projectPath();
     private normalizeState;
     private normalize;

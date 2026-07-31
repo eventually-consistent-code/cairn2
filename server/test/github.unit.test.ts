@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { GitHubTracker } from "../src/tracker/adapters/github.js";
 import type { FetchLike } from "../src/tracker/http.js";
 
@@ -182,6 +182,71 @@ describe("GitHubTracker identity", () => {
     expect(await t.resolveSelf!()).toBe("octo-dev");
     expect(await t.resolveSelf!()).toBe("octo-dev");
     expect(calls.filter((c) => c.url.endsWith("/user")).length).toBe(1);
+  });
+});
+
+describe("GitHubTracker probe (CRN-48)", () => {
+  it("ok on a 200 from /repos/{repo} -- validates the target, not just the token", async () => {
+    const { f, calls } = fixtureFetch([{ status: 200, body: { full_name: "o/r" } }]);
+    const t = new GitHubTracker({ repo: "o/r" }, f, () => "tok");
+    await expect(t.probe!()).resolves.toEqual({ verdict: "ok" });
+    expect(calls[0].url).toBe("https://api.github.com/repos/o/r");
+  });
+
+  it("bad_host on a valid token but a nonexistent repo (live-verification gap)", async () => {
+    // A valid token passes /user every time -- probing /user alone can never
+    // catch a typo'd repo. This is the exact live-verification finding: same
+    // token, /user succeeds, but the configured repo doesn't exist.
+    const f: FetchLike = async (url) => {
+      const u = String(url);
+      if (u.endsWith("/user")) return new Response(JSON.stringify({ login: "octo-dev" }), { status: 200 });
+      if (u.endsWith("/repos/o/does-not-exist-xyz")) {
+        return new Response(JSON.stringify({ message: "Not Found" }), { status: 404 });
+      }
+      throw new Error(`unexpected url in test: ${u}`);
+    };
+    const t = new GitHubTracker({ repo: "o/does-not-exist-xyz" }, f, () => "tok");
+    await expect(t.probe!()).resolves.toMatchObject({ verdict: "bad_host" });
+  });
+
+  it("bad_host on a network error", async () => {
+    vi.useFakeTimers();
+    try {
+      const f: FetchLike = async () => { throw new Error("ENOTFOUND api.github.com"); };
+      const t = new GitHubTracker({ repo: "o/r" }, f, () => "tok");
+      const pending = t.probe!();
+      await vi.runAllTimersAsync();
+      await expect(pending).resolves.toMatchObject({ verdict: "bad_host" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("bad_token on a 401 with a plain-rejected-credentials body", async () => {
+    const { f } = fixtureFetch([{ status: 401, body: { message: "Bad credentials" } }]);
+    const t = new GitHubTracker({ repo: "o/r" }, f, () => "tok");
+    await expect(t.probe!()).resolves.toMatchObject({ verdict: "bad_token" });
+  });
+
+  it("missing_scope on a 403 with a scope-shaped body", async () => {
+    const { f } = fixtureFetch([
+      { status: 403, body: { message: "missing required scope for this operation" } },
+    ]);
+    const t = new GitHubTracker({ repo: "o/r" }, f, () => "tok");
+    await expect(t.probe!()).resolves.toMatchObject({ verdict: "missing_scope" });
+  });
+
+  it("rate_limited on an exhausted 429", async () => {
+    vi.useFakeTimers();
+    try {
+      const f: FetchLike = async () => new Response(JSON.stringify({}), { status: 429 });
+      const t = new GitHubTracker({ repo: "o/r" }, f, () => "tok");
+      const pending = t.probe!();
+      await vi.runAllTimersAsync();
+      await expect(pending).resolves.toMatchObject({ verdict: "rate_limited" });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

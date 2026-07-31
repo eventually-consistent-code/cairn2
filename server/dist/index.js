@@ -11,6 +11,7 @@ import { loadConfig, writeConfigPatch } from "./config.js";
 import { ActiveContext } from "./active-context.js";
 import { makeTracker } from "./tracker/registry.js";
 import { CachedTracker } from "./tracker/cached.js";
+import { probeVerdictForError } from "./tracker/probe.js";
 import { danglingEdges, effectivePriorities, lineage, readyFrontier } from "./tracker/graph.js";
 import { finalizeMigration, migrateTracker } from "./tracker/migrate.js";
 import { makeDocsConnector } from "./docs/registry.js";
@@ -52,6 +53,17 @@ const HandoffSourceEnum = z.enum(["tool", "posttooluse", "precompact", "waypoint
 // converts correctly. continuity_checkpoint has no such downstream guard
 // (writeHandoff doesn't validate), so its handler checks explicitly below.
 const HandoffPhaseRefSchema = z.object({ number: z.number(), slug: z.string() });
+// Shared handler-level guard for every plain-number phase param above (CRN-40:
+// plan_check's phase filter, mem_index/mem_search's phase, mem_card_create/
+// mem_card_list/mem_card_recall's scopePhase, context_set's phase all
+// converge on this instead of each hand-rolling the same isValidPhaseNumber
+// check). null/undefined pass through untouched -- context_set relies on
+// null surviving here to still mean "clear the field".
+const assertValidPhase = (n) => {
+    if (n !== null && n !== undefined && !isValidPhaseNumber(n)) {
+        throw new CairnError("CONFIG_INVALID", PHASE_NUMBER_ERROR(n));
+    }
+};
 // Zod mirrors of map/store.ts's NodeType/EdgeType/MapNode/MapEdge -- kept in
 // sync by hand (the store module owns the types; this is just the MCP-layer
 // schema for them, same duplication tradeoff as the mem_timeline helpers above).
@@ -160,6 +172,11 @@ export function buildServer(deps) {
     server.registerTool("context_set", { description: "Set/clear active cairn context fields (null clears)",
         inputSchema: { phase: z.number().nullable().optional(),
             issueId: z.string().nullable().optional() } }, wrap((a) => {
+        // CRN-40: reject an invalid phase number (over-precise decimal, etc.)
+        // as a structured CONFIG_INVALID before it ever reaches active-context
+        // -- null still passes through untouched (that's the clear-the-field
+        // signal handled below).
+        assertValidPhase(a.phase);
         // Snapshot once -- this handler touches active-context, handoff, and the
         // banner; a workspace_focus flip mid-call must not split those three
         // writes across two different member projects.
@@ -192,7 +209,8 @@ export function buildServer(deps) {
     }));
     server.registerTool("issue_create", { description: "Create an issue in the configured tracker. Estimates "
             + "(story points / original minutes) land in the backend's native "
-            + "fields where supported, and are ignored elsewhere",
+            + "fields where supported; elsewhere they're skipped and the result "
+            + "says so via estimateSkipped",
         inputSchema: { title: z.string(), body: z.string().optional(),
             labels: z.array(z.string()).optional(),
             phase: z.string().optional(),
@@ -200,11 +218,18 @@ export function buildServer(deps) {
             estimateMinutes: z.number().int().positive().optional() } }, wrap(async (a) => {
         const d = dir();
         const { estimatePoints, estimateMinutes, ...input } = a;
-        const estimate = estimatePoints !== undefined || estimateMinutes !== undefined
+        const wantsEstimate = estimatePoints !== undefined || estimateMinutes !== undefined;
+        const tracker = await getTracker(d);
+        const estimate = wantsEstimate && tracker.capabilities.hasEstimates
             ? { points: estimatePoints, minutes: estimateMinutes } : undefined;
-        const result = await (await getTracker(d)).createIssue({ ...input, estimate });
+        const result = await tracker.createIssue({ ...input, estimate });
         snapshotNote(d, result);
-        return result;
+        // mirrors the worklogError note on issue_close -- a silently dropped
+        // estimate reads as a bug, so say why it never reached the backend.
+        const estimateSkipped = wantsEstimate && !tracker.capabilities.hasEstimates
+            ? "backend has no estimate support; fold points/minutes into the issue body"
+            : undefined;
+        return { ...result, ...(estimateSkipped ? { estimateSkipped } : {}) };
     }));
     server.registerTool("issue_get", { description: "Fetch one issue", inputSchema: { id: z.string() } }, wrap(async (a) => (await getTracker()).getIssue(a.id)));
     server.registerTool("issue_update", { description: "Update an issue (title/body/state/labels/assignee/estimate)",
@@ -216,10 +241,11 @@ export function buildServer(deps) {
             estimateMinutes: z.number().int().positive().optional() } }, wrap(async (a) => {
         const d = dir();
         const { id, estimatePoints, estimateMinutes, ...rest } = a;
-        const patch = estimatePoints !== undefined || estimateMinutes !== undefined
+        const wantsEstimate = estimatePoints !== undefined || estimateMinutes !== undefined;
+        const tracker = await getTracker(d);
+        const patch = wantsEstimate && tracker.capabilities.hasEstimates
             ? { ...rest, estimate: { points: estimatePoints, minutes: estimateMinutes } }
             : rest;
-        const tracker = await getTracker(d);
         let autoAssigned = false;
         if (patch.state === "in_progress" && patch.assignee === undefined) {
             // best-effort claim attribution — identity failures never block the claim
@@ -238,7 +264,13 @@ export function buildServer(deps) {
         const result = await tracker.updateIssue(id, patch);
         snapshotNote(d, result);
         refreshHandoff({ source: "tool", issue: id }, d);
-        return { ...result, ...(autoAssigned ? { autoAssigned: true } : {}) };
+        // mirrors the worklogError note on issue_close -- a silently dropped
+        // estimate reads as a bug, so say why it never reached the backend.
+        const estimateSkipped = wantsEstimate && !tracker.capabilities.hasEstimates
+            ? "backend has no estimate support; fold points/minutes into the issue body"
+            : undefined;
+        return { ...result, ...(autoAssigned ? { autoAssigned: true } : {}),
+            ...(estimateSkipped ? { estimateSkipped } : {}) };
     }));
     const LinkTypeEnum = z.enum(["blocks", "parent-of", "relates-to", "supersedes"]);
     const linkCapable = async () => {
@@ -391,7 +423,13 @@ export function buildServer(deps) {
     };
     server.registerTool("mem_index", { description: "Index reference material into the searchable memory store (disposable, rebuildable)",
         inputSchema: { content: z.string(), source: z.string(),
-            phase: z.number().int().optional(), issueId: z.string().optional() } }, wrap((a) => {
+            // CRN-40: widened from .int() -- a decimal phase (1.5) must
+            // tag a memory chunk same as an integer one. Deliberately not
+            // a Zod .refine() -- see the HandoffPhaseRefSchema comment
+            // above for why that produces a raw SDK -32602 instead of a
+            // structured CONFIG_INVALID envelope.
+            phase: z.number().optional(), issueId: z.string().optional() } }, wrap((a) => {
+        assertValidPhase(a.phase);
         getMemIndex().index({
             content: a.content, source: a.source,
             phase: a.phase ?? null, issueId: a.issueId ?? null,
@@ -400,8 +438,11 @@ export function buildServer(deps) {
         return { ok: true };
     }));
     server.registerTool("mem_search", { description: "Full-text search the memory index, optionally scoped to a phase/issue",
-        inputSchema: { query: z.string(), phase: z.number().int().optional(),
-            issueId: z.string().optional(), limit: z.number().int().positive().optional() } }, wrap((a) => getMemIndex().search(a.query, { phase: a.phase, issueId: a.issueId }, a.limit ?? 10)));
+        inputSchema: { query: z.string(), phase: z.number().optional(), // CRN-40: widened from .int()
+            issueId: z.string().optional(), limit: z.number().int().positive().optional() } }, wrap((a) => {
+        assertValidPhase(a.phase);
+        return getMemIndex().search(a.query, { phase: a.phase, issueId: a.issueId }, a.limit ?? 10);
+    }));
     server.registerTool("mem_stats", { description: "Memory index size — chunk count and approximate token usage (capacity guard signal), "
             + "plus recall-banner token accounting",
         inputSchema: {} }, wrap(() => {
@@ -412,11 +453,12 @@ export function buildServer(deps) {
         inputSchema: {
             type: z.enum(["decision", "constraint", "gotcha", "reference", "note"]),
             body: z.string(),
-            scopePhase: z.number().int().optional(),
+            scopePhase: z.number().optional(), // CRN-40: widened from .int()
             scopeIssue: z.string().optional(),
             confidence: z.enum(["high", "medium", "low"]).optional(),
             provenance: z.array(z.object({ file: z.string(), commit: z.string() })).optional(),
         } }, wrap((a) => {
+        assertValidPhase(a.scopePhase);
         const d = dir();
         const card = createCard(d, a);
         const patch = { source: "tool" };
@@ -432,9 +474,15 @@ export function buildServer(deps) {
         return card;
     }));
     server.registerTool("mem_card_list", { description: "List memory cards, optionally filtered by phase/issue scope",
-        inputSchema: { scopePhase: z.number().int().optional(), scopeIssue: z.string().optional() } }, wrap((a) => listCards(dir(), a)));
+        inputSchema: { scopePhase: z.number().optional(), scopeIssue: z.string().optional() } }, // CRN-40: widened from .int()
+    wrap((a) => {
+        assertValidPhase(a.scopePhase);
+        return listCards(dir(), a);
+    }));
     server.registerTool("mem_card_recall", { description: "List memory cards with staleness checked against their provenance (the anti-rot check)",
-        inputSchema: { scopePhase: z.number().int().optional(), scopeIssue: z.string().optional() } }, wrap((a) => {
+        inputSchema: { scopePhase: z.number().optional(), scopeIssue: z.string().optional() } }, // CRN-40: widened from .int()
+    wrap((a) => {
+        assertValidPhase(a.scopePhase);
         const d = dir();
         return listCards(d, a).map((card) => {
             const provenance = card.frontmatter.provenanceFiles.map((file, i) => ({
@@ -636,6 +684,39 @@ export function buildServer(deps) {
             docsConnectors.delete(d);
         return result;
     }));
+    // Best-effort probe runner: construction failures (bad adapter type/config,
+    // CONFIG_MISSING, an import that fails to load) are exactly as much "the
+    // backend isn't reachable right now" as a network error mid-call, so they
+    // fold into the same verdict mapping instead of a distinct failure shape.
+    const safeProbe = async (fn) => {
+        try {
+            return await fn();
+        }
+        catch (e) {
+            return probeVerdictForError(e);
+        }
+    };
+    server.registerTool("config_probe", { description: "Credential preflight (CRN-48) -- one cheap authenticated call to the configured "
+            + "tracker (and docs connector, when configured), each mapped to a specific verdict: "
+            + "ok / bad_host / bad_token / missing_scope / rate_limited / down. A probe failure IS "
+            + "the result -- this tool never throws for a bad backend",
+        inputSchema: {} }, wrap(async () => {
+        const d = dir();
+        const tracker = {
+            tracker: await safeProbe(async () => {
+                const t = await getTracker(d);
+                return t.probe ? t.probe() : { verdict: "ok" };
+            }),
+        };
+        const cfg = loadConfig(d);
+        if (!cfg.docs)
+            return tracker;
+        const docs = await safeProbe(async () => {
+            const connector = await getDocsConnector(d);
+            return connector.probe ? connector.probe() : { verdict: "ok" };
+        });
+        return { ...tracker, docs };
+    }));
     server.registerTool("issue_comment", { description: "Post a plain-language comment on a tracker issue (management-visible progress note)",
         inputSchema: { id: z.string(), text: z.string() } }, wrap(async (a) => (await getTracker()).commentIssue(a.id, a.text)));
     const ATTACH_MEDIA_TYPES = {
@@ -768,7 +849,12 @@ export function buildServer(deps) {
         inputSchema: {} }, wrap(() => sessionLandscape(dir())));
     server.registerTool("plan_check", { description: "Deterministic plan-quality scan (#2891): cross-plan contract drift "
             + "(Produces/Consumes without a shared fixture) and unanchored quantitative thresholds",
-        inputSchema: { phase: z.number().int().positive().optional() } }, wrap((a) => planCheck(dir(), a.phase)));
+        // CRN-40: widened from .int().positive() -- a decimal phase filter (1.5)
+        // must match its real 01.5-slug dir instead of dying as a raw SDK -32602.
+        inputSchema: { phase: z.number().optional() } }, wrap((a) => {
+        assertValidPhase(a.phase);
+        return planCheck(dir(), a.phase);
+    }));
     server.registerTool("audit_record", { description: "Write the audit record file (.cairn/audit/<scope>-<date>.md) — single writer; "
             + "same scope+date supersedes, prior dates immutable",
         inputSchema: { scope: z.string(), verdict: z.enum(["pass", "findings"]),
@@ -859,15 +945,29 @@ export function buildServer(deps) {
         const d = dir();
         return publishTree(await getDocsConnector(d), d, a.projectName);
     }));
-    server.registerTool("docs_status", { description: "Docs connector status — configured connector and the project's landing page, when one exists",
+    server.registerTool("docs_status", { description: "Docs connector status — configured connector and the project's landing page, when one exists. "
+            + "A configured-but-unreachable connector reports {configured:true, reachable:false, error, message} "
+            + "instead of throwing",
         inputSchema: { projectName: z.string().optional() } }, wrap(async (a) => {
         const d = dir();
         const cfg = loadConfig(d);
         if (!cfg.docs)
             return { configured: false };
-        const connector = await getDocsConnector(d);
-        const root = await connector.findPage(a.projectName ?? defaultProjectName(d));
-        return { configured: true, connector: cfg.docs.connector, root };
+        try {
+            const connector = await getDocsConnector(d);
+            const root = await connector.findPage(a.projectName ?? defaultProjectName(d));
+            return { configured: true, connector: cfg.docs.connector, root };
+        }
+        catch (e) {
+            // The connector is configured but couldn't be reached (auth, network,
+            // rate limit, ...) -- report that gracefully rather than rethrowing;
+            // an unreachable docs backend shouldn't look like a crashed tool.
+            if (e instanceof CairnError) {
+                const message = e.message.length > 200 ? `${e.message.slice(0, 200)}…` : e.message;
+                return { configured: true, reachable: false, error: e.code, message };
+            }
+            throw e;
+        }
     }));
     return server;
 }

@@ -12,7 +12,8 @@ import type { CairnConfig } from "./config.js";
 import { ActiveContext } from "./active-context.js";
 import { makeTracker } from "./tracker/registry.js";
 import { CachedTracker } from "./tracker/cached.js";
-import type { Tracker, IssuePatch, IssueState, LinkType } from "./tracker/types.js";
+import { probeVerdictForError } from "./tracker/probe.js";
+import type { Tracker, IssuePatch, IssueState, LinkType, ProbeResult } from "./tracker/types.js";
 import { danglingEdges, effectivePriorities, lineage, readyFrontier } from "./tracker/graph.js";
 import { finalizeMigration, migrateTracker } from "./tracker/migrate.js";
 import { makeDocsConnector } from "./docs/registry.js";
@@ -60,6 +61,18 @@ const HandoffSourceEnum = z.enum(["tool", "posttooluse", "precompact", "waypoint
 // converts correctly. continuity_checkpoint has no such downstream guard
 // (writeHandoff doesn't validate), so its handler checks explicitly below.
 const HandoffPhaseRefSchema = z.object({ number: z.number(), slug: z.string() });
+
+// Shared handler-level guard for every plain-number phase param above (CRN-40:
+// plan_check's phase filter, mem_index/mem_search's phase, mem_card_create/
+// mem_card_list/mem_card_recall's scopePhase, context_set's phase all
+// converge on this instead of each hand-rolling the same isValidPhaseNumber
+// check). null/undefined pass through untouched -- context_set relies on
+// null surviving here to still mean "clear the field".
+const assertValidPhase = (n: number | null | undefined): void => {
+  if (n !== null && n !== undefined && !isValidPhaseNumber(n)) {
+    throw new CairnError("CONFIG_INVALID", PHASE_NUMBER_ERROR(n));
+  }
+};
 
 // Zod mirrors of map/store.ts's NodeType/EdgeType/MapNode/MapEdge -- kept in
 // sync by hand (the store module owns the types; this is just the MCP-layer
@@ -194,6 +207,11 @@ export function buildServer(deps: {
       inputSchema: { phase: z.number().nullable().optional(),
                      issueId: z.string().nullable().optional() } },
     wrap((a: { phase?: number | null; issueId?: string | null }) => {
+      // CRN-40: reject an invalid phase number (over-precise decimal, etc.)
+      // as a structured CONFIG_INVALID before it ever reaches active-context
+      // -- null still passes through untouched (that's the clear-the-field
+      // signal handled below).
+      assertValidPhase(a.phase);
       // Snapshot once -- this handler touches active-context, handoff, and the
       // banner; a workspace_focus flip mid-call must not split those three
       // writes across two different member projects.
@@ -225,7 +243,8 @@ export function buildServer(deps: {
   server.registerTool("issue_create",
     { description: "Create an issue in the configured tracker. Estimates "
         + "(story points / original minutes) land in the backend's native "
-        + "fields where supported, and are ignored elsewhere",
+        + "fields where supported; elsewhere they're skipped and the result "
+        + "says so via estimateSkipped",
       inputSchema: { title: z.string(), body: z.string().optional(),
                      labels: z.array(z.string()).optional(),
                      phase: z.string().optional(),
@@ -235,11 +254,18 @@ export function buildServer(deps: {
       estimatePoints?: number; estimateMinutes?: number }) => {
       const d = dir();
       const { estimatePoints, estimateMinutes, ...input } = a;
-      const estimate = estimatePoints !== undefined || estimateMinutes !== undefined
+      const wantsEstimate = estimatePoints !== undefined || estimateMinutes !== undefined;
+      const tracker = await getTracker(d);
+      const estimate = wantsEstimate && tracker.capabilities.hasEstimates
         ? { points: estimatePoints, minutes: estimateMinutes } : undefined;
-      const result = await (await getTracker(d)).createIssue({ ...input, estimate });
+      const result = await tracker.createIssue({ ...input, estimate });
       snapshotNote(d, result);
-      return result;
+      // mirrors the worklogError note on issue_close -- a silently dropped
+      // estimate reads as a bug, so say why it never reached the backend.
+      const estimateSkipped = wantsEstimate && !tracker.capabilities.hasEstimates
+        ? "backend has no estimate support; fold points/minutes into the issue body"
+        : undefined;
+      return { ...result, ...(estimateSkipped ? { estimateSkipped } : {}) };
     }));
 
   server.registerTool("issue_get",
@@ -259,10 +285,11 @@ export function buildServer(deps: {
                estimatePoints?: number; estimateMinutes?: number }) => {
       const d = dir();
       const { id, estimatePoints, estimateMinutes, ...rest } = a;
-      const patch: IssuePatch = estimatePoints !== undefined || estimateMinutes !== undefined
+      const wantsEstimate = estimatePoints !== undefined || estimateMinutes !== undefined;
+      const tracker = await getTracker(d);
+      const patch: IssuePatch = wantsEstimate && tracker.capabilities.hasEstimates
         ? { ...rest, estimate: { points: estimatePoints, minutes: estimateMinutes } }
         : rest;
-      const tracker = await getTracker(d);
       let autoAssigned = false;
       if (patch.state === "in_progress" && patch.assignee === undefined) {
         // best-effort claim attribution — identity failures never block the claim
@@ -277,7 +304,13 @@ export function buildServer(deps: {
       const result = await tracker.updateIssue(id, patch);
       snapshotNote(d, result);
       refreshHandoff({ source: "tool", issue: id }, d);
-      return { ...result, ...(autoAssigned ? { autoAssigned: true } : {}) };
+      // mirrors the worklogError note on issue_close -- a silently dropped
+      // estimate reads as a bug, so say why it never reached the backend.
+      const estimateSkipped = wantsEstimate && !tracker.capabilities.hasEstimates
+        ? "backend has no estimate support; fold points/minutes into the issue body"
+        : undefined;
+      return { ...result, ...(autoAssigned ? { autoAssigned: true } : {}),
+        ...(estimateSkipped ? { estimateSkipped } : {}) };
     }));
 
   const LinkTypeEnum = z.enum(["blocks", "parent-of", "relates-to", "supersedes"]);
@@ -484,8 +517,14 @@ export function buildServer(deps: {
   server.registerTool("mem_index",
     { description: "Index reference material into the searchable memory store (disposable, rebuildable)",
       inputSchema: { content: z.string(), source: z.string(),
-                     phase: z.number().int().optional(), issueId: z.string().optional() } },
+                     // CRN-40: widened from .int() -- a decimal phase (1.5) must
+                     // tag a memory chunk same as an integer one. Deliberately not
+                     // a Zod .refine() -- see the HandoffPhaseRefSchema comment
+                     // above for why that produces a raw SDK -32602 instead of a
+                     // structured CONFIG_INVALID envelope.
+                     phase: z.number().optional(), issueId: z.string().optional() } },
     wrap((a: { content: string; source: string; phase?: number; issueId?: string }) => {
+      assertValidPhase(a.phase);
       getMemIndex().index({
         content: a.content, source: a.source,
         phase: a.phase ?? null, issueId: a.issueId ?? null,
@@ -496,10 +535,12 @@ export function buildServer(deps: {
 
   server.registerTool("mem_search",
     { description: "Full-text search the memory index, optionally scoped to a phase/issue",
-      inputSchema: { query: z.string(), phase: z.number().int().optional(),
+      inputSchema: { query: z.string(), phase: z.number().optional(), // CRN-40: widened from .int()
                      issueId: z.string().optional(), limit: z.number().int().positive().optional() } },
-    wrap((a: { query: string; phase?: number; issueId?: string; limit?: number }) =>
-      getMemIndex().search(a.query, { phase: a.phase, issueId: a.issueId }, a.limit ?? 10)));
+    wrap((a: { query: string; phase?: number; issueId?: string; limit?: number }) => {
+      assertValidPhase(a.phase);
+      return getMemIndex().search(a.query, { phase: a.phase, issueId: a.issueId }, a.limit ?? 10);
+    }));
 
   server.registerTool("mem_stats",
     { description: "Memory index size — chunk count and approximate token usage (capacity guard signal), "
@@ -515,7 +556,7 @@ export function buildServer(deps: {
       inputSchema: {
         type: z.enum(["decision", "constraint", "gotcha", "reference", "note"]),
         body: z.string(),
-        scopePhase: z.number().int().optional(),
+        scopePhase: z.number().optional(), // CRN-40: widened from .int()
         scopeIssue: z.string().optional(),
         confidence: z.enum(["high", "medium", "low"]).optional(),
         provenance: z.array(z.object({ file: z.string(), commit: z.string() })).optional(),
@@ -523,6 +564,7 @@ export function buildServer(deps: {
     wrap((a: { type: "decision" | "constraint" | "gotcha" | "reference" | "note"; body: string;
                scopePhase?: number; scopeIssue?: string; confidence?: "high" | "medium" | "low";
                provenance?: Array<{ file: string; commit: string }> }) => {
+      assertValidPhase(a.scopePhase);
       const d = dir();
       const card = createCard(d, a);
       const patch: Partial<Handoff> & { source: Handoff["source"] } = { source: "tool" };
@@ -538,13 +580,17 @@ export function buildServer(deps: {
 
   server.registerTool("mem_card_list",
     { description: "List memory cards, optionally filtered by phase/issue scope",
-      inputSchema: { scopePhase: z.number().int().optional(), scopeIssue: z.string().optional() } },
-    wrap((a: { scopePhase?: number; scopeIssue?: string }) => listCards(dir(), a)));
+      inputSchema: { scopePhase: z.number().optional(), scopeIssue: z.string().optional() } }, // CRN-40: widened from .int()
+    wrap((a: { scopePhase?: number; scopeIssue?: string }) => {
+      assertValidPhase(a.scopePhase);
+      return listCards(dir(), a);
+    }));
 
   server.registerTool("mem_card_recall",
     { description: "List memory cards with staleness checked against their provenance (the anti-rot check)",
-      inputSchema: { scopePhase: z.number().int().optional(), scopeIssue: z.string().optional() } },
+      inputSchema: { scopePhase: z.number().optional(), scopeIssue: z.string().optional() } }, // CRN-40: widened from .int()
     wrap((a: { scopePhase?: number; scopeIssue?: string }) => {
+      assertValidPhase(a.scopePhase);
       const d = dir();
       return listCards(d, a).map((card) => {
         const provenance = card.frontmatter.provenanceFiles.map((file, i) => ({
@@ -804,6 +850,41 @@ export function buildServer(deps: {
       return result;
     }));
 
+  // Best-effort probe runner: construction failures (bad adapter type/config,
+  // CONFIG_MISSING, an import that fails to load) are exactly as much "the
+  // backend isn't reachable right now" as a network error mid-call, so they
+  // fold into the same verdict mapping instead of a distinct failure shape.
+  const safeProbe = async (fn: () => Promise<ProbeResult>): Promise<ProbeResult> => {
+    try {
+      return await fn();
+    } catch (e) {
+      return probeVerdictForError(e);
+    }
+  };
+
+  server.registerTool("config_probe",
+    { description: "Credential preflight (CRN-48) -- one cheap authenticated call to the configured "
+        + "tracker (and docs connector, when configured), each mapped to a specific verdict: "
+        + "ok / bad_host / bad_token / missing_scope / rate_limited / down. A probe failure IS "
+        + "the result -- this tool never throws for a bad backend",
+      inputSchema: {} },
+    wrap(async () => {
+      const d = dir();
+      const tracker: { tracker: ProbeResult } = {
+        tracker: await safeProbe(async () => {
+          const t = await getTracker(d);
+          return t.probe ? t.probe() : { verdict: "ok" };
+        }),
+      };
+      const cfg = loadConfig(d);
+      if (!cfg.docs) return tracker;
+      const docs = await safeProbe(async () => {
+        const connector = await getDocsConnector(d);
+        return connector.probe ? connector.probe() : { verdict: "ok" };
+      });
+      return { ...tracker, docs };
+    }));
+
   server.registerTool("issue_comment",
     { description: "Post a plain-language comment on a tracker issue (management-visible progress note)",
       inputSchema: { id: z.string(), text: z.string() } },
@@ -964,8 +1045,13 @@ export function buildServer(deps: {
   server.registerTool("plan_check",
     { description: "Deterministic plan-quality scan (#2891): cross-plan contract drift "
         + "(Produces/Consumes without a shared fixture) and unanchored quantitative thresholds",
-      inputSchema: { phase: z.number().int().positive().optional() } },
-    wrap((a: { phase?: number }) => planCheck(dir(), a.phase)));
+      // CRN-40: widened from .int().positive() -- a decimal phase filter (1.5)
+      // must match its real 01.5-slug dir instead of dying as a raw SDK -32602.
+      inputSchema: { phase: z.number().optional() } },
+    wrap((a: { phase?: number }) => {
+      assertValidPhase(a.phase);
+      return planCheck(dir(), a.phase);
+    }));
 
   server.registerTool("audit_record",
     { description: "Write the audit record file (.cairn/audit/<scope>-<date>.md) — single writer; "
@@ -1095,15 +1181,28 @@ export function buildServer(deps: {
     }));
 
   server.registerTool("docs_status",
-    { description: "Docs connector status — configured connector and the project's landing page, when one exists",
+    { description: "Docs connector status — configured connector and the project's landing page, when one exists. "
+        + "A configured-but-unreachable connector reports {configured:true, reachable:false, error, message} "
+        + "instead of throwing",
       inputSchema: { projectName: z.string().optional() } },
     wrap(async (a: { projectName?: string }) => {
       const d = dir();
       const cfg = loadConfig(d);
       if (!cfg.docs) return { configured: false };
-      const connector = await getDocsConnector(d);
-      const root = await connector.findPage(a.projectName ?? defaultProjectName(d));
-      return { configured: true, connector: cfg.docs.connector, root };
+      try {
+        const connector = await getDocsConnector(d);
+        const root = await connector.findPage(a.projectName ?? defaultProjectName(d));
+        return { configured: true, connector: cfg.docs.connector, root };
+      } catch (e) {
+        // The connector is configured but couldn't be reached (auth, network,
+        // rate limit, ...) -- report that gracefully rather than rethrowing;
+        // an unreachable docs backend shouldn't look like a crashed tool.
+        if (e instanceof CairnError) {
+          const message = e.message.length > 200 ? `${e.message.slice(0, 200)}…` : e.message;
+          return { configured: true, reachable: false, error: e.code, message };
+        }
+        throw e;
+      }
     }));
 
   return server;

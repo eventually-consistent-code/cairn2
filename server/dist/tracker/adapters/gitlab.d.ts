@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { type FetchLike } from "../http.js";
-import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker } from "../types.js";
+import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, ProbeResult, Tracker } from "../types.js";
 export declare class GitLabTracker implements Tracker {
     private cfg;
     private fetchImpl;
@@ -11,6 +11,12 @@ export declare class GitLabTracker implements Tracker {
     private headers;
     private api;
     private assertId;
+    /** Preflight: GET /projects/{project} (project-scoped, same URL base()
+     *  already builds) over the site-root /user -- /user only proves the
+     *  token is valid, not that the configured project exists. A typo'd
+     *  project now 404s instead of reading "ok". Single attempt, no retry
+     *  backoff -- a probe wants a fast verdict, not resilience. */
+    probe(): Promise<ProbeResult>;
     private normalize;
     createIssue(input: IssueCreate): Promise<Issue>;
     getIssue(id: string): Promise<Issue>;

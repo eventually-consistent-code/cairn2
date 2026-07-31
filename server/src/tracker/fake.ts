@@ -1,7 +1,7 @@
 import { CairnError } from "../errors.js";
 import type {
   Capability, Issue, IssueComment, IssueCreate, IssueLink, IssuePatch, IssueState, StateCategory,
-  LinkType, Milestone, Phase, Tracker,
+  LinkType, Milestone, Phase, ProbeResult, Tracker,
 } from "./types.js";
 import { matchesState } from "./types.js";
 
@@ -126,6 +126,10 @@ export class FakeTracker implements Tracker {
 
   async resolveSelf(): Promise<string | undefined> {
     return "fake-user";
+  }
+
+  async probe(): Promise<ProbeResult> {
+    return { verdict: "ok" };
   }
 
   private links: IssueLink[] = [];

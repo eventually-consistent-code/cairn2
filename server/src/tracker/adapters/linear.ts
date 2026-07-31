@@ -1,9 +1,10 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, type FetchLike } from "../http.js";
+import { runProbe } from "../probe.js";
 import type {
   Capability, StateCategory, Issue, IssueCreate, IssueLink, IssuePatch, IssueState, LinkType,
-  Milestone, Phase, Tracker,
+  Milestone, Phase, ProbeResult, Tracker,
 } from "../types.js";
 import { matchesState } from "../types.js";
 import { milestonesUnsupported } from "../unsupported.js";
@@ -79,6 +80,16 @@ export class LinearTracker implements Tracker {
       throw new CairnError("TRACKER_DOWN", `linear ${context}: ${msg}`);
     }
     return data as T;
+  }
+
+  /** Preflight: team(id) over a bare {viewer{id}} -- viewer only proves the
+   *  API key is valid, not that the configured teamId exists. A typo'd
+   *  teamId now comes back as a GraphQL not-found error (-> bad_host)
+   *  instead of reading "ok". */
+  async probe(): Promise<ProbeResult> {
+    return runProbe(() => this.gql<{ team: { id: string } }>(
+      `query Team($teamId: String!) { team(id: $teamId) { id } }`,
+      { teamId: this.cfg.teamId }, "probe"));
   }
 
   private normalize(raw: LinearIssueNode): Issue {

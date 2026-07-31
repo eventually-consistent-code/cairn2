@@ -1,8 +1,10 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, type FetchLike } from "../http.js";
+import { runProbe } from "../probe.js";
 import type {
-  Capability, StateCategory, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker,
+  Capability, StateCategory, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase,
+  ProbeResult, Tracker,
 } from "../types.js";
 import { matchesState } from "../types.js";
 import { phaseCloseUnsupported } from "../unsupported.js";
@@ -132,6 +134,14 @@ export class AzureBoardsTracker implements Tracker {
     this.self = data.authenticatedUser?.properties?.Account?.$value
       ?? data.authenticatedUser?.providerDisplayName;
     return this.self;
+  }
+
+  /** Preflight: /_apis/projects/{project} over resolveSelf's connectionData
+   *  -- connectionData only proves the PAT is valid, not that the configured
+   *  project exists. A typo'd project now 404s instead of reading "ok". */
+  async probe(): Promise<ProbeResult> {
+    return runProbe(() => this.api("GET", `/_apis/projects/${this.projectPath}`,
+      undefined, { context: "azure-boards probe" }));
   }
 
   private get projectPath(): string {

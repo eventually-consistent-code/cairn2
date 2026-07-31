@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { type FetchLike } from "../http.js";
-import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, Tracker } from "../types.js";
+import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, ProbeResult, Tracker } from "../types.js";
 export declare const configSchema: z.ZodObject<{
     repo: z.ZodString;
 }, "strip", z.ZodTypeAny, {
@@ -23,6 +23,10 @@ export declare class GitHubTracker implements Tracker {
     private assertId;
     private self;
     resolveSelf(): Promise<string | undefined>;
+    /** Preflight: /repos/{repo} over resolveSelf's /user -- /user only proves
+     *  the token is valid, not that the configured repo exists. One cheap
+     *  call, same cost, but a typo'd repo now 404s instead of reading "ok". */
+    probe(): Promise<ProbeResult>;
     private normalize;
     createIssue(input: IssueCreate): Promise<Issue>;
     getIssue(id: string): Promise<Issue>;

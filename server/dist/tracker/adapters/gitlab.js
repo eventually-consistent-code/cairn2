@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, paginate } from "../http.js";
+import { runProbe } from "../probe.js";
 import { assertCanonicalState, matchesState } from "../types.js";
 import { milestonesUnsupported } from "../unsupported.js";
 const WIP = "in-progress";
@@ -32,6 +33,14 @@ export class GitLabTracker {
         if (!/^\d+$/.test(id)) {
             throw new CairnError("NOT_FOUND", `invalid issue id: ${id}`, "issue id must be a numeric string");
         }
+    }
+    /** Preflight: GET /projects/{project} (project-scoped, same URL base()
+     *  already builds) over the site-root /user -- /user only proves the
+     *  token is valid, not that the configured project exists. A typo'd
+     *  project now 404s instead of reading "ok". Single attempt, no retry
+     *  backoff -- a probe wants a fast verdict, not resilience. */
+    async probe() {
+        return runProbe(() => fetchJson(this.fetchImpl, this.base(), { method: "GET", headers: this.headers() }, { context: "gitlab probe", retries: 0 }));
     }
     normalize(raw) {
         let category = raw.state === "closed" ? "closed" : "open";

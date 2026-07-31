@@ -195,3 +195,10 @@ describe("LocalTracker custom states", () => {
       .rejects.toMatchObject({ code: "CONFIG_INVALID" });
   });
 });
+
+describe("LocalTracker probe (CRN-48)", () => {
+  it("is trivially ok -- zero-network backend, nothing to preflight", async () => {
+    const { t } = fresh();
+    await expect(t.probe!()).resolves.toEqual({ verdict: "ok" });
+  });
+});

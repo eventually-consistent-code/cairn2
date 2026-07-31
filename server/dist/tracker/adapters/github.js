@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, paginate } from "../http.js";
+import { runProbe } from "../probe.js";
 import { assertCanonicalState, matchesState } from "../types.js";
 import { milestonesUnsupported } from "../unsupported.js";
 const API = "https://api.github.com";
@@ -67,6 +68,12 @@ export class GitHubTracker {
         const me = await this.api("GET", "/user");
         this.self = me.login;
         return this.self;
+    }
+    /** Preflight: /repos/{repo} over resolveSelf's /user -- /user only proves
+     *  the token is valid, not that the configured repo exists. One cheap
+     *  call, same cost, but a typo'd repo now 404s instead of reading "ok". */
+    async probe() {
+        return runProbe(() => this.api("GET", `/repos/${this.cfg.repo}`));
     }
     normalize(raw) {
         const labels = raw.labels.map((l) => l.name);

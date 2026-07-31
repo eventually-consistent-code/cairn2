@@ -397,3 +397,36 @@ describe("LinearTracker custom states", () => {
       .rejects.toMatchObject({ code: "CONFIG_INVALID" });
   });
 });
+
+describe("LinearTracker probe (CRN-48)", () => {
+  it("ok on a team(id) 200 -- validates the target, not just the key", async () => {
+    const { f, calls } = gqlFetch([{ data: { team: { id: TEAM } } }]);
+    await expect(t(f).probe!()).resolves.toEqual({ verdict: "ok" });
+    expect(calls[0].query).toContain("team(");
+    expect(calls[0].variables).toMatchObject({ teamId: TEAM });
+  });
+
+  it("bad_host on a valid API key but a nonexistent team id (live-verification gap)", async () => {
+    // A valid key passes a bare {viewer{id}} query every time -- probing
+    // viewer alone can never catch a typo'd teamId. team(id) catches both.
+    const f: FetchLike = async (_url, init) => {
+      const body = JSON.parse(String(init?.body)) as { query: string };
+      if (body.query.includes("viewer")) {
+        return new Response(JSON.stringify({ data: { viewer: { id: "u-1" } } }), { status: 200 });
+      }
+      if (body.query.includes("team(")) {
+        return new Response(JSON.stringify({
+          errors: [{ message: "Could not find referenced Team." }],
+        }), { status: 200 });
+      }
+      throw new Error(`unexpected query in test: ${body.query}`);
+    };
+    await expect(t(f).probe!()).resolves.toMatchObject({ verdict: "bad_host" });
+  });
+
+  it("bad_token on a 401 rejecting the personal API key", async () => {
+    const f: FetchLike = async () =>
+      new Response(JSON.stringify({ message: "the token was rejected" }), { status: 401 });
+    await expect(t(f).probe!()).resolves.toMatchObject({ verdict: "bad_token" });
+  });
+});

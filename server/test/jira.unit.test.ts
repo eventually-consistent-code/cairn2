@@ -430,6 +430,72 @@ describe("JiraTracker identity + assignee", () => {
   });
 });
 
+describe("JiraTracker probe (CRN-48)", () => {
+  it("ok on a 200 from /project/{projectKey} -- validates the target, not just the token", async () => {
+    const { f, calls } = fixtureFetch([{ status: 200, body: { id: "10001" } }]);
+    const t = makeJira(f);
+    await expect(t.probe!()).resolves.toEqual({ verdict: "ok" });
+    expect(calls[0].url).toContain("/rest/api/3/project/PROJ");
+  });
+
+  it("bad_host on a valid token but a nonexistent project key (live-verification gap)", async () => {
+    // A valid token passes /myself every time -- probing /myself alone can
+    // never catch a typo'd projectKey. /project/{projectKey} catches both.
+    const f: FetchLike = async (url) => {
+      const u = String(url);
+      if (u.includes("/rest/api/3/myself")) {
+        return new Response(JSON.stringify({ accountId: "acc-123" }), { status: 200 });
+      }
+      if (u.includes("/rest/api/3/project/")) {
+        return new Response(JSON.stringify({ errorMessages: ["No project could be found"] }), { status: 404 });
+      }
+      throw new Error(`unexpected url in test: ${u}`);
+    };
+    const t = makeJira(f);
+    await expect(t.probe!()).resolves.toMatchObject({ verdict: "bad_host" });
+  });
+
+  it("bad_host on a network error", async () => {
+    vi.useFakeTimers();
+    try {
+      const f: FetchLike = async () => { throw new Error("ENOTFOUND o.atlassian.net"); };
+      const t = makeJira(f);
+      const pending = t.probe!();
+      await vi.runAllTimersAsync();
+      await expect(pending).resolves.toMatchObject({ verdict: "bad_host" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("bad_token on a 401 with a plain-rejected-credentials body", async () => {
+    const { f } = fixtureFetch([{ status: 401, body: { message: "the token was rejected" } }]);
+    const t = makeJira(f);
+    await expect(t.probe!()).resolves.toMatchObject({ verdict: "bad_token" });
+  });
+
+  it("missing_scope on a 403 with a scope-shaped body", async () => {
+    const { f } = fixtureFetch([
+      { status: 403, body: { message: "missing required scope for this operation" } },
+    ]);
+    const t = makeJira(f);
+    await expect(t.probe!()).resolves.toMatchObject({ verdict: "missing_scope" });
+  });
+
+  it("rate_limited on an exhausted 429", async () => {
+    vi.useFakeTimers();
+    try {
+      const f: FetchLike = async () => new Response(JSON.stringify({}), { status: 429 });
+      const t = makeJira(f);
+      const pending = t.probe!();
+      await vi.runAllTimersAsync();
+      await expect(pending).resolves.toMatchObject({ verdict: "rate_limited" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("JiraTracker sprint awareness", () => {
   const scrumBoard = { values: [{ id: 7, type: "scrum" }] };
   const activeSprint = { values: [{ id: 42 }] };
@@ -732,5 +798,96 @@ describe("JiraTracker custom states", () => {
     await t.updateIssue("CHN-101", { state: "Blocked" });
     const post = calls.find((c) => c.method === "POST" && c.url.includes("/transitions"))!;
     expect(post.body).toMatchObject({ transition: { id: "9" } });
+  });
+});
+
+describe("JiraTracker scoped-token gateway", () => {
+  /** Header-capturing fetch (JSON or FormData bodies) — same idiom as the attachments block. */
+  function gatewayFetch(fixtures: Array<{ status: number; body: unknown }>) {
+    const calls: Array<{ url: string; method: string; body?: unknown;
+      headers: Record<string, string> }> = [];
+    const f: FetchLike = async (url, init) => {
+      const h: Record<string, string> = {};
+      new Headers(init?.headers).forEach((v, k) => { h[k] = v; });
+      let body: unknown = init?.body;
+      if (typeof body === "string") { try { body = JSON.parse(body); } catch { /* raw */ } }
+      calls.push({ url: String(url), method: init?.method ?? "GET", body, headers: h });
+      const fx = fixtures.shift()!;
+      return new Response(JSON.stringify(fx.body), { status: fx.status });
+    };
+    return { f, calls };
+  }
+
+  const GW_BASE = "https://o.atlassian.net";
+  const CLOUD_ID = "cid-123";
+  const FIELDS = "summary,description,status,updated,labels,parent,assignee,timetracking";
+
+  function makeGwJira(f: FetchLike, token: string, authMode?: "site" | "gateway") {
+    return new JiraTracker(
+      { ...cfg, baseUrl: GW_BASE, ...(authMode ? { authMode } : {}) },
+      f,
+      () => ({ email: "e@x.io", token }),
+    );
+  }
+
+  it("ATCTT token resolves cloudId via unauthenticated tenant_info, then routes API calls through the gateway with Basic auth", async () => {
+    const { f, calls } = gatewayFetch([
+      { status: 200, body: { cloudId: CLOUD_ID } },
+      { status: 200, body: jiraIssue() },
+    ]);
+    const t = makeGwJira(f, "ATCTTsecret");
+    const issue = await t.getIssue("CHN-101");
+
+    expect(calls[0].url).toBe(`${GW_BASE}/_edge/tenant_info`);
+    expect(calls[0].headers.authorization).toBeUndefined();
+
+    expect(calls[1].url).toBe(`https://api.atlassian.com/ex/jira/${CLOUD_ID}/rest/api/3/issue/CHN-101?fields=${FIELDS}`);
+    expect(calls[1].headers.authorization).toBe(`Basic ${Buffer.from("e@x.io:ATCTTsecret").toString("base64")}`);
+
+    // Human-facing link stays on the site host in gateway mode.
+    expect(issue.url).toBe(`${GW_BASE}/browse/CHN-101`);
+  });
+
+  it("memoizes cloudId across multiple operations — tenant_info fetched exactly once", async () => {
+    const { f, calls } = gatewayFetch([
+      { status: 200, body: { cloudId: CLOUD_ID } },
+      { status: 200, body: jiraIssue() },
+      { status: 200, body: jiraIssue() },
+    ]);
+    const t = makeGwJira(f, "ATCTTsecret");
+    await t.getIssue("CHN-101");
+    await t.getIssue("CHN-101");
+    expect(calls.filter((c) => c.url.includes("/_edge/tenant_info")).length).toBe(1);
+    expect(calls.filter((c) => c.url.includes("api.atlassian.com")).length).toBe(2);
+  });
+
+  it("classic token: zero behavior change — no tenant_info call, site routing as before", async () => {
+    const { f, calls } = gatewayFetch([{ status: 200, body: jiraIssue() }]);
+    const t = makeGwJira(f, "classic-token-123");
+    await t.getIssue("CHN-101");
+    expect(calls.length).toBe(1);
+    expect(calls[0].url).toBe(`${GW_BASE}/rest/api/3/issue/CHN-101?fields=${FIELDS}`);
+  });
+
+  it("attachFile routes through the gateway too, sharing cloudId resolution with api()", async () => {
+    const { f, calls } = gatewayFetch([
+      { status: 200, body: { cloudId: CLOUD_ID } },
+      { status: 200, body: [{ id: "10001", filename: "shot.png" }] },
+    ]);
+    const t = makeGwJira(f, "ATCTTsecret");
+    const res = await t.attachFile!("CHN-101", "shot.png", Buffer.from([1, 2]), "image/png");
+    expect(calls[0].url).toBe(`${GW_BASE}/_edge/tenant_info`);
+    expect(calls[1].url).toBe(`https://api.atlassian.com/ex/jira/${CLOUD_ID}/rest/api/3/issue/CHN-101/attachments`);
+    expect(calls[1].headers["x-atlassian-token"]).toBe("no-check");
+    expect(calls[1].body).toBeInstanceOf(FormData);
+    expect(res.id).toBe("10001");
+  });
+
+  it('authMode: "site" forces site routing even with an ATCTT token', async () => {
+    const { f, calls } = gatewayFetch([{ status: 200, body: jiraIssue() }]);
+    const t = makeGwJira(f, "ATCTTsecret", "site");
+    await t.getIssue("CHN-101");
+    expect(calls.length).toBe(1);
+    expect(calls[0].url).toBe(`${GW_BASE}/rest/api/3/issue/CHN-101?fields=${FIELDS}`);
   });
 });

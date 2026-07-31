@@ -320,3 +320,31 @@ describe("ClickUpTracker custom states", () => {
       .rejects.toMatchObject({ code: "CONFIG_INVALID" });
   });
 });
+
+describe("ClickUpTracker probe (CRN-48)", () => {
+  it("ok on a 200 from /list/{defaultListId} -- validates the target, not just the token", async () => {
+    const { f, calls } = fixtureFetch([{ status: 200, body: { id: "900", name: "List" } }]);
+    const t = new ClickUpTracker(cfg, f, () => "tok");
+    await expect(t.probe!()).resolves.toEqual({ verdict: "ok" });
+    expect(calls[0].url).toContain("/list/900");
+  });
+
+  it("bad_host on a valid token but a nonexistent list id (live-verification gap)", async () => {
+    // A valid token passes /team every time -- probing /team alone can never
+    // catch a typo'd defaultListId. /list/{defaultListId} catches both.
+    const f: FetchLike = async (url) => {
+      const u = String(url);
+      if (u.includes("/team")) return new Response(JSON.stringify({ teams: [{ id: "1" }] }), { status: 200 });
+      if (u.includes("/list/")) return new Response(JSON.stringify({ err: "List not found" }), { status: 404 });
+      throw new Error(`unexpected url in test: ${u}`);
+    };
+    const t = new ClickUpTracker({ ...cfg, defaultListId: "nonexistent" }, f, () => "tok");
+    await expect(t.probe!()).resolves.toMatchObject({ verdict: "bad_host" });
+  });
+
+  it("bad_token on a 401 with a plain-rejected-credentials body", async () => {
+    const { f } = fixtureFetch([{ status: 401, body: { err: "Token invalid" } }]);
+    const t = new ClickUpTracker(cfg, f, () => "tok");
+    await expect(t.probe!()).resolves.toMatchObject({ verdict: "bad_token" });
+  });
+});

@@ -110,6 +110,9 @@ export class FakeTracker {
     async resolveSelf() {
         return "fake-user";
     }
+    async probe() {
+        return { verdict: "ok" };
+    }
     links = [];
     wouldCycle(from, type, to) {
         if (type !== "blocks" && type !== "parent-of")

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { type FetchLike } from "../http.js";
-import type { Capability, Issue, IssueCreate, IssueLink, IssuePatch, IssueState, LinkType, Milestone, Phase, Tracker } from "../types.js";
+import type { Capability, Issue, IssueCreate, IssueLink, IssuePatch, IssueState, LinkType, Milestone, Phase, ProbeResult, Tracker } from "../types.js";
 export declare const configSchema: z.ZodObject<{
     teamId: z.ZodString;
     apiKeyEnv: z.ZodDefault<z.ZodString>;
@@ -24,6 +24,11 @@ export declare class LinearTracker implements Tracker {
         apiKeyEnv: string;
     }, fetchImpl?: FetchLike, keyProvider?: () => string);
     private gql;
+    /** Preflight: team(id) over a bare {viewer{id}} -- viewer only proves the
+     *  API key is valid, not that the configured teamId exists. A typo'd
+     *  teamId now comes back as a GraphQL not-found error (-> bad_host)
+     *  instead of reading "ok". */
+    probe(): Promise<ProbeResult>;
     private normalize;
     /** Team workflow states, fetched once. */
     private states;

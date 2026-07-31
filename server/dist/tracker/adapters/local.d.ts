@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Capability, Issue, IssueComment, IssueCreate, IssueLink, IssuePatch, IssueState, LinkType, Milestone, Phase, Tracker, WorklogEntry } from "../types.js";
+import type { Capability, Issue, IssueComment, IssueCreate, IssueLink, IssuePatch, IssueState, LinkType, Milestone, Phase, ProbeResult, Tracker, WorklogEntry } from "../types.js";
 export declare const configSchema: z.ZodObject<{
     /** Store directory, relative to the project. Commit it — that's the point. */
     dir: z.ZodDefault<z.ZodString>;
@@ -84,4 +84,6 @@ export declare class LocalTracker implements Tracker {
     unlinkIssues(from: string, type: LinkType, to: string): Promise<void>;
     listLinks(id?: string): Promise<IssueLink[]>;
     resolveSelf(): Promise<string | undefined>;
+    /** Repo-resident, zero-network backend — nothing to preflight. Always ok. */
+    probe(): Promise<ProbeResult>;
 }
