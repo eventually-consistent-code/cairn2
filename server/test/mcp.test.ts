@@ -134,6 +134,19 @@ describe("cairn MCP server", () => {
     expect(out.json).toEqual({ findings: [], scanned: 0 });
   });
 
+  it("plan_check phase filter matches a decimal phase (1.5) — real dir is 01.5-slug (#40)", async () => {
+    await call("plan_scaffold_phase", { number: 1.5, name: "Decimal Check" });
+    const out = await call("plan_check", { phase: 1.5 });
+    expect(out.isError).toBeFalsy();
+    expect(out.json.scanned).toBe(1);
+  });
+
+  it("plan_check rejects an over-precise decimal (1.55) as CONFIG_INVALID (#40)", async () => {
+    const res = await call("plan_check", { phase: 1.55 });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("CONFIG_INVALID");
+  });
+
   it("audit_record writes and validates", async () => {
     const out = await call("audit_record", { scope: "drill-scope", verdict: "findings",
       findings: [{ severity: "important", title: "t" }] });
@@ -396,6 +409,25 @@ describe("cairn MCP server", () => {
     expect(got.json).toEqual({ phase: 1, issueId: "FAKE-1" });
   });
 
+  it("context_set accepts a decimal phase (1.5) and persists it (#40)", async () => {
+    await call("context_set", { phase: 1.5 });
+    const got = await call("context_get");
+    expect(got.json.phase).toBe(1.5);
+  });
+
+  it("context_set rejects an over-precise decimal phase (1.55) as CONFIG_INVALID (#40)", async () => {
+    const res = await call("context_set", { phase: 1.55 });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("CONFIG_INVALID");
+  });
+
+  it("context_set({phase: null}) still clears the phase after the decimal guard lands (#40)", async () => {
+    await call("context_set", { phase: 1.5 });
+    await call("context_set", { phase: null });
+    const got = await call("context_get");
+    expect(got.json.phase).toBeUndefined();
+  });
+
   it("config_set merges and config_get reflects it", async () => {
     const set = await call("config_set", { patch: { continuity: { resume: "auto" } } });
     expect(set.json.continuity.resume).toBe("auto");
@@ -523,6 +555,48 @@ describe("cairn MCP server", () => {
 
     const recall = await call("mem_card_recall", {});
     expect(recall.json.find((c: { id: string }) => c.id === card.json.id).stale).toBe(false);
+  });
+
+  it("mem_index/mem_search accept a decimal phase (1.5) and round-trip the scoped search (#40)", async () => {
+    await call("mem_index", { content: "decimal phase gremlin", source: "research", phase: 1.5 });
+    const found = await call("mem_search", { query: "gremlin", phase: 1.5 });
+    expect(found.json.length).toBeGreaterThan(0);
+  });
+
+  it("mem_index rejects an over-precise decimal phase (1.55) as CONFIG_INVALID (#40)", async () => {
+    const res = await call("mem_index", { content: "x", source: "research", phase: 1.55 });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("CONFIG_INVALID");
+  });
+
+  it("mem_search rejects an over-precise decimal phase (1.55) as CONFIG_INVALID (#40)", async () => {
+    const res = await call("mem_search", { query: "x", phase: 1.55 });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("CONFIG_INVALID");
+  });
+
+  it("mem_card_create/mem_card_list accept a decimal scopePhase (1.5) and recall it (#40)", async () => {
+    const card = await call("mem_card_create", {
+      type: "note", body: "decimal-scoped card", scopePhase: 1.5,
+    });
+    expect(card.isError).toBeFalsy();
+    const list = await call("mem_card_list", { scopePhase: 1.5 });
+    expect(list.json.some((c: { id: string }) => c.id === card.json.id)).toBe(true);
+  });
+
+  it("mem_card_create rejects an over-precise decimal scopePhase (1.55) as CONFIG_INVALID (#40)", async () => {
+    const res = await call("mem_card_create", { type: "note", body: "bad", scopePhase: 1.55 });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("CONFIG_INVALID");
+  });
+
+  it("mem_card_list/mem_card_recall reject an over-precise decimal scopePhase (1.55) as CONFIG_INVALID (#40)", async () => {
+    const list = await call("mem_card_list", { scopePhase: 1.55 });
+    expect(list.isError).toBe(true);
+    expect(list.json.code).toBe("CONFIG_INVALID");
+    const recall = await call("mem_card_recall", { scopePhase: 1.55 });
+    expect(recall.isError).toBe(true);
+    expect(recall.json.code).toBe("CONFIG_INVALID");
   });
 
   it("mem_search rejects a negative limit at the schema boundary", async () => {

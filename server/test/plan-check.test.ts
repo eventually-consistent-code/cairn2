@@ -79,6 +79,23 @@ describe("planCheck — unanchored thresholds", () => {
     expect(planCheck(fresh())).toEqual({ findings: [], scanned: 0 });
   });
 
+  it("phase filter matches a decimal phase dir (01.5-slug), not just integer dirs (CRN-40)", () => {
+    const dir = fresh();
+    plan(dir, "01.5-perf", "Latency < 100ms.\n");
+    plan(dir, "02-other", "Latency < 200ms.\n");
+    const one = planCheck(dir, 1.5);
+    expect(one.scanned).toBe(1);
+    expect(one.findings).toHaveLength(1);
+    expect(one.findings[0].plan).toContain("01.5-perf");
+  });
+
+  it("phase filter rejects an over-precise decimal (1.55) as CONFIG_INVALID", () => {
+    const dir = fresh();
+    plan(dir, "01.5-perf", "Latency < 100ms.\n");
+    expect(() => planCheck(dir, 1.55)).toThrowError(
+      expect.objectContaining({ code: "CONFIG_INVALID" }));
+  });
+
   it("adjacent independent thresholds do not anchor each other", () => {
     const dir = fresh();
     plan(dir, "01-perf", [
