@@ -431,11 +431,28 @@ describe("JiraTracker identity + assignee", () => {
 });
 
 describe("JiraTracker probe (CRN-48)", () => {
-  it("ok on a 200 from /myself", async () => {
-    const { f, calls } = fixtureFetch([{ status: 200, body: { accountId: "acc-123" } }]);
+  it("ok on a 200 from /project/{projectKey} -- validates the target, not just the token", async () => {
+    const { f, calls } = fixtureFetch([{ status: 200, body: { id: "10001" } }]);
     const t = makeJira(f);
     await expect(t.probe!()).resolves.toEqual({ verdict: "ok" });
-    expect(calls[0].url).toContain("/rest/api/3/myself");
+    expect(calls[0].url).toContain("/rest/api/3/project/PROJ");
+  });
+
+  it("bad_host on a valid token but a nonexistent project key (live-verification gap)", async () => {
+    // A valid token passes /myself every time -- probing /myself alone can
+    // never catch a typo'd projectKey. /project/{projectKey} catches both.
+    const f: FetchLike = async (url) => {
+      const u = String(url);
+      if (u.includes("/rest/api/3/myself")) {
+        return new Response(JSON.stringify({ accountId: "acc-123" }), { status: 200 });
+      }
+      if (u.includes("/rest/api/3/project/")) {
+        return new Response(JSON.stringify({ errorMessages: ["No project could be found"] }), { status: 404 });
+      }
+      throw new Error(`unexpected url in test: ${u}`);
+    };
+    const t = makeJira(f);
+    await expect(t.probe!()).resolves.toMatchObject({ verdict: "bad_host" });
   });
 
   it("bad_host on a network error", async () => {

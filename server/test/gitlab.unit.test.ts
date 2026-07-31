@@ -288,12 +288,28 @@ describe("GitLabTracker probe (CRN-48)", () => {
     vi.unstubAllEnvs();
   });
 
-  it("ok on a 200 from the site-root /user (not project-scoped)", async () => {
+  it("ok on a 200 from GET /projects/{project} -- validates the target, not just the token", async () => {
     vi.stubEnv("GITLAB_TOKEN", "tok");
-    const { f, calls } = fixtureFetch([{ status: 200, body: { id: 1, username: "dev" } }]);
+    const { f, calls } = fixtureFetch([{ status: 200, body: { id: 1, path_with_namespace: "o/r" } }]);
     const t = new GitLabTracker(baseCfg, f);
     await expect(t.probe!()).resolves.toEqual({ verdict: "ok" });
-    expect(calls[0].url).toBe("https://gitlab.com/api/v4/user");
+    expect(calls[0].url).toBe("https://gitlab.com/api/v4/projects/o%2Fr");
+  });
+
+  it("bad_host on a valid token but a nonexistent project (live-verification gap)", async () => {
+    // A valid token passes the site-root /user every time -- probing /user
+    // alone can never catch a typo'd project. /projects/{project} catches both.
+    vi.stubEnv("GITLAB_TOKEN", "tok");
+    const f: FetchLike = async (url) => {
+      const u = String(url);
+      if (u === "https://gitlab.com/api/v4/user") return new Response(JSON.stringify({ id: 1 }), { status: 200 });
+      if (u.includes("/api/v4/projects/")) {
+        return new Response(JSON.stringify({ message: "404 Project Not Found" }), { status: 404 });
+      }
+      throw new Error(`unexpected url in test: ${u}`);
+    };
+    const t = new GitLabTracker({ ...baseCfg, project: "o/does-not-exist" }, f);
+    await expect(t.probe!()).resolves.toMatchObject({ verdict: "bad_host" });
   });
 
   it("bad_host on a network error", async () => {
