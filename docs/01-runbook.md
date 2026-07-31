@@ -860,13 +860,22 @@ writes: not yet mapped. Listing paginates up to 1000 items.
 
 ### Jira
 
-> **Classic API tokens are retired.** Atlassian killed classic API tokens —
+> **Scoped tokens are supported.** Atlassian killed classic API tokens —
 > anything issued before Dec 2024 expired between Mar and May 2026. The
-> replacement scoped tokens (`ATCTT`-prefixed) authenticate through a
-> different gateway URL this adapter doesn't speak yet, so a fresh scoped
-> token won't work here either. If `JIRA_API_TOKEN` is a legacy classic
-> token, Jira auth on this connector is currently broken — no workaround.
-> Scoped-token support is tracked in #49, phase 7.
+> replacement scoped tokens (`ATCTT`-prefixed) don't authenticate against
+> the site URL directly; they only work through Atlassian's
+> `api.atlassian.com/ex/jira/{cloudId}` gateway. This adapter detects that
+> automatically: an `ATCTT`-prefixed `JIRA_API_TOKEN` switches it into
+> gateway mode on its own — resolve the site's cloudId once (an
+> unauthenticated lookup against the site itself), then route every API
+> call through the gateway with the same Basic auth as before. Classic
+> tokens keep working exactly as they always have, no config changes
+> needed. Human-facing links (`url:` fields) always point at the site, in
+> either mode. The scoped token needs the `read:jira-work` and
+> `write:jira-work` scopes.
+>
+> Detection is automatic, but `"authMode": "site" | "gateway"` overrides it
+> if you ever need to force one path or the other.
 
 ```json
 "tracker": {
@@ -1112,6 +1121,16 @@ Jira and Confluence share Atlassian API tokens — same-site users can point
 these env names at their existing Jira credentials. The space named by
 `spaceKey` must already exist; an unknown key fails with `NOT_FOUND` and a
 pointer at the config.
+
+**Scoped tokens are supported**, same as the Jira connector: an
+`ATCTT`-prefixed token switches this connector into gateway mode
+automatically — cloudId resolved once, every API call routed through
+`api.atlassian.com/ex/confluence/{cloudId}`, human-facing page URLs
+unchanged. Classic tokens keep working with no config changes. The
+scoped token needs Confluence content read/write scopes (grant them at
+Atlassian's API-token page when you create the token — the exact scope
+picker there is the authority on naming). Force a mode with
+`"authMode": "site" | "gateway"` if you ever need to.
 
 A note on `spaceKey`: pages are matched by title and ancestry *within the
 configured space*, and publish never deletes remote pages. Treat the space

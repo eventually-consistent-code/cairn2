@@ -60,9 +60,11 @@ profile:
 - **Jira**: create an API token at
   https://id.atlassian.com/manage-profile/security/api-tokens, then
   `export JIRA_EMAIL="you@example.com"` and
-  `export JIRA_API_TOKEN="<token>"`. Caveat: this only works with a
-  **classic** token — Atlassian retired those, and the new scoped
-  (`ATCTT`) tokens aren't supported by this adapter yet (tracked in #49).
+  `export JIRA_API_TOKEN="<token>"`. Both token kinds work: classic tokens
+  hit the site URL as always, and the newer scoped (`ATCTT`-prefixed)
+  tokens are auto-detected and routed through Atlassian's cloud gateway —
+  no config changes needed either way (see the runbook's Jira section for
+  the scopes a scoped token needs).
 
 ## Step 3 — write cairn.json
 
