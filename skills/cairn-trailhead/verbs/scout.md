@@ -14,10 +14,16 @@ resumable (#1961 shape: never redo finished research).
    the line after the heading. Sections marked `done` are FINISHED — do not
    re-research them. No marker = legacy content, treat as done.
 3. Determine research topics from CONTEXT.md unknowns + PLAN.md gaps (depth
-   dial and model routing per the `cairn-planning` skill). New topics get
-   `pending` sections appended; only `pending` sections get researched.
-4. Research each pending section (fan out per the model-routing rubric);
-   write findings into its section and flip its marker to `done` as EACH
-   section completes — a kill mid-run must lose at most one section.
+   dial per the `cairn-planning` skill). New topics get `pending` sections
+   appended; only `pending` sections get researched.
+4. Fan out — mandatory, not depth-gated: dispatch ONE subagent per
+   `pending` section, in parallel, model routed by the WORK CLASS OF THE
+   TOPIC per the cairn-planning research fan-out rubric (enumerate/locate
+   → haiku-tier, synthesis brief → sonnet-tier, architecture trade-off →
+   opus-tier; uncertain → inherit). Subagents return section content ONLY;
+   the main thread writes each section and flips its marker to `done` as
+   EACH agent completes — a kill mid-run must lose at most the in-flight
+   sections, never finished ones. A failed agent's section stays `pending`
+   with a one-line failure note.
 5. `mem_index` the finished brief (source: the RESEARCH.md path). Report
    sections done/remaining and suggest `/cairn:plan <N>`.
