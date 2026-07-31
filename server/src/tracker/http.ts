@@ -6,6 +6,56 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 type FetchOpts = { retries?: number; backoffMs?: number; context?: string };
 
+const BODY_SNIPPET_MAX = 200;
+
+/**
+ * Best-effort read of a non-ok response body, truncated to a diagnosable
+ * snippet. The body read can itself fail (stream already consumed, network
+ * hiccup mid-read, etc.) -- swallow that and fall back to an empty snippet
+ * rather than letting a diagnostics nicety crash the real error we're
+ * already in the middle of raising.
+ */
+async function readBodySnippet(resp: Response): Promise<string> {
+  try {
+    const text = (await resp.text()).trim();
+    if (!text) return "";
+    return text.length > BODY_SNIPPET_MAX ? `${text.slice(0, BODY_SNIPPET_MAX)}…` : text;
+  } catch {
+    return "";
+  }
+}
+
+/** Appends a truncated response-body snippet to an error message core, when present. */
+function withBody(core: string, body: string): string {
+  return body ? `${core} — body: ${body}` : core;
+}
+
+// Case-insensitive signals that a body is talking about auth, not some other
+// failure -- lets an auth-shaped 400 (many APIs return 400 instead of 401/403
+// for a rejected token) classify as AUTH_MISSING instead of generic
+// TRACKER_DOWN.
+const AUTH_BODY_RE = /unauthoriz|authenticat|token|credential|permission|captcha|login/i;
+
+function isAuthShapedBody(body: string): boolean {
+  return AUTH_BODY_RE.test(body);
+}
+
+/**
+ * Heuristic, honest nextAction for an AUTH_MISSING failure -- inspects the
+ * body for the most specific cause it can name and falls back to the
+ * generic "check the token env var" hint when nothing more specific shows.
+ * Order matters: check the most specific signal first.
+ */
+function authNextAction(body: string): string {
+  const b = body.toLowerCase();
+  if (/token/.test(b)) return "token was rejected — regenerate or check it matches the account";
+  if (/scope|permission/.test(b))
+    return "token is missing a required scope or permission — check the app's OAuth scopes or the account's access level";
+  if (/policy|blocked|disabled/.test(b))
+    return "an org/workspace policy is blocking this token — check IP allowlists, SSO enforcement, or app restrictions";
+  return "check the token env var for this backend";
+}
+
 /**
  * Core retry/error-mapping loop shared by fetchJson and fetchPage.
  * Returns the raw Response on success (2xx) — callers handle body parsing.
@@ -39,17 +89,36 @@ async function fetchRaw(
         if (attempt < retries) await sleep(backoffMs * 2 ** attempt);
         continue;
       }
-      throw new CairnError("AUTH_MISSING", tag(`HTTP ${resp.status} from ${url}`),
-        "check the token env var for this backend");
+      const body = await readBodySnippet(resp);
+      throw new CairnError("AUTH_MISSING", tag(withBody(`HTTP ${resp.status} from ${url}`, body)),
+        authNextAction(body));
     }
-    if (resp.status === 404) throw new CairnError("NOT_FOUND", tag(`404 from ${url}`));
+    if (resp.status === 404) {
+      const body = await readBodySnippet(resp);
+      throw new CairnError("NOT_FOUND", tag(withBody(`404 from ${url}`, body)));
+    }
+    // Many APIs return a plain 400 instead of 401/403 for a rejected token --
+    // classify those auth-shaped bodies as AUTH_MISSING rather than letting
+    // them fall through to the generic branch below.
+    if (resp.status === 400) {
+      const body = await readBodySnippet(resp);
+      if (isAuthShapedBody(body)) {
+        throw new CairnError("AUTH_MISSING", tag(withBody(`HTTP ${resp.status} from ${url}`, body)),
+          authNextAction(body));
+      }
+      throw new CairnError("TRACKER_DOWN", tag(withBody(`HTTP ${resp.status} from ${url}`, body)));
+    }
     if (resp.status === 429 || resp.status >= 500) {
+      const body = await readBodySnippet(resp);
       lastErr = new CairnError(resp.status === 429 ? "RATE_LIMITED" : "TRACKER_DOWN",
-        tag(`HTTP ${resp.status} from ${url}`));
+        tag(withBody(`HTTP ${resp.status} from ${url}`, body)));
       if (attempt < retries) await sleep(backoffMs * 2 ** attempt);
       continue;
     }
-    throw new CairnError("TRACKER_DOWN", tag(`HTTP ${resp.status} from ${url}`));
+    {
+      const body = await readBodySnippet(resp);
+      throw new CairnError("TRACKER_DOWN", tag(withBody(`HTTP ${resp.status} from ${url}`, body)));
+    }
   }
   throw lastErr ?? new CairnError("TRACKER_DOWN", tag(`exhausted retries: ${url}`));
 }

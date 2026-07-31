@@ -1022,6 +1022,41 @@ describe("docs tools over an injected fake connector", () => {
     }
   });
 
+  it("docs_status reports a graceful shape when a configured connector is unreachable (#46)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cairn-docs-down-"));
+    writeFileSync(join(dir, "cairn.json"), JSON.stringify({
+      tracker: { type: "github", config: { repo: "o/r" } },
+      docs: { connector: "confluence", config: { baseUrl: "https://x.atlassian.net/wiki", spaceKey: "D" } },
+    }));
+    const { CairnError } = await import("../src/errors.js");
+    const unreachable: import("../src/docs/types.js").DocsConnector = {
+      capabilities: { hasPageTree: true, hasAttachments: false, hasLabels: false, hasNativeToc: false },
+      ensureRoot: () => { throw new CairnError("AUTH_MISSING", "HTTP 401 from https://x — body: invalid token",
+        "token was rejected — regenerate or check it matches the account"); },
+      getPage: () => { throw new Error("not used"); },
+      findPage: async () => { throw new CairnError("AUTH_MISSING", "HTTP 401 from https://x — body: invalid token",
+        "token was rejected — regenerate or check it matches the account"); },
+      listChildren: () => { throw new Error("not used"); },
+      createPage: () => { throw new Error("not used"); },
+      updatePage: () => { throw new Error("not used"); },
+    };
+    try {
+      const server = buildServer({ projectDir: dir, tracker: new FakeTracker(), docsConnector: unreachable });
+      const [ct, st] = InMemoryTransport.createLinkedPair();
+      const c = new Client({ name: "docs-test-3", version: "0.0.0" });
+      await Promise.all([server.connect(st), c.connect(ct)]);
+      const status = await c.callTool({ name: "docs_status", arguments: { projectName: "proj" } });
+      const statusJson = JSON.parse((status.content as Array<{ text: string }>)[0].text);
+      expect(status.isError).toBeFalsy();
+      expect(statusJson.configured).toBe(true);
+      expect(statusJson.reachable).toBe(false);
+      expect(statusJson.error).toBe("AUTH_MISSING");
+      expect(statusJson.message).toContain("invalid token");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("docs_status reports configured:false without a docs block", async () => {
     const dir = mkdtempSync(join(tmpdir(), "cairn-nodocs-"));
     writeFileSync(join(dir, "cairn.json"),
