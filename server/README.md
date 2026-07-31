@@ -658,7 +658,7 @@ user input; input reaches the CLI per its verified prompt convention:
 | `codex` | `codex exec -` | stdin (documented `-` convention) |
 | `opencode` | `opencode run <input>` | argv — `run [message..]` is positional |
 | `gemini` | `gemini -p "<instruction>"` | stdin — piped input is read; `-p`'s text is appended after it |
-| `grok` | `grok -p <input>` | argv — grok's headless mode does not consume piped stdin (verified live, CRN-76) |
+| `grok` | `grok -p <input>` | argv — grok's headless mode does not consume piped stdin (verified live, formerly CRN-76 on the retired Jira tracker) |
 
 Input is NEVER shell-interpolated — `execFile` takes an argv array and
 resolves the binary via PATH itself; no shell ever parses any of it. For

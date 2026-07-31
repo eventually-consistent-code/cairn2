@@ -46,8 +46,9 @@ into Confluence (per-project folder, landing page + child-page tree,
 generated contents sections, space-wide title-conflict handling) or into a
 local Docusaurus site checkout (markdown + `_category_.json`, native
 sidebar, optional auto-commit — never push). Idempotent re-publish on both.
-The SPI is product-neutral — Notion, GitBook, Slite, and SharePoint
-connectors slot in behind the same contract suite.
+The SPI is product-neutral — Confluence and Docusaurus ship today, and new
+targets slot in behind the same contract suite on demand, not roadmapped
+ahead of need.
 
 **Planning engine** — GSD-depth planning on native Claude Code muscles.
 Git-owned artifacts (`PROJECT.md`, `roadmap.md`, per-phase
@@ -147,7 +148,7 @@ and [gap analysis](docs/superpowers/research/2026-07-15-competitor-gap-analysis.
 | Tier F3 | Frontend quality loop — `cairn-designer` + `cairn-uat` agents, design-token discipline, requirements traceability | ✅ shipped |
 | P5′ | Dogfood gate → 1.x cutover → publish | ✅ shipped (`2.0.0` — live dogfood + community-marketplace submission) |
 | P5″ | Per-verb surface — plugin `cairn`, 36 generated `/cairn:<verb>` shims, conformance check (f) | ✅ shipped (`2.0.0`) |
-| Fidelity | Tracker-mirror fidelity — inbound PM-delta ingest (`plan_tracker_delta`), outbound paper trail + Jira worklog | ✅ shipped |
+| Fidelity | Tracker-mirror fidelity — inbound PM-delta ingest (`plan_tracker_delta`), outbound paper trail + Jira worklog (classic-token auth only — Atlassian retired those; scoped-token support tracked in #49) | ✅ shipped |
 | Eng. mode | `user.mode` vibe/engineer — work pairing, no-self-merge gate, decision surfacing | ✅ shipped |
 
 **P5′ status:** the seven transition shims are gone, P5″ replaced the
