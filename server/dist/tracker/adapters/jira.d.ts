@@ -9,6 +9,7 @@ export declare const configSchema: z.ZodObject<{
     tokenEnv: z.ZodDefault<z.ZodString>;
     transitions: z.ZodEffects<z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodString>>, Record<string, string>, Record<string, string> | undefined>;
     boardId: z.ZodOptional<z.ZodNumber>;
+    authMode: z.ZodOptional<z.ZodEnum<["site", "gateway"]>>;
 }, "strip", z.ZodTypeAny, {
     baseUrl: string;
     emailEnv: string;
@@ -16,12 +17,14 @@ export declare const configSchema: z.ZodObject<{
     projectKey: string;
     issueType: string;
     transitions: Record<string, string>;
+    authMode?: "site" | "gateway" | undefined;
     boardId?: number | undefined;
 }, {
     baseUrl: string;
     projectKey: string;
     emailEnv?: string | undefined;
     tokenEnv?: string | undefined;
+    authMode?: "site" | "gateway" | undefined;
     issueType?: string | undefined;
     transitions?: Record<string, string> | undefined;
     boardId?: number | undefined;
@@ -49,6 +52,15 @@ export declare class JiraTracker implements Tracker {
         token: string;
     });
     private headers;
+    private siteOrigin;
+    private cloudId;
+    private gatewayActive;
+    private resolveCloudId;
+    /** Resolves the base URL for an API call — site origin, or the scoped-token
+     *  gateway once cloudId is known. The single site every API call (including
+     *  attachFile's multipart upload) routes through, so a third URL site can't
+     *  quietly diverge from this decision again. */
+    private apiBase;
     private api;
     private assertId;
     private normalize;
