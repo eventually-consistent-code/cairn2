@@ -4,13 +4,26 @@ args: "(none = status) | review [target] | plan <phase>"
 status: live
 ---
 
-Convene the external AI CLIs (codex, opencode, gemini, grok) as reviewers —
-a second (third, fourth) opinion on top of cairn's own judgment, never a
-replacement for it. `peer_run` moves bytes to a peer and back; everything
+Convene the external AI CLIs (codex, opencode, antigravity, grok) as
+reviewers — a second (third, fourth) opinion on top of cairn's own
+judgment, never a replacement for it. `peer_run` moves bytes to a peer and back; everything
 below is the loop that decides what a peer's answer is actually worth.
 **A peer saying something doesn't make it true** — every peer finding gets
 verified against the code (or the plan) before it goes anywhere near the
 tracker.
+
+## Focus ask (before either mode runs)
+
+Before `review` or `plan` dispatches anything, ask ONE AskUserQuestion:
+what should the peers focus on? Options are concrete candidates cairn
+derives from the target (for `review`: the axes or hotspots the resolved
+diff actually touches; for `plan`: the phase's stated goal and its riskiest
+tasks), with "full pass — no particular focus" as the first, recommended
+option; free text arrives via the built-in Other. The chosen focus is
+woven verbatim into every peer prompt AND into cairn's own first pass, so
+the whole run targets what the user cares about instead of a generic
+sweep. One question, asked once per run — never re-asked between rounds,
+never asked at all for bare `peers` (status is read-only).
 
 ## Bare `peers` — status
 

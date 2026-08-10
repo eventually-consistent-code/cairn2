@@ -88,7 +88,7 @@ export declare const ConfigSchema: z.ZodObject<{
         allow?: string[] | undefined;
         extraPatterns?: string[] | undefined;
     }>>;
-    peers: z.ZodOptional<z.ZodRecord<z.ZodEnum<["codex", "opencode", "gemini", "grok"]>, z.ZodObject<{
+    peers: z.ZodOptional<z.ZodRecord<z.ZodEnum<["codex", "opencode", "antigravity", "grok"]>, z.ZodObject<{
         enabled: z.ZodOptional<z.ZodBoolean>;
         maxInputChars: z.ZodOptional<z.ZodNumber>;
     }, "strip", z.ZodTypeAny, {
@@ -131,7 +131,7 @@ export declare const ConfigSchema: z.ZodObject<{
         handle: string;
         mode?: "vibe" | "engineer" | undefined;
     } | undefined;
-    peers?: Partial<Record<"codex" | "opencode" | "gemini" | "grok", {
+    peers?: Partial<Record<"codex" | "opencode" | "antigravity" | "grok", {
         enabled?: boolean | undefined;
         maxInputChars?: number | undefined;
     }>> | undefined;
@@ -168,7 +168,7 @@ export declare const ConfigSchema: z.ZodObject<{
         allow?: string[] | undefined;
         extraPatterns?: string[] | undefined;
     } | undefined;
-    peers?: Partial<Record<"codex" | "opencode" | "gemini" | "grok", {
+    peers?: Partial<Record<"codex" | "opencode" | "antigravity" | "grok", {
         enabled?: boolean | undefined;
         maxInputChars?: number | undefined;
     }>> | undefined;
