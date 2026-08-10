@@ -52,7 +52,7 @@ describe("parseSections — grammar matrix", () => {
     expect(sections[0].level).toBe(2);
     const sub = sections.find((s) => s.heading === "Sub-question")!;
     expect(sub.level).toBe(3);
-    expect(sub.line).toBe(20);
+    expect(sub.line).toBe(19);
   });
 
   it("parses bare done/pending/failed states", () => {

@@ -81,11 +81,12 @@ describe("cairn MCP server", () => {
       "board_get", "board_update",
       "peer_list", "peer_run",
       "docs_publish", "docs_status",
+      "research_sections",
     ].sort());
   });
 
-  it("pins the tool count at 72", async () => {
-    expect((await listToolNames()).length).toBe(72);
+  it("pins the tool count at 73", async () => {
+    expect((await listToolNames()).length).toBe(73);
   });
 
   it("issue_attach reads the file and forwards to the tracker; missing file is NOT_FOUND", async () => {

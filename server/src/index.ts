@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { realpathSync } from "node:fs";
-import { basename, extname, join, resolve } from "node:path";
+import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -45,6 +45,7 @@ import { mapGet, mapSet, type EdgeType, type MapEdge, type MapNode, type NodeTyp
 import { findWorkspace, resolveProjectDir, setFocus } from "./workspace/context.js";
 import { boardGet, boardUpdate, type Workstream } from "./workspace/board.js";
 import { PROVIDERS, peerList, peerRun, type Provider } from "./peers/run.js";
+import { parseSections, flipSection, type SectionState } from "./research/sections.js";
 
 // Widened (CRN-26): canonical three or a backend-defined custom state name.
 const StateEnum = z.string().min(1);
@@ -1168,6 +1169,50 @@ export function buildServer(deps: {
     wrap(async (a: { provider: Provider; input: string; timeoutMs?: number }) => {
       const d = dir();
       return peerRun(d, a.provider, a.input, a.timeoutMs);
+    }));
+
+  server.registerTool("research_sections",
+    { description: "Parse a research artifact's ##+ section markers "
+        + "(<!-- namespace: done|pending|failed [date] [model] [— note] -->) for one "
+        + "namespace (scout, survey, ...). Unmarked sections report state 'unmarked'; a "
+        + "typo'd marker is CONFIG_INVALID, never silently done. With flip, rewrites that "
+        + "section's marker atomically and returns the re-parsed sections",
+      inputSchema: { path: z.string(), namespace: z.string(),
+        flip: z.object({
+          heading: z.string(),
+          state: z.enum(["done", "pending", "failed"]),
+          date: z.string().optional(),
+          model: z.string().optional(),
+          note: z.string().optional(),
+        }).optional() } },
+    wrap((a: { path: string; namespace: string;
+      flip?: { heading: string; state: SectionState; date?: string; model?: string; note?: string } }) => {
+      const d = dir();
+      // Containment: the artifact must live under the project dir -- a
+      // ..-escape (or an absolute path outside it) is a config error, not a read.
+      const abs = resolve(d, a.path);
+      const rel = relative(d, abs);
+      if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
+        throw new CairnError("CONFIG_INVALID",
+          `path '${a.path}' escapes the project directory`,
+          "pass a path relative to the project root, e.g. .cairn/plans/phases/07-x/RESEARCH.md");
+      }
+      let markdown: string;
+      try {
+        markdown = readFileSync(abs, "utf8");
+      } catch {
+        throw new CairnError("NOT_FOUND", `no research artifact at ${abs}`,
+          "path resolves against the project directory");
+      }
+      if (!a.flip) return { path: rel, sections: parseSections(markdown, a.namespace) };
+      const { heading, state, ...meta } = a.flip;
+      const flipped = flipSection(markdown, a.namespace, heading, state, meta);
+      // tmp+rename so a crash mid-write never leaves a half-written artifact
+      // (same idiom as map/store.ts).
+      const tmp = `${abs}.tmp`;
+      writeFileSync(tmp, flipped);
+      renameSync(tmp, abs);
+      return { path: rel, flipped: heading, sections: parseSections(flipped, a.namespace) };
     }));
 
   server.registerTool("docs_publish",
