@@ -642,8 +642,8 @@ dispatch pattern), one level up from any one session's own continuity:
 ## Peers (external AI CLI reviewers)
 
 Tier F2's peer runner (`server/src/peers/run.ts`) shells out to four
-allow-listed external AI CLIs — codex, opencode, gemini, grok — as a
-transport layer only. It moves bytes in and out of a child process; the
+allow-listed external AI CLIs — codex, opencode, antigravity, grok — as
+a transport layer only. It moves bytes in and out of a child process; the
 `peers` verb (`skills/cairn-trailhead/verbs/peers.md`) is what judges
 whatever comes back. Nothing here is guaranteed installed — none of the
 four are assumed present anywhere in the server.
@@ -655,27 +655,29 @@ user input; input reaches the CLI per its verified prompt convention:
 
 | provider | argv | input |
 |---|---|---|
-| `codex` | `codex exec -` | stdin (documented `-` convention) |
+| `codex` | `codex exec --skip-git-repo-check -` | stdin (documented `-` convention); the flag keeps codex from refusing directories the host hasn't marked trusted |
 | `opencode` | `opencode run <input>` | argv — `run [message..]` is positional |
-| `gemini` | `gemini -p "<instruction>"` | stdin — piped input is read; `-p`'s text is appended after it |
+| `antigravity` | `agy -p <input>` | argv — the binary is `agy`; headless `-p` takes the prompt as its value and ignores piped stdin (verified live) |
 | `grok` | `grok -p <input>` | argv — grok's headless mode does not consume piped stdin (verified live, formerly CRN-76 on the retired Jira tracker) |
 
 Input is NEVER shell-interpolated — `execFile` takes an argv array and
 resolves the binary via PATH itself; no shell ever parses any of it. For
-stdin-mode peers (codex, gemini) caller-supplied content goes in via
-stdin; for argv-mode peers (grok, opencode — their CLIs don't read piped
-stdin) the capped input is the single final argv element, which is data
+the stdin-mode peer (codex) caller-supplied content goes in via stdin;
+for argv-mode peers (grok, opencode, antigravity — their CLIs don't read
+piped stdin) the capped input is the single final argv element, which is data
 to `execFile`, not command line to a shell. The child-process surface is
 exactly these four templates; there is no path from any tool argument to
-a shell command string. The 200k default cap keeps argv-mode input well
+a shell command string. Every child runs with cwd pinned to the project
+dir — peer results must never depend on where the MCP server process
+happens to be sitting (#56). The 200k default cap keeps argv-mode input well
 under ARG_MAX.
 
 ### Caps (`cairn.json` → `peers` block)
 
 ```jsonc
 "peers": {
-  "codex":  { "enabled": true, "maxInputChars": 200000 },
-  "gemini": { "maxInputChars": 900000 }
+  "codex":       { "enabled": true, "maxInputChars": 200000 },
+  "antigravity": { "maxInputChars": 900000 }
   // absent provider = enabled with the default cap; unknown keys rejected
 }
 ```

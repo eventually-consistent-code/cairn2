@@ -1,14 +1,15 @@
 /**
- * Purpose: allow-listed external-CLI adapters (codex/opencode/gemini/grok) —
- * runs each as a fixed-argv child process with a hard cap on input size and
- * a timeout. Never exec, never shell interpolation — argv is always one of
- * the four fixed templates below plus (for argv-mode peers) the capped input
- * as the single final element; stdin-mode peers get input piped instead,
- * per each CLI's verified prompt convention. A peer's non-zero
- * exit is a result, not an error: peers are advisory, and the caller (the
- * `peers` verb) is the one that judges what they say. Missing binaries and
- * disabled providers degrade to PRECONDITION_FAILED — nothing here assumes
- * a peer CLI is actually installed.
+ * Purpose: allow-listed external-CLI adapters (codex/opencode/antigravity/
+ * grok) — runs each as a fixed-argv child process with a hard cap on input
+ * size and a timeout, cwd pinned to the project dir. Never exec, never
+ * shell interpolation — argv is always one of the four fixed templates
+ * below plus (for argv-mode peers) the capped input as the single final
+ * element; stdin-mode peers get input piped instead, per each CLI's
+ * verified prompt convention. A peer's non-zero exit is a result, not an
+ * error: peers are advisory, and the caller (the `peers` verb) is the one
+ * that judges what they say. Missing binaries and disabled providers
+ * degrade to PRECONDITION_FAILED — nothing here assumes a peer CLI is
+ * actually installed.
  * Author(s): John Reed
  */
 import { PROVIDERS, type Provider } from "./providers.js";

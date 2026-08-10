@@ -928,7 +928,7 @@ export function buildServer(deps) {
             + "title+project required on create; project must name a workspace member. Rejected "
             + "patches leave the board untouched",
         inputSchema: { patch: z.record(z.union([WorkstreamPatchSchema, z.null()])) } }, wrap((a) => boardUpdate(launchDir, a.patch)));
-    server.registerTool("peer_list", { description: "Detected external AI peer CLIs (codex/opencode/gemini/grok) — on PATH, enabled, input cap",
+    server.registerTool("peer_list", { description: "Detected external AI peer CLIs (codex/opencode/antigravity/grok) — on PATH, enabled, input cap",
         inputSchema: {} }, wrap(() => peerList(dir())));
     server.registerTool("peer_run", { description: "Run one external peer CLI with capped stdin input — advisory output, non-zero exit is a result. "
             + "Outbound content leaves the machine; callers MUST leak-scan the input first — this layer does not scan",

@@ -677,7 +677,7 @@ manifest, and the remote is always untouched — pushing the reverts is your
 call.
 
 **`peers (none = status) | review [target] | plan <phase>`** — convene
-external AI CLIs (codex, opencode, gemini, grok) as reviewers — a second
+external AI CLIs (codex, opencode, antigravity, grok) as reviewers — a second
 opinion on top of cairn's judgment, never a replacement. **A peer saying
 something doesn't make it true**: every peer finding is verified against the
 actual code (or plan) before it goes anywhere near the tracker. Bare
@@ -1536,7 +1536,7 @@ nothing.
 | `leakGuard.enabled` | boolean | `true` | The commit-time leak guard hook |
 | `leakGuard.allow` | string[] | `[]` | Path globs exempt from the guard |
 | `leakGuard.extraPatterns` | string[] | `[]` | Additional regex patterns to guard against |
-| `peers.<provider>.enabled` | boolean | `true` when absent | Per-provider toggle; providers: `codex`, `opencode`, `gemini`, `grok` — unknown keys are rejected |
+| `peers.<provider>.enabled` | boolean | `true` when absent | Per-provider toggle; providers: `codex`, `opencode`, `antigravity`, `grok` — unknown keys are rejected |
 | `peers.<provider>.maxInputChars` | positive integer | `200000` | Input cap per provider; longer input is head-truncated with a verbatim marker line |
 
 **The secrets-in-env rule, enforced:** config writes refuse any
