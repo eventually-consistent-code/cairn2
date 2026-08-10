@@ -65,6 +65,24 @@ const INSTALL_HINTS: Record<Provider, string> = {
   grok: "install the Grok CLI and put it on PATH (see xAI's grok-cli docs)",
 };
 
+// What to tell the user when a peer blows the timeout. opencode gets a
+// specific hint because the cause was verified live (#59, opencode 1.18.10):
+// headless `opencode run` never blocks on a TTY — with no credentials in
+// auth.json and no opencode.json it silently auto-selects the free-tier
+// model ("build · deepseek-v4-flash-free" observed) and that endpoint's
+// latency is wildly variable — 5s vs 31s for a one-word reply on back-to-
+// back runs, 100s+ in the original report. So an opencode timeout almost
+// always means "no default model configured", not a wedged CLI.
+const TIMEOUT_HINTS: Record<Provider, string> = {
+  codex: "raise timeoutMs, or check that the codex CLI responds on stdin",
+  opencode: "raise timeoutMs, or configure a default model for opencode — with none " +
+    "configured, headless runs auto-pick a free-tier model with unpredictable " +
+    "latency (verified 5-31s+ for a one-word reply, #59); check `opencode auth list` " +
+    "and pin a model in opencode.json",
+  antigravity: "raise timeoutMs, or check that the antigravity CLI responds on stdin",
+  grok: "raise timeoutMs, or check that the grok CLI responds on stdin",
+};
+
 const DEFAULT_MAX_INPUT_CHARS = 200_000;
 const DEFAULT_TIMEOUT_MS = 120_000;
 const MAX_BUFFER = 10 * 1024 * 1024;
@@ -160,7 +178,7 @@ export async function peerRun(projectDir: string, provider: Provider,
         if (error && (error as { killed?: boolean }).killed) {
           reject(new CairnError("PRECONDITION_FAILED",
             `peer '${provider}' timed out after ${durationMs}ms`,
-            `raise timeoutMs, or check that the ${provider} CLI responds on stdin`));
+            TIMEOUT_HINTS[provider]));
           return;
         }
 
