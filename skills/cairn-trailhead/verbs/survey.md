@@ -13,18 +13,31 @@ stages; NOTHING mutates before stage 2's gate, in any mode.
 
 1. `plan_status()` — project must exist (else stop: suggest `/cairn:new`).
 2. Artifact is `.cairn/plans/SURVEY.md` (project level, next to
-   roadmap.md). Same marker discipline as scout: each `## <topic>` section
-   carries `<!-- survey: done -->` or `<!-- survey: pending -->` on the
-   line after the heading. `done` sections are FINISHED — never
-   re-research. No marker = legacy content, treat as done.
-3. Topics: derive from roadmap.md phase table + each phase's CONTEXT.md
+   roadmap.md). Every run is an epoch: a `# Survey — <YYYY-MM-DD>` header
+   opens each run's block, newest first — a new run prepends its block at
+   the top; if the top block's date is today, resume it instead. One file,
+   not per-run archives: dedupe has to read prior runs anyway, so keeping
+   them in one file makes that (and `mem_index`) a single read. Prior
+   runs' blocks are read-only history — never edit their sections or
+   re-flip their markers.
+3. Same marker discipline as scout: each `## <topic>` section carries
+   `<!-- survey: done -->` or `<!-- survey: pending -->` on the line after
+   the heading. `done` sections are FINISHED — never re-research. No
+   marker = legacy content, treat as done. The `survey:` namespace stays;
+   markers are server-validated via `research_sections` (a typo'd marker
+   throws instead of silently reading as done).
+4. Topics: derive from roadmap.md phase table + each phase's CONTEXT.md
    unknowns + PROJECT.md goals — plus the user's topic argument when
-   given. Append new topics as `pending` sections.
-4. Tracker mirror: `issue_create` ONE plain-language research issue at
+   given. Dedupe against prior runs BEFORE spawning agents: skip any topic
+   a prior run already answered unless it's stale — stale = the repo HEAD
+   has moved significantly since that run's date (many commits or a phase
+   completed since; when in doubt, it's fresh — skip it). Surviving new
+   topics get `pending` sections in the current run's block.
+5. Tracker mirror: `issue_create` ONE plain-language research issue at
    start ("Project survey: <one-line scope>"); `issue_comment` progress in
    manager language as sections finish. If the tracker is down, continue
    git-side and create the issue when it recovers — say so.
-5. Fan-out is mandatory (not depth-gated): dispatch ONE subagent per
+6. Fan-out is mandatory (not depth-gated): dispatch ONE subagent per
    `pending` section, in parallel. Route each agent's model by the WORK
    CLASS OF THE TOPIC per the cairn-planning rubric — enumerate/locate →
    haiku-tier, synthesis brief → sonnet-tier, architecture trade-off →
@@ -35,23 +48,19 @@ stages; NOTHING mutates before stage 2's gate, in any mode.
 
 ## Stage 2 — discussion (the gate)
 
-6. Distill findings into concrete proposals, each exactly one of:
-   **new phase N.5** · **rescope phase N** · **new issues in phase N** ·
-   **no action**. One batched AskUserQuestion — multiSelect per proposal,
-   cairn's recommendation first with trade-offs. This gate holds in vibe
-   mode too: roadmap surgery from research is always "a peer would have
-   wanted a say."
+7. Distill findings into typed proposals and run the gate exactly as
+   specified in `references/proposal-gate.md` — the shapes, the ONE
+   batched AskUserQuestion (holds in vibe mode too), all of it. Before
+   distilling, read prior runs' Dispositions footers: never re-raise a
+   rejected proposal without new evidence.
 
 ## Stage 3 — apply (approved proposals only)
 
-7. New phases: `plan_scaffold_phase` with a DECIMAL number between
-   neighbors (route's rule — never renumber) + `plan_phase_ensure` for
-   the tracker object + a roadmap.md row between its neighbors.
-8. Rescopes: CONTEXT.md edits recorded as locked decisions with SURVEY.md
-   source links — what changed and why.
-9. New work: `issue_create` + `plan_issues_set`, estimates per the plan
-   verb's convention (points + minutes, always both).
-10. Wrap: `mem_index` the finished SURVEY.md (source: its path), close
-    the research issue (`issue_close`) with a plain summary of findings
-    and applied changes, report sections done/remaining, and suggest
-    `/cairn:plan <N>` for any new phase.
+8. Apply each approved proposal per the spec's apply mechanics (new
+   phase / rescope / new issues), then write the **Dispositions** footer
+   into this run's block — one line per proposal, every proposal, in the
+   spec's line shape.
+9. Wrap: `mem_index` the finished SURVEY.md (source: its path), close
+   the research issue (`issue_close`) with a plain summary of findings
+   and applied changes, report sections done/remaining, and suggest
+   `/cairn:plan <N>` for any new phase.
