@@ -25,6 +25,34 @@ the whole run targets what the user cares about instead of a generic
 sweep. One question, asked once per run — never re-asked between rounds,
 never asked at all for bare `peers` (status is read-only).
 
+## Run state (both modes)
+
+A `review`/`plan` run is stateful so it survives interruption. At
+dispatch — right after the focus ask — call `peer_state(op: "start")`
+with the run's slug, mode, target, chosen focus, and the roster
+`peer_list()` reported available. From there the store is the run's
+memory, not the conversation: every `peer_run` reply lands via
+`op: "record_output"` (verbatim, per peer per round), every
+`parseFindings` result via `op: "record_findings"` (stable ids f1,
+f2, ...), and every adversarial judgment via `op: "verdict"` —
+`verified`, `dead`, `disputed`, or `open-disagreement` — the moment
+it's made, never batched for later. `op: "close"` ends the run: it
+refuses to close while any finding is still disputed or unjudged, and
+its summary is the ONLY source for the `audit_record` findings —
+provenance ("raised by <peer> round <n>; verdict <v>") assembles from
+the records, never from what the conversation remembers. `start`
+refuses a slug that already has an unfinished run — resume it (below)
+or `op: "abandon"` it explicitly; nothing gets silently clobbered.
+
+### Resuming an interrupted run
+
+A run that died mid-flight (crash, `/clear`, timeout) resumes instead
+of restarting: `peer_state(op: "status")` reports what's recorded and
+what's missing — peers with no round-1 output, disputed findings whose
+peer hasn't answered round 2, findings not yet at a final verdict.
+Re-run only the missing pieces, recording as usual, then continue the
+normal flow to `close`.
+
 ## Bare `peers` — status
 
 `peer_list()` rendered plainly: provider, on PATH or not, enabled or not,
@@ -48,8 +76,11 @@ suggest installing anything unasked.
    axis this pass targets or "full pass", `content` = the leak-scanned
    diff). The template carries the whole structured contract — fenced-JSON
    findings matching the server's Finding schema — so nothing gets
-   re-worded per run. Split each reply with `parseFindings`: validated
-   `findings` plus verbatim `unparsed` leftovers. Judge BOTH piles in step
+   re-worded per run. Record each reply the moment it lands
+   (`peer_state` `record_output`), then split it with `parseFindings`:
+   validated `findings` plus verbatim `unparsed` leftovers — the
+   `findings` pile goes straight into `record_findings`. Judge BOTH
+   piles in step
    4 — off-schema prose in `unparsed` can still hold a real finding; it
    just arrives without the contract's guarantees. No peer on
    PATH → skip straight to step 6; that's proceed-without, not a stall.
@@ -57,7 +88,9 @@ suggest installing anything unasked.
    against what the peer says the code does. A peer claiming a bug that
    the code doesn't actually have is a finding that dies right here, never
    reaching the tracker. A peer surfacing something cairn's own pass
-   missed is a real finding, provenance and all.
+   missed is a real finding, provenance and all. Record each judgment
+   as it's made (`peer_state` `verdict`): dies-right-here is `dead`, a
+   verified survivor is `verified`, anything unsettled is `disputed`.
 5. Converge: round 2 runs ONLY over material disagreements — a peer
    standing by a finding cairn's first pass disputed, or a peer citing
    something the round-1 verification didn't settle. Round-2 sends use the
@@ -68,14 +101,20 @@ suggest installing anything unasked.
    rehash. Hard cap at two
    rounds, no exceptions; a peer that still disagrees after round 2 gets
    noted as an open disagreement in the record, not a third round.
+   Round-2 replies get `record_output` (round 2) like any other, and
+   every disputed finding ends the round re-judged: `verified`, `dead`,
+   or `open-disagreement`.
 6. Survivors follow `review`'s exact closing discipline: `issue_create`
    with label `cairn:review`, severity as the literal first line, plain
    language a non-engineer could read cold. Add provenance the plain
    review never carries — which peer(s) raised it, which round it
    survived to.
-7. `audit_record(scope: "peers-review-<slug>", verdict, findings)` —
-   `<slug>` follows `review`'s exact slugging rule (lowercase, collapse
-   every run of non-`[a-z0-9]` to one hyphen). Crediting provenance in the
+7. `peer_state(op: "close")`, then `audit_record(scope:
+   "peers-review-<slug>", verdict, findings)` with the verdict and
+   findings exactly as close's summary returned them — `<slug>` follows
+   `review`'s exact slugging rule (lowercase, collapse
+   every run of non-`[a-z0-9]` to one hyphen), the same slug the run
+   started under. Crediting provenance in the
    record is what makes this run distinguishable from a plain `review` —
    which peers ran, which rounds, what survived versus what got thrown
    out under adversarial check.
@@ -86,10 +125,13 @@ suggest installing anything unasked.
    any peer.
 2. For each available peer: `peer_run` with the plan content (cap-aware —
    a constrained peer gets truncated input, not a skipped run), asking for
-   critique against the phase's stated goal.
+   critique against the phase's stated goal. Same recording discipline
+   as `review`: `record_output` per reply, `record_findings` for the
+   parsed pile.
 3. Judge each critique adversarially — verify it against the actual
    PLAN.md and phase context before it counts as material, same rule as
    `review`: a peer's opinion is a claim, not a finding, until checked.
+   Record each verdict as it's made, same vocabulary as `review`.
 4. Converge, same two-round hard cap as `review` — round 2 only for
    critiques cairn's own judgment disputed in round 1.
 5. Material, verified critiques become plan edits directly when the call
@@ -99,9 +141,10 @@ suggest installing anything unasked.
    the person who wrote it). If a converged critique makes an already-open
    `cairn:audit` issue moot, `issue_comment` explaining why, then
    `issue_close` — a resolved question doesn't get to sit open.
-6. `audit_record(scope: "peers-plan-<phase>", verdict, findings)` —
-   `<phase>` is the phase number/slug as it appears in the routing table,
-   same provenance requirement as `peers review`.
+6. `peer_state(op: "close")`, then `audit_record(scope:
+   "peers-plan-<phase>", verdict, findings)` sourced from close's
+   summary — `<phase>` is the phase number/slug as it appears in the
+   routing table, same provenance requirement as `peers review`.
 
 ## Outbound leak gate (hard rule)
 

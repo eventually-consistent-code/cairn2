@@ -79,14 +79,14 @@ describe("cairn MCP server", () => {
       "map_set", "map_get", "map_query",
       "workspace_list", "workspace_focus", "workspace_status",
       "board_get", "board_update",
-      "peer_list", "peer_run",
+      "peer_list", "peer_run", "peer_state",
       "docs_publish", "docs_status",
       "research_sections",
     ].sort());
   });
 
-  it("pins the tool count at 74", async () => {
-    expect((await listToolNames()).length).toBe(74);
+  it("pins the tool count at 75", async () => {
+    expect((await listToolNames()).length).toBe(75);
   });
 
   it("issue_attach reads the file and forwards to the tracker; missing file is NOT_FOUND", async () => {
@@ -717,6 +717,35 @@ describe("cairn MCP server", () => {
       process.env.PATH = ORIGINAL_PATH;
       rmSync(stubDir, { recursive: true, force: true });
     }
+  });
+
+  // peer_state's envelope is a permissive object with in-handler op checks
+  // -- the wire test covers the dispatch plus the structured CONFIG_INVALID
+  // for a missing op-specific field (never a raw SDK -32602).
+  it("peer_state dispatches ops over the wire; missing op field is CONFIG_INVALID", async () => {
+    const missing = await call("peer_state", { slug: "mcp smoke", op: "start" });
+    expect(missing.isError).toBe(true);
+    expect(missing.json.code).toBe("CONFIG_INVALID");
+
+    const started = await call("peer_state", { slug: "mcp smoke", op: "start",
+      mode: "review", target: "diff", peers: ["codex"] });
+    expect(started.isError).toBeFalsy();
+    expect(started.json.slug).toBe("mcp-smoke");
+
+    await call("peer_state", { slug: "mcp smoke", op: "record_output",
+      peer: "codex", round: 1, output: "raw reply" });
+    await call("peer_state", { slug: "mcp smoke", op: "record_findings",
+      peer: "codex", round: 1, findings: [{
+        claim: "c", evidence: "e", severity: "minor", recommendation: "r" }] });
+    await call("peer_state", { slug: "mcp smoke", op: "verdict",
+      findingId: "f1", verdict: "verified" });
+
+    const status = await call("peer_state", { slug: "mcp smoke", op: "status" });
+    expect(status.json.resumable.complete).toBe(true);
+
+    const closed = await call("peer_state", { slug: "mcp smoke", op: "close" });
+    expect(closed.json.verdict).toBe("findings");
+    expect(closed.json.findings[0].detail).toBe("raised by codex round 1; verdict verified");
   });
 });
 
