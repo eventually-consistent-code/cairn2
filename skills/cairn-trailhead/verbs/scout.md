@@ -12,7 +12,9 @@ resumable (#1961 shape: never redo finished research).
 2. If RESEARCH.md exists, parse its section markers: each `## <topic>`
    section carries `<!-- scout: done -->` or `<!-- scout: pending -->` on
    the line after the heading. Sections marked `done` are FINISHED — do not
-   re-research them. No marker = legacy content, treat as done.
+   re-research them. No marker = legacy content, treat as done. The marker
+   grammar is server-validated via `research_sections` — a typo'd marker
+   throws instead of silently reading as done.
 3. Determine research topics from CONTEXT.md unknowns + PLAN.md gaps (depth
    dial per the `cairn-planning` skill). New topics get `pending` sections
    appended; only `pending` sections get researched.
