@@ -42,8 +42,16 @@ suggest installing anything unasked.
 2. **Leak-scan the outbound content** (see below) before step 3 ever
    touches a peer.
 3. For each peer `peer_list()` reports on PATH and enabled: `peer_run` with
-   the resolved diff plus a structured findings request (same shape cairn
-   asked itself for — axis, severity, file:line, scenario). No peer on
+   the ask built from the `findings-request` template
+   (`templates/peers/findings-request.md`, filled via the server's
+   `loadTemplate` — `focus` = the chosen focus verbatim, `dimension` = the
+   axis this pass targets or "full pass", `content` = the leak-scanned
+   diff). The template carries the whole structured contract — fenced-JSON
+   findings matching the server's Finding schema — so nothing gets
+   re-worded per run. Split each reply with `parseFindings`: validated
+   `findings` plus verbatim `unparsed` leftovers. Judge BOTH piles in step
+   4 — off-schema prose in `unparsed` can still hold a real finding; it
+   just arrives without the contract's guarantees. No peer on
    PATH → skip straight to step 6; that's proceed-without, not a stall.
 4. Judge every peer finding adversarially against the actual code — not
    against what the peer says the code does. A peer claiming a bug that
@@ -52,7 +60,12 @@ suggest installing anything unasked.
    missed is a real finding, provenance and all.
 5. Converge: round 2 runs ONLY over material disagreements — a peer
    standing by a finding cairn's first pass disputed, or a peer citing
-   something the round-1 verification didn't settle. Hard cap at two
+   something the round-1 verification didn't settle. Round-2 sends use the
+   `round2-steelman` template (`templates/peers/round2-steelman.md`, same
+   slots; `content` = the peer's disputed finding plus cairn's
+   counter-read), which forces a verdict — concede, refute with NEW
+   evidence, or stand by with stated confidence — instead of a free-form
+   rehash. Hard cap at two
    rounds, no exceptions; a peer that still disagrees after round 2 gets
    noted as an open disagreement in the record, not a third round.
 6. Survivors follow `review`'s exact closing discipline: `issue_create`
