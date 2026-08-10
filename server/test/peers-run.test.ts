@@ -146,6 +146,30 @@ describe("peerRun", () => {
     expect((caught as Error).message).toMatch(/timed out/i);
   });
 
+  // #59: live probing showed headless `opencode run` never prompts a TTY —
+  // with 0 credentials in auth.json and no opencode.json it auto-selects a
+  // free-tier model (observed "build · deepseek-v4-flash-free"), and that
+  // free endpoint's latency swings wildly (5s vs 31s for a one-word reply;
+  // the original report was 100s+). A timeout on opencode is almost always
+  // that missing-model config, so the error must say so instead of the
+  // generic "responds on stdin" hint.
+  it("opencode: timeout nextAction points at model/auth config, the verified hang cause", async () => {
+    runnableStubPath({ opencode: SLEEPER });
+    const d = projectDir();
+    let caught: unknown;
+    try {
+      await peerRun(d, "opencode", "hello", 200);
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toMatchObject({ code: "PRECONDITION_FAILED" });
+    expect((caught as Error).message).toMatch(/opencode/);
+    expect((caught as Error).message).toMatch(/timed out/i);
+    const next = (caught as { nextAction?: string }).nextAction ?? "";
+    expect(next).toContain("opencode auth list");
+    expect(next).toMatch(/default model/i);
+  });
+
   it("passes through a non-zero exit code as a result, never a throw", async () => {
     runnableStubPath({ opencode: EXIT_3 });
     const d = projectDir();
