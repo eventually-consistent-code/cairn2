@@ -85,8 +85,8 @@ describe("cairn MCP server", () => {
     ].sort());
   });
 
-  it("pins the tool count at 73", async () => {
-    expect((await listToolNames()).length).toBe(73);
+  it("pins the tool count at 74", async () => {
+    expect((await listToolNames()).length).toBe(74);
   });
 
   it("issue_attach reads the file and forwards to the tracker; missing file is NOT_FOUND", async () => {
