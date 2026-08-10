@@ -67,14 +67,11 @@ flow later. Don't batch this to the end of the session; record both edges
 at each decision, same moment as the mirror comment. A decision missing
 either edge is a gap the traceability sweep will flag.
 
-Before writing edges, `map_get` with NO filter — the whole map's edge
-list, not a node-filtered view — append your new edges to it, and write
-the COMPLETE list back — `map_set` replaces edges wholesale, not
-incrementally. A partial `edges` array on the write erases every prior
-edge in the map, not just the ones you didn't mention; a node-filtered
-read misses edges that touch neither of your nodes and the write-back
-silently destroys them. See `map.md` for the same discipline stated for
-every other verb that touches the map.
+Write both edges with a single `map_set` patch carrying `edgesAdd` —
+surgical append by exact from+to+type triple, no prior read required.
+Adds dedupe silently, so re-recording an edge on retry is harmless.
+Never pass the wholesale `edges` array here — that replaces the whole
+list and is reserved for full rebuilds (see `map.md`).
 
 ## Hard rules
 

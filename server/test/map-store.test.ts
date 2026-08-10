@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { CairnError } from "../src/errors.js";
 import { mapGet, mapQuery, mapSet } from "../src/map/store.js";
 
 const fresh = () => mkdtempSync(join(tmpdir(), "cairn-map-"));
@@ -111,6 +112,148 @@ describe("mapSet", () => {
     mapSet(dir, { nodes: { "mod-a": { type: "module", label: "A" } } });
     expect(existsSync(join(dir, ".cairn", "map", "map.json"))).toBe(true);
     expect(existsSync(join(dir, ".cairn", "map", "map.json.tmp"))).toBe(false);
+  });
+});
+
+describe("edge-safe patch ops (#63)", () => {
+  // shared fixture: three modules with one existing edge, enough to exercise
+  // add/remove/dedupe without the wholesale-replace foot-gun
+  const seeded = () => {
+    const dir = fresh();
+    mapSet(dir, {
+      nodes: {
+        "mod-a": { type: "module", label: "A" },
+        "mod-b": { type: "module", label: "B" },
+        "mod-c": { type: "module", label: "C" },
+      },
+      edges: [{ from: "mod-a", to: "mod-b", type: "depends-on" }],
+    });
+    return dir;
+  };
+
+  it("edgesAdd appends new edges without touching existing ones", () => {
+    const dir = seeded();
+    const out = mapSet(dir, {
+      edgesAdd: [{ from: "mod-b", to: "mod-c", type: "depends-on" }],
+    });
+    expect(out.edges).toBe(2);
+    expect(mapGet(dir).edges).toEqual([
+      { from: "mod-a", to: "mod-b", type: "depends-on" },
+      { from: "mod-b", to: "mod-c", type: "depends-on" },
+    ]);
+  });
+
+  it("edgesAdd silently dedupes against an existing identical triple", () => {
+    const dir = seeded();
+    const out = mapSet(dir, {
+      edgesAdd: [
+        { from: "mod-a", to: "mod-b", type: "depends-on" }, // already there
+        { from: "mod-a", to: "mod-c", type: "depends-on" },
+        { from: "mod-a", to: "mod-c", type: "depends-on" }, // dupe within the add list too
+      ],
+    });
+    expect(out.edges).toBe(2);
+  });
+
+  it("edgesAdd rejects a dangling endpoint, naming the id, and leaves the store untouched", () => {
+    const dir = seeded();
+    expect(() => mapSet(dir, {
+      edgesAdd: [{ from: "mod-a", to: "mod-ghost", type: "depends-on" }],
+    })).toThrow(/mod-ghost/);
+    expect(mapGet(dir).edges).toEqual([{ from: "mod-a", to: "mod-b", type: "depends-on" }]);
+  });
+
+  it("edgesRemove drops only the exact from+to+type triple", () => {
+    const dir = seeded();
+    // same endpoints, different type -- must survive a remove of the depends-on triple
+    mapSet(dir, { edgesAdd: [{ from: "mod-a", to: "mod-b", type: "implements" }] });
+    const out = mapSet(dir, {
+      edgesRemove: [{ from: "mod-a", to: "mod-b", type: "depends-on" }],
+    });
+    expect(out.edges).toBe(1);
+    expect(mapGet(dir).edges).toEqual([{ from: "mod-a", to: "mod-b", type: "implements" }]);
+  });
+
+  it("edgesRemove of a non-existent edge is a no-op (idempotent, retry-safe)", () => {
+    const dir = seeded();
+    const out = mapSet(dir, {
+      edgesRemove: [{ from: "mod-b", to: "mod-c", type: "owns" }],
+    });
+    expect(out.edges).toBe(1);
+    expect(mapGet(dir).edges).toEqual([{ from: "mod-a", to: "mod-b", type: "depends-on" }]);
+  });
+
+  it("removes apply before adds: remove + re-add the same triple in one call leaves it present", () => {
+    const dir = seeded();
+    const out = mapSet(dir, {
+      edgesRemove: [{ from: "mod-a", to: "mod-b", type: "depends-on" }],
+      edgesAdd: [{ from: "mod-a", to: "mod-b", type: "depends-on" }],
+    });
+    expect(out.edges).toBe(1);
+    expect(mapGet(dir).edges).toEqual([{ from: "mod-a", to: "mod-b", type: "depends-on" }]);
+  });
+
+  it("composes in one call: remove one edge, add another", () => {
+    const dir = seeded();
+    const out = mapSet(dir, {
+      edgesRemove: [{ from: "mod-a", to: "mod-b", type: "depends-on" }],
+      edgesAdd: [{ from: "mod-b", to: "mod-c", type: "depends-on" }],
+    });
+    expect(out.edges).toBe(1);
+    expect(mapGet(dir).edges).toEqual([{ from: "mod-b", to: "mod-c", type: "depends-on" }]);
+  });
+
+  it("wholesale edges together with edgesAdd is CONFIG_INVALID (ambiguous intent)", () => {
+    const dir = seeded();
+    try {
+      mapSet(dir, {
+        edges: [{ from: "mod-a", to: "mod-b", type: "depends-on" }],
+        edgesAdd: [{ from: "mod-b", to: "mod-c", type: "depends-on" }],
+      });
+      expect.unreachable("should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(CairnError);
+      expect((e as CairnError).code).toBe("CONFIG_INVALID");
+    }
+  });
+
+  it("wholesale edges together with edgesRemove is CONFIG_INVALID too", () => {
+    const dir = seeded();
+    try {
+      mapSet(dir, {
+        edges: [],
+        edgesRemove: [{ from: "mod-a", to: "mod-b", type: "depends-on" }],
+      });
+      expect.unreachable("should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(CairnError);
+      expect((e as CairnError).code).toBe("CONFIG_INVALID");
+    }
+  });
+
+  it("node-delete-while-edged still rejects, but composes with edgesRemove in one call", () => {
+    const dir = seeded();
+    // still attached -> still rejected, same rule as wholesale
+    expect(() => mapSet(dir, { nodes: { "mod-b": null } })).toThrow(/mod-a->mod-b/);
+    // remove the edge and delete the node in ONE call: checked against the final edge list
+    const out = mapSet(dir, {
+      nodes: { "mod-b": null },
+      edgesRemove: [{ from: "mod-a", to: "mod-b", type: "depends-on" }],
+    });
+    expect(out).toEqual({ nodes: 2, edges: 0 });
+  });
+
+  it("edge-op writes still stamp meta: updatedAt moves, generation bumps", () => {
+    const dir = seeded();
+    const before = mapGet(dir).meta;
+    const out = mapSet(dir, {
+      edgesAdd: [{ from: "mod-b", to: "mod-c", type: "depends-on" }],
+    });
+    expect(out.edges).toBe(2);
+    const after = mapGet(dir).meta;
+    expect(after?.generation).toBe((before?.generation ?? 0) + 1);
+    expect(after?.builtAt).toBe(before?.builtAt);
+    expect(Number.isNaN(Date.parse(after?.updatedAt ?? ""))).toBe(false);
   });
 });
 

@@ -28,7 +28,8 @@ stages; NOTHING mutates before stage 2's gate, in any mode.
    throws instead of silently reading as done).
 4. Topics: derive from roadmap.md phase table + each phase's CONTEXT.md
    unknowns + PROJECT.md goals — plus the user's topic argument when
-   given. Dedupe against prior runs BEFORE spawning agents: skip any topic
+   given, and map diff drift (stored graph vs. current truth) when a map
+   exists. Dedupe against prior runs BEFORE spawning agents: skip any topic
    a prior run already answered unless it's stale — stale = the repo HEAD
    has moved significantly since that run's date (many commits or a phase
    completed since; when in doubt, it's fresh — skip it). Surviving new
