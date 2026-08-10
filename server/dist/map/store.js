@@ -22,11 +22,34 @@ function writeMap(projectDir, map) {
     writeFileSync(tmp, `${JSON.stringify(map, null, 2)}\n`);
     renameSync(tmp, path);
 }
+// Identity of an edge is its exact from+to+type triple -- add/remove/dedupe
+// all match on this key, nothing fuzzier.
+const edgeKey = (e) => JSON.stringify([e.from, e.to, e.type]);
+/** Shape-check a list of edges, naming the offender on failure. */
+function validateEdges(edges) {
+    for (const e of edges) {
+        const parsed = MapEdgeSchema.safeParse(e);
+        if (!parsed.success) {
+            throw new CairnError("UNSUPPORTED", `edge '${e?.from}->${e?.to}' has an invalid type: ${parsed.error.issues.map((i) => i.message).join("; ")}`, `use one of: ${EdgeTypeSchema.options.join(", ")}`);
+        }
+    }
+}
 /**
  * Single-writer merge-patch, config_set-style: nodes merge by id (null
- * deletes), edges replace wholesale. Every edge endpoint must exist in the
- * post-merge node set, and a node with an edge still attached can't be
- * deleted -- both rejections name the offending id(s).
+ * deletes). Edges patch two ways:
+ *
+ * - `edges` replaces the list wholesale -- full rebuilds only.
+ * - `edgesAdd` / `edgesRemove` patch by exact from+to+type triple, and
+ *   compose in one call: removes apply BEFORE adds, so remove+re-add of the
+ *   same triple lands present. Adds dedupe silently against identical
+ *   existing triples; removing a triple that isn't there is a no-op --
+ *   idempotent on purpose, so a retried patch can't fail on its own success.
+ *
+ * Passing `edges` together with either edge op is CONFIG_INVALID -- replace
+ * and patch in one call is ambiguous intent. Every edge endpoint must exist
+ * in the post-merge node set, and a node with an edge still attached (in the
+ * FINAL edge list, so a same-call edgesRemove counts) can't be deleted --
+ * both rejections name the offending id(s).
  *
  * Every write stamps the meta envelope: updatedAt moves, generation bumps.
  * Design choice: `rebuild: true` signals a from-scratch rebuild -- builtAt
@@ -34,6 +57,10 @@ function writeMap(projectDir, map) {
  * over a legacy pre-envelope file) counts as a build too.
  */
 export function mapSet(projectDir, patch, opts) {
+    if (patch.edges !== undefined
+        && (patch.edgesAdd !== undefined || patch.edgesRemove !== undefined)) {
+        throw new CairnError("CONFIG_INVALID", "patch mixes wholesale 'edges' with edgesAdd/edgesRemove -- ambiguous intent", "use edges alone for a full rebuild, or edgesAdd/edgesRemove alone for a surgical patch");
+    }
     const current = readMap(projectDir);
     const nodes = { ...current.nodes };
     // Merge upserts first (validated); deletes are applied after edges are
@@ -49,13 +76,26 @@ export function mapSet(projectDir, patch, opts) {
     }
     let edges = current.edges;
     if (patch.edges !== undefined) {
-        for (const e of patch.edges) {
-            const parsed = MapEdgeSchema.safeParse(e);
-            if (!parsed.success) {
-                throw new CairnError("UNSUPPORTED", `edge '${e?.from}->${e?.to}' has an invalid type: ${parsed.error.issues.map((i) => i.message).join("; ")}`, `use one of: ${EdgeTypeSchema.options.join(", ")}`);
-            }
-        }
+        validateEdges(patch.edges);
         edges = patch.edges;
+    }
+    // Removes apply BEFORE adds -- documented order, so a remove+re-add of the
+    // same triple in one call lands present, never mysteriously absent.
+    if (patch.edgesRemove !== undefined) {
+        validateEdges(patch.edgesRemove);
+        const drop = new Set(patch.edgesRemove.map(edgeKey));
+        edges = edges.filter((e) => !drop.has(edgeKey(e)));
+    }
+    if (patch.edgesAdd !== undefined) {
+        validateEdges(patch.edgesAdd);
+        const seen = new Set(edges.map(edgeKey));
+        edges = [...edges];
+        for (const e of patch.edgesAdd) {
+            if (seen.has(edgeKey(e)))
+                continue; // silent dedupe, existing + within the add list
+            seen.add(edgeKey(e));
+            edges.push(e);
+        }
     }
     for (const [id, value] of Object.entries(patch.nodes ?? {})) {
         if (value !== null)

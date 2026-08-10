@@ -28,9 +28,20 @@ export interface ProjectMap {
 }
 /**
  * Single-writer merge-patch, config_set-style: nodes merge by id (null
- * deletes), edges replace wholesale. Every edge endpoint must exist in the
- * post-merge node set, and a node with an edge still attached can't be
- * deleted -- both rejections name the offending id(s).
+ * deletes). Edges patch two ways:
+ *
+ * - `edges` replaces the list wholesale -- full rebuilds only.
+ * - `edgesAdd` / `edgesRemove` patch by exact from+to+type triple, and
+ *   compose in one call: removes apply BEFORE adds, so remove+re-add of the
+ *   same triple lands present. Adds dedupe silently against identical
+ *   existing triples; removing a triple that isn't there is a no-op --
+ *   idempotent on purpose, so a retried patch can't fail on its own success.
+ *
+ * Passing `edges` together with either edge op is CONFIG_INVALID -- replace
+ * and patch in one call is ambiguous intent. Every edge endpoint must exist
+ * in the post-merge node set, and a node with an edge still attached (in the
+ * FINAL edge list, so a same-call edgesRemove counts) can't be deleted --
+ * both rejections name the offending id(s).
  *
  * Every write stamps the meta envelope: updatedAt moves, generation bumps.
  * Design choice: `rebuild: true` signals a from-scratch rebuild -- builtAt
@@ -40,6 +51,8 @@ export interface ProjectMap {
 export declare function mapSet(projectDir: string, patch: {
     nodes?: Record<string, MapNode | null>;
     edges?: MapEdge[];
+    edgesAdd?: MapEdge[];
+    edgesRemove?: MapEdge[];
 }, opts?: {
     rebuild?: boolean;
 }): {

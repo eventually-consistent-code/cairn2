@@ -29,7 +29,7 @@ describe("standalone stdio boot (no Claude Code)", () => {
     try {
       await client.connect(transport);
       const tools = await client.listTools();
-      expect(tools.tools.length).toBe(74);
+      expect(tools.tools.length).toBe(75);
       // and one real round trip through the local tracker
       const res = await client.callTool({ name: "issue_create",
         arguments: { title: "standalone boot" } });

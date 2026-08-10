@@ -23,15 +23,15 @@ export declare const FindingSchema: z.ZodObject<{
     axis: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     evidence: string;
-    severity: "critical" | "important" | "minor";
     claim: string;
+    severity: "critical" | "important" | "minor";
     recommendation: string;
     evidenceType?: "file-line" | "doc-section" | "transcript" | "external" | undefined;
     axis?: string | undefined;
 }, {
     evidence: string;
-    severity: "critical" | "important" | "minor";
     claim: string;
+    severity: "critical" | "important" | "minor";
     recommendation: string;
     evidenceType?: "file-line" | "doc-section" | "transcript" | "external" | undefined;
     axis?: string | undefined;

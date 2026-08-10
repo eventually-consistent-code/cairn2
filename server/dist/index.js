@@ -38,6 +38,7 @@ import { mapGet, mapQuery, mapSet } from "./map/store.js";
 import { findWorkspace, resolveProjectDir, setFocus } from "./workspace/context.js";
 import { boardGet, boardUpdate } from "./workspace/board.js";
 import { PROVIDERS, peerList, peerRun } from "./peers/run.js";
+import { VERDICTS, runStart, runAbandon, runStatus, runClose, recordPeerOutput, recordFindings, recordVerdict, } from "./peers/state.js";
 import { parseSections, flipSection } from "./research/sections.js";
 // Widened (CRN-26): canonical three or a backend-defined custom state name.
 const StateEnum = z.string().min(1);
@@ -865,12 +866,17 @@ export function buildServer(deps) {
                 detail: z.string().optional(), issue: z.string().optional(),
             })).default([]) } }, wrap((a) => writeAuditRecord(dir(), a.scope, a.verdict, a.findings)));
     server.registerTool("map_set", { description: "Merge-patch the project knowledge graph (.cairn/map/map.json) -- nodes merge by id "
-            + "(null deletes), edges replace wholesale; validates edge endpoints exist and rejects deleting "
-            + "a node that still has an edge attached. Every write stamps meta (updatedAt, generation++); "
-            + "rebuild: true marks a from-scratch rebuild (resets builtAt, generation restarts at 1)",
+            + "(null deletes). Edge ops: edgesAdd/edgesRemove patch by exact from+to+type triple (removes "
+            + "before adds; adds dedupe silently; removing a missing edge is a no-op); edges replaces the "
+            + "list wholesale (rebuilds only) and can't be combined with the edge ops (CONFIG_INVALID). "
+            + "Validates edge endpoints exist and rejects deleting a node still edged in the final list. "
+            + "Every write stamps meta (updatedAt, generation++); rebuild: true marks a from-scratch "
+            + "rebuild (resets builtAt, generation restarts at 1)",
         inputSchema: { patch: z.object({
                 nodes: z.record(z.union([NodeSchema, z.null()])).optional(),
                 edges: z.array(EdgeSchema).optional(),
+                edgesAdd: z.array(EdgeSchema).optional(),
+                edgesRemove: z.array(EdgeSchema).optional(),
             }), rebuild: z.boolean().optional() } }, wrap((a) => mapSet(dir(), a.patch, { rebuild: a.rebuild })));
     server.registerTool("map_get", { description: "Read the project knowledge graph, optionally filtered by nodeType, edgeType, or a "
             + "node id (self + touching edges + neighbor nodes). Missing store reads as empty",
@@ -949,6 +955,57 @@ export function buildServer(deps) {
             timeoutMs: z.number().int().positive().optional() } }, wrap(async (a) => {
         const d = dir();
         return peerRun(d, a.provider, a.input, a.timeoutMs);
+    }));
+    server.registerTool("peer_state", { description: "Per-run peers convergence state (.cairn/peers/<slug>/) — ops: start (mode/target/"
+            + "focus/peers; refuses an unfinished run on the slug), record_output (peer/round raw reply, "
+            + "verbatim file), record_findings (peer/round, stable ids f1, f2, ...), verdict (findingId + "
+            + "verified|dead|disputed|open-disagreement; verified/dead terminal), status (what's recorded + "
+            + "what's missing to resume), close (blocks on unresolved findings; returns audit_record-shaped "
+            + "provenance), abandon",
+        // Permissive envelope on purpose -- op-specific requirements are
+        // checked in-handler so a missing field comes back as a structured
+        // CONFIG_INVALID naming the op, not a raw SDK -32602.
+        inputSchema: {
+            slug: z.string().min(1),
+            op: z.enum(["start", "record_output", "record_findings", "verdict", "status", "close", "abandon"]),
+            mode: z.enum(["review", "plan"]).optional(),
+            target: z.string().optional(),
+            focus: z.string().optional(),
+            peers: z.array(z.string()).optional(),
+            peer: z.string().optional(),
+            round: z.number().int().optional(),
+            output: z.string().optional(),
+            findings: z.array(z.record(z.unknown())).optional(),
+            findingId: z.string().optional(),
+            verdict: z.enum(VERDICTS).optional(),
+            note: z.string().optional(),
+        } }, wrap((a) => {
+        const d = dir();
+        const need = (value, name) => {
+            if (value === undefined) {
+                throw new CairnError("CONFIG_INVALID", `op '${a.op}' requires '${name}'`, `pass ${name} alongside slug + op`);
+            }
+            return value;
+        };
+        switch (a.op) {
+            case "start":
+                return runStart(d, a.slug, { mode: need(a.mode, "mode"),
+                    target: need(a.target, "target"), focus: a.focus, peers: need(a.peers, "peers") });
+            case "record_output":
+                return recordPeerOutput(d, a.slug, need(a.peer, "peer"), need(a.round, "round"), need(a.output, "output"));
+            case "record_findings":
+                // recordFindings re-validates each element against FindingSchema,
+                // so the loose Record shape here can't smuggle in a bad finding.
+                return recordFindings(d, a.slug, need(a.peer, "peer"), need(a.round, "round"), need(a.findings, "findings"));
+            case "verdict":
+                return recordVerdict(d, a.slug, need(a.findingId, "findingId"), need(a.verdict, "verdict"), a.note);
+            case "status":
+                return runStatus(d, a.slug);
+            case "close":
+                return runClose(d, a.slug);
+            case "abandon":
+                return runAbandon(d, a.slug);
+        }
     }));
     server.registerTool("research_sections", { description: "Parse a research artifact's ##+ section markers "
             + "(<!-- namespace: done|pending|failed [date] [model] [— note] -->) for one "
