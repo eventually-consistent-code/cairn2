@@ -17,6 +17,10 @@ Plan the given phase per the `cairn-planning` skill's depth dial.
    - standard: one research subagent for unknowns; write RESEARCH.md if material.
    - deep: parallel research fan-out per the skill's model-routing rubric, then a
      plan-checker pass over the draft.
+   - When a map exists, research also consults `map_query` for the phase
+     slice (`node: <phase-N id>` or a `label` match on the phase name,
+     `depth: 2`) — dependencies and owners the graph already knows beat
+     rediscovering them. Missing map: silently skip (rule in `map.md`).
 3. Write the task breakdown into the phase's PLAN.md body. Keep decisions in
    CONTEXT.md (precedence per shared rules — the tracker gets updated, not
    followed).
@@ -39,7 +43,9 @@ Plan the given phase per the `cairn-planning` skill's depth dial.
      batch the proposed eligible/ineligible split into ONE AskUserQuestion
      for overrides; then `plan_meta_set(phaseDir, tdd: [<eligible ids>])`.
    - `--gaps`: read this phase's VERIFICATION.md failures + the latest
-     `plan_resync` report; propose new/amended tasks. Goal-breaking gaps →
+     `plan_resync` report — plus the phase's `map_query` slice when a map
+     exists (depth 2 from the phase node): an edge into unfinished work is
+     a gap candidate too. Propose new/amended tasks. Goal-breaking gaps →
      issues in this phase now (`issue_create` + `plan_issues_set`); minor →
      offer to backlog. Severity call is yours; say which and why.
    - Wave grouping (with or without flags): when tasks are independent,

@@ -19,7 +19,8 @@ stages; NOTHING mutates before stage 2's gate, in any mode.
    re-research. No marker = legacy content, treat as done.
 3. Topics: derive from roadmap.md phase table + each phase's CONTEXT.md
    unknowns + PROJECT.md goals — plus the user's topic argument when
-   given. Append new topics as `pending` sections.
+   given, and map diff drift (stored graph vs. current truth) when a map
+   exists. Append new topics as `pending` sections.
 4. Tracker mirror: `issue_create` ONE plain-language research issue at
    start ("Project survey: <one-line scope>"); `issue_comment` progress in
    manager language as sections finish. If the tracker is down, continue

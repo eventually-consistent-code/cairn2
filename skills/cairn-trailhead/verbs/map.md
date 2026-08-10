@@ -11,6 +11,11 @@ answering questions, spotting drift; the server only guarantees shape and
 atomicity. Graph writes happen ONLY through `map_set` — this verb never
 edits `map.json` directly, same discipline as `config_set`.
 
+Consumer verbs (`plan`, `scout`, `survey`) consult the map via `map_query`
+when one exists; a missing map is silently skipped — never an error, never
+a mid-verb prompt to build one. That rule is stated here once and holds
+for every consumer.
+
 ## `map build`
 
 1. Walk the sources of truth: code structure (modules, their dependencies),
@@ -22,12 +27,14 @@ edits `map.json` directly, same discipline as `config_set`.
    same as any other edge — the design-traceability sweep the `cairn-uat`
    agent runs depends on `map build` keeping both current.
 2. Write in validated chunks via `map_set(patch)` — merge-patch by node id,
-   edges replaced as a whole array per patch. Small, reviewable chunks beat
-   one giant patch: if a chunk gets rejected (dangling edge, bad type), the
-   rest of the build isn't lost with it. Chunk NODES across as many patches
-   as you like, but edges go in ONE final patch carrying the complete list —
-   an edges array replaces the whole list, so a partial edges chunk erases
-   every edge written before it.
+   edges patched surgically with `edgesAdd` / `edgesRemove` (exact
+   from+to+type triples; removes apply before adds, adds dedupe silently,
+   removing a missing edge is a no-op). Small, reviewable chunks beat one
+   giant patch: if a chunk gets rejected (dangling edge, bad type), the
+   rest of the build isn't lost with it — and edge chunks compose safely,
+   no read-merge-write dance needed. Wholesale `edges` (full-list replace)
+   is for from-scratch rebuilds ONLY, and can't be mixed with the edge ops
+   in one call.
 3. Report the final shape: node/edge counts by type, and anything the walk
    found but couldn't place (an edge whose endpoint doesn't exist yet, for
    instance) — surfaced, not silently dropped.

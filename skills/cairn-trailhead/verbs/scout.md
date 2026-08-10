@@ -14,8 +14,10 @@ resumable (#1961 shape: never redo finished research).
    the line after the heading. Sections marked `done` are FINISHED — do not
    re-research them. No marker = legacy content, treat as done.
 3. Determine research topics from CONTEXT.md unknowns + PLAN.md gaps (depth
-   dial per the `cairn-planning` skill). New topics get `pending` sections
-   appended; only `pending` sections get researched.
+   dial per the `cairn-planning` skill) — plus map edges touching this
+   phase (`map_query`, when a map exists; missing map = silently skip).
+   New topics get `pending` sections appended; only `pending` sections get
+   researched.
 4. Fan out — mandatory, not depth-gated: dispatch ONE subagent per
    `pending` section, in parallel, model routed by the WORK CLASS OF THE
    TOPIC per the cairn-planning research fan-out rubric (enumerate/locate
