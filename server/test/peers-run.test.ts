@@ -1,11 +1,11 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { mkdtempSync, writeFileSync, chmodSync } from "node:fs";
+import { mkdtempSync, writeFileSync, chmodSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, delimiter } from "node:path";
 import { peerList, peerRun } from "../src/peers/run.js";
 
 // Stub CLIs are shell scripts prepended onto PATH per test, so no real
-// codex/opencode/gemini/grok binary is ever assumed. Restore PATH after
+// codex/opencode/agy/grok binary is ever assumed. Restore PATH after
 // each test so stubs never leak into the next one.
 const ORIGINAL_PATH = process.env.PATH;
 afterEach(() => {
@@ -59,8 +59,16 @@ describe("peerList", () => {
     const list = peerList(d);
     expect(list.find((p) => p.provider === "codex")?.onPath).toBe(true);
     expect(list.find((p) => p.provider === "opencode")?.onPath).toBe(false);
-    expect(list.find((p) => p.provider === "gemini")?.onPath).toBe(false);
+    expect(list.find((p) => p.provider === "antigravity")?.onPath).toBe(false);
     expect(list.find((p) => p.provider === "grok")?.onPath).toBe(false);
+  });
+
+  // The antigravity provider's binary is `agy`, not `antigravity` — the
+  // PATH probe has to look for what's actually installed.
+  it("antigravity: probes PATH for the agy binary, not the provider name", () => {
+    process.env.PATH = stubBinDir({ agy: OK_ECHO });
+    const d = projectDir();
+    expect(peerList(d).find((p) => p.provider === "antigravity")?.onPath).toBe(true);
   });
 
   it("defaults enabled: true and maxInputChars: 200000 when unconfigured", () => {
@@ -73,10 +81,10 @@ describe("peerList", () => {
 
   it("reflects a configured override for enabled and maxInputChars", () => {
     process.env.PATH = stubBinDir({});
-    const d = projectDir({ peers: { gemini: { enabled: false, maxInputChars: 900_000 } } });
-    const gemini = peerList(d).find((p) => p.provider === "gemini");
-    expect(gemini?.enabled).toBe(false);
-    expect(gemini?.maxInputChars).toBe(900_000);
+    const d = projectDir({ peers: { antigravity: { enabled: false, maxInputChars: 900_000 } } });
+    const antigravity = peerList(d).find((p) => p.provider === "antigravity");
+    expect(antigravity?.enabled).toBe(false);
+    expect(antigravity?.maxInputChars).toBe(900_000);
   });
 });
 
@@ -125,16 +133,16 @@ describe("peerRun", () => {
   });
 
   it("kills a hung peer at the timeout and reports PRECONDITION_FAILED naming the provider", async () => {
-    runnableStubPath({ gemini: SLEEPER });
+    runnableStubPath({ agy: SLEEPER });
     const d = projectDir();
     let caught: unknown;
     try {
-      await peerRun(d, "gemini", "hello", 200);
+      await peerRun(d, "antigravity", "hello", 200);
     } catch (e) {
       caught = e;
     }
     expect(caught).toMatchObject({ code: "PRECONDITION_FAILED" });
-    expect((caught as Error).message).toMatch(/gemini/);
+    expect((caught as Error).message).toMatch(/antigravity/);
     expect((caught as Error).message).toMatch(/timed out/i);
   });
 
@@ -189,15 +197,36 @@ describe("peerRun", () => {
     expect(result.output).toContain("argv2:hello oc");
   });
 
-  // gemini reads piped stdin and appends -p's value after it — the template
-  // carries a real instruction there, never a bare "-".
-  it("gemini: delivers input via stdin with the headless -p instruction in argv", async () => {
-    runnableStubPath({ gemini: "#!/bin/sh\nstdin=$(cat)\necho \"p:$2\"\necho \"stdin:$stdin\"\n" });
+  // antigravity's headless mode takes the prompt as `-p`'s value (verified
+  // against the live agy CLI) and ignores piped stdin — argv-mode, same
+  // rules as grok.
+  it("antigravity: delivers input via argv to the agy binary, not stdin", async () => {
+    runnableStubPath({ agy: "#!/bin/sh\nstdin=$(cat)\necho \"argv2:$2\"\necho \"stdinlen:${#stdin}\"\n" });
     const d = projectDir();
-    const result = await peerRun(d, "gemini", "hello gem");
-    expect(result.output).toContain("stdin:hello gem");
-    expect(result.output).toContain("p:Respond to the request");
-    expect(result.output).not.toContain("p:-");
+    const result = await peerRun(d, "antigravity", "hello agy");
+    expect(result.output).toContain("argv2:hello agy");
+    expect(result.output).toContain("stdinlen:0");
+  });
+
+  // Codex refuses to run outside a trusted directory unless told otherwise
+  // ("Not inside a trusted directory and --skip-git-repo-check was not
+  // specified", verified against the live CLI) — the flag rides in the
+  // template so a run never depends on the host's trust list.
+  it("codex: passes --skip-git-repo-check so runs never depend on directory trust", async () => {
+    runnableStubPath({ codex: "#!/bin/sh\ncat > /dev/null\necho \"args:$*\"\n" });
+    const d = projectDir();
+    const result = await peerRun(d, "codex", "hello");
+    expect(result.output).toContain("--skip-git-repo-check");
+  });
+
+  // Peer children inherited whatever cwd the MCP server process happened
+  // to have — codex's trust check and any peer's relative file reads made
+  // results depend on it (#56). Every peer must run from the project dir.
+  it("runs the peer child with cwd pinned to the project dir", async () => {
+    runnableStubPath({ grok: "#!/bin/sh\necho \"cwd:$(pwd)\"\n" });
+    const d = projectDir();
+    const result = await peerRun(d, "grok", "hello");
+    expect(result.output.trim()).toBe(`cwd:${realpathSync(d)}`);
   });
 
   // A staged binary that exists on PATH but isn't executable fails at

@@ -205,17 +205,26 @@ describe("peers config", () => {
   it("accepts known provider keys with partial fields and applies defaults on read", () => {
     const dir = writeTmpConfig({
       ...base,
-      peers: { codex: { enabled: false }, gemini: { maxInputChars: 900000 } },
+      peers: { codex: { enabled: false }, antigravity: { maxInputChars: 900000 } },
     });
     const cfg = loadConfig(dir);
     expect(cfg.peers).toEqual({
       codex: { enabled: false },
-      gemini: { maxInputChars: 900000 },
+      antigravity: { maxInputChars: 900000 },
     });
   });
 
   it("rejects an unknown provider key", () => {
     const dir = writeTmpConfig({ ...base, peers: { totallyBogus: { enabled: true } } });
+    expect(() => loadConfig(dir)).toThrowError(
+      expect.objectContaining({ code: "CONFIG_INVALID" }));
+  });
+
+  // gemini left the roster when antigravity replaced it — a leftover
+  // peers.gemini block must fail loud (CONFIG_INVALID) so the user removes
+  // it, never silently load.
+  it("rejects the retired gemini provider key", () => {
+    const dir = writeTmpConfig({ ...base, peers: { gemini: { enabled: true } } });
     expect(() => loadConfig(dir)).toThrowError(
       expect.objectContaining({ code: "CONFIG_INVALID" }));
   });
