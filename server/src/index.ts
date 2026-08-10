@@ -1068,14 +1068,20 @@ export function buildServer(deps: {
 
   server.registerTool("map_set",
     { description: "Merge-patch the project knowledge graph (.cairn/map/map.json) -- nodes merge by id "
-        + "(null deletes), edges replace wholesale; validates edge endpoints exist and rejects deleting "
-        + "a node that still has an edge attached. Every write stamps meta (updatedAt, generation++); "
-        + "rebuild: true marks a from-scratch rebuild (resets builtAt, generation restarts at 1)",
+        + "(null deletes). Edge ops: edgesAdd/edgesRemove patch by exact from+to+type triple (removes "
+        + "before adds; adds dedupe silently; removing a missing edge is a no-op); edges replaces the "
+        + "list wholesale (rebuilds only) and can't be combined with the edge ops (CONFIG_INVALID). "
+        + "Validates edge endpoints exist and rejects deleting a node still edged in the final list. "
+        + "Every write stamps meta (updatedAt, generation++); rebuild: true marks a from-scratch "
+        + "rebuild (resets builtAt, generation restarts at 1)",
       inputSchema: { patch: z.object({
         nodes: z.record(z.union([NodeSchema, z.null()])).optional(),
         edges: z.array(EdgeSchema).optional(),
+        edgesAdd: z.array(EdgeSchema).optional(),
+        edgesRemove: z.array(EdgeSchema).optional(),
       }), rebuild: z.boolean().optional() } },
-    wrap((a: { patch: { nodes?: Record<string, MapNode | null>; edges?: MapEdge[] }; rebuild?: boolean }) =>
+    wrap((a: { patch: { nodes?: Record<string, MapNode | null>; edges?: MapEdge[];
+      edgesAdd?: MapEdge[]; edgesRemove?: MapEdge[] }; rebuild?: boolean }) =>
       mapSet(dir(), a.patch, { rebuild: a.rebuild })));
 
   server.registerTool("map_get",
