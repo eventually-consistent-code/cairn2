@@ -76,7 +76,7 @@ describe("cairn MCP server", () => {
       "thread_start", "thread_log", "thread_close",
       "session_landscape",
       "plan_check", "audit_record",
-      "map_set", "map_get",
+      "map_set", "map_get", "map_query",
       "workspace_list", "workspace_focus", "workspace_status",
       "board_get", "board_update",
       "peer_list", "peer_run",
@@ -84,8 +84,8 @@ describe("cairn MCP server", () => {
     ].sort());
   });
 
-  it("pins the tool count at 72", async () => {
-    expect((await listToolNames()).length).toBe(72);
+  it("pins the tool count at 73", async () => {
+    expect((await listToolNames()).length).toBe(73);
   });
 
   it("issue_attach reads the file and forwards to the tracker; missing file is NOT_FOUND", async () => {
@@ -531,6 +531,24 @@ describe("cairn MCP server", () => {
       edges: [{ from: "mod-a", to: "mod-ghost", type: "depends-on" }],
     } });
     expect(dangling.isError).toBe(true);
+  });
+
+  it("map_query: neighborhood + filters over the wire, with the meta envelope", async () => {
+    await call("map_set", { patch: {
+      nodes: {
+        "mod-a": { type: "module", label: "A" },
+        "mod-b": { type: "module", label: "B" },
+        "issue-x": { type: "issue", label: "b leaks" },
+      },
+      edges: [
+        { from: "mod-a", to: "mod-b", type: "depends-on" },
+        { from: "mod-b", to: "issue-x", type: "implements" },
+      ],
+    } });
+    const out = await call("map_query", { node: "mod-a", depth: 1, nodeType: "module" });
+    expect(Object.keys(out.json.nodes).sort()).toEqual(["mod-a", "mod-b"]);
+    expect(out.json.edges).toEqual([{ from: "mod-a", to: "mod-b", type: "depends-on" }]);
+    expect(out.json.meta.generation).toBeGreaterThanOrEqual(1);
   });
 
   it("session_landscape's openByKind reflects an open probe created via probe_start", async () => {

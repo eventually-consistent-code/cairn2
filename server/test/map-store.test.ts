@@ -1,8 +1,8 @@
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { mapGet, mapSet } from "../src/map/store.js";
+import { mapGet, mapQuery, mapSet } from "../src/map/store.js";
 
 const fresh = () => mkdtempSync(join(tmpdir(), "cairn-map-"));
 
@@ -193,5 +193,162 @@ describe("mapGet", () => {
       { from: "mod-a", to: "mod-b", type: "depends-on" },
       { from: "mod-c", to: "mod-a", type: "implements" },
     ]);
+  });
+});
+
+describe("meta envelope", () => {
+  it("stamps meta on first write: ISO timestamps and generation 1", () => {
+    const dir = fresh();
+    mapSet(dir, { nodes: { "mod-a": { type: "module", label: "A" } } });
+    const map = mapGet(dir);
+    expect(map.meta).toBeDefined();
+    expect(map.meta?.generation).toBe(1);
+    // both stamps must be valid ISO datetimes, and a first write IS the build
+    expect(Number.isNaN(Date.parse(map.meta?.builtAt ?? ""))).toBe(false);
+    expect(Number.isNaN(Date.parse(map.meta?.updatedAt ?? ""))).toBe(false);
+    expect(map.meta?.builtAt).toBe(map.meta?.updatedAt);
+  });
+
+  it("increments generation on every write and preserves builtAt", () => {
+    const dir = fresh();
+    mapSet(dir, { nodes: { "mod-a": { type: "module", label: "A" } } });
+    const first = mapGet(dir).meta;
+    mapSet(dir, { nodes: { "mod-b": { type: "module", label: "B" } } });
+    const second = mapGet(dir).meta;
+    expect(second?.generation).toBe(2);
+    expect(second?.builtAt).toBe(first?.builtAt);
+  });
+
+  it("rebuild: true resets builtAt to now and generation to 1", () => {
+    const dir = fresh();
+    mapSet(dir, { nodes: { "mod-a": { type: "module", label: "A" } } });
+    mapSet(dir, { nodes: { "mod-b": { type: "module", label: "B" } } });
+    mapSet(dir, { nodes: { "mod-c": { type: "module", label: "C" } } }, { rebuild: true });
+    const meta = mapGet(dir).meta;
+    expect(meta?.generation).toBe(1);
+    expect(meta?.builtAt).toBe(meta?.updatedAt);
+  });
+
+  it("legacy map.json without meta still loads, and the next write stamps it", () => {
+    const dir = fresh();
+    // hand-roll a pre-envelope store on disk, exactly as old versions wrote it
+    mkdirSync(join(dir, ".cairn", "map"), { recursive: true });
+    writeFileSync(join(dir, ".cairn", "map", "map.json"), JSON.stringify({
+      nodes: { "mod-old": { type: "module", label: "legacy" } }, edges: [],
+    }, null, 2));
+    const map = mapGet(dir);
+    expect(map.nodes["mod-old"]).toEqual({ type: "module", label: "legacy" });
+    expect(map.meta).toBeUndefined();
+    mapSet(dir, { nodes: { "mod-new": { type: "module", label: "fresh" } } });
+    expect(mapGet(dir).meta?.generation).toBe(1);
+  });
+
+  it("missing file still reads as an empty map with no meta", () => {
+    const dir = fresh();
+    const map = mapGet(dir);
+    expect(map.nodes).toEqual({});
+    expect(map.meta).toBeUndefined();
+  });
+});
+
+describe("mapQuery", () => {
+  // shared fixture: a 4-node chain a->b->c->d plus a person owning b,
+  // enough shape to exercise depth, type, and label filters together
+  const seeded = () => {
+    const dir = fresh();
+    mapSet(dir, {
+      nodes: {
+        "mod-a": { type: "module", label: "Alpha store" },
+        "mod-b": { type: "module", label: "Beta store" },
+        "mod-c": { type: "module", label: "Gamma API" },
+        "issue-d": { type: "issue", label: "store leak" },
+        "person-jr": { type: "person", label: "John Reed" },
+      },
+      edges: [
+        { from: "mod-a", to: "mod-b", type: "depends-on" },
+        { from: "mod-b", to: "mod-c", type: "depends-on" },
+        { from: "mod-c", to: "issue-d", type: "implements" },
+        { from: "person-jr", to: "mod-b", type: "owns" },
+      ],
+    });
+    return dir;
+  };
+
+  it("depth 0 returns only the anchor node and no edges", () => {
+    const out = mapQuery(seeded(), { node: "mod-b", depth: 0 });
+    expect(Object.keys(out.nodes)).toEqual(["mod-b"]);
+    expect(out.edges).toEqual([]);
+  });
+
+  it("depth 1 (the default) returns the anchor plus direct neighbors both directions", () => {
+    const out = mapQuery(seeded(), { node: "mod-b" });
+    expect(Object.keys(out.nodes).sort()).toEqual(["mod-a", "mod-b", "mod-c", "person-jr"]);
+    // only edges with BOTH endpoints in the result set come back
+    expect(out.edges).toEqual([
+      { from: "mod-a", to: "mod-b", type: "depends-on" },
+      { from: "mod-b", to: "mod-c", type: "depends-on" },
+      { from: "person-jr", to: "mod-b", type: "owns" },
+    ]);
+  });
+
+  it("depth 2 reaches two hops out via BFS", () => {
+    const out = mapQuery(seeded(), { node: "mod-a", depth: 2 });
+    expect(Object.keys(out.nodes).sort())
+      .toEqual(["mod-a", "mod-b", "mod-c", "person-jr"]);
+  });
+
+  it("depth 3 covers the whole chain from one end", () => {
+    const out = mapQuery(seeded(), { node: "mod-a", depth: 3 });
+    expect(Object.keys(out.nodes).sort())
+      .toEqual(["issue-d", "mod-a", "mod-b", "mod-c", "person-jr"]);
+  });
+
+  it("unknown anchor node returns an empty result, not an error", () => {
+    const out = mapQuery(seeded(), { node: "mod-ghost" });
+    expect(out.nodes).toEqual({});
+    expect(out.edges).toEqual([]);
+  });
+
+  it("label filter is a case-insensitive substring match", () => {
+    const out = mapQuery(seeded(), { label: "STORE" });
+    expect(Object.keys(out.nodes).sort()).toEqual(["issue-d", "mod-a", "mod-b"]);
+  });
+
+  it("filters combine as AND: nodeType + edgeType + label together", () => {
+    const out = mapQuery(seeded(), {
+      nodeType: "module", edgeType: "depends-on", label: "store",
+    });
+    // modules whose label contains "store": mod-a, mod-b; only the
+    // depends-on edge between them survives the edge filter
+    expect(Object.keys(out.nodes).sort()).toEqual(["mod-a", "mod-b"]);
+    expect(out.edges).toEqual([{ from: "mod-a", to: "mod-b", type: "depends-on" }]);
+  });
+
+  it("neighborhood combines with nodeType: depth 1 around mod-b, modules only", () => {
+    const out = mapQuery(seeded(), { node: "mod-b", depth: 1, nodeType: "module" });
+    expect(Object.keys(out.nodes).sort()).toEqual(["mod-a", "mod-b", "mod-c"]);
+    expect(out.edges).toEqual([
+      { from: "mod-a", to: "mod-b", type: "depends-on" },
+      { from: "mod-b", to: "mod-c", type: "depends-on" },
+    ]);
+  });
+
+  it("edges drop out when only one endpoint survives the filters", () => {
+    const out = mapQuery(seeded(), { nodeType: "person" });
+    expect(Object.keys(out.nodes)).toEqual(["person-jr"]);
+    expect(out.edges).toEqual([]);
+  });
+
+  it("querying an empty (missing) map returns an empty result with no meta", () => {
+    const dir = fresh();
+    const out = mapQuery(dir, {});
+    expect(out.nodes).toEqual({});
+    expect(out.edges).toEqual([]);
+    expect(out.meta).toBeUndefined();
+  });
+
+  it("query results carry the meta envelope through", () => {
+    const out = mapQuery(seeded(), { node: "mod-b" });
+    expect(out.meta?.generation).toBe(1);
   });
 });
