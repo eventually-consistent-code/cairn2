@@ -41,7 +41,7 @@ import { startTrace, appendTrace, listTraces, closeTrace } from "./trace/store.j
 import { KIND_SPECS, appendSession, closeSession, sessionLandscape, startSession } from "./sessions/store.js";
 import { planCheck } from "./planning/check.js";
 import { writeAuditRecord, type AuditFinding } from "./audit/record.js";
-import { mapGet, mapSet, type EdgeType, type MapEdge, type MapNode, type NodeType } from "./map/store.js";
+import { mapGet, mapQuery, mapSet, type EdgeType, type MapEdge, type MapNode, type MapQuery, type NodeType } from "./map/store.js";
 import { findWorkspace, resolveProjectDir, setFocus } from "./workspace/context.js";
 import { boardGet, boardUpdate, type Workstream } from "./workspace/board.js";
 import { PROVIDERS, peerList, peerRun, type Provider } from "./peers/run.js";
@@ -1068,13 +1068,14 @@ export function buildServer(deps: {
   server.registerTool("map_set",
     { description: "Merge-patch the project knowledge graph (.cairn/map/map.json) -- nodes merge by id "
         + "(null deletes), edges replace wholesale; validates edge endpoints exist and rejects deleting "
-        + "a node that still has an edge attached",
+        + "a node that still has an edge attached. Every write stamps meta (updatedAt, generation++); "
+        + "rebuild: true marks a from-scratch rebuild (resets builtAt, generation restarts at 1)",
       inputSchema: { patch: z.object({
         nodes: z.record(z.union([NodeSchema, z.null()])).optional(),
         edges: z.array(EdgeSchema).optional(),
-      }) } },
-    wrap((a: { patch: { nodes?: Record<string, MapNode | null>; edges?: MapEdge[] } }) =>
-      mapSet(dir(), a.patch)));
+      }), rebuild: z.boolean().optional() } },
+    wrap((a: { patch: { nodes?: Record<string, MapNode | null>; edges?: MapEdge[] }; rebuild?: boolean }) =>
+      mapSet(dir(), a.patch, { rebuild: a.rebuild })));
 
   server.registerTool("map_get",
     { description: "Read the project knowledge graph, optionally filtered by nodeType, edgeType, or a "
@@ -1086,6 +1087,19 @@ export function buildServer(deps: {
       } },
     wrap((a: { nodeType?: NodeType; edgeType?: EdgeType; node?: string }) =>
       mapGet(dir(), a)));
+
+  server.registerTool("map_query",
+    { description: "Composite graph query: node + depth (0-3, default 1) walks a BFS neighborhood over "
+        + "edges in both directions; nodeType/edgeType/label (case-insensitive substring) filters AND "
+        + "together. Returns { nodes, edges, meta } with edges limited to both endpoints in the result",
+      inputSchema: {
+        node: z.string().optional(),
+        depth: z.number().int().min(0).max(3).optional(),
+        nodeType: NodeTypeEnum.optional(),
+        edgeType: EdgeTypeEnum.optional(),
+        label: z.string().optional(),
+      } },
+    wrap((a: MapQuery) => mapQuery(dir(), a)));
 
   // ---- workspace tools (basecamp) -- these operate on the LAUNCH dir, never
   // the focus-resolved dir: they are the layer that manages focus itself.
