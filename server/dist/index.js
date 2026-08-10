@@ -1,7 +1,7 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { realpathSync } from "node:fs";
-import { basename, extname, join, resolve } from "node:path";
+import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -34,10 +34,11 @@ import { startTrace, appendTrace, listTraces, closeTrace } from "./trace/store.j
 import { KIND_SPECS, appendSession, closeSession, sessionLandscape, startSession } from "./sessions/store.js";
 import { planCheck } from "./planning/check.js";
 import { writeAuditRecord } from "./audit/record.js";
-import { mapGet, mapSet } from "./map/store.js";
+import { mapGet, mapQuery, mapSet } from "./map/store.js";
 import { findWorkspace, resolveProjectDir, setFocus } from "./workspace/context.js";
 import { boardGet, boardUpdate } from "./workspace/board.js";
 import { PROVIDERS, peerList, peerRun } from "./peers/run.js";
+import { parseSections, flipSection } from "./research/sections.js";
 // Widened (CRN-26): canonical three or a backend-defined custom state name.
 const StateEnum = z.string().min(1);
 const HandoffSourceEnum = z.enum(["tool", "posttooluse", "precompact", "waypoint"]);
@@ -865,11 +866,12 @@ export function buildServer(deps) {
             })).default([]) } }, wrap((a) => writeAuditRecord(dir(), a.scope, a.verdict, a.findings)));
     server.registerTool("map_set", { description: "Merge-patch the project knowledge graph (.cairn/map/map.json) -- nodes merge by id "
             + "(null deletes), edges replace wholesale; validates edge endpoints exist and rejects deleting "
-            + "a node that still has an edge attached",
+            + "a node that still has an edge attached. Every write stamps meta (updatedAt, generation++); "
+            + "rebuild: true marks a from-scratch rebuild (resets builtAt, generation restarts at 1)",
         inputSchema: { patch: z.object({
                 nodes: z.record(z.union([NodeSchema, z.null()])).optional(),
                 edges: z.array(EdgeSchema).optional(),
-            }) } }, wrap((a) => mapSet(dir(), a.patch)));
+            }), rebuild: z.boolean().optional() } }, wrap((a) => mapSet(dir(), a.patch, { rebuild: a.rebuild })));
     server.registerTool("map_get", { description: "Read the project knowledge graph, optionally filtered by nodeType, edgeType, or a "
             + "node id (self + touching edges + neighbor nodes). Missing store reads as empty",
         inputSchema: {
@@ -877,6 +879,16 @@ export function buildServer(deps) {
             edgeType: EdgeTypeEnum.optional(),
             node: z.string().optional(),
         } }, wrap((a) => mapGet(dir(), a)));
+    server.registerTool("map_query", { description: "Composite graph query: node + depth (0-3, default 1) walks a BFS neighborhood over "
+            + "edges in both directions; nodeType/edgeType/label (case-insensitive substring) filters AND "
+            + "together. Returns { nodes, edges, meta } with edges limited to both endpoints in the result",
+        inputSchema: {
+            node: z.string().optional(),
+            depth: z.number().int().min(0).max(3).optional(),
+            nodeType: NodeTypeEnum.optional(),
+            edgeType: EdgeTypeEnum.optional(),
+            label: z.string().optional(),
+        } }, wrap((a) => mapQuery(dir(), a)));
     // ---- workspace tools (basecamp) -- these operate on the LAUNCH dir, never
     // the focus-resolved dir: they are the layer that manages focus itself.
     server.registerTool("workspace_list", { description: "Workspace name, root, members (name/path/configured), and current focus. "
@@ -937,6 +949,45 @@ export function buildServer(deps) {
             timeoutMs: z.number().int().positive().optional() } }, wrap(async (a) => {
         const d = dir();
         return peerRun(d, a.provider, a.input, a.timeoutMs);
+    }));
+    server.registerTool("research_sections", { description: "Parse a research artifact's ##+ section markers "
+            + "(<!-- namespace: done|pending|failed [date] [model] [— note] -->) for one "
+            + "namespace (scout, survey, ...). Unmarked sections report state 'unmarked'; a "
+            + "typo'd marker is CONFIG_INVALID, never silently done. With flip, rewrites that "
+            + "section's marker atomically and returns the re-parsed sections",
+        inputSchema: { path: z.string(), namespace: z.string(),
+            flip: z.object({
+                heading: z.string(),
+                state: z.enum(["done", "pending", "failed"]),
+                date: z.string().optional(),
+                model: z.string().optional(),
+                note: z.string().optional(),
+            }).optional() } }, wrap((a) => {
+        const d = dir();
+        // Containment: the artifact must live under the project dir -- a
+        // ..-escape (or an absolute path outside it) is a config error, not a read.
+        const abs = resolve(d, a.path);
+        const rel = relative(d, abs);
+        if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
+            throw new CairnError("CONFIG_INVALID", `path '${a.path}' escapes the project directory`, "pass a path relative to the project root, e.g. .cairn/plans/phases/07-x/RESEARCH.md");
+        }
+        let markdown;
+        try {
+            markdown = readFileSync(abs, "utf8");
+        }
+        catch {
+            throw new CairnError("NOT_FOUND", `no research artifact at ${abs}`, "path resolves against the project directory");
+        }
+        if (!a.flip)
+            return { path: rel, sections: parseSections(markdown, a.namespace) };
+        const { heading, state, ...meta } = a.flip;
+        const flipped = flipSection(markdown, a.namespace, heading, state, meta);
+        // tmp+rename so a crash mid-write never leaves a half-written artifact
+        // (same idiom as map/store.ts).
+        const tmp = `${abs}.tmp`;
+        writeFileSync(tmp, flipped);
+        renameSync(tmp, abs);
+        return { path: rel, flipped: heading, sections: parseSections(flipped, a.namespace) };
     }));
     server.registerTool("docs_publish", { description: "Publish project documentation to the configured docs connector — "
             + "README.md becomes the landing page, docs/ (+ CHANGELOG.md) becomes the child "
