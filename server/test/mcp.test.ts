@@ -81,6 +81,7 @@ describe("cairn MCP server", () => {
       "board_get", "board_update",
       "peer_list", "peer_run",
       "docs_publish", "docs_status",
+      "research_sections",
     ].sort());
   });
 
