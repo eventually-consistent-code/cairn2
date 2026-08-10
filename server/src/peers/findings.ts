@@ -142,6 +142,8 @@ export function parseFindings(raw: string): ParsedFindings {
       continue;
     }
 
+    // An empty array here is a peer's explicit "no findings" — a valid,
+    // fully-parsed reply that contributes nothing to either pile.
     sawCandidate = true;
     const items = Array.isArray(value) ? value : [value];
     for (const item of items) {
@@ -156,7 +158,6 @@ export function parseFindings(raw: string): ParsedFindings {
         unparsed.push(content);
       }
     }
-    if (items.length === 0) continue; // empty array — a peer's "no findings"
   }
 
   // Prose-only output (or nothing but non-JSON code fences): the whole
