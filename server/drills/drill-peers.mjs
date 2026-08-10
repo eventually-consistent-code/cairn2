@@ -13,6 +13,7 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { chmodSync, mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { resolve, join } from "node:path";
 import { buildPatterns, scanLines } from "../../hooks/scripts/leak-patterns.mjs";
 
@@ -24,22 +25,36 @@ const STUBS = join(PROJECT, "stub-bin");
 const CAPTURE = join(PROJECT, "capture");
 mkdirSync(STUBS, { recursive: true });
 mkdirSync(CAPTURE, { recursive: true });
-for (const p of ["codex", "opencode", "gemini", "grok"]) {
+for (const p of ["codex", "opencode", "grok"]) {
   writeFileSync(join(STUBS, p), `#!/bin/sh\ncat > "${CAPTURE}/${p}.in"\necho "finding: export handler swallows write errors at src/export/handler.ts:87 (severity: critical)"\n`);
   chmodSync(join(STUBS, p), 0o755);
 }
+// antigravity's binary is agy, and it's argv-mode — the prompt arrives as
+// -p's value ($2), not stdin, so the capture reads from argv.
+writeFileSync(join(STUBS, "agy"), `#!/bin/sh\ncat > /dev/null\nprintf '%s' "$2" > "${CAPTURE}/antigravity.in"\necho "finding: export handler swallows write errors at src/export/handler.ts:87 (severity: critical)"\n`);
+chmodSync(join(STUBS, "agy"), 0o755);
 
-// tiny cap for gemini so truncation is provable
+// tiny cap for antigravity so truncation is provable
 writeFileSync(join(PROJECT, "cairn.json"), JSON.stringify({
   tracker: { type: "github", config: { repo: "eventually-consistent-code/cairn-drill-scratch" } },
-  peers: { gemini: { maxInputChars: 60 } },
+  peers: { antigravity: { maxInputChars: 60 } },
   leakGuard: { extraPatterns: ["AKIA[0-9A-Z]{16}"] },
 }, null, 2) + "\n");
 const DRILL_CONFIG = JSON.parse(readFileSync(join(PROJECT, "cairn.json"), "utf8"));
 
+// Isolated PATH, not a prepend: on a machine with real vendor CLIs
+// installed (multi-harness boxes), a prepended PATH would let the real
+// grok answer after the degradation leg deletes the stub. Stubs + node's
+// own dir + system bins is everything the drill needs. The isolated child
+// can't reach `gh` for token fallback, so resolve the tracker token here
+// (parent PATH) and hand it over.
+const NODE_DIR = resolve(process.execPath, "..");
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN
+  ?? execFileSync("gh", ["auth", "token"], { encoding: "utf8" }).trim();
 const transport = new StdioClientTransport({
   command: "node", args: [SERVER], cwd: PROJECT,
-  env: { ...process.env, CLAUDE_PROJECT_DIR: PROJECT, PATH: `${STUBS}:${process.env.PATH}` },
+  env: { ...process.env, CLAUDE_PROJECT_DIR: PROJECT, GITHUB_TOKEN,
+    PATH: `${STUBS}:${NODE_DIR}:/usr/bin:/bin` },
 });
 const client = new Client({ name: "peers-drill", version: "0.0.0" });
 await client.connect(transport);
@@ -61,7 +76,7 @@ const list = await call("peer_list", {});
 check("all four providers detected on PATH",
   Array.isArray(list) && list.length === 4 && list.every((p) => p.onPath),
   JSON.stringify(list).slice(0, 120));
-check("gemini carries its configured cap", list.find((p) => p.provider === "gemini")?.maxInputChars === 60);
+check("antigravity carries its configured cap", list.find((p) => p.provider === "antigravity")?.maxInputChars === 60);
 
 // -- outbound leak gate (verb rule, run mechanically) ----------------------------
 // Built-in patterns cover planning-detail leaks; credential-class patterns are
@@ -78,20 +93,20 @@ check("stub never received the secret (no capture file exists yet)",
   !existsSync(join(CAPTURE, "codex.in")));
 
 // -- clean input: run peers, cap proven ------------------------------------------
-console.log("clean run: all four peers, cap truncation on gemini...");
+console.log("clean run: all four peers, cap truncation on antigravity...");
 const CLEAN = "review this diff: export handler catch block logs and falls through to res.ok — " +
   "failure scenario: disk full mid-write returns 200 with a truncated file.";
 check("clean input passes the scan", scanLines(CLEAN.split("\n"), buildPatterns(null)).length === 0);
 const results = {};
-for (const p of ["codex", "opencode", "gemini", "grok"]) {
+for (const p of ["codex", "opencode", "antigravity", "grok"]) {
   results[p] = await call("peer_run", { provider: p, input: CLEAN });
 }
 check("all four ran, exit 0, findings returned",
   Object.values(results).every((r) => r.exitCode === 0 && r.output.includes("finding:")),
   JSON.stringify(results.codex?.__error ?? "").slice(0, 100));
-check("gemini input truncated with the marker",
-  results.gemini.truncatedInput === true
-  && readFileSync(join(CAPTURE, "gemini.in"), "utf8").includes("[cairn: input truncated at 60 chars]"));
+check("antigravity input truncated with the marker",
+  results.antigravity.truncatedInput === true
+  && readFileSync(join(CAPTURE, "antigravity.in"), "utf8").includes("[cairn: input truncated at 60 chars]"));
 check("uncapped peer got the full input",
   results.codex.truncatedInput === false
   && readFileSync(join(CAPTURE, "codex.in"), "utf8").includes("disk full mid-write"));
@@ -101,12 +116,12 @@ console.log("convergence: peer-credited finding to the tracker...");
 const issue = await call("issue_create", {
   title: "export handler swallows write errors — partial files look successful",
   labels: ["cairn:review"],
-  body: "critical\nPeer review convergence: all four peers flagged the swallowed write error; verified against the code before filing. Raised by codex (round 1), confirmed by gemini.",
+  body: "critical\nPeer review convergence: all four peers flagged the swallowed write error; verified against the code before filing. Raised by codex (round 1), confirmed by antigravity.",
 });
 check("cairn:review issue with peer provenance", issue.labels?.includes("cairn:review"));
 const rec = await call("audit_record", { scope: "peers-review-drill", verdict: "findings",
   findings: [{ severity: "critical", title: "export handler swallows write errors",
-    detail: "raised by codex round 1; confirmed gemini round 1; verified against src/export/handler.ts:87", issue: issue.id }] });
+    detail: "raised by codex round 1; confirmed antigravity round 1; verified against src/export/handler.ts:87", issue: issue.id }] });
 check("record credits peer + round", readFileSync(rec.path, "utf8").includes("codex round 1"));
 await call("issue_comment", { id: issue.id, text: "Fixed: failed writes now fail the request; regression test pins it. Peer consensus verified before the fix landed." });
 await call("issue_close", { id: issue.id });

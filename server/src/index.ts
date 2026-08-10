@@ -1155,7 +1155,7 @@ export function buildServer(deps: {
       boardUpdate(launchDir, a.patch)));
 
   server.registerTool("peer_list",
-    { description: "Detected external AI peer CLIs (codex/opencode/gemini/grok) — on PATH, enabled, input cap",
+    { description: "Detected external AI peer CLIs (codex/opencode/antigravity/grok) — on PATH, enabled, input cap",
       inputSchema: {} },
     wrap(() => peerList(dir())));
 

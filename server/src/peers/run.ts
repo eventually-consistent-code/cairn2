@@ -1,14 +1,15 @@
 /**
- * Purpose: allow-listed external-CLI adapters (codex/opencode/gemini/grok) —
- * runs each as a fixed-argv child process with a hard cap on input size and
- * a timeout. Never exec, never shell interpolation — argv is always one of
- * the four fixed templates below plus (for argv-mode peers) the capped input
- * as the single final element; stdin-mode peers get input piped instead,
- * per each CLI's verified prompt convention. A peer's non-zero
- * exit is a result, not an error: peers are advisory, and the caller (the
- * `peers` verb) is the one that judges what they say. Missing binaries and
- * disabled providers degrade to PRECONDITION_FAILED — nothing here assumes
- * a peer CLI is actually installed.
+ * Purpose: allow-listed external-CLI adapters (codex/opencode/antigravity/
+ * grok) — runs each as a fixed-argv child process with a hard cap on input
+ * size and a timeout, cwd pinned to the project dir. Never exec, never
+ * shell interpolation — argv is always one of the four fixed templates
+ * below plus (for argv-mode peers) the capped input as the single final
+ * element; stdin-mode peers get input piped instead, per each CLI's
+ * verified prompt convention. A peer's non-zero exit is a result, not an
+ * error: peers are advisory, and the caller (the `peers` verb) is the one
+ * that judges what they say. Missing binaries and disabled providers
+ * degrade to PRECONDITION_FAILED — nothing here assumes a peer CLI is
+ * actually installed.
  * Author(s): John Reed
  */
 
@@ -33,29 +34,34 @@ export interface PeerResult {
 // Fixed argv templates — first element is the binary name, resolved via
 // PATH by execFile itself. These are constants, never built from user
 // input. Input reaches each CLI per its REAL convention (verified against
-// the live CLIs, CRN-76 — the old all-stdin assumption sent grok/opencode
-// a literal "-" as their prompt):
-//   codex    — `codex exec -` reads instructions from stdin (documented).
-//   gemini   — piped stdin is read as input; `-p <text>` forces headless
-//              mode and is appended AFTER the stdin content.
-//   grok     — `-p <prompt>` takes the prompt as the flag's value; its
-//              headless mode does not consume piped stdin. Input rides as
-//              the final argv element — still execFile with an argv array,
-//              so there is no shell and no interpolation; the 200k default
-//              cap keeps well under ARG_MAX on macOS/Linux.
-//   opencode — `run [message..]` takes the prompt positionally; same
-//              argv-mode rules as grok.
+// the live CLIs, CRN-76 and #56 — the old all-stdin assumption sent
+// grok/opencode a literal "-" as their prompt):
+//   codex       — `codex exec -` reads instructions from stdin
+//                 (documented). `--skip-git-repo-check` rides along because
+//                 codex otherwise refuses to run in any directory the host
+//                 hasn't marked trusted — reviews died with "Not inside a
+//                 trusted directory" depending on where the server sat.
+//   antigravity — binary is `agy`; `-p <prompt>` runs one prompt headless
+//                 and prints the response. Ignores piped stdin — input
+//                 rides as the final argv element, same rules as grok.
+//   grok        — `-p <prompt>` takes the prompt as the flag's value; its
+//                 headless mode does not consume piped stdin. Input rides
+//                 as the final argv element — still execFile with an argv
+//                 array, so there is no shell and no interpolation; the
+//                 200k default cap keeps well under ARG_MAX on macOS/Linux.
+//   opencode    — `run [message..]` takes the prompt positionally; same
+//                 argv-mode rules as grok.
 const TEMPLATES: Record<Provider, { argv: readonly string[]; inputVia: "stdin" | "argv" }> = {
-  codex: { argv: ["codex", "exec", "-"], inputVia: "stdin" },
+  codex: { argv: ["codex", "exec", "--skip-git-repo-check", "-"], inputVia: "stdin" },
   opencode: { argv: ["opencode", "run"], inputVia: "argv" },
-  gemini: { argv: ["gemini", "-p", "Respond to the request provided on stdin above."], inputVia: "stdin" },
+  antigravity: { argv: ["agy", "-p"], inputVia: "argv" },
   grok: { argv: ["grok", "-p"], inputVia: "argv" },
 };
 
 const INSTALL_HINTS: Record<Provider, string> = {
   codex: "install the Codex CLI and put it on PATH (npm i -g @openai/codex)",
   opencode: "install the opencode CLI and put it on PATH (see https://opencode.ai)",
-  gemini: "install the Gemini CLI and put it on PATH (npm i -g @google/gemini-cli)",
+  antigravity: "install the Antigravity CLI ('agy') and put it on PATH (see antigravity docs)",
   grok: "install the Grok CLI and put it on PATH (see xAI's grok-cli docs)",
 };
 
@@ -136,8 +142,12 @@ export async function peerRun(projectDir: string, provider: Provider,
 
   const start = Date.now();
   return new Promise<PeerResult>((resolve, reject) => {
+    // cwd pinned to the project dir — children used to inherit whatever
+    // cwd the MCP server process had, so codex's directory-trust check and
+    // any peer's relative file reads made results depend on where the
+    // server happened to be sitting (#56).
     const child = execFile(bin, args,
-      { timeout: timeoutMs, maxBuffer: MAX_BUFFER, killSignal: "SIGKILL" },
+      { cwd: projectDir, timeout: timeoutMs, maxBuffer: MAX_BUFFER, killSignal: "SIGKILL" },
       (error, stdout, stderr) => {
         const durationMs = Date.now() - start;
 
