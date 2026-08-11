@@ -56,7 +56,7 @@ executing that verb.
 | medic | Planning-dir health, repair, and workflow forensics | [--repair] \| forensics [phase] |
 | backtrack | Safe git undo by phase/plan manifest — reverts only | <phase\|plan> \| --apply |
 | basecamp | Multi-project workspaces — dispatch board, focus, parallel workstreams | init \| focus <member> \| dispatch \| claim\|update\|done <id> |
-| peers | Convene external AI CLIs as reviewers — convergence with adversarial judgment | (none = status) \| review [target] \| plan <phase> |
+| peers | Convene external AI CLIs as reviewers — convergence with adversarial judgment | (none = status) \| review [target] \| plan <phase> \| council [dimensions] |
 | docs | Publish repo docs to the configured docs connector (Confluence) — landing page + page tree | publish [--name "<project>"] \| (none = status) |
 | survey | Project-wide research — findings, then discussed roadmap changes | ["<topic>"] |
 

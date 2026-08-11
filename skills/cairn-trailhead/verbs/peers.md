@@ -1,6 +1,6 @@
 ---
 verb: peers
-args: "(none = status) | review [target] | plan <phase>"
+args: "(none = status) | review [target] | plan <phase> | council [dimensions]"
 status: live
 ---
 
@@ -12,7 +12,7 @@ below is the loop that decides what a peer's answer is actually worth.
 verified against the code (or the plan) before it goes anywhere near the
 tracker.
 
-## Focus ask (before either mode runs)
+## Focus ask (before `review` or `plan` runs)
 
 Before `review` or `plan` dispatches anything, ask ONE AskUserQuestion:
 what should the peers focus on? Options are concrete candidates cairn
@@ -23,11 +23,13 @@ option; free text arrives via the built-in Other. The chosen focus is
 woven verbatim into every peer prompt AND into cairn's own first pass, so
 the whole run targets what the user cares about instead of a generic
 sweep. One question, asked once per run — never re-asked between rounds,
-never asked at all for bare `peers` (status is read-only).
+never asked at all for bare `peers` (status is read-only). `council`
+folds this ask into its dimension ask (below) — still one question, not
+two.
 
-## Run state (both modes)
+## Run state (every dispatching mode)
 
-A `review`/`plan` run is stateful so it survives interruption. At
+A `review`/`plan`/`council` run is stateful so it survives interruption. At
 dispatch — right after the focus ask — call `peer_state(op: "start")`
 with the run's slug, mode, target, chosen focus, and the roster
 `peer_list()` reported available. From there the store is the run's
@@ -56,8 +58,9 @@ normal flow to `close`.
 ## Bare `peers` — status
 
 `peer_list()` rendered plainly: provider, on PATH or not, enabled or not,
-input cap. No workspace-wide judgment here, just the facts a caller needs
-before deciding whether `review`/`plan` will have anyone to talk to. Zero
+input cap, exec-capable or not. No workspace-wide judgment here, just the
+facts a caller needs before deciding whether `review`/`plan`/`council`
+will have anyone to talk to. Zero
 peers on PATH is a normal result, not a warning — say so and stop; don't
 suggest installing anything unasked.
 
@@ -146,10 +149,108 @@ suggest installing anything unasked.
    summary — `<phase>` is the phase number/slug as it appears in the
    routing table, same provenance requirement as `peers review`.
 
+## `peers council [dimensions]`
+
+The whole product on trial, not one diff: convene every available peer
+as a review council across up to four dimensions — code, functionality,
+look-and-feel, market — and end with ONE report whose recommendations
+go through the shared gate in `references/proposal-gate.md`. NOTHING
+mutates before that gate, in any mode.
+
+1. Dimension ask — council's version of the focus ask: ONE
+   AskUserQuestion, multiSelect — `code`, `functionality`,
+   `look-and-feel`, `market`. `code` is the existing `review` flow's
+   axes folded in as one dimension of the council. Free text via the
+   built-in Other becomes the run's focus, woven verbatim into every
+   packet; no free text = "full pass — no particular focus". Dimensions
+   passed as args skip the question entirely. One question, once per
+   run — never re-asked between rounds.
+2. Read the `## Dispositions` table at the tail of
+   `.cairn/plans/COUNCIL.md` BEFORE anything dispatches. Every rejected
+   entry goes into every outbound packet as "previously considered and
+   declined — do not re-raise without new evidence"; a peer re-asserting
+   one bare dies in round-1 adjudication.
+3. Build the evidence packets — main thread, ONCE per dimension, before
+   any send:
+   - **functionality** — README + verb docs (the promise) plus 1–2
+     captured verb-run transcripts (the delivery).
+   - **look-and-feel** — 3–5 transcripts spanning happy, error, and
+     multi-step paths, plus the tracker bodies those runs produced.
+   - **market** — a short positioning brief written from
+     PROJECT.md/README plus a competitor shortlist (seed: Cursor,
+     Aider, Devin, Copilot Workspace, OpenHands, Continue — peers may
+     know others; their knowledge is dated by their training cutoff).
+   - **code** — the resolved diff, exactly as `peers review` builds it.
+   Cap-trim every packet BEFORE send (peer input caps apply, per peer),
+   and pass each through the outbound leak gate (below) — a hit blocks
+   that packet's sends, full stop.
+4. `peer_state(op: "start")` with slug `council-<YYYY-MM-DD>`, mode,
+   the chosen dimensions + focus, and the `peer_list()` roster. Mirror:
+   `issue_create` ONE run issue — title "Product council:
+   <dimensions>", label `cairn:council` — plain language per the mirror
+   rules below.
+5. Fan-out, per dimension: every peer `peer_list()` reports on PATH and
+   enabled gets `peer_run` with the dimension's template filled via
+   `loadTemplate` (`templates/peers/council-functionality.md`,
+   `council-feel.md`, `council-market.md`; `code` reuses
+   `findings-request.md`) — `focus` = the run's focus, `dimension` =
+   the dimension name, `content` = the packet. Functionality only: a
+   peer whose `peer_list()` entry says `execCapable` may be told it can
+   run the product itself; every other peer judges the captured
+   transcripts instead — never skipped, and exec is never granted
+   implicitly. Record as replies land, `review`'s exact discipline:
+   `record_output`, then `parseFindings`, then `record_findings` —
+   judge the `unparsed` pile too. No peers at all → the absent-peers
+   rule below: cairn's own pass still writes the report.
+6. Converge: cluster near-duplicate claims across peers by topic. 3+
+   peers independently raising a claim = converged; a single-peer claim
+   stands or falls on its evidence (the templates' evidence-or-discarded
+   rule is the floor). Adjudicate every claim against the actual
+   artifacts — the docs, the transcripts, spot-checkable competitor
+   facts; one peer's stale training data is a claim, not evidence.
+   Record verdicts as they're made, `review`'s vocabulary. Round 2 ONLY
+   for material disagreement — a severity gap of more than one tier, or
+   mutually exclusive recommendations — using `round2-steelman`
+   (`content` = the disputed claim plus the counter-read). Hard
+   two-round cap; still disputed after round 2 = `open-disagreement` in
+   state, never a round 3.
+7. Write the report — `.cairn/plans/COUNCIL.md`, same epoch convention
+   as survey's artifact: a `# Council — <YYYY-MM-DD>` header opens each
+   run's block, newest first; prior blocks are read-only history. Per
+   dimension, a `##` section carrying `<!-- council: done -->` or
+   `<!-- council: pending -->` on the line after the heading
+   (server-validated via `research_sections`, namespace `council`),
+   holding the peers' dimension scores and the converged findings;
+   `issue_comment` a progress note on the run issue as each dimension
+   converges. Then the typed recommendations — `REC-N` blocks, each
+   carrying: dimension(s), convergence verdict (which peers, which
+   round), exactly ONE proposal shape from
+   `references/proposal-gate.md`, a rough effort, `status: proposed`. A
+   recommendation that can't be typed stays in its dimension section as
+   research — untyped never reaches the gate. The persistent
+   `## Dispositions` table sits at the file tail, below every run
+   block, and survives across runs.
+8. The gate: run `references/proposal-gate.md` over the `REC-N` blocks
+   exactly as specified — ONE batched AskUserQuestion (holds in vibe
+   mode), apply mechanics per the spec. ACCEPTED recommendations only:
+   `issue_create` per REC, label `cairn:council`. Update
+   `## Dispositions` with every REC's verdict + a one-line why, then
+   close the loop on the tracker: a closing comment on the run issue
+   enumerating every REC's disposition, one line each.
+9. `peer_state(op: "close")`, then `audit_record(scope:
+   "peers-council-<slug>", verdict, findings)` from close's summary —
+   provenance assembled from the records, `review`'s rule. `mem_index`
+   the finished run block (source: the COUNCIL.md path).
+
+An interrupted council resumes like any run (`op: "status"` names
+what's missing) — but resume completes PENDING dimensions only: the
+COUNCIL.md markers and the run state agree on what's done, and a `done`
+dimension never re-dispatches.
+
 ## Outbound leak gate (hard rule)
 
 Peer input is code or plan content leaving this machine for an external
-CLI. Before EVERY `peer_run` call, in either mode above, scan the exact
+CLI. Before EVERY `peer_run` call, in any mode above, scan the exact
 content about to go out against the leak patterns
 (`hooks/scripts/leak-patterns.mjs` — the same source the commit-time leak
 guard and `distill`'s scrubbing gate consume, applied here to outbound peer
@@ -162,9 +263,9 @@ otherwise.
 ## Absent peers
 
 Zero peers on PATH, or every peer disabled in `cairn.json`, is a normal
-outcome: proceed with cairn's own review/plan judgment alone, say plainly
-that no peers were available, and record the run exactly as usual. A
-missing external CLI NEVER blocks `review` or `plan` from completing —
+outcome: proceed with cairn's own review/plan/council judgment alone, say
+plainly that no peers were available, and record the run exactly as
+usual. A missing external CLI NEVER blocks any mode from completing —
 peers are an augmentation, and the verb's job is to degrade gracefully to
 "cairn reviewed this alone" rather than stall waiting on a CLI nobody
 installed.
