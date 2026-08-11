@@ -86,6 +86,29 @@ describe("peerList", () => {
     expect(antigravity?.enabled).toBe(false);
     expect(antigravity?.maxInputChars).toBe(900_000);
   });
+
+  // execCapable is a config-declared trust flag (#67): the user explicitly
+  // marks which peer may execute the product under review. Default is
+  // untrusted (false) — never inferred at runtime.
+  it("defaults execCapable: false when unconfigured", () => {
+    process.env.PATH = stubBinDir({});
+    const d = projectDir();
+    for (const entry of peerList(d)) expect(entry.execCapable).toBe(false);
+  });
+
+  it("reflects a configured execCapable: true", () => {
+    process.env.PATH = stubBinDir({});
+    const d = projectDir({ peers: { codex: { execCapable: true } } });
+    const list = peerList(d);
+    expect(list.find((p) => p.provider === "codex")?.execCapable).toBe(true);
+    expect(list.find((p) => p.provider === "grok")?.execCapable).toBe(false);
+  });
+
+  it("reflects an explicit execCapable: false", () => {
+    process.env.PATH = stubBinDir({});
+    const d = projectDir({ peers: { opencode: { execCapable: false } } });
+    expect(peerList(d).find((p) => p.provider === "opencode")?.execCapable).toBe(false);
+  });
 });
 
 describe("peerRun", () => {

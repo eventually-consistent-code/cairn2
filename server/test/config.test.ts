@@ -214,6 +214,27 @@ describe("peers config", () => {
     });
   });
 
+  // execCapable is a config-declared trust decision (#67) — the user marks
+  // which peer CLI may execute the product during review; never runtime-probed.
+  it("accepts execCapable true/false on a known provider", () => {
+    const dir = writeTmpConfig({
+      ...base,
+      peers: { codex: { execCapable: true }, grok: { execCapable: false } },
+    });
+    const cfg = loadConfig(dir);
+    expect(cfg.peers).toEqual({
+      codex: { execCapable: true },
+      grok: { execCapable: false },
+    });
+  });
+
+  it("loads fine with execCapable absent — existing peer blocks are untouched", () => {
+    const dir = writeTmpConfig({ ...base, peers: { opencode: { enabled: true } } });
+    const cfg = loadConfig(dir);
+    expect(cfg.peers).toEqual({ opencode: { enabled: true } });
+    expect(cfg.peers?.opencode).not.toHaveProperty("execCapable");
+  });
+
   it("rejects an unknown provider key", () => {
     const dir = writeTmpConfig({ ...base, peers: { totallyBogus: { enabled: true } } });
     expect(() => loadConfig(dir)).toThrowError(
