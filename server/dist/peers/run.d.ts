@@ -32,6 +32,7 @@ export declare function peerList(projectDir: string): Array<{
     onPath: boolean;
     enabled: boolean;
     maxInputChars: number;
+    execCapable: boolean;
 }>;
 /**
  * Runs one peer CLI with `input` on stdin, honoring its configured cap and

@@ -91,12 +91,15 @@ export declare const ConfigSchema: z.ZodObject<{
     peers: z.ZodOptional<z.ZodRecord<z.ZodEnum<["codex", "opencode", "antigravity", "grok"]>, z.ZodObject<{
         enabled: z.ZodOptional<z.ZodBoolean>;
         maxInputChars: z.ZodOptional<z.ZodNumber>;
+        execCapable: z.ZodOptional<z.ZodBoolean>;
     }, "strip", z.ZodTypeAny, {
         enabled?: boolean | undefined;
         maxInputChars?: number | undefined;
+        execCapable?: boolean | undefined;
     }, {
         enabled?: boolean | undefined;
         maxInputChars?: number | undefined;
+        execCapable?: boolean | undefined;
     }>>>;
 }, "strip", z.ZodTypeAny, {
     tracker: {
@@ -134,6 +137,7 @@ export declare const ConfigSchema: z.ZodObject<{
     peers?: Partial<Record<"codex" | "opencode" | "antigravity" | "grok", {
         enabled?: boolean | undefined;
         maxInputChars?: number | undefined;
+        execCapable?: boolean | undefined;
     }>> | undefined;
 }, {
     tracker: {
@@ -171,6 +175,7 @@ export declare const ConfigSchema: z.ZodObject<{
     peers?: Partial<Record<"codex" | "opencode" | "antigravity" | "grok", {
         enabled?: boolean | undefined;
         maxInputChars?: number | undefined;
+        execCapable?: boolean | undefined;
     }>> | undefined;
 }>;
 export type CairnConfig = z.infer<typeof ConfigSchema>;

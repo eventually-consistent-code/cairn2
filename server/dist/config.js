@@ -53,6 +53,10 @@ export const ConfigSchema = z.object({
         .record(z.enum(PROVIDERS), z.object({
         enabled: z.boolean().optional(),
         maxInputChars: z.number().int().positive().optional(),
+        // Config-declared trust decision (#67): the user explicitly marks
+        // which external CLI may execute the product during functionality
+        // review. Default false when absent — never runtime-probed.
+        execCapable: z.boolean().optional(),
     }))
         .optional(),
 });
