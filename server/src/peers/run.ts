@@ -112,6 +112,7 @@ export function peerList(projectDir: string): Array<{
   onPath: boolean;
   enabled: boolean;
   maxInputChars: number;
+  execCapable: boolean;
 }> {
   const cfg = loadConfig(projectDir);
   return PROVIDERS.map((provider) => {
@@ -121,6 +122,8 @@ export function peerList(projectDir: string): Array<{
       onPath: onPath(TEMPLATES[provider].argv[0]),
       enabled: peerCfg.enabled ?? true,
       maxInputChars: peerCfg.maxInputChars ?? DEFAULT_MAX_INPUT_CHARS,
+      // Trust flag from config only (#67) — default untrusted, never probed.
+      execCapable: peerCfg.execCapable ?? false,
     };
   });
 }
