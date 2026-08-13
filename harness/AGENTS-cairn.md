@@ -63,9 +63,11 @@ executing that verb.
 ## Shared rules (inherited by every subroutine)
 
 - **Errors surface, never stack-trace.** Server tools fail with typed codes
-  (`AUTH_MISSING`, `RATE_LIMITED`, `NOT_FOUND`, `TRACKER_DOWN`, …) — report the
-  code and the user's next action. One backend being down never blocks
-  git-side operations.
+  (`AUTH_MISSING`, `RATE_LIMITED`, `NOT_FOUND`, `TRACKER_REJECTED`,
+  `TRACKER_DOWN`, …). Render human-first, in every verb: one plain-language
+  line plus the user's next action FIRST, the typed code and technical detail
+  second — never a raw JSON payload as the lead. One backend being down never
+  blocks git-side operations.
 - **Precedence.** On conflict, git plan docs (CONTEXT.md, PLAN.md) win over
   tracker issue text — update the issue via `issue_update`, never silently
   follow it.
