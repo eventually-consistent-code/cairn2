@@ -747,6 +747,35 @@ describe("cairn MCP server", () => {
     expect(closed.json.verdict).toBe("findings");
     expect(closed.json.findings[0].detail).toBe("raised by codex round 1; verdict verified");
   });
+
+  it("peer_state start accepts mode 'council' over the wire (#71)", async () => {
+    const started = await call("peer_state", { slug: "mcp council", op: "start",
+      mode: "council", target: "product council", peers: ["codex"] });
+    expect(started.isError).toBeFalsy();
+    expect(started.json.state.meta.mode).toBe("council");
+  });
+
+  it("peer_state close refuses a silent seat; allowIncomplete stamps incompleteSeats (#71)", async () => {
+    await call("peer_state", { slug: "mcp incomplete", op: "start",
+      mode: "review", target: "diff", peers: ["codex", "grok"] });
+    await call("peer_state", { slug: "mcp incomplete", op: "record_output",
+      peer: "codex", round: 1, output: "raw reply" });
+    await call("peer_state", { slug: "mcp incomplete", op: "record_findings",
+      peer: "codex", round: 1, findings: [{
+        claim: "c", evidence: "e", severity: "minor", recommendation: "r" }] });
+    await call("peer_state", { slug: "mcp incomplete", op: "verdict",
+      findingId: "f1", verdict: "verified" });
+
+    const refused = await call("peer_state", { slug: "mcp incomplete", op: "close" });
+    expect(refused.isError).toBe(true);
+    expect(refused.json.code).toBe("CONFIG_INVALID");
+    expect(refused.json.message).toContain("grok");
+
+    const closed = await call("peer_state", { slug: "mcp incomplete", op: "close",
+      allowIncomplete: true });
+    expect(closed.isError).toBeFalsy();
+    expect(closed.json.incompleteSeats).toEqual(["grok"]);
+  });
 });
 
 describe("continuity: write-through + tools", () => {

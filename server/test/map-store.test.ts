@@ -257,6 +257,121 @@ describe("edge-safe patch ops (#63)", () => {
   });
 });
 
+describe("wholesale edges is rebuild-only (#71)", () => {
+  it("patch.edges without rebuild: true is CONFIG_INVALID and leaves the store untouched", () => {
+    const dir = fresh();
+    mapSet(dir, { nodes: {
+      "mod-a": { type: "module", label: "A" },
+      "mod-b": { type: "module", label: "B" },
+    } });
+    try {
+      mapSet(dir, { edges: [{ from: "mod-a", to: "mod-b", type: "depends-on" }] });
+      expect.unreachable("should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(CairnError);
+      expect((e as CairnError).code).toBe("CONFIG_INVALID");
+      expect((e as CairnError).message).toContain("rebuild");
+    }
+    expect(mapGet(dir).edges).toEqual([]);
+  });
+
+  it("patch.edges with rebuild: true replaces the list wholesale", () => {
+    const dir = fresh();
+    mapSet(dir, { nodes: {
+      "mod-a": { type: "module", label: "A" },
+      "mod-b": { type: "module", label: "B" },
+    } });
+    mapSet(dir, { edges: [{ from: "mod-a", to: "mod-b", type: "depends-on" }] },
+      { rebuild: true });
+    expect(mapGet(dir).edges).toEqual([{ from: "mod-a", to: "mod-b", type: "depends-on" }]);
+  });
+});
+
+
+describe("store validation on read (#71)", () => {
+  it("a hand-edited node without a label is CONFIG_INVALID naming the defect, not a TypeError", () => {
+    const dir = fresh();
+    mkdirSync(join(dir, ".cairn", "map"), { recursive: true });
+    writeFileSync(join(dir, ".cairn", "map", "map.json"), JSON.stringify({
+      nodes: { "mod-broken": { type: "module" } }, edges: [],
+    }, null, 2));
+    try {
+      mapGet(dir);
+      expect.unreachable("should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(CairnError);
+      expect((e as CairnError).code).toBe("CONFIG_INVALID");
+      expect((e as CairnError).message).toContain("mod-broken");
+    }
+    // and the label-touching query path must never TypeError either
+    try {
+      mapQuery(dir, { label: "anything" });
+      expect.unreachable("should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(CairnError);
+      expect((e as CairnError).code).toBe("CONFIG_INVALID");
+    }
+  });
+
+  it("a non-JSON store file is CONFIG_INVALID too", () => {
+    const dir = fresh();
+    mkdirSync(join(dir, ".cairn", "map"), { recursive: true });
+    writeFileSync(join(dir, ".cairn", "map", "map.json"), "{ not json");
+    try {
+      mapGet(dir);
+      expect.unreachable("should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(CairnError);
+      expect((e as CairnError).code).toBe("CONFIG_INVALID");
+    }
+  });
+});
+
+
+describe("map_get node branch honors nodeType/edgeType (#71)", () => {
+  // anchor mod-a touches mod-b via depends-on and mod-c via implements,
+  // plus an issue neighbor -- enough to see each filter bite separately
+  const seeded = () => {
+    const dir = fresh();
+    mapSet(dir, {
+      nodes: {
+        "mod-a": { type: "module", label: "A" },
+        "mod-b": { type: "module", label: "B" },
+        "mod-c": { type: "module", label: "C" },
+        "issue-x": { type: "issue", label: "leak" },
+      },
+      edges: [
+        { from: "mod-a", to: "mod-b", type: "depends-on" },
+        { from: "mod-c", to: "mod-a", type: "implements" },
+        { from: "mod-a", to: "issue-x", type: "implements" },
+      ],
+    }, { rebuild: true });
+    return dir;
+  };
+
+  it("edgeType narrows the touching edges (and thus the neighbor set)", () => {
+    const view = mapGet(seeded(), { node: "mod-a", edgeType: "depends-on" });
+    expect(view.edges).toEqual([{ from: "mod-a", to: "mod-b", type: "depends-on" }]);
+    expect(Object.keys(view.nodes).sort()).toEqual(["mod-a", "mod-b"]);
+  });
+
+  it("nodeType narrows the neighbors; self is always included", () => {
+    const view = mapGet(seeded(), { node: "mod-a", nodeType: "module" });
+    expect(Object.keys(view.nodes).sort()).toEqual(["mod-a", "mod-b", "mod-c"]);
+    // no edge may dangle at a filtered-out neighbor
+    expect(view.edges).toEqual([
+      { from: "mod-a", to: "mod-b", type: "depends-on" },
+      { from: "mod-c", to: "mod-a", type: "implements" },
+    ]);
+  });
+
+  it("self stays even when its own type fails the nodeType filter", () => {
+    const view = mapGet(seeded(), { node: "issue-x", nodeType: "module" });
+    expect(Object.keys(view.nodes).sort()).toEqual(["issue-x", "mod-a"]);
+  });
+});
+
+
 describe("mapGet", () => {
   it("returns an empty store when no map file exists yet", () => {
     const dir = fresh();

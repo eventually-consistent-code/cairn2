@@ -296,6 +296,111 @@ describe("runClose", () => {
 });
 
 
+describe("council mode (#71)", () => {
+  it("runStart accepts mode 'council' and persists it", () => {
+    const dir = freshDir();
+    runStart(dir, "x", { ...META, mode: "council" as never });
+    const state = JSON.parse(readFileSync(
+      join(dir, ".cairn", "peers", "x", "state.json"), "utf8"));
+    expect(state.meta.mode).toBe("council");
+  });
+});
+
+
+describe("recordFindings idempotent re-record (#71)", () => {
+  it("re-recording the same peer+round REPLACES that round's prior findings", () => {
+    const dir = freshDir();
+    runStart(dir, "x", META);
+    recordFindings(dir, "x", "codex", 1, [GOOD, { ...GOOD, claim: "second" }]);
+    recordFindings(dir, "x", "grok", 1, [{ ...GOOD, claim: "grok keeps" }]);
+    recordVerdict(dir, "x", "f1", "verified");
+    recordVerdict(dir, "x", "f2", "dead");
+
+    // a retried parse re-records codex round 1: same first claim (updated
+    // recommendation), a genuinely new second claim, "second" gone
+    const re = recordFindings(dir, "x", "codex", 1, [
+      { ...GOOD, recommendation: "updated rec" },
+      { ...GOOD, claim: "brand new" },
+    ]);
+    expect(re.ids).toEqual(["f1", "f4"]);
+
+    const findings = runStatus(dir, "x").findings;
+    expect(findings.map((f) => f.id).sort()).toEqual(["f1", "f3", "f4"]);
+    const f1 = findings.find((f) => f.id === "f1")!;
+    // claim matched a prior finding: id AND verdict survive, body updates
+    expect(f1.verdict).toBe("verified");
+    expect(f1.finding.recommendation).toBe("updated rec");
+    // the replaced finding's verdict went with it
+    expect(findings.some((f) => f.finding.claim === "second")).toBe(false);
+    // other peers' findings untouched
+    const f3 = findings.find((f) => f.id === "f3")!;
+    expect(f3.peer).toBe("grok");
+    expect(f3.finding.claim).toBe("grok keeps");
+    // genuinely new claim gets a fresh, never-reused id
+    expect(findings.find((f) => f.id === "f4")!.verdict).toBeUndefined();
+  });
+
+  it("an identical repeat call is a no-op: same ids, same findings", () => {
+    const dir = freshDir();
+    runStart(dir, "x", META);
+    const first = recordFindings(dir, "x", "codex", 1, [GOOD, { ...GOOD, claim: "second" }]);
+    const again = recordFindings(dir, "x", "codex", 1, [GOOD, { ...GOOD, claim: "second" }]);
+    expect(again.ids).toEqual(first.ids);
+    expect(runStatus(dir, "x").findings).toHaveLength(2);
+  });
+});
+
+
+describe("runClose seat completeness (#71)", () => {
+  it("refuses to close while a rostered peer lacks a round-1 output, naming the seat", () => {
+    const dir = freshDir();
+    runStart(dir, "x", META);
+    recordPeerOutput(dir, "x", "codex", 1, "out");
+    recordFindings(dir, "x", "codex", 1, [GOOD]);
+    recordVerdict(dir, "x", "f1", "verified");
+    let caught: unknown;
+    try { runClose(dir, "x"); } catch (e) { caught = e; }
+    expect(caught).toBeInstanceOf(CairnError);
+    expect((caught as CairnError).code).toBe("CONFIG_INVALID");
+    expect((caught as CairnError).message).toContain("grok");
+  });
+
+  it("allowIncomplete closes anyway and stamps incompleteSeats for provenance", () => {
+    const dir = freshDir();
+    runStart(dir, "x", META);
+    recordPeerOutput(dir, "x", "codex", 1, "out");
+    recordFindings(dir, "x", "codex", 1, [GOOD]);
+    recordVerdict(dir, "x", "f1", "verified");
+    const summary = (runClose as unknown as
+      (d: string, s: string, o?: { allowIncomplete?: boolean }) => ReturnType<typeof runClose>)(
+      dir, "x", { allowIncomplete: true });
+    expect(summary.verdict).toBe("findings");
+    expect((summary as { incompleteSeats?: string[] }).incompleteSeats).toEqual(["grok"]);
+  });
+
+  it("a complete run's summary carries no incompleteSeats field", () => {
+    const dir = freshDir();
+    runStart(dir, "x", META);
+    recordPeerOutput(dir, "x", "codex", 1, "out");
+    recordPeerOutput(dir, "x", "grok", 1, "out");
+    recordFindings(dir, "x", "codex", 1, [GOOD]);
+    recordVerdict(dir, "x", "f1", "verified");
+    const summary = runClose(dir, "x");
+    expect((summary as { incompleteSeats?: string[] }).incompleteSeats).toBeUndefined();
+  });
+
+  it("allowIncomplete does NOT waive unresolved findings", () => {
+    const dir = freshDir();
+    runStart(dir, "x", META);
+    recordPeerOutput(dir, "x", "codex", 1, "out");
+    recordFindings(dir, "x", "codex", 1, [GOOD]);
+    expect(errCode(() => (runClose as unknown as
+      (d: string, s: string, o?: { allowIncomplete?: boolean }) => unknown)(
+      dir, "x", { allowIncomplete: true }))).toBe("CONFIG_INVALID");
+  });
+});
+
+
 describe("atomicity", () => {
   it("state.json is valid JSON after every op and no .tmp files linger", () => {
     const dir = freshDir();
