@@ -169,6 +169,13 @@ export function recordPeerOutput(projectDir, slug, peer, round, rawOutput) {
  * round that raised them. Validation is all-or-nothing per call: one bad
  * finding rejects the batch so ids never end up half-assigned.
  *
+ * Idempotent per peer+round: a repeat call REPLACES that peer's prior
+ * findings for the round (a retried parse supersedes the interrupted
+ * one, mirroring recordPeerOutput). A finding whose claim matches one
+ * of the replaced batch keeps its id, verdict, and note; a genuinely
+ * new claim gets a fresh id that has never been used on the run. Other
+ * peers' and rounds' findings are untouched.
+ *
  * :returns: { ids } — the assigned ids, in the order given
  */
 export function recordFindings(projectDir, slug, peer, round, findings) {
@@ -185,12 +192,32 @@ export function recordFindings(projectDir, slug, peer, round, findings) {
         }
         checked.push(parsed.data);
     }
+    // The fresh-id counter looks at EVERY id currently on the run -- including
+    // the batch about to be replaced -- so a dropped finding's id is never
+    // handed out again.
+    let nextId = state.findings
+        .reduce((max, f) => Math.max(max, Number.parseInt(f.id.slice(1), 10) || 0), 0) + 1;
+    const prior = state.findings.filter((f) => f.peer === peer && f.round === round);
+    const others = state.findings.filter((f) => !(f.peer === peer && f.round === round));
+    const claimed = new Set();
+    const replaced = [];
     const ids = [];
     for (const finding of checked) {
-        const id = `f${state.findings.length + 1}`;
-        state.findings.push({ id, peer, round, finding });
-        ids.push(id);
+        const match = prior.find((p) => p.finding.claim === finding.claim && !claimed.has(p.id));
+        if (match) {
+            // Same claim re-stated: id + verdict + note survive, the body updates.
+            claimed.add(match.id);
+            replaced.push({ ...match, finding });
+            ids.push(match.id);
+        }
+        else {
+            const id = `f${nextId}`;
+            nextId += 1;
+            replaced.push({ id, peer, round, finding });
+            ids.push(id);
+        }
     }
+    state.findings = [...others, ...replaced];
     writeState(runDir(projectDir, s), state);
     return { ids };
 }
@@ -223,6 +250,9 @@ export function recordVerdict(projectDir, slug, findingId, verdict, note) {
     return record;
 }
 // Status + close
+// One definition of a silent seat, shared by runStatus's resume map and
+// runClose's completeness gate: a rostered peer with no round-1 output.
+const missingRound1 = (state) => state.meta.peers.filter((p) => !state.outputs.some((o) => o.peer === p && o.round === 1));
 /**
  * The resume map: everything recorded so far, plus what's still missing —
  * peers with no round-1 output, disputed findings whose peer hasn't
@@ -234,7 +264,7 @@ export function runStatus(projectDir, slug) {
     const s = slugify(slug);
     const state = readState(projectDir, s);
     const answered = (peer, round) => state.outputs.some((o) => o.peer === peer && o.round === round);
-    const peersMissingRound1 = state.meta.peers.filter((p) => !answered(p, 1));
+    const peersMissingRound1 = missingRound1(state);
     const disputedAwaitingRound2 = state.findings
         .filter((f) => f.verdict === "disputed" && !answered(f.peer, 2))
         .map((f) => f.id);
@@ -266,8 +296,15 @@ export function runStatus(projectDir, slug) {
  * findings included so the record credits what got thrown out. Overall
  * verdict is "findings" iff anything survived (verified or
  * open-disagreement).
+ *
+ * A rostered peer with no round-1 output is a SILENT SEAT — closing over
+ * one hides a reviewer that never answered, so it refuses (CONFIG_INVALID
+ * naming the seats) unless the caller passes allowIncomplete, which closes
+ * anyway and stamps the summary's incompleteSeats so provenance shows the
+ * degradation was deliberate. allowIncomplete never waives unresolved
+ * findings — those always block.
  */
-export function runClose(projectDir, slug) {
+export function runClose(projectDir, slug, opts) {
     const s = slugify(slug);
     const state = readState(projectDir, s);
     assertOpen(s, state);
@@ -275,6 +312,11 @@ export function runClose(projectDir, slug) {
         .filter((f) => f.verdict === undefined || f.verdict === "disputed");
     if (blocking.length > 0) {
         throw new CairnError("CONFIG_INVALID", `cannot close peers run '${s}' — unresolved finding(s): ${blocking.map((f) => `${f.id} (${f.verdict ?? "unjudged"})`).join(", ")}`, "every finding must end verified, dead, or open-disagreement before close");
+    }
+    const incompleteSeats = missingRound1(state);
+    if (incompleteSeats.length > 0 && opts?.allowIncomplete !== true) {
+        throw new CairnError("CONFIG_INVALID", `cannot close peers run '${s}' — rostered seat(s) never answered round 1: ${incompleteSeats.join(", ")}`, "record each seat's round-1 output first, or close with allowIncomplete: true "
+            + "to stamp the summary's incompleteSeats and accept the degraded coverage");
     }
     const closedAt = new Date().toISOString();
     state.meta.closedAt = closedAt;
@@ -293,5 +335,6 @@ export function runClose(projectDir, slug) {
         peers: state.meta.peers,
         roundsRun: state.outputs.reduce((max, o) => Math.max(max, o.round), 0),
         closedAt,
+        ...(incompleteSeats.length > 0 ? { incompleteSeats } : {}),
     };
 }

@@ -51,7 +51,10 @@ function extractFenceBlocks(text) {
     const blocks = [];
     let i = 0;
     while (i < lines.length) {
-        const open = /^\s*```(\S*)\s*$/.exec(lines[i]);
+        // Peers sometimes put a space between the backticks and the tag
+        // ("``` json") — CommonMark allows it, so the opener tolerates
+        // optional spaces before the info string. Closing fences unchanged.
+        const open = /^\s*```\s*(\S*)\s*$/.exec(lines[i]);
         if (!open) {
             i++;
             continue;

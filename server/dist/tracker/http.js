@@ -48,6 +48,25 @@ function authNextAction(body) {
     return "check the token env var for this backend";
 }
 /**
+ * Heuristic, honest nextAction for a TRACKER_REJECTED failure -- the request
+ * reached the tracker and the tracker said no, so the fix is on our side of
+ * the wire, not theirs. Name the most specific cause the body admits to;
+ * fall back to pointing at the body detail already folded into the message.
+ */
+function rejectedNextAction(body) {
+    const core = "the tracker rejected the request";
+    const b = body.toLowerCase();
+    if (/not exist|no such|could not be found|could not resolve|invalid value|unknown/.test(b))
+        return `${core} — it references something the tracker doesn't recognize; check the ids/names in the request against what actually exists`;
+    if (/required|missing|blank|empty/.test(b))
+        return `${core} — a required field is missing or empty; check the request payload`;
+    if (/already exist|duplicate|taken/.test(b))
+        return `${core} — the thing being created already exists; reuse it or pick another name`;
+    return body
+        ? `${core} — see the body detail in the message and adjust the request`
+        : `${core} — check the request payload against the tracker's API docs`;
+}
+/**
  * Core retry/error-mapping loop shared by fetchJson and fetchPage.
  * Returns the raw Response on success (2xx) — callers handle body parsing.
  */
@@ -93,7 +112,7 @@ async function fetchRaw(fetchImpl, url, init, opts = {}) {
             if (isAuthShapedBody(body)) {
                 throw new CairnError("AUTH_MISSING", tag(withBody(`HTTP ${resp.status} from ${url}`, body)), authNextAction(body));
             }
-            throw new CairnError("TRACKER_DOWN", tag(withBody(`HTTP ${resp.status} from ${url}`, body)));
+            throw new CairnError("TRACKER_REJECTED", tag(withBody(`HTTP ${resp.status} from ${url}`, body)), rejectedNextAction(body));
         }
         if (resp.status === 429 || resp.status >= 500) {
             const body = await readBodySnippet(resp);
@@ -103,7 +122,15 @@ async function fetchRaw(fetchImpl, url, init, opts = {}) {
             continue;
         }
         {
+            // Remaining 4xx (422 and friends) is the tracker saying "no" to THIS
+            // request, not the tracker being down -- an honest code and no retry,
+            // because a deterministic rejection retried is just noise (#72, observed
+            // live: GitHub 422 for a missing milestone used to read as TRACKER_DOWN).
+            // Anything else that falls through here stays TRACKER_DOWN.
             const body = await readBodySnippet(resp);
+            if (resp.status >= 400 && resp.status < 500) {
+                throw new CairnError("TRACKER_REJECTED", tag(withBody(`HTTP ${resp.status} from ${url}`, body)), rejectedNextAction(body));
+            }
             throw new CairnError("TRACKER_DOWN", tag(withBody(`HTTP ${resp.status} from ${url}`, body)));
         }
     }

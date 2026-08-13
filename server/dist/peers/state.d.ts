@@ -13,7 +13,7 @@ import { type Finding } from "./findings.js";
 export declare const VERDICTS: readonly ["verified", "dead", "disputed", "open-disagreement"];
 export type Verdict = (typeof VERDICTS)[number];
 export interface RunMeta {
-    mode: "review" | "plan";
+    mode: "review" | "plan" | "council";
     target: string;
     focus?: string;
     peers: string[];
@@ -64,6 +64,10 @@ export interface CloseSummary {
     peers: string[];
     roundsRun: number;
     closedAt: string;
+    /** Rostered peers with no round-1 output — present only on a close that
+     *  went through with allowIncomplete, so provenance shows the degradation
+     *  was deliberate. */
+    incompleteSeats?: string[];
 }
 /**
  * Creates the run dir and state.json for a new convergence run. An
@@ -80,7 +84,7 @@ export interface CloseSummary {
  * :raises CairnError: CONFIG_INVALID on an unfinished run or bad meta
  */
 export declare function runStart(projectDir: string, slug: string, meta: {
-    mode: "review" | "plan";
+    mode: "review" | "plan" | "council";
     target: string;
     focus?: string;
     peers: string[];
@@ -108,6 +112,13 @@ export declare function recordPeerOutput(projectDir: string, slug: string, peer:
  * assigned in arrival order, never reused), tagged with the peer and
  * round that raised them. Validation is all-or-nothing per call: one bad
  * finding rejects the batch so ids never end up half-assigned.
+ *
+ * Idempotent per peer+round: a repeat call REPLACES that peer's prior
+ * findings for the round (a retried parse supersedes the interrupted
+ * one, mirroring recordPeerOutput). A finding whose claim matches one
+ * of the replaced batch keeps its id, verdict, and note; a genuinely
+ * new claim gets a fresh id that has never been used on the run. Other
+ * peers' and rounds' findings are untouched.
  *
  * :returns: { ids } — the assigned ids, in the order given
  */
@@ -139,6 +150,15 @@ export declare function runStatus(projectDir: string, slug: string): RunStatusRe
  * findings included so the record credits what got thrown out. Overall
  * verdict is "findings" iff anything survived (verified or
  * open-disagreement).
+ *
+ * A rostered peer with no round-1 output is a SILENT SEAT — closing over
+ * one hides a reviewer that never answered, so it refuses (CONFIG_INVALID
+ * naming the seats) unless the caller passes allowIncomplete, which closes
+ * anyway and stamps the summary's incompleteSeats so provenance shows the
+ * degradation was deliberate. allowIncomplete never waives unresolved
+ * findings — those always block.
  */
-export declare function runClose(projectDir: string, slug: string): CloseSummary;
+export declare function runClose(projectDir: string, slug: string, opts?: {
+    allowIncomplete?: boolean;
+}): CloseSummary;
 export {};

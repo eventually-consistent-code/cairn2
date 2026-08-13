@@ -30,7 +30,8 @@ export interface ProjectMap {
  * Single-writer merge-patch, config_set-style: nodes merge by id (null
  * deletes). Edges patch two ways:
  *
- * - `edges` replaces the list wholesale -- full rebuilds only.
+ * - `edges` replaces the list wholesale -- full rebuilds only, and it
+ *   REFUSES (CONFIG_INVALID) unless `rebuild: true` accompanies it.
  * - `edgesAdd` / `edgesRemove` patch by exact from+to+type triple, and
  *   compose in one call: removes apply BEFORE adds, so remove+re-add of the
  *   same triple lands present. Adds dedupe silently against identical

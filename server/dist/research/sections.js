@@ -15,7 +15,10 @@ const MARKER_RE = new RegExp("^<!--\\s*([a-z]+):\\s+(done|pending|failed)"
     + "(?:\\s+([a-z0-9-]+))?" // optional model tier token
     + "(?:\\s+[—–]\\s+(.*?))?" // optional note after em/en dash
     + "\\s*-->$");
-const HEADING_RE = /^(#{2,})\s+(.*?)\s*$/;
+// CommonMark allows up to 3 leading SPACES on a heading (4 is a code
+// block, and a tab never counts) — match that so a lightly-indented
+// section still registers.
+const HEADING_RE = /^ {0,3}(#{2,})\s+(.*?)\s*$/;
 const COMMENT_RE = /^<!--.*-->$/;
 // "Looks like a marker attempt for this namespace" -- the namespace name
 // followed by a colon inside a comment. Anything matching this that fails the

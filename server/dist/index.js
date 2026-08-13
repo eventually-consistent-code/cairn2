@@ -868,7 +868,8 @@ export function buildServer(deps) {
     server.registerTool("map_set", { description: "Merge-patch the project knowledge graph (.cairn/map/map.json) -- nodes merge by id "
             + "(null deletes). Edge ops: edgesAdd/edgesRemove patch by exact from+to+type triple (removes "
             + "before adds; adds dedupe silently; removing a missing edge is a no-op); edges replaces the "
-            + "list wholesale (rebuilds only) and can't be combined with the edge ops (CONFIG_INVALID). "
+            + "list wholesale (rebuild-only: requires rebuild: true, CONFIG_INVALID without it) and "
+            + "can't be combined with the edge ops (CONFIG_INVALID). "
             + "Validates edge endpoints exist and rejects deleting a node still edged in the final list. "
             + "Every write stamps meta (updatedAt, generation++); rebuild: true marks a from-scratch "
             + "rebuild (resets builtAt, generation restarts at 1)",
@@ -961,15 +962,16 @@ export function buildServer(deps) {
             + "focus/peers; refuses an unfinished run on the slug), record_output (peer/round raw reply, "
             + "verbatim file), record_findings (peer/round, stable ids f1, f2, ...), verdict (findingId + "
             + "verified|dead|disputed|open-disagreement; verified/dead terminal), status (what's recorded + "
-            + "what's missing to resume), close (blocks on unresolved findings; returns audit_record-shaped "
-            + "provenance), abandon",
+            + "what's missing to resume), close (blocks on unresolved findings AND on rostered seats with "
+            + "no round-1 output — allowIncomplete: true closes anyway and stamps incompleteSeats; returns "
+            + "audit_record-shaped provenance), abandon",
         // Permissive envelope on purpose -- op-specific requirements are
         // checked in-handler so a missing field comes back as a structured
         // CONFIG_INVALID naming the op, not a raw SDK -32602.
         inputSchema: {
             slug: z.string().min(1),
             op: z.enum(["start", "record_output", "record_findings", "verdict", "status", "close", "abandon"]),
-            mode: z.enum(["review", "plan"]).optional(),
+            mode: z.enum(["review", "plan", "council"]).optional(),
             target: z.string().optional(),
             focus: z.string().optional(),
             peers: z.array(z.string()).optional(),
@@ -980,6 +982,7 @@ export function buildServer(deps) {
             findingId: z.string().optional(),
             verdict: z.enum(VERDICTS).optional(),
             note: z.string().optional(),
+            allowIncomplete: z.boolean().optional(),
         } }, wrap((a) => {
         const d = dir();
         const need = (value, name) => {
@@ -1003,7 +1006,7 @@ export function buildServer(deps) {
             case "status":
                 return runStatus(d, a.slug);
             case "close":
-                return runClose(d, a.slug);
+                return runClose(d, a.slug, { allowIncomplete: a.allowIncomplete });
             case "abandon":
                 return runAbandon(d, a.slug);
         }
@@ -1029,9 +1032,26 @@ export function buildServer(deps) {
         if (rel === "" || rel.startsWith("..") || isAbsolute(rel)) {
             throw new CairnError("CONFIG_INVALID", `path '${a.path}' escapes the project directory`, "pass a path relative to the project root, e.g. .cairn/plans/phases/07-x/RESEARCH.md");
         }
+        // The lexical check above can't see symlinks -- realpath the existing
+        // file and require containment against the realpathed project dir, so
+        // a link inside the project pointing outside it can't smuggle a read
+        // OR redirect the flip-write. (The file's realpath covers the parent
+        // dir too: the .tmp sibling lands beside the real file.) A missing
+        // file stays NOT_FOUND, exactly as before.
+        let realAbs;
+        try {
+            realAbs = realpathSync(abs);
+        }
+        catch {
+            throw new CairnError("NOT_FOUND", `no research artifact at ${abs}`, "path resolves against the project directory");
+        }
+        const realRel = relative(realpathSync(d), realAbs);
+        if (realRel === "" || realRel.startsWith("..") || isAbsolute(realRel)) {
+            throw new CairnError("CONFIG_INVALID", `path '${a.path}' resolves outside the project directory (symlink escape)`, "research artifacts must really live under the project root");
+        }
         let markdown;
         try {
-            markdown = readFileSync(abs, "utf8");
+            markdown = readFileSync(realAbs, "utf8");
         }
         catch {
             throw new CairnError("NOT_FOUND", `no research artifact at ${abs}`, "path resolves against the project directory");
@@ -1040,12 +1060,16 @@ export function buildServer(deps) {
             return { path: rel, sections: parseSections(markdown, a.namespace) };
         const { heading, state, ...meta } = a.flip;
         const flipped = flipSection(markdown, a.namespace, heading, state, meta);
+        // Validate the WHOLE flipped doc BEFORE anything persists -- a typo'd
+        // marker in another section must fail the call with the file untouched,
+        // never after the mutation already landed on disk.
+        const sections = parseSections(flipped, a.namespace);
         // tmp+rename so a crash mid-write never leaves a half-written artifact
         // (same idiom as map/store.ts).
-        const tmp = `${abs}.tmp`;
+        const tmp = `${realAbs}.tmp`;
         writeFileSync(tmp, flipped);
-        renameSync(tmp, abs);
-        return { path: rel, flipped: heading, sections: parseSections(flipped, a.namespace) };
+        renameSync(tmp, realAbs);
+        return { path: rel, flipped: heading, sections };
     }));
     server.registerTool("docs_publish", { description: "Publish project documentation to the configured docs connector — "
             + "README.md becomes the landing page, docs/ (+ CHANGELOG.md) becomes the child "

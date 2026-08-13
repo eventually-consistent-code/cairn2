@@ -8,12 +8,34 @@ const MapNodeSchema = z.object({
     type: NodeTypeSchema, label: z.string(), detail: z.string().optional(),
 });
 const MapEdgeSchema = z.object({ from: z.string(), to: z.string(), type: EdgeTypeSchema });
+const MapMetaSchema = z.object({
+    builtAt: z.string(), updatedAt: z.string(), generation: z.number(),
+});
+// The whole on-disk store -- readMap validates against this so a hand-edited
+// map.json (say, a node missing its label) fails loudly at read time with the
+// defect named, instead of TypeError-ing later inside a query.
+const ProjectMapSchema = z.object({
+    nodes: z.record(MapNodeSchema),
+    edges: z.array(MapEdgeSchema),
+    meta: MapMetaSchema.optional(),
+});
 const mapPath = (projectDir) => join(projectDir, ".cairn", "map", "map.json");
 function readMap(projectDir) {
     const path = mapPath(projectDir);
     if (!existsSync(path))
         return { nodes: {}, edges: [] };
-    return JSON.parse(readFileSync(path, "utf8"));
+    let raw;
+    try {
+        raw = JSON.parse(readFileSync(path, "utf8"));
+    }
+    catch {
+        throw new CairnError("CONFIG_INVALID", `${path} is not valid JSON`, "fix or delete the map file -- a missing file reads as an empty store");
+    }
+    const parsed = ProjectMapSchema.safeParse(raw);
+    if (!parsed.success) {
+        throw new CairnError("CONFIG_INVALID", `${path} does not match the map schema: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`, "fix the named field(s) by hand, or delete the map file and rebuild");
+    }
+    return parsed.data;
 }
 function writeMap(projectDir, map) {
     const path = mapPath(projectDir);
@@ -38,7 +60,8 @@ function validateEdges(edges) {
  * Single-writer merge-patch, config_set-style: nodes merge by id (null
  * deletes). Edges patch two ways:
  *
- * - `edges` replaces the list wholesale -- full rebuilds only.
+ * - `edges` replaces the list wholesale -- full rebuilds only, and it
+ *   REFUSES (CONFIG_INVALID) unless `rebuild: true` accompanies it.
  * - `edgesAdd` / `edgesRemove` patch by exact from+to+type triple, and
  *   compose in one call: removes apply BEFORE adds, so remove+re-add of the
  *   same triple lands present. Adds dedupe silently against identical
@@ -60,6 +83,11 @@ export function mapSet(projectDir, patch, opts) {
     if (patch.edges !== undefined
         && (patch.edgesAdd !== undefined || patch.edgesRemove !== undefined)) {
         throw new CairnError("CONFIG_INVALID", "patch mixes wholesale 'edges' with edgesAdd/edgesRemove -- ambiguous intent", "use edges alone for a full rebuild, or edgesAdd/edgesRemove alone for a surgical patch");
+    }
+    // Wholesale replacement silently drops every edge not restated -- that is
+    // only ever right in a from-scratch rebuild, so it demands the explicit flag.
+    if (patch.edges !== undefined && opts?.rebuild !== true) {
+        throw new CairnError("CONFIG_INVALID", "wholesale edges replacement is rebuild-only — pass rebuild: true, or use edgesAdd/edgesRemove", "surgical changes belong to edgesAdd/edgesRemove; a full rebuild passes rebuild: true");
     }
     const current = readMap(projectDir);
     const nodes = { ...current.nodes };
@@ -149,15 +177,31 @@ export function mapGet(projectDir, filter) {
     // Filtered views carry the meta envelope through unchanged -- freshness
     // describes the store, not the slice.
     const meta = map.meta ? { meta: map.meta } : {};
+    // Node view semantics: self + touching edges + neighbors, with the other
+    // filters honored too -- edgeType narrows the touching edges (and thus
+    // which neighbors are reachable), nodeType narrows the NEIGHBOR set (the
+    // anchor always stays, even when its own type misses the filter), and any
+    // edge left dangling at a filtered-out neighbor is dropped rather than
+    // pointing at a node the caller can't see.
     if (filter.node !== undefined) {
         const id = filter.node;
         if (!(id in map.nodes))
             return { nodes: {}, edges: [], ...meta };
-        const edges = map.edges.filter((e) => e.from === id || e.to === id);
+        let edges = map.edges.filter((e) => e.from === id || e.to === id);
+        if (filter.edgeType !== undefined) {
+            edges = edges.filter((e) => e.type === filter.edgeType);
+        }
         const ids = new Set([id]);
         for (const e of edges) {
             ids.add(e.from);
             ids.add(e.to);
+        }
+        if (filter.nodeType !== undefined) {
+            for (const nid of [...ids]) {
+                if (nid !== id && map.nodes[nid].type !== filter.nodeType)
+                    ids.delete(nid);
+            }
+            edges = edges.filter((e) => ids.has(e.from) && ids.has(e.to));
         }
         return { nodes: pickNodes(map.nodes, ids), edges, ...meta };
     }
