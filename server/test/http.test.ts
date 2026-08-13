@@ -186,6 +186,35 @@ describe("fetchJson error bodies (#46)", () => {
     });
   });
 
+  it("maps a 422 validation rejection to TRACKER_REJECTED with snippet + nextAction (#72)", async () => {
+    let calls = 0;
+    const f: FetchLike = async () =>
+      (calls++, res(422, { message: "Validation Failed: milestone does not exist" }));
+    await expect(fetchJson(f, "https://x", {}, { retries: 3, backoffMs: 1 })).rejects.toMatchObject({
+      code: "TRACKER_REJECTED",
+      message: expect.stringContaining("milestone does not exist"),
+      nextAction: expect.stringContaining("the tracker rejected the request"),
+    });
+    expect(calls).toBe(1); // a rejection is deterministic — retrying it is noise
+  });
+
+  it("still classifies an auth-shaped 400 body as AUTH_MISSING, not TRACKER_REJECTED (#72)", async () => {
+    const f: FetchLike = async () => res(400, { message: "the access token is invalid" });
+    await expect(fetchJson(f, "https://x", {})).rejects.toMatchObject({ code: "AUTH_MISSING" });
+  });
+
+  it("keeps 500 as TRACKER_DOWN — server faults are not rejections (#72)", async () => {
+    const f: FetchLike = async () => res(500, { message: "internal error" });
+    await expect(fetchJson(f, "https://x", {}, { retries: 0, backoffMs: 1 }))
+      .rejects.toMatchObject({ code: "TRACKER_DOWN" });
+  });
+
+  it("keeps a network error as TRACKER_DOWN (#72)", async () => {
+    const f: FetchLike = async () => { throw new Error("ECONNRESET"); };
+    await expect(fetchJson(f, "https://x", {}, { retries: 0, backoffMs: 1 }))
+      .rejects.toMatchObject({ code: "TRACKER_DOWN" });
+  });
+
   it("still throws the right code when the body read itself fails", async () => {
     const badResp = {
       ok: false,
