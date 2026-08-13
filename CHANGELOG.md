@@ -1,5 +1,44 @@
 # Changelog
 
+## v2.2.0 — the planning intelligence + the product council (2026-08-13)
+
+- `/cairn:peers council [dimensions]`: external AI reviewers judge the
+  PRODUCT — functionality, look-and-feel, market position, and code —
+  with rubric-anchored dimension scorecards, evidence packets screened by
+  the leak gate, clustering convergence with a steelman round, a typed
+  recommendations report (COUNCIL.md) behind the shared proposal gate,
+  and a persistent dispositions table so rejected ideas don't come back
+  without new evidence. Proven by a live council reviewing cairn itself.
+- Peers runtime hardening from that council's own findings: reviewers run
+  contained by default (scratch cwd holding only their packet; read-only
+  sandbox flags where the CLI supports them; project access is an
+  explicit `execCapable` grant), fan-out throttles to a resource-aware
+  concurrency budget (`peerFanout.maxConcurrent` override), convergence
+  state survives interruption and sources audit provenance from records,
+  and the finding format is a validated schema with tolerant parsing and
+  reusable prompt templates.
+- The map is a first-class queryable surface: `map_query` (multi-hop BFS,
+  AND-combined type/label filters), freshness metadata
+  ({builtAt, updatedAt, generation}), edge-safe `edgesAdd`/`edgesRemove`
+  patching (wholesale replace is rebuild-only), and plan/scout/survey now
+  read the map when one exists.
+- Research checkpoints are parsed, not trusted: `research_sections`
+  validates one marker grammar for scout/survey/council (a typo'd marker
+  is a named error, never silently done), with realpath containment and
+  atomic validated flips. Survey runs are dated epochs with a recorded
+  proposal→decision→artifact dispositions footer, behind a single shared
+  proposal-gate spec.
+- Errors speak human first: 4xx tracker rejections get an honest
+  `TRACKER_REJECTED` code with body-derived next actions (5xx stays
+  TRACKER_DOWN), and every verb renders a plain-language line + next
+  action before the typed detail. `ship` now confirms before pushing
+  (one-line summary, push/hold; `ship.confirm: false` restores silent).
+- Peer roster: Antigravity (`agy`) replaces Gemini; every peer runs from
+  a deterministic cwd with verified invocation conventions; opencode
+  latency diagnosis baked into its timeout hint.
+- 75 typed MCP tools, 1016 passing tests, three mechanical drills
+  (peers 15, council 20, map 11 checks).
+
 ## v2.1.0 — ship the backlog (2026-07-31)
 
 - New `/cairn:survey ["<topic>"]` verb: project-wide research into a
