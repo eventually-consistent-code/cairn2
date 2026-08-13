@@ -88,6 +88,13 @@ export declare const ConfigSchema: z.ZodObject<{
         allow?: string[] | undefined;
         extraPatterns?: string[] | undefined;
     }>>;
+    ship: z.ZodDefault<z.ZodObject<{
+        confirm: z.ZodDefault<z.ZodBoolean>;
+    }, "strip", z.ZodTypeAny, {
+        confirm: boolean;
+    }, {
+        confirm?: boolean | undefined;
+    }>>;
     peers: z.ZodOptional<z.ZodRecord<z.ZodEnum<["codex", "opencode", "antigravity", "grok"]>, z.ZodObject<{
         enabled: z.ZodOptional<z.ZodBoolean>;
         maxInputChars: z.ZodOptional<z.ZodNumber>;
@@ -101,6 +108,13 @@ export declare const ConfigSchema: z.ZodObject<{
         maxInputChars?: number | undefined;
         execCapable?: boolean | undefined;
     }>>>;
+    peerFanout: z.ZodOptional<z.ZodObject<{
+        maxConcurrent: z.ZodNumber;
+    }, "strip", z.ZodTypeAny, {
+        maxConcurrent: number;
+    }, {
+        maxConcurrent: number;
+    }>>;
 }, "strip", z.ZodTypeAny, {
     tracker: {
         type: "github" | "gitlab" | "jira" | "asana" | "azure-boards" | "clickup" | "linear" | "local";
@@ -126,6 +140,9 @@ export declare const ConfigSchema: z.ZodObject<{
         allow: string[];
         extraPatterns: string[];
     };
+    ship: {
+        confirm: boolean;
+    };
     docs?: {
         config: Record<string, unknown>;
         connector: "confluence" | "docusaurus";
@@ -139,6 +156,9 @@ export declare const ConfigSchema: z.ZodObject<{
         maxInputChars?: number | undefined;
         execCapable?: boolean | undefined;
     }>> | undefined;
+    peerFanout?: {
+        maxConcurrent: number;
+    } | undefined;
 }, {
     tracker: {
         type: "github" | "gitlab" | "jira" | "asana" | "azure-boards" | "clickup" | "linear" | "local";
@@ -172,11 +192,17 @@ export declare const ConfigSchema: z.ZodObject<{
         allow?: string[] | undefined;
         extraPatterns?: string[] | undefined;
     } | undefined;
+    ship?: {
+        confirm?: boolean | undefined;
+    } | undefined;
     peers?: Partial<Record<"codex" | "opencode" | "antigravity" | "grok", {
         enabled?: boolean | undefined;
         maxInputChars?: number | undefined;
         execCapable?: boolean | undefined;
     }>> | undefined;
+    peerFanout?: {
+        maxConcurrent: number;
+    } | undefined;
 }>;
 export type CairnConfig = z.infer<typeof ConfigSchema>;
 export declare function loadConfig(projectDir: string): CairnConfig;

@@ -947,16 +947,21 @@ export function buildServer(deps) {
             + "title+project required on create; project must name a workspace member. Rejected "
             + "patches leave the board untouched",
         inputSchema: { patch: z.record(z.union([WorkstreamPatchSchema, z.null()])) } }, wrap((a) => boardUpdate(launchDir, a.patch)));
-    server.registerTool("peer_list", { description: "Detected external AI peer CLIs (codex/opencode/antigravity/grok) — on PATH, enabled, input cap, "
-            + "execCapable (config-declared trust to execute the product during review)",
+    server.registerTool("peer_list", { description: "Detected external AI peer CLIs (codex/opencode/antigravity/grok) — {peers: [on PATH, enabled, "
+            + "input cap, execCapable (config-declared trust to execute the product during review)], maxConcurrent: "
+            + "resource-aware fan-out budget — dispatch peers in batches of at most this many, never all at once",
         inputSchema: {} }, wrap(() => peerList(dir())));
     server.registerTool("peer_run", { description: "Run one external peer CLI with capped stdin input — advisory output, non-zero exit is a result. "
-            + "Outbound content leaves the machine; callers MUST leak-scan the input first — this layer does not scan",
+            + "Outbound content leaves the machine; callers MUST leak-scan the input first — this layer does not scan. "
+            + "cwdMode 'scratch' (default) runs the child contained in a throwaway temp dir with the capped input "
+            + "staged as packet.txt — the peer never sees the repo; 'project' runs from the project dir and is "
+            + "granted ONLY to execCapable peers on the functionality dimension (that is what the trust flag means)",
         inputSchema: { provider: z.enum(PROVIDERS),
             input: z.string().min(1),
-            timeoutMs: z.number().int().positive().optional() } }, wrap(async (a) => {
+            timeoutMs: z.number().int().positive().optional(),
+            cwdMode: z.enum(["scratch", "project"]).optional() } }, wrap(async (a) => {
         const d = dir();
-        return peerRun(d, a.provider, a.input, a.timeoutMs);
+        return peerRun(d, a.provider, a.input, a.timeoutMs, { cwdMode: a.cwdMode });
     }));
     server.registerTool("peer_state", { description: "Per-run peers convergence state (.cairn/peers/<slug>/) — ops: start (mode/target/"
             + "focus/peers; refuses an unfinished run on the slug), record_output (peer/round raw reply, "

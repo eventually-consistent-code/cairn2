@@ -46,6 +46,13 @@ export const ConfigSchema = z.object({
         extraPatterns: z.array(z.string()).default([]),
     })
         .default({}),
+    // Confirm-before-push gate on the ship verb (#76) — adopted at the
+    // 2026-08-12 product council (REC-5), accepted by the project owner over
+    // cairn's no-action recommendation. Default on; confirm: false restores
+    // the silent push flow.
+    ship: z
+        .object({ confirm: z.boolean().default(true) })
+        .default({}),
     // Per-provider peer CLI settings (Tier F2 #997) — absent provider or
     // absent field means enabled with defaults; unknown provider keys are
     // rejected by the enum-keyed record below.
@@ -58,6 +65,15 @@ export const ConfigSchema = z.object({
         // review. Default false when absent — never runtime-probed.
         execCapable: z.boolean().optional(),
     }))
+        .optional(),
+    // Fan-out throttle (#75) — lives in its own top-level block instead of
+    // inside `peers` because that record is enum-keyed by provider name: a
+    // run-wide key like maxConcurrent would be rejected as an unknown
+    // provider, and per-provider concurrency makes no sense anyway (the
+    // budget guards the HOST, not any one CLI). Absent = the resource-aware
+    // heuristic in peers/throttle.ts decides; set = the user's call wins.
+    peerFanout: z
+        .object({ maxConcurrent: z.number().int().positive() })
         .optional(),
 });
 export function loadConfig(projectDir) {
