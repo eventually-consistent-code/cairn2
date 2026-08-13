@@ -1,8 +1,19 @@
 # cairn 2.0
 
-**Converged work management for Claude Code** — one tool where deep planning,
-durable memory, tracker truth, and session continuity meet in a single
-deterministic engine.
+**Converged work management for AI coding agents** — one tool where deep
+planning, durable memory, tracker truth, and session continuity meet in a
+single deterministic engine. First-class as a Claude Code plugin; one-command
+installers wire the same server and verbs into seven other AI CLI harnesses
+(Grok Build, Copilot CLI, Codex, Gemini CLI, Cursor, OpenCode, Zed).
+
+What makes it different — mechanism, not vocabulary:
+
+| | |
+|---|---|
+| **Server-validated lifecycle** | Plan↔tracker drift is computed math, verify gates work goal-backward from the phase goal, and checkpoint markers are parsed by a real server — correctness is code, not prompt discipline. |
+| **Tracker-first** | Eight write-through backends (GitHub, GitLab, Jira, Asana, Azure Boards, ClickUp, Linear, local files) hold the single source of truth for work, mirrored in plain language a non-engineer can read. |
+| **Cross-vendor adversarial review** | `peers` seats codex, grok, antigravity, and opencode as reviewers — and their claims are verified against source before they count. (Install the CLIs you want seated.) |
+| **Memory with provenance** | Git-committed memory cards record their source commit; recall serves a `STALE` flag when the code moved — and the cards feed `plan`, `work`, and `verify`. |
 
 > This repo is the cairn 2.0 rebuild; the earlier 1.x plugin lives in the
 > [claude-plugins](https://github.com/eventually-consistent-code/claude-plugins)
@@ -79,8 +90,9 @@ git PRs.
 from the routing table.
 The routing table is complete: the reserved verb set is now empty.
 
-**Server:** 71 typed MCP tools, 766 passing tests (env-gated live-backend
-suites skip without creds), three dependencies (`@modelcontextprotocol/sdk`,
+**Server:** 75 typed MCP tools, 967 passing tests — counts move with each
+tier and are measured in CI (env-gated live-backend
+suites skip without creds) — three dependencies (`@modelcontextprotocol/sdk`,
 `better-sqlite3`, `zod`). Fail loud, never fake state.
 
 **Agents (2 live):** the plugin's first `agents/` dir — specialist roles
@@ -106,12 +118,12 @@ node setup/cairn-setup.mjs opencode  # OpenCode — opencode.json + /cairn-* com
 node setup/cairn-setup.mjs zed       # Zed — .zed/settings.json context server + AGENTS.md
 ```
 
-Every install gets the full 71-tool surface, the generated `AGENTS.md` verb
+Every install gets the full 75-tool surface, the generated `AGENTS.md` verb
 registry (from `scripts/gen-agents.mjs`, drift-checked in CI), and the verb
 subroutines copied to `.cairn/harness/` so any harness can execute them by
 name ("run cairn status"). Honest capability table:
 
-| Harness | Tools (71) | Verbs | Slash commands | Continuity/cost/observe hooks |
+| Harness | Tools (75) | Verbs | Slash commands | Continuity/cost/observe hooks |
 |---|---|---|---|---|
 | Claude Code (plugin) | ✅ | ✅ | ✅ `/cairn:*` | ✅ |
 | Grok Build | ✅ | ✅ by name | via its Claude-compat layer | untested — claims hook compat |
@@ -122,11 +134,22 @@ name ("run cairn status"). Honest capability table:
 | OpenCode | ✅ | ✅ by name | ✅ `/cairn-*` commands | — |
 | Zed | ✅ | ✅ by name | — | — |
 
+## How it compares
+
+The nearest substitutes are GSD/Buildomator-class planning flows,
+Superpowers, gstack, and claude-mem — file-based planning or memory layers
+for a single harness. Cairn covers the same ground with a server holding the
+mechanism and an external tracker holding work truth. Agent IDEs (Cursor,
+Copilot Workspace, Devin) are adjacent but do a different job — they are the
+coding environment; cairn is the work-management layer that rides along in
+it.
+
 ## Roadmap
 
-Full parity with GSD's ~60-command surface, restructured behind a per-verb
-`/cairn:<verb>` surface with a trail-themed vocabulary — plus the
-highest-value ideas from GSD's community backlog and a five-competitor gap
+GSD-class planning depth behind a per-verb `/cairn:<verb>` surface with a
+trail-themed vocabulary — plus tracker truth and provenance-checked memory
+the file-based flows can't hold, and the highest-value ideas from GSD's
+community backlog and a five-competitor gap
 analysis. See the
 [parity roadmap](docs/superpowers/specs/2026-07-15-cairn-2-parity-roadmap-design.md)
 and [gap analysis](docs/superpowers/research/2026-07-15-competitor-gap-analysis.md).
