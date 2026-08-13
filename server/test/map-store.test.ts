@@ -16,7 +16,7 @@ describe("mapSet", () => {
         "mod-store": { type: "module", label: "map store" },
       },
       edges: [{ from: "mod-store", to: "phase-1", type: "implements" }],
-    });
+    }, { rebuild: true });
     expect(out).toEqual({ nodes: 2, edges: 1 });
     const map = mapGet(dir);
     expect(map.nodes["phase-1"]).toEqual({ type: "phase", label: "Tier E" });
@@ -52,12 +52,12 @@ describe("mapSet", () => {
         "mod-b": { type: "module", label: "B" },
       },
       edges: [{ from: "mod-a", to: "mod-b", type: "depends-on" }],
-    });
+    }, { rebuild: true });
     expect(() => mapSet(dir, { nodes: { "mod-b": null } }))
       .toThrow(/mod-a->mod-b/);
   });
 
-  it("replaces the edges list wholesale rather than merging it", () => {
+  it("replaces the edges list wholesale rather than merging it (rebuild-only since #71)", () => {
     const dir = fresh();
     mapSet(dir, {
       nodes: {
@@ -66,10 +66,10 @@ describe("mapSet", () => {
         "mod-c": { type: "module", label: "C" },
       },
       edges: [{ from: "mod-a", to: "mod-b", type: "depends-on" }],
-    });
+    }, { rebuild: true });
     const out = mapSet(dir, {
       edges: [{ from: "mod-a", to: "mod-c", type: "depends-on" }],
-    });
+    }, { rebuild: true });
     expect(out.edges).toBe(1);
     const map = mapGet(dir);
     expect(map.edges).toEqual([{ from: "mod-a", to: "mod-c", type: "depends-on" }]);
@@ -80,7 +80,7 @@ describe("mapSet", () => {
     mapSet(dir, { nodes: { "mod-a": { type: "module", label: "A" } } });
     expect(() => mapSet(dir, {
       edges: [{ from: "mod-a", to: "mod-ghost", type: "depends-on" }],
-    })).toThrow(/mod-ghost/);
+    }, { rebuild: true })).toThrow(/mod-ghost/);
     // validate-before-write atomicity: the rejected patch must leave the store untouched.
     const map = mapGet(dir);
     expect(map.nodes).toEqual({ "mod-a": { type: "module", label: "A" } });
@@ -104,7 +104,7 @@ describe("mapSet", () => {
     });
     expect(() => mapSet(dir, {
       edges: [{ from: "mod-a", to: "mod-b", type: "blocks" as never }],
-    })).toThrow(/mod-a|mod-b/);
+    }, { rebuild: true })).toThrow(/mod-a|mod-b/);
   });
 
   it("writes atomically -- no leftover .tmp file after a successful write", () => {
@@ -127,7 +127,7 @@ describe("edge-safe patch ops (#63)", () => {
         "mod-c": { type: "module", label: "C" },
       },
       edges: [{ from: "mod-a", to: "mod-b", type: "depends-on" }],
-    });
+    }, { rebuild: true });
     return dir;
   };
 
@@ -391,7 +391,7 @@ describe("mapGet", () => {
         { from: "mod-a", to: "mod-m", type: "implements" },
         { from: "mod-a", to: "mod-m", type: "depends-on" },
       ],
-    });
+    }, { rebuild: true });
     const first = mapGet(dir);
     expect(Object.keys(first.nodes)).toEqual(["mod-a", "mod-m", "mod-z"]);
     expect(first.edges).toEqual([
@@ -426,7 +426,7 @@ describe("mapGet", () => {
         { from: "mod-a", to: "mod-b", type: "depends-on" },
         { from: "mod-a", to: "mod-b", type: "implements" },
       ],
-    });
+    }, { rebuild: true });
     const filtered = mapGet(dir, { edgeType: "implements" });
     expect(filtered.edges).toEqual([{ from: "mod-a", to: "mod-b", type: "implements" }]);
   });
@@ -444,7 +444,7 @@ describe("mapGet", () => {
         { from: "mod-a", to: "mod-b", type: "depends-on" },
         { from: "mod-c", to: "mod-a", type: "implements" },
       ],
-    });
+    }, { rebuild: true });
     const view = mapGet(dir, { node: "mod-a" });
     expect(Object.keys(view.nodes).sort()).toEqual(["mod-a", "mod-b", "mod-c"]);
     expect(view.edges).toEqual([
@@ -528,7 +528,7 @@ describe("mapQuery", () => {
         { from: "mod-c", to: "issue-d", type: "implements" },
         { from: "person-jr", to: "mod-b", type: "owns" },
       ],
-    });
+    }, { rebuild: true });
     return dir;
   };
 

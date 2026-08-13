@@ -257,6 +257,7 @@ describe("runClose", () => {
     const dir = freshDir();
     runStart(dir, "x", META);
     recordPeerOutput(dir, "x", "codex", 1, "out");
+    recordPeerOutput(dir, "x", "grok", 1, "out");
     recordFindings(dir, "x", "codex", 1, [GOOD]);
     recordFindings(dir, "x", "grok", 2, [{ ...GOOD, claim: "grok's late catch", severity: "minor" }]);
     recordVerdict(dir, "x", "f1", "verified");
@@ -279,6 +280,8 @@ describe("runClose", () => {
   it("all-dead findings close as a pass; the record still credits what got thrown out", () => {
     const dir = freshDir();
     runStart(dir, "x", META);
+    recordPeerOutput(dir, "x", "codex", 1, "out");
+    recordPeerOutput(dir, "x", "grok", 1, "out");
     recordFindings(dir, "x", "codex", 1, [GOOD]);
     recordVerdict(dir, "x", "f1", "dead");
     const summary = runClose(dir, "x");
@@ -289,6 +292,8 @@ describe("runClose", () => {
   it("a closed run refuses further writes, and a new start on the slug is fine", () => {
     const dir = freshDir();
     runStart(dir, "x", META);
+    recordPeerOutput(dir, "x", "codex", 1, "out");
+    recordPeerOutput(dir, "x", "grok", 1, "out");
     runClose(dir, "x");
     expect(errCode(() => recordFindings(dir, "x", "codex", 1, [GOOD]))).toBe("CONFIG_INVALID");
     expect(errCode(() => runStart(dir, "x", META))).toBe("no-throw");
@@ -299,7 +304,7 @@ describe("runClose", () => {
 describe("council mode (#71)", () => {
   it("runStart accepts mode 'council' and persists it", () => {
     const dir = freshDir();
-    runStart(dir, "x", { ...META, mode: "council" as never });
+    runStart(dir, "x", { ...META, mode: "council" });
     const state = JSON.parse(readFileSync(
       join(dir, ".cairn", "peers", "x", "state.json"), "utf8"));
     expect(state.meta.mode).toBe("council");
@@ -371,11 +376,9 @@ describe("runClose seat completeness (#71)", () => {
     recordPeerOutput(dir, "x", "codex", 1, "out");
     recordFindings(dir, "x", "codex", 1, [GOOD]);
     recordVerdict(dir, "x", "f1", "verified");
-    const summary = (runClose as unknown as
-      (d: string, s: string, o?: { allowIncomplete?: boolean }) => ReturnType<typeof runClose>)(
-      dir, "x", { allowIncomplete: true });
+    const summary = runClose(dir, "x", { allowIncomplete: true });
     expect(summary.verdict).toBe("findings");
-    expect((summary as { incompleteSeats?: string[] }).incompleteSeats).toEqual(["grok"]);
+    expect(summary.incompleteSeats).toEqual(["grok"]);
   });
 
   it("a complete run's summary carries no incompleteSeats field", () => {
@@ -386,7 +389,7 @@ describe("runClose seat completeness (#71)", () => {
     recordFindings(dir, "x", "codex", 1, [GOOD]);
     recordVerdict(dir, "x", "f1", "verified");
     const summary = runClose(dir, "x");
-    expect((summary as { incompleteSeats?: string[] }).incompleteSeats).toBeUndefined();
+    expect(summary.incompleteSeats).toBeUndefined();
   });
 
   it("allowIncomplete does NOT waive unresolved findings", () => {
@@ -394,9 +397,7 @@ describe("runClose seat completeness (#71)", () => {
     runStart(dir, "x", META);
     recordPeerOutput(dir, "x", "codex", 1, "out");
     recordFindings(dir, "x", "codex", 1, [GOOD]);
-    expect(errCode(() => (runClose as unknown as
-      (d: string, s: string, o?: { allowIncomplete?: boolean }) => unknown)(
-      dir, "x", { allowIncomplete: true }))).toBe("CONFIG_INVALID");
+    expect(errCode(() => runClose(dir, "x", { allowIncomplete: true }))).toBe("CONFIG_INVALID");
   });
 });
 
@@ -412,6 +413,8 @@ describe("atomicity", () => {
     runStart(dir, "x", META);
     check();
     recordPeerOutput(dir, "x", "codex", 1, "out");
+    check();
+    recordPeerOutput(dir, "x", "grok", 1, "out");
     check();
     recordFindings(dir, "x", "codex", 1, [GOOD]);
     check();

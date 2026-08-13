@@ -521,7 +521,7 @@ describe("cairn MCP server", () => {
         "mod-b": { type: "module", label: "B" },
       },
       edges: [{ from: "mod-a", to: "mod-b", type: "depends-on" }],
-    } });
+    }, rebuild: true });
     expect(set.json).toEqual({ nodes: 2, edges: 1 });
 
     const got = await call("map_get", {});
@@ -530,7 +530,7 @@ describe("cairn MCP server", () => {
 
     const dangling = await call("map_set", { patch: {
       edges: [{ from: "mod-a", to: "mod-ghost", type: "depends-on" }],
-    } });
+    }, rebuild: true });
     expect(dangling.isError).toBe(true);
   });
 
@@ -545,7 +545,7 @@ describe("cairn MCP server", () => {
         { from: "mod-a", to: "mod-b", type: "depends-on" },
         { from: "mod-b", to: "issue-x", type: "implements" },
       ],
-    } });
+    }, rebuild: true });
     const out = await call("map_query", { node: "mod-a", depth: 1, nodeType: "module" });
     expect(Object.keys(out.json.nodes).sort()).toEqual(["mod-a", "mod-b"]);
     expect(out.json.edges).toEqual([{ from: "mod-a", to: "mod-b", type: "depends-on" }]);
