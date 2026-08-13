@@ -47,6 +47,13 @@ export const ConfigSchema = z.object({
       extraPatterns: z.array(z.string()).default([]),
     })
     .default({}),
+  // Confirm-before-push gate on the ship verb (#76) — adopted at the
+  // 2026-08-12 product council (REC-5), accepted by the project owner over
+  // cairn's no-action recommendation. Default on; confirm: false restores
+  // the silent push flow.
+  ship: z
+    .object({ confirm: z.boolean().default(true) })
+    .default({}),
   // Per-provider peer CLI settings (Tier F2 #997) — absent provider or
   // absent field means enabled with defaults; unknown provider keys are
   // rejected by the enum-keyed record below.
