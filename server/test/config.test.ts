@@ -194,6 +194,30 @@ describe("writeConfigPatch", () => {
   });
 });
 
+describe("ship config", () => {
+  const base = { tracker: { type: "github", config: { repo: "o/r" } } };
+
+  // ship.confirm gates the push behind an explicit user ack (#76) — adopted
+  // at the 2026-08-12 product council (REC-5), accepted by the project owner
+  // over cairn's own no-action recommendation. Default is confirm on.
+  it("ship absent → confirm defaults to true", () => {
+    const dir = writeTmpConfig(base);
+    const cfg = loadConfig(dir);
+    expect(cfg.ship).toEqual({ confirm: true });
+  });
+
+  it("ship.confirm false is honored (restores the silent flow)", () => {
+    const dir = writeTmpConfig({ ...base, ship: { confirm: false } });
+    expect(loadConfig(dir).ship.confirm).toBe(false);
+  });
+
+  it("ship.confirm accepts only booleans — wrong type is CONFIG_INVALID", () => {
+    const dir = writeTmpConfig({ ...base, ship: { confirm: "yes" } });
+    expect(() => loadConfig(dir)).toThrowError(
+      expect.objectContaining({ code: "CONFIG_INVALID" }));
+  });
+});
+
 describe("peers config", () => {
   const base = { tracker: { type: "github", config: { repo: "o/r" } } };
 
