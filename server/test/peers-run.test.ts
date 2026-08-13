@@ -134,6 +134,27 @@ describe("peerRun", () => {
     expect((caught as { nextAction?: string }).nextAction).toMatch(/install/i);
   });
 
+  // #72 message nit: name the binary once. When the binary IS the provider
+  // name (grok), no parenthetical dupe; when it differs (antigravity → agy),
+  // the parenthetical names the real binary, once, at the end.
+  it("not-found message names the binary once — grok gets no parenthetical dupe (#72)", async () => {
+    process.env.PATH = stubBinDir({}); // no grok stub present
+    const d = projectDir();
+    await expect(peerRun(d, "grok", "hello")).rejects.toMatchObject({
+      code: "PRECONDITION_FAILED",
+      message: "peer 'grok' not found on PATH",
+    });
+  });
+
+  it("not-found message names a differing binary parenthetically — antigravity/agy (#72)", async () => {
+    process.env.PATH = stubBinDir({}); // no agy stub present
+    const d = projectDir();
+    await expect(peerRun(d, "antigravity", "hello")).rejects.toMatchObject({
+      code: "PRECONDITION_FAILED",
+      message: "peer 'antigravity' not found on PATH ('agy')",
+    });
+  });
+
   it("truncates input at the configured cap and appends the exact marker", async () => {
     runnableStubPath({ codex: STDIN_LENGTH });
     const d = projectDir({ peers: { codex: { maxInputChars: 40 } } });

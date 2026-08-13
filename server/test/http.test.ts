@@ -120,10 +120,12 @@ describe("fetchJson error bodies (#46)", () => {
     });
   });
 
+  // Deliberate contract change (#72): a generic 4xx is the tracker rejecting
+  // the request, not the tracker being down.
   it("folds a truncated response body into the generic non-ok message", async () => {
     const f: FetchLike = async () => res(418, { message: "teapot in maintenance" });
     await expect(fetchJson(f, "https://x", {})).rejects.toMatchObject({
-      code: "TRACKER_DOWN",
+      code: "TRACKER_REJECTED",
       message: expect.stringContaining("teapot in maintenance"),
     });
   });
@@ -149,9 +151,11 @@ describe("fetchJson error bodies (#46)", () => {
     await expect(fetchJson(f, "https://x", {})).rejects.toMatchObject({ code: "AUTH_MISSING" });
   });
 
-  it("leaves a plain non-auth 400 body as TRACKER_DOWN", async () => {
+  // Deliberate contract change (#72): was TRACKER_DOWN — a non-auth 400 is a
+  // rejection of this request, and the code should say so.
+  it("classifies a plain non-auth 400 body as TRACKER_REJECTED", async () => {
     const f: FetchLike = async () => res(400, { message: "bad request: missing field 'title'" });
-    await expect(fetchJson(f, "https://x", {})).rejects.toMatchObject({ code: "TRACKER_DOWN" });
+    await expect(fetchJson(f, "https://x", {})).rejects.toMatchObject({ code: "TRACKER_REJECTED" });
   });
 
   it("nextAction calls out a rejected token", async () => {
@@ -184,6 +188,35 @@ describe("fetchJson error bodies (#46)", () => {
       code: "AUTH_MISSING",
       nextAction: expect.stringContaining("check the token env var"),
     });
+  });
+
+  it("maps a 422 validation rejection to TRACKER_REJECTED with snippet + nextAction (#72)", async () => {
+    let calls = 0;
+    const f: FetchLike = async () =>
+      (calls++, res(422, { message: "Validation Failed: milestone does not exist" }));
+    await expect(fetchJson(f, "https://x", {}, { retries: 3, backoffMs: 1 })).rejects.toMatchObject({
+      code: "TRACKER_REJECTED",
+      message: expect.stringContaining("milestone does not exist"),
+      nextAction: expect.stringContaining("the tracker rejected the request"),
+    });
+    expect(calls).toBe(1); // a rejection is deterministic — retrying it is noise
+  });
+
+  it("still classifies an auth-shaped 400 body as AUTH_MISSING, not TRACKER_REJECTED (#72)", async () => {
+    const f: FetchLike = async () => res(400, { message: "the access token is invalid" });
+    await expect(fetchJson(f, "https://x", {})).rejects.toMatchObject({ code: "AUTH_MISSING" });
+  });
+
+  it("keeps 500 as TRACKER_DOWN — server faults are not rejections (#72)", async () => {
+    const f: FetchLike = async () => res(500, { message: "internal error" });
+    await expect(fetchJson(f, "https://x", {}, { retries: 0, backoffMs: 1 }))
+      .rejects.toMatchObject({ code: "TRACKER_DOWN" });
+  });
+
+  it("keeps a network error as TRACKER_DOWN (#72)", async () => {
+    const f: FetchLike = async () => { throw new Error("ECONNRESET"); };
+    await expect(fetchJson(f, "https://x", {}, { retries: 0, backoffMs: 1 }))
+      .rejects.toMatchObject({ code: "TRACKER_DOWN" });
   });
 
   it("still throws the right code when the body read itself fails", async () => {

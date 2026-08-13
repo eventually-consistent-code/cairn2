@@ -148,10 +148,13 @@ export async function peerRun(projectDir: string, provider: Provider,
 
   const { argv, inputVia } = TEMPLATES[provider];
   const [bin, ...templateArgs] = argv;
+  // Name the binary once: the parenthetical only earns its place when the
+  // binary differs from the provider name (antigravity's CLI is `agy`).
+  const notFoundMsg = bin === provider
+    ? `peer '${provider}' not found on PATH`
+    : `peer '${provider}' not found on PATH ('${bin}')`;
   if (!onPath(bin)) {
-    throw new CairnError("PRECONDITION_FAILED",
-      `peer '${provider}' CLI ('${bin}') not found on PATH`,
-      INSTALL_HINTS[provider]);
+    throw new CairnError("PRECONDITION_FAILED", notFoundMsg, INSTALL_HINTS[provider]);
   }
 
   const maxInputChars = peerCfg.maxInputChars ?? DEFAULT_MAX_INPUT_CHARS;
@@ -173,9 +176,7 @@ export async function peerRun(projectDir: string, provider: Provider,
         const durationMs = Date.now() - start;
 
         if (error && (error as NodeJS.ErrnoException).code === "ENOENT") {
-          reject(new CairnError("PRECONDITION_FAILED",
-            `peer '${provider}' CLI ('${bin}') not found on PATH`,
-            INSTALL_HINTS[provider]));
+          reject(new CairnError("PRECONDITION_FAILED", notFoundMsg, INSTALL_HINTS[provider]));
           return;
         }
         if (error && (error as { killed?: boolean }).killed) {

@@ -79,7 +79,7 @@ pairing overlay applies:
 6. On completion **with tests passing**: post the close comment first —
    `issue_comment(id, ...)`: what shipped in plain language, the commit
    range as short refs on their own line, the test evidence (suite name +
-   pass count), and "time spent: ~Xm (approximate)" computed from
+   pass count), and "time spent: ~Xm" computed from
    `startedAt`. When the cost log has rows for this issue
    (`node "$CLAUDE_PLUGIN_ROOT/hooks/scripts/cost-report.mjs" --issue <id>`
    returns > 0), add "agent cost: ~$X (approximate)" beside the time
