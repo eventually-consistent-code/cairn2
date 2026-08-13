@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import { mkdtempSync, writeFileSync, chmodSync, realpathSync } from "node:fs";
+import { mkdtempSync, writeFileSync, chmodSync, realpathSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, delimiter } from "node:path";
 import { peerList, peerRun } from "../src/peers/run.js";
@@ -246,12 +246,13 @@ describe("peerRun", () => {
 
   // antigravity's headless mode takes the prompt as `-p`'s value (verified
   // against the live agy CLI) and ignores piped stdin — argv-mode, same
-  // rules as grok.
+  // rules as grok. Checks the full arg string, not a fixed position, so
+  // mode-dependent flags (#74's --sandbox) don't shift it out from under us.
   it("antigravity: delivers input via argv to the agy binary, not stdin", async () => {
-    runnableStubPath({ agy: "#!/bin/sh\nstdin=$(cat)\necho \"argv2:$2\"\necho \"stdinlen:${#stdin}\"\n" });
+    runnableStubPath({ agy: "#!/bin/sh\nstdin=$(cat)\necho \"args:$*\"\necho \"stdinlen:${#stdin}\"\n" });
     const d = projectDir();
     const result = await peerRun(d, "antigravity", "hello agy");
-    expect(result.output).toContain("argv2:hello agy");
+    expect(result.output).toContain("-p hello agy");
     expect(result.output).toContain("stdinlen:0");
   });
 
@@ -266,14 +267,101 @@ describe("peerRun", () => {
     expect(result.output).toContain("--skip-git-repo-check");
   });
 
-  // Peer children inherited whatever cwd the MCP server process happened
-  // to have — codex's trust check and any peer's relative file reads made
-  // results depend on it (#56). Every peer must run from the project dir.
-  it("runs the peer child with cwd pinned to the project dir", async () => {
-    runnableStubPath({ grok: "#!/bin/sh\necho \"cwd:$(pwd)\"\n" });
+  // #74: a live council run proved a peer CLI with cwd pinned to the
+  // project dir can read repo internals its screened packet never carried —
+  // one reviewer quoted project-internal research. The leak gate screens
+  // the outbound packet only; cwd access read straight around it. Default
+  // flips to CONTAINED: the child runs from a fresh scratch dir under the
+  // OS tmpdir, with the capped input staged as packet.txt beside it. The
+  // #56 determinism survives — cwd is still always the same KIND of place —
+  // but the repo exposure dies.
+  const PWD_ECHO = "#!/bin/sh\necho \"cwd:$(pwd)\"\n";
+  const ARGS_ECHO = "#!/bin/sh\ncat > /dev/null\necho \"args:$*\"\n";
+  function reportedCwd(output: string): string {
+    return output.trim().replace(/^cwd:/, "");
+  }
+
+  it("runs the peer child from a fresh scratch dir by default, never the project dir", async () => {
+    runnableStubPath({ grok: PWD_ECHO });
     const d = projectDir();
     const result = await peerRun(d, "grok", "hello");
+    const cwd = reportedCwd(result.output);
+    expect(cwd).not.toBe(realpathSync(d));
+    expect(cwd.startsWith(realpathSync(tmpdir()))).toBe(true);
+    expect(cwd).toContain("cairn-peer-");
+  });
+
+  it("stages the capped input as packet.txt in the scratch cwd", async () => {
+    runnableStubPath({ grok: "#!/bin/sh\ncat packet.txt\n" });
+    const d = projectDir({ peers: { grok: { maxInputChars: 40 } } });
+    const input = "x".repeat(100);
+    const result = await peerRun(d, "grok", input);
+    const marker = "[cairn: input truncated at 40 chars]";
+    expect(result.output).toBe(`${"x".repeat(40)}\n${marker}`);
+  });
+
+  it("cleans up the scratch dir after the child exits (best-effort, post-run)", async () => {
+    runnableStubPath({ grok: PWD_ECHO });
+    const d = projectDir();
+    const result = await peerRun(d, "grok", "hello");
+    const cwd = reportedCwd(result.output);
+    expect(cwd).toContain("cairn-peer-"); // sanity: we really saw the scratch dir
+    expect(existsSync(cwd)).toBe(false);
+  });
+
+  // cwdMode "project" is the explicit escape hatch — the #56 behavior,
+  // granted by the peers verb ONLY to execCapable seats on the
+  // functionality dimension. No packet.txt gets staged into the repo.
+  it("cwdMode 'project' restores the project-dir cwd and stages no packet.txt", async () => {
+    runnableStubPath({ grok: PWD_ECHO });
+    const d = projectDir();
+    const result = await peerRun(d, "grok", "hello", undefined, { cwdMode: "project" });
     expect(result.output.trim()).toBe(`cwd:${realpathSync(d)}`);
+    expect(existsSync(join(d, "packet.txt"))).toBe(false);
+  });
+
+  // --skip-git-repo-check is now load-bearing in scratch mode — the
+  // scratch dir is no git repo, and codex refuses untrusted non-repo dirs
+  // without it (verified live, codex-cli 0.146.0, 2026-08-09).
+  it("codex: --skip-git-repo-check rides in both cwd modes", async () => {
+    runnableStubPath({ codex: ARGS_ECHO });
+    const d = projectDir();
+    const scratch = await peerRun(d, "codex", "hello");
+    expect(scratch.output).toContain("--skip-git-repo-check");
+    const project = await peerRun(d, "codex", "hello", undefined, { cwdMode: "project" });
+    expect(project.output).toContain("--skip-git-repo-check");
+  });
+
+  // Sandbox flags ride in scratch mode ONLY — project mode is the explicit
+  // repo-access grant, so kneecapping it makes no sense. codex's
+  // `--sandbox read-only` verified against codex-cli 0.146.0
+  // (`codex exec --help`); agy's boolean `--sandbox` verified against
+  // agy 1.1.12 (`agy --help`). grok/opencode document no sandbox flag.
+  it("codex: adds --sandbox read-only in scratch mode only", async () => {
+    runnableStubPath({ codex: ARGS_ECHO });
+    const d = projectDir();
+    const scratch = await peerRun(d, "codex", "hello");
+    expect(scratch.output).toContain("--sandbox read-only");
+    const project = await peerRun(d, "codex", "hello", undefined, { cwdMode: "project" });
+    expect(project.output).not.toContain("--sandbox");
+  });
+
+  it("antigravity: adds --sandbox in scratch mode only", async () => {
+    runnableStubPath({ agy: ARGS_ECHO });
+    const d = projectDir();
+    const scratch = await peerRun(d, "antigravity", "hello");
+    expect(scratch.output).toContain("--sandbox");
+    const project = await peerRun(d, "antigravity", "hello", undefined, { cwdMode: "project" });
+    expect(project.output).not.toContain("--sandbox");
+  });
+
+  it("grok/opencode: no sandbox flag in either mode — none documented", async () => {
+    runnableStubPath({ grok: ARGS_ECHO, opencode: ARGS_ECHO });
+    const d = projectDir();
+    for (const provider of ["grok", "opencode"] as const) {
+      const scratch = await peerRun(d, provider, "hello");
+      expect(scratch.output).not.toContain("--sandbox");
+    }
   });
 
   // A staged binary that exists on PATH but isn't executable fails at
