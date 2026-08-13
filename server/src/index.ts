@@ -1188,13 +1188,18 @@ export function buildServer(deps: {
 
   server.registerTool("peer_run",
     { description: "Run one external peer CLI with capped stdin input — advisory output, non-zero exit is a result. "
-        + "Outbound content leaves the machine; callers MUST leak-scan the input first — this layer does not scan",
+        + "Outbound content leaves the machine; callers MUST leak-scan the input first — this layer does not scan. "
+        + "cwdMode 'scratch' (default) runs the child contained in a throwaway temp dir with the capped input "
+        + "staged as packet.txt — the peer never sees the repo; 'project' runs from the project dir and is "
+        + "granted ONLY to execCapable peers on the functionality dimension (that is what the trust flag means)",
       inputSchema: { provider: z.enum(PROVIDERS),
                      input: z.string().min(1),
-                     timeoutMs: z.number().int().positive().optional() } },
-    wrap(async (a: { provider: Provider; input: string; timeoutMs?: number }) => {
+                     timeoutMs: z.number().int().positive().optional(),
+                     cwdMode: z.enum(["scratch", "project"]).optional() } },
+    wrap(async (a: { provider: Provider; input: string; timeoutMs?: number;
+      cwdMode?: "scratch" | "project" }) => {
       const d = dir();
-      return peerRun(d, a.provider, a.input, a.timeoutMs);
+      return peerRun(d, a.provider, a.input, a.timeoutMs, { cwdMode: a.cwdMode });
     }));
 
   server.registerTool("peer_state",

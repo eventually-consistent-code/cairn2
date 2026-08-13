@@ -183,7 +183,10 @@ mutates before that gate, in any mode.
    - **code** — the resolved diff, exactly as `peers review` builds it.
    Cap-trim every packet BEFORE send (peer input caps apply, per peer),
    and pass each through the outbound leak gate (below) — a hit blocks
-   that packet's sends, full stop.
+   that packet's sends, full stop. The packet is ALL a peer gets: peers
+   run contained by default (`peer_run` stages the packet in a throwaway
+   scratch dir and runs the child from there), so nothing outside the
+   packet is readable.
 4. `peer_state(op: "start")` with slug `council-<YYYY-MM-DD>`, mode,
    the chosen dimensions + focus, and the `peer_list()` roster. Mirror:
    `issue_create` ONE run issue — title "Product council:
@@ -196,9 +199,11 @@ mutates before that gate, in any mode.
    `findings-request.md`) — `focus` = the run's focus, `dimension` =
    the dimension name, `content` = the packet. Functionality only: a
    peer whose `peer_list()` entry says `execCapable` may be told it can
-   run the product itself; every other peer judges the captured
-   transcripts instead — never skipped, and exec is never granted
-   implicitly. Record as replies land, `review`'s exact discipline:
+   run the product itself — and ONLY that peer, on ONLY this dimension,
+   gets `peer_run` with `cwdMode: "project"` (repo cwd access is exactly
+   what the trust flag grants); every other peer runs contained (the
+   scratch-cwd default) and judges the captured transcripts instead —
+   never skipped, and exec is never granted implicitly. Record as replies land, `review`'s exact discipline:
    `record_output`, then `parseFindings`, then `record_findings` —
    judge the `unparsed` pile too. No peers at all → the absent-peers
    rule below: cairn's own pass still writes the report.
@@ -258,7 +263,11 @@ input instead of a git diff). A hit STOPS the send: name the matching
 lines to the user and let them decide whether to redact and retry or skip
 that peer entirely. This is never a soft warning that gets sent anyway —
 a hit blocks that `peer_run` call, full stop, until the user says
-otherwise.
+otherwise. Containment backs the gate from the other side: `peer_run`
+runs every peer from a throwaway scratch dir by default, so a peer can
+no longer read around the screened packet via the project cwd — the
+gate decides what goes out, and the scratch cwd guarantees nothing else
+is reachable.
 
 ## Absent peers
 
