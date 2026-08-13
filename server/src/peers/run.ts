@@ -1,7 +1,11 @@
 /**
  * Purpose: allow-listed external-CLI adapters (codex/opencode/antigravity/
  * grok) — runs each as a fixed-argv child process with a hard cap on input
- * size and a timeout, cwd pinned to the project dir. Never exec, never
+ * size and a timeout, CONTAINED by default: the child runs from a fresh
+ * scratch dir under the OS tmpdir with the capped input staged beside it
+ * as packet.txt, so the screened packet is all a peer can see (#74).
+ * cwdMode "project" is the explicit escape hatch back to the project-dir
+ * cwd (#56) for callers that NEED repo access. Never exec, never
  * shell interpolation — argv is always one of the four fixed templates
  * below plus (for argv-mode peers) the capped input as the single final
  * element; stdin-mode peers get input piped instead, per each CLI's
@@ -14,7 +18,8 @@
  */
 
 import { execFile } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, delimiter } from "node:path";
 import { CairnError } from "../errors.js";
 import { loadConfig } from "../config.js";
@@ -34,30 +39,58 @@ export interface PeerResult {
 
 // Fixed argv templates — first element is the binary name, resolved via
 // PATH by execFile itself. These are constants, never built from user
-// input. Input reaches each CLI per its REAL convention (verified against
-// the live CLIs, CRN-76 and #56 — the old all-stdin assumption sent
-// grok/opencode a literal "-" as their prompt):
+// input. Assembly order is argv + (scratch mode only) scratchSandboxArgs
+// + tail + (argv-mode peers) the capped input. Input reaches each CLI per
+// its REAL convention (verified against the live CLIs, CRN-76 and #56 —
+// the old all-stdin assumption sent grok/opencode a literal "-" as their
+// prompt):
 //   codex       — `codex exec -` reads instructions from stdin
 //                 (documented). `--skip-git-repo-check` rides along because
 //                 codex otherwise refuses to run in any directory the host
 //                 hasn't marked trusted — reviews died with "Not inside a
 //                 trusted directory" depending on where the server sat.
+//                 Now load-bearing in scratch mode too: the scratch dir is
+//                 no git repo, and the flag covers that case (verified
+//                 live in a non-git dir, 2026-08-09). Scratch runs add
+//                 `--sandbox read-only` (verified codex-cli 0.146.0,
+//                 `codex exec --help`).
 //   antigravity — binary is `agy`; `-p <prompt>` runs one prompt headless
 //                 and prints the response. Ignores piped stdin — input
 //                 rides as the final argv element, same rules as grok.
+//                 Scratch runs add the boolean `--sandbox` ("terminal
+//                 restrictions enabled", verified agy 1.1.12, `agy
+//                 --help`) — before `-p` so the prompt stays the flag's
+//                 value.
 //   grok        — `-p <prompt>` takes the prompt as the flag's value; its
 //                 headless mode does not consume piped stdin. Input rides
 //                 as the final argv element — still execFile with an argv
 //                 array, so there is no shell and no interpolation; the
 //                 200k default cap keeps well under ARG_MAX on macOS/Linux.
+//                 No documented sandbox flag as of 2026-08 — containment
+//                 rests on the scratch cwd alone.
 //   opencode    — `run [message..]` takes the prompt positionally; same
-//                 argv-mode rules as grok.
-const TEMPLATES: Record<Provider, { argv: readonly string[]; inputVia: "stdin" | "argv" }> = {
-  codex: { argv: ["codex", "exec", "--skip-git-repo-check", "-"], inputVia: "stdin" },
-  opencode: { argv: ["opencode", "run"], inputVia: "argv" },
-  antigravity: { argv: ["agy", "-p"], inputVia: "argv" },
-  grok: { argv: ["grok", "-p"], inputVia: "argv" },
+//                 argv-mode rules as grok. No documented sandbox flag as
+//                 of 2026-08 — scratch cwd only, same as grok.
+const TEMPLATES: Record<Provider, {
+  argv: readonly string[];
+  tail: readonly string[];
+  inputVia: "stdin" | "argv";
+  scratchSandboxArgs: readonly string[];
+}> = {
+  codex: { argv: ["codex", "exec", "--skip-git-repo-check"], tail: ["-"],
+    inputVia: "stdin", scratchSandboxArgs: ["--sandbox", "read-only"] },
+  opencode: { argv: ["opencode", "run"], tail: [],
+    inputVia: "argv", scratchSandboxArgs: [] },
+  antigravity: { argv: ["agy"], tail: ["-p"],
+    inputVia: "argv", scratchSandboxArgs: ["--sandbox"] },
+  grok: { argv: ["grok", "-p"], tail: [],
+    inputVia: "argv", scratchSandboxArgs: [] },
 };
+
+// The two cwd stances a peer child can run under. "scratch" (default) is
+// containment; "project" is the repo-access grant the peers verb hands
+// ONLY to execCapable seats on the functionality dimension.
+export type PeerCwdMode = "scratch" | "project";
 
 const INSTALL_HINTS: Record<Provider, string> = {
   codex: "install the Codex CLI and put it on PATH (npm i -g @openai/codex)",
@@ -145,9 +178,20 @@ export function peerList(projectDir: string): {
  * on success AND on a non-zero exit — peers are advisory, so a bad exit is
  * data, not a failure. Only genuinely precondition-failed states (disabled
  * provider, missing binary, timeout) throw.
+ *
+ * Contained by default (#74): the child runs from a fresh scratch dir with
+ * the capped input staged as packet.txt — a live council run showed a peer
+ * with project cwd reading repo internals its screened packet never
+ * carried, straight around the leak gate. Pass cwdMode "project" to
+ * restore the #56 project-dir cwd — that grant belongs ONLY to
+ * execCapable peers on the functionality dimension.
+ *
+ * :param opts.cwdMode: "scratch" (default) or "project"
  */
 export async function peerRun(projectDir: string, provider: Provider,
-  input: string, timeoutMs: number = DEFAULT_TIMEOUT_MS): Promise<PeerResult> {
+  input: string, timeoutMs: number = DEFAULT_TIMEOUT_MS,
+  opts: { cwdMode?: PeerCwdMode } = {}): Promise<PeerResult> {
+  const cwdMode = opts.cwdMode ?? "scratch";
   const cfg = loadConfig(projectDir);
   const peerCfg = cfg.peers?.[provider] ?? {};
 
@@ -157,7 +201,7 @@ export async function peerRun(projectDir: string, provider: Provider,
       `enable it — set peers.${provider}.enabled to true, or drop the override`);
   }
 
-  const { argv, inputVia } = TEMPLATES[provider];
+  const { argv, tail, inputVia, scratchSandboxArgs } = TEMPLATES[provider];
   const [bin, ...templateArgs] = argv;
   // Name the binary once: the parenthetical only earns its place when the
   // binary differs from the provider name (antigravity's CLI is `agy`).
@@ -173,18 +217,42 @@ export async function peerRun(projectDir: string, provider: Provider,
 
   // argv-mode peers get the capped input as the final argv element (execFile
   // argv array — no shell ever sees it); stdin-mode peers get it piped.
-  const args = inputVia === "argv" ? [...templateArgs, sendInput] : [...templateArgs];
+  // Scratch runs also get the CLI's read-only sandbox flags where the CLI
+  // has any (see the template notes) — project mode is the explicit
+  // repo-access grant, so it stays unsandboxed.
+  const sandboxArgs = cwdMode === "scratch" ? scratchSandboxArgs : [];
+  const fixedArgs = [...templateArgs, ...sandboxArgs, ...tail];
+  const args = inputVia === "argv" ? [...fixedArgs, sendInput] : fixedArgs;
+
+  // Containment (#74): stage the capped input in a fresh scratch dir and
+  // run the child from there — packet.txt because some CLIs want a file to
+  // chew on (stdin/argv delivery above is unchanged). The #56 determinism
+  // survives — cwd is always the same KIND of place — but the repo
+  // exposure dies. "project" keeps the old cwd for callers that NEED it.
+  let scratchDir: string | undefined;
+  if (cwdMode === "scratch") {
+    scratchDir = mkdtempSync(join(tmpdir(), "cairn-peer-"));
+    writeFileSync(join(scratchDir, "packet.txt"), sendInput);
+  }
+  const cwd = scratchDir ?? projectDir;
 
   const start = Date.now();
   return new Promise<PeerResult>((resolve, reject) => {
-    // cwd pinned to the project dir — children used to inherit whatever
-    // cwd the MCP server process had, so codex's directory-trust check and
-    // any peer's relative file reads made results depend on where the
-    // server happened to be sitting (#56).
     const child = execFile(bin, args,
-      { cwd: projectDir, timeout: timeoutMs, maxBuffer: MAX_BUFFER, killSignal: "SIGKILL" },
+      { cwd, timeout: timeoutMs, maxBuffer: MAX_BUFFER, killSignal: "SIGKILL" },
       (error, stdout, stderr) => {
         const durationMs = Date.now() - start;
+
+        // Scratch dir is done the moment the child is — tear it down
+        // best-effort on every path, and never let cleanup failure mask
+        // (or outrank) the run's real outcome.
+        if (scratchDir) {
+          try {
+            rmSync(scratchDir, { recursive: true, force: true });
+          } catch {
+            // best-effort only — a stale tmpdir entry beats a false error
+          }
+        }
 
         if (error && (error as NodeJS.ErrnoException).code === "ENOENT") {
           reject(new CairnError("PRECONDITION_FAILED", notFoundMsg, INSTALL_HINTS[provider]));
