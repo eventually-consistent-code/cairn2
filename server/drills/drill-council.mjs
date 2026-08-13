@@ -84,7 +84,7 @@ writeFileSync(join(STUBS, "opencode"), [
 writeFileSync(join(STUBS, "agy"), [
   "#!/bin/sh",
   "cat > /dev/null",
-  `printf '%s' "$2" > "${CAPTURE}/antigravity.functionality.in"`,
+  `for a; do last="$a"; done; printf '%s' "$last" > "${CAPTURE}/antigravity.functionality.in"`,
   "echo '```json'",
   'echo \'{"claim": "documented drift column missing from the actual status transcript", "evidence": "promise vs transcript comparison in the packet", "evidenceType": "transcript", "severity": "important", "recommendation": "align the status output with the documented drift column", "axis": "functionality"}\'',
   "echo '```'",
@@ -96,7 +96,7 @@ writeFileSync(join(STUBS, "agy"), [
 writeFileSync(join(STUBS, "grok"), [
   "#!/bin/sh",
   "cat > /dev/null",
-  `printf '%s' "$2" > "${CAPTURE}/grok.functionality.in"`,
+  `for a; do last="$a"; done; printf '%s' "$last" > "${CAPTURE}/grok.functionality.in"`,
   "echo '```json'",
   'echo \'{"claim": "the tool will probably feel slow on large repositories", "evidence": "general impression, no specific line", "severity": "minor", "recommendation": "profile it sometime", "axis": "functionality"}\'',
   "echo '```'",

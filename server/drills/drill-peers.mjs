@@ -31,7 +31,7 @@ for (const p of ["codex", "opencode", "grok"]) {
 }
 // antigravity's binary is agy, and it's argv-mode — the prompt arrives as
 // -p's value ($2), not stdin, so the capture reads from argv.
-writeFileSync(join(STUBS, "agy"), `#!/bin/sh\ncat > /dev/null\nprintf '%s' "$2" > "${CAPTURE}/antigravity.in"\necho "finding: export handler swallows write errors at src/export/handler.ts:87 (severity: critical)"\n`);
+writeFileSync(join(STUBS, "agy"), `#!/bin/sh\ncat > /dev/null\nfor a; do last="$a"; done; printf '%s' "$last" > "${CAPTURE}/antigravity.in"\necho "finding: export handler swallows write errors at src/export/handler.ts:87 (severity: critical)"\n`);
 chmodSync(join(STUBS, "agy"), 0o755);
 
 // tiny cap for antigravity so truncation is provable
