@@ -393,6 +393,12 @@ export function recordVerdict(projectDir: string, slug: string,
 
 // Status + close
 
+// One definition of a silent seat, shared by runStatus's resume map and
+// runClose's completeness gate: a rostered peer with no round-1 output.
+const missingRound1 = (state: RunState): string[] =>
+  state.meta.peers.filter((p) =>
+    !state.outputs.some((o) => o.peer === p && o.round === 1));
+
 /**
  * The resume map: everything recorded so far, plus what's still missing —
  * peers with no round-1 output, disputed findings whose peer hasn't
@@ -407,7 +413,7 @@ export function runStatus(projectDir: string, slug: string): RunStatusReport {
   const answered = (peer: string, round: number): boolean =>
     state.outputs.some((o) => o.peer === peer && o.round === round);
 
-  const peersMissingRound1 = state.meta.peers.filter((p) => !answered(p, 1));
+  const peersMissingRound1 = missingRound1(state);
   const disputedAwaitingRound2 = state.findings
     .filter((f) => f.verdict === "disputed" && !answered(f.peer, 2))
     .map((f) => f.id);
@@ -464,8 +470,7 @@ export function runClose(projectDir: string, slug: string,
       "every finding must end verified, dead, or open-disagreement before close");
   }
 
-  const incompleteSeats = state.meta.peers
-    .filter((p) => !state.outputs.some((o) => o.peer === p && o.round === 1));
+  const incompleteSeats = missingRound1(state);
   if (incompleteSeats.length > 0 && opts?.allowIncomplete !== true) {
     throw new CairnError("CONFIG_INVALID",
       `cannot close peers run '${s}' — rostered seat(s) never answered round 1: ${
