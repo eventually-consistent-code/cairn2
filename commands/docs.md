@@ -1,5 +1,5 @@
 ---
-description: "Publish repo docs to the configured docs connector (Confluence) — landing page + page tree (cairn — /cairn:help for the verb reference)"
+description: "Publish repo docs to the configured docs connector (Confluence or Docusaurus) — landing page + page tree (cairn — /cairn:help for the verb reference)"
 argument-hint: "publish [--name \"<project>\"] | (none = status)"
 ---
 
