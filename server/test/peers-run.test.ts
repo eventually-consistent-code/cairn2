@@ -50,13 +50,13 @@ describe("peerList", () => {
   it("reports onPath: false for every provider when none are on PATH", () => {
     process.env.PATH = stubBinDir({}); // empty stub dir, no real CLIs reachable
     const d = projectDir();
-    for (const entry of peerList(d)) expect(entry.onPath).toBe(false);
+    for (const entry of peerList(d).peers) expect(entry.onPath).toBe(false);
   });
 
   it("reports onPath: true only for the provider whose stub is present", () => {
     process.env.PATH = stubBinDir({ codex: OK_ECHO });
     const d = projectDir();
-    const list = peerList(d);
+    const list = peerList(d).peers;
     expect(list.find((p) => p.provider === "codex")?.onPath).toBe(true);
     expect(list.find((p) => p.provider === "opencode")?.onPath).toBe(false);
     expect(list.find((p) => p.provider === "antigravity")?.onPath).toBe(false);
@@ -68,13 +68,13 @@ describe("peerList", () => {
   it("antigravity: probes PATH for the agy binary, not the provider name", () => {
     process.env.PATH = stubBinDir({ agy: OK_ECHO });
     const d = projectDir();
-    expect(peerList(d).find((p) => p.provider === "antigravity")?.onPath).toBe(true);
+    expect(peerList(d).peers.find((p) => p.provider === "antigravity")?.onPath).toBe(true);
   });
 
   it("defaults enabled: true and maxInputChars: 200000 when unconfigured", () => {
     process.env.PATH = stubBinDir({});
     const d = projectDir();
-    const codex = peerList(d).find((p) => p.provider === "codex");
+    const codex = peerList(d).peers.find((p) => p.provider === "codex");
     expect(codex?.enabled).toBe(true);
     expect(codex?.maxInputChars).toBe(200_000);
   });
@@ -82,7 +82,7 @@ describe("peerList", () => {
   it("reflects a configured override for enabled and maxInputChars", () => {
     process.env.PATH = stubBinDir({});
     const d = projectDir({ peers: { antigravity: { enabled: false, maxInputChars: 900_000 } } });
-    const antigravity = peerList(d).find((p) => p.provider === "antigravity");
+    const antigravity = peerList(d).peers.find((p) => p.provider === "antigravity");
     expect(antigravity?.enabled).toBe(false);
     expect(antigravity?.maxInputChars).toBe(900_000);
   });
@@ -93,13 +93,13 @@ describe("peerList", () => {
   it("defaults execCapable: false when unconfigured", () => {
     process.env.PATH = stubBinDir({});
     const d = projectDir();
-    for (const entry of peerList(d)) expect(entry.execCapable).toBe(false);
+    for (const entry of peerList(d).peers) expect(entry.execCapable).toBe(false);
   });
 
   it("reflects a configured execCapable: true", () => {
     process.env.PATH = stubBinDir({});
     const d = projectDir({ peers: { codex: { execCapable: true } } });
-    const list = peerList(d);
+    const list = peerList(d).peers;
     expect(list.find((p) => p.provider === "codex")?.execCapable).toBe(true);
     expect(list.find((p) => p.provider === "grok")?.execCapable).toBe(false);
   });
@@ -107,7 +107,7 @@ describe("peerList", () => {
   it("reflects an explicit execCapable: false", () => {
     process.env.PATH = stubBinDir({});
     const d = projectDir({ peers: { opencode: { execCapable: false } } });
-    expect(peerList(d).find((p) => p.provider === "opencode")?.execCapable).toBe(false);
+    expect(peerList(d).peers.find((p) => p.provider === "opencode")?.execCapable).toBe(false);
   });
 });
 

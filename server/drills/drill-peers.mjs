@@ -72,11 +72,16 @@ const check = (label, ok, detail = "") => {
 
 // -- detection -----------------------------------------------------------------
 console.log("detection: all four stubs on PATH...");
-const list = await call("peer_list", {});
+// peer_list wire shape is {peers, maxConcurrent} since #75 — the fan-out
+// budget rides along with the roster.
+const listOut = await call("peer_list", {});
+const list = listOut.peers;
 check("all four providers detected on PATH",
   Array.isArray(list) && list.length === 4 && list.every((p) => p.onPath),
   JSON.stringify(list).slice(0, 120));
 check("antigravity carries its configured cap", list.find((p) => p.provider === "antigravity")?.maxInputChars === 60);
+check("fan-out budget rides along and is a sane positive integer",
+  Number.isInteger(listOut.maxConcurrent) && listOut.maxConcurrent >= 1 && listOut.maxConcurrent <= 8);
 
 // -- outbound leak gate (verb rule, run mechanically) ----------------------------
 // Built-in patterns cover planning-detail leaks; credential-class patterns are
@@ -133,7 +138,7 @@ rmSync(join(STUBS, "grok"));
 const gone = await call("peer_run", { provider: "grok", input: CLEAN });
 check("missing provider fails soft with the install hint (proceed-without is the verb's job)",
   Boolean(gone.__error) && JSON.stringify(gone.__error).toLowerCase().includes("install"));
-const list2 = await call("peer_list", {});
+const list2 = (await call("peer_list", {})).peers;
 check("detection reflects the loss", list2.find((p) => p.provider === "grok")?.onPath === false);
 
 await client.close();

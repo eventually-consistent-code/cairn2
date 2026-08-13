@@ -1182,8 +1182,9 @@ export function buildServer(deps: {
       boardUpdate(launchDir, a.patch)));
 
   server.registerTool("peer_list",
-    { description: "Detected external AI peer CLIs (codex/opencode/antigravity/grok) — on PATH, enabled, input cap, "
-        + "execCapable (config-declared trust to execute the product during review)",
+    { description: "Detected external AI peer CLIs (codex/opencode/antigravity/grok) — {peers: [on PATH, enabled, "
+        + "input cap, execCapable (config-declared trust to execute the product during review)], maxConcurrent: "
+        + "resource-aware fan-out budget — dispatch peers in batches of at most this many, never all at once",
       inputSchema: {} },
     wrap(() => peerList(dir())));
 
