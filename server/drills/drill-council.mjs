@@ -165,10 +165,16 @@ const check = (label, ok, detail = "") => {
 
 // -- detection ----------------------------------------------------------------
 console.log("detection: four stubs on PATH, config surfaced...");
-const list = await call("peer_list", {});
+// peer_list wire shape is {peers, maxConcurrent} since #75 — council mode
+// must batch its fan-out by the budget instead of dispatching every seat
+// at once (the 2026-08-12 16-seat dispatch exhausted the host's memory).
+const listOut = await call("peer_list", {});
+const list = listOut.peers;
 check("all four providers detected on PATH",
   Array.isArray(list) && list.length === 4 && list.every((p) => p.onPath),
   JSON.stringify(list).slice(0, 120));
+check("fan-out budget rides along and is a sane positive integer",
+  Number.isInteger(listOut.maxConcurrent) && listOut.maxConcurrent >= 1 && listOut.maxConcurrent <= 8);
 check("config surfaced: antigravity carries its tiny cap, codex is the exec-capable seat",
   list.find((p) => p.provider === "antigravity")?.maxInputChars === 2200
   && list.find((p) => p.provider === "codex")?.execCapable === true

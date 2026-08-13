@@ -57,8 +57,9 @@ normal flow to `close`.
 
 ## Bare `peers` — status
 
-`peer_list()` rendered plainly: provider, on PATH or not, enabled or not,
-input cap, exec-capable or not. No workspace-wide judgment here, just the
+`peer_list()` rendered plainly: each peer's provider, on PATH or not,
+enabled or not, input cap, exec-capable or not, plus the run-wide
+`maxConcurrent` fan-out budget. No workspace-wide judgment here, just the
 facts a caller needs before deciding whether `review`/`plan`/`council`
 will have anyone to talk to. Zero
 peers on PATH is a normal result, not a warning — say so and stop; don't
@@ -190,7 +191,12 @@ mutates before that gate, in any mode.
    <dimensions>", label `cairn:council` — plain language per the mirror
    rules below.
 5. Fan-out, per dimension: every peer `peer_list()` reports on PATH and
-   enabled gets `peer_run` with the dimension's template filled via
+   enabled gets `peer_run` — dispatched in batches of at most the
+   `maxConcurrent` budget `peer_list()` returns, never all seats at
+   once; a batch finishes before the next one starts. This is a hard
+   rule because it already failed live: the 2026-08-12 council dispatched
+   all 16 seats concurrently and exhausted the host's memory. Each send
+   uses the dimension's template filled via
    `loadTemplate` (`templates/peers/council-functionality.md`,
    `council-feel.md`, `council-market.md`; `code` reuses
    `findings-request.md`) — `focus` = the run's focus, `dimension` =

@@ -19,6 +19,7 @@ import { join, delimiter } from "node:path";
 import { CairnError } from "../errors.js";
 import { loadConfig } from "../config.js";
 import { PROVIDERS, type Provider } from "./providers.js";
+import { concurrencyBudget } from "./throttle.js";
 
 export { PROVIDERS };
 export type { Provider };
@@ -105,17 +106,23 @@ function capInput(input: string, maxChars: number): { text: string; truncated: b
 /**
  * Reports detection/config state for every allow-listed provider — never
  * throws for an absent CLI. A missing peer is a DETECTED state, not an
- * error.
+ * error. Wire shape is {peers, maxConcurrent} (#75): the fan-out budget
+ * rides along with the roster so a dispatching caller (council mode)
+ * reads both in one call — a live 16-seat all-at-once dispatch exhausted
+ * the host's memory on 2026-08-12, so batching is not optional.
  */
-export function peerList(projectDir: string): Array<{
-  provider: Provider;
-  onPath: boolean;
-  enabled: boolean;
-  maxInputChars: number;
-  execCapable: boolean;
-}> {
+export function peerList(projectDir: string): {
+  peers: Array<{
+    provider: Provider;
+    onPath: boolean;
+    enabled: boolean;
+    maxInputChars: number;
+    execCapable: boolean;
+  }>;
+  maxConcurrent: number;
+} {
   const cfg = loadConfig(projectDir);
-  return PROVIDERS.map((provider) => {
+  const peers = PROVIDERS.map((provider) => {
     const peerCfg = cfg.peers?.[provider] ?? {};
     return {
       provider,
@@ -126,6 +133,10 @@ export function peerList(projectDir: string): Array<{
       execCapable: peerCfg.execCapable ?? false,
     };
   });
+  return {
+    peers,
+    maxConcurrent: concurrencyBudget({ override: cfg.peerFanout?.maxConcurrent }),
+  };
 }
 
 /**
