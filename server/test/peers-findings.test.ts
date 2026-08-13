@@ -132,6 +132,20 @@ describe("parseFindings", () => {
     expect(unparsed).toEqual([]);
   });
 
+  it("tolerates spaces between the backticks and the language tag: '``` json' (#71)", () => {
+    const raw = "``` json\n" + JSON.stringify(GOOD) + "\n```";
+    const { findings, unparsed } = parseFindings(raw);
+    expect(findings).toHaveLength(1);
+    expect(findings[0].claim).toBe(GOOD.claim);
+    expect(unparsed).toEqual([]);
+  });
+
+  it("tolerates multiple spaces before the tag too: '```   json' (#71)", () => {
+    const raw = "```   json\n" + JSON.stringify(GOOD) + "\n```";
+    const { findings } = parseFindings(raw);
+    expect(findings).toHaveLength(1);
+  });
+
   it("routes a fence truncated mid-JSON to unparsed", () => {
     // Fence opened, output cut off before the closing fence — the classic
     // maxBuffer / timeout truncation shape.

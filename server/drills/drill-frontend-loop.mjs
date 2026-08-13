@@ -74,16 +74,16 @@ await call("draft_log", { id: session.id, kind: "decision", text: DECISION });
 await call("issue_comment", { id: session.issue,
   text: "Decision: inline progress bar under the export button. Tokens locked; prototype next." });
 
-// -- traceability edges: read-unfiltered, append, write complete ----------------
-console.log("traceability: both edges via the read-append-write discipline...");
+// -- traceability edges: surgical edgesAdd, no wholesale replace ---------------
+// (wholesale `edges` went rebuild-only in #71 — edgesAdd is the everyday op,
+// and it retired the old read-append-write dance entirely.)
+console.log("traceability: both edges via edgesAdd...");
 await call("map_set", { patch: { nodes: {
   [reqTraced.id]: { type: "issue", label: "dashboard shows live export progress" },
   "dec-progress-bar": { type: "decision", label: DECISION },
   "mod-dashboard": { type: "module", label: "dashboard" },
 } } });
-const current = await call("map_get", {});   // UNFILTERED — the whole map's edges
-await call("map_set", { patch: { edges: [
-  ...current.edges,
+await call("map_set", { patch: { edgesAdd: [
   { from: reqTraced.id, to: "dec-progress-bar", type: "implements" },
   { from: "dec-progress-bar", to: "mod-dashboard", type: "decided-in" },
 ] } });

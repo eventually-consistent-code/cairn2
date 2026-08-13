@@ -44,11 +44,12 @@ await call("map_set", { patch: { nodes: {
   "phase-2": { type: "phase", label: "Phase 2 — dashboard" },
   "dec-streaming": { type: "decision", label: "streaming over batch export" },
 } } });
+// wholesale edges is rebuild-only since #71 — the from-scratch build says so
 const built = await call("map_set", { patch: { edges: [
   { from: "mod-dashboard", to: "mod-export", type: "depends-on" },
   { from: "mod-dashboard", to: "phase-2", type: "implements" },
   { from: "mod-export", to: "dec-streaming", type: "decided-in" },
-] } });
+] }, rebuild: true });
 check("build: 4 nodes, 3 edges", built.nodes === 4 && built.edges === 3,
   JSON.stringify(built.__error ?? built).slice(0, 100));
 
@@ -56,9 +57,15 @@ check("build: 4 nodes, 3 edges", built.nodes === 4 && built.edges === 3,
 const before = await call("map_get", {});
 const dangling = await call("map_set", { patch: { edges: [
   { from: "mod-export", to: "ghost-node", type: "depends-on" },
-] } });
+] }, rebuild: true });
 check("dangling edge rejected, missing id named",
   Boolean(dangling.__error) && JSON.stringify(dangling.__error).includes("ghost-node"));
+// ...and without rebuild: true the wholesale replace itself is refused (#71)
+const noRebuild = await call("map_set", { patch: { edges: [
+  { from: "mod-dashboard", to: "mod-export", type: "depends-on" },
+] } });
+check("wholesale edges without rebuild refused",
+  Boolean(noRebuild.__error) && JSON.stringify(noRebuild.__error).includes("rebuild"));
 const after = await call("map_get", {});
 check("store unchanged after rejection (validate-before-write)",
   JSON.stringify(before) === JSON.stringify(after));
@@ -80,10 +87,11 @@ check("edgeType filter narrows edges", decideEdges.edges.length === 1
 // -- delete rules ------------------------------------------------------------------
 const blockedDelete = await call("map_set", { patch: { nodes: { "mod-export": null } } });
 check("delete with attached edges rejected", Boolean(blockedDelete.__error));
-// detach first (wholesale replace demonstrating the doc's warning), then delete
+// detach first (wholesale replace demonstrating the doc's warning — a
+// rebuild-only move since #71), then delete
 await call("map_set", { patch: { edges: [
   { from: "mod-dashboard", to: "phase-2", type: "implements" },
-] } });
+] }, rebuild: true });
 const wiped = await call("map_get", {});
 check("edges array replaces wholesale (the map.md warning is real)", wiped.edges.length === 1);
 const deleted = await call("map_set", { patch: { nodes: { "mod-export": null, "dec-streaming": null } } });

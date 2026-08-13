@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, beforeAll } from "vitest";
@@ -120,6 +120,27 @@ describe("parseSections — grammar matrix", () => {
     const doc = "## Real\n\n```md\n## Fake\n<!-- scout: don -->\n```\n";
     const out = parseSections(doc, "scout");
     expect(out.map((s) => s.heading)).toEqual(["Real"]);
+  });
+
+  it("recognizes headings indented up to 3 spaces (CommonMark), never 4+ or a tab (#71)", () => {
+    const doc = [
+      "   ## Indented",
+      "<!-- scout: done -->",
+      "",
+      "    ## Code block, not a heading",
+      "",
+      "\t## Tabbed, not a heading",
+      "",
+    ].join("\n");
+    const out = parseSections(doc, "scout");
+    expect(out.map((s) => s.heading)).toEqual(["Indented"]);
+    expect(out[0].state).toBe("done");
+  });
+
+  it("flipSection finds a space-indented heading too (#71)", () => {
+    const doc = "  ## Indented\nprose\n";
+    const out = flipSection(doc, "scout", "Indented", "done");
+    expect(out).toContain("<!-- scout: done -->");
   });
 });
 
@@ -259,5 +280,45 @@ describe("research_sections MCP tool", () => {
       { path: "nope/RESEARCH.md", namespace: "scout" });
     expect(res.isError).toBe(true);
     expect(res.json.code).toBe("NOT_FOUND");
+  });
+
+  it("flip validates the WHOLE flipped doc before persisting -- a typo'd marker "
+    + "elsewhere leaves the file untouched (#71)", async () => {
+    const doc = [
+      "## Good",
+      "<!-- scout: pending -->",
+      "",
+      "## Bad",
+      "<!-- scout: don -->", // typo'd marker in ANOTHER section
+      "",
+    ].join("\n");
+    writeFileSync(join(projectDir, "FLIPBAD.md"), doc);
+    const res = await call("research_sections", {
+      path: "FLIPBAD.md", namespace: "scout",
+      flip: { heading: "Good", state: "done" },
+    });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("CONFIG_INVALID");
+    // the mutation must NOT have persisted
+    expect(readFileSync(join(projectDir, "FLIPBAD.md"), "utf8")).toBe(doc);
+  });
+
+  it("a symlink inside the project pointing outside it is CONFIG_INVALID, "
+    + "for reads and flips (#71)", async () => {
+    const outside = mkdtempSync(join(tmpdir(), "cairn-research-outside-"));
+    writeFileSync(join(outside, "secret.md"), "## Secret\n<!-- scout: done -->\n");
+    symlinkSync(join(outside, "secret.md"), join(projectDir, "link.md"));
+    const read = await call("research_sections", { path: "link.md", namespace: "scout" });
+    expect(read.isError).toBe(true);
+    expect(read.json.code).toBe("CONFIG_INVALID");
+    const flip = await call("research_sections", {
+      path: "link.md", namespace: "scout",
+      flip: { heading: "Secret", state: "pending" },
+    });
+    expect(flip.isError).toBe(true);
+    expect(flip.json.code).toBe("CONFIG_INVALID");
+    // the outside file was never touched
+    expect(readFileSync(join(outside, "secret.md"), "utf8"))
+      .toBe("## Secret\n<!-- scout: done -->\n");
   });
 });
