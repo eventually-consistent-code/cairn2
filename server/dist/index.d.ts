@@ -6,4 +6,5 @@ export declare function buildServer(deps: {
     projectDir: string;
     tracker?: Tracker;
     docsConnector?: DocsConnector;
+    fetchLatestVersion?: () => Promise<string>;
 }): McpServer;

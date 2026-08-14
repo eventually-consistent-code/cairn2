@@ -2,7 +2,7 @@
 import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { realpathSync } from "node:fs";
 import { basename, extname, isAbsolute, join, relative, resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
@@ -28,6 +28,7 @@ import { MemoryIndex, indexDbPath } from "./memory/index-store.js";
 import { createCard, listCards, readCard, updateCardConfidence } from "./memory/cards.js";
 import { checkCardStaleness } from "./memory/staleness.js";
 import { readHandoff, writeHandoff, clearHandoff } from "./core/continuity.js";
+import { installedVersions } from "./core/versions.js";
 import { appendLedger } from "./planning/ledger.js";
 import { writeBanner, bannerStats } from "./memory/banner.js";
 import { startTrace, appendTrace, listTraces, closeTrace } from "./trace/store.js";
@@ -701,23 +702,33 @@ export function buildServer(deps) {
     server.registerTool("config_probe", { description: "Credential preflight (CRN-48) -- one cheap authenticated call to the configured "
             + "tracker (and docs connector, when configured), each mapped to a specific verdict: "
             + "ok / bad_host / bad_token / missing_scope / rate_limited / down. A probe failure IS "
-            + "the result -- this tool never throws for a bad backend",
+            + "the result -- this tool never throws for a bad backend. Also reports installed "
+            + "versions (#82): running server, plugin cache entry, repo version files, latest npm "
+            + "-- with plain-language drift lines when they disagree",
         inputSchema: {} }, wrap(async () => {
         const d = dir();
-        const tracker = {
+        const out = {
             tracker: await safeProbe(async () => {
                 const t = await getTracker(d);
                 return t.probe ? t.probe() : { verdict: "ok" };
             }),
         };
         const cfg = loadConfig(d);
-        if (!cfg.docs)
-            return tracker;
-        const docs = await safeProbe(async () => {
-            const connector = await getDocsConnector(d);
-            return connector.probe ? connector.probe() : { verdict: "ok" };
+        if (cfg.docs) {
+            out.docs = await safeProbe(async () => {
+                const connector = await getDocsConnector(d);
+                return connector.probe ? connector.probe() : { verdict: "ok" };
+            });
+        }
+        // Installed-version visibility (#82) -- never throws, npm lookup fails
+        // soft to "unknown" so an offline probe stays green.
+        out.versions = await installedVersions({
+            serverVersion: VERSION,
+            modulePath: fileURLToPath(import.meta.url),
+            projectDir: d,
+            fetchLatest: deps.fetchLatestVersion,
         });
-        return { ...tracker, docs };
+        return out;
     }));
     server.registerTool("issue_comment", { description: "Post a plain-language comment on a tracker issue (management-visible progress note)",
         inputSchema: { id: z.string(), text: z.string() } }, wrap(async (a) => (await getTracker()).commentIssue(a.id, a.text)));
