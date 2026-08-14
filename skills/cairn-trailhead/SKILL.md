@@ -53,6 +53,7 @@ enforces both.
 | `peers` | Convene external AI CLIs as reviewers — convergence with adversarial judgment | (none = status) \| `review [target]` \| `plan <phase>` \| `council [dimensions]` | verbs/peers.md | live |
 | `docs` | Publish repo docs to the configured docs connector (Confluence or Docusaurus) — landing page + page tree | `publish [--name "<project>"]` \| (none = status) | verbs/docs.md | live |
 | `survey` | Project-wide research — findings, then discussed roadmap changes | `["<topic>"]` | verbs/survey.md | live |
+| `outlook` | Portfolio board — every cairn project on this machine, staleness-flagged | `[<project>]` | verbs/outlook.md | live |
 
 Reserved verbs have no subroutine file or command shim yet — each lands with
 its tier. If one comes up (via `do` or a typo): say which tier ships it and

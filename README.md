@@ -90,7 +90,7 @@ git PRs.
 from the routing table.
 The routing table is complete: the reserved verb set is now empty.
 
-**Server:** 75 typed MCP tools, 1057 passing tests — counts move with each
+**Server:** 76 typed MCP tools, 1077 passing tests — counts move with each
 tier and are measured in CI (env-gated live-backend
 suites skip without creds) — three dependencies (`@modelcontextprotocol/sdk`,
 `better-sqlite3`, `zod`). Fail loud, never fake state.

@@ -56,3 +56,22 @@ export declare function emitOutlook(projectDir: string, patch?: {
 }, home?: string): void;
 /** Reads a project's mirror snapshot; corrupt or missing reads as null. */
 export declare function readOutlook(projectDir: string, home?: string): OutlookSnapshot | null;
+export interface OutlookCard {
+    name: string;
+    path: string;
+    lastSeen: string;
+    snapshot?: OutlookSnapshot;
+    stale?: boolean;
+    staleReason?: string;
+    error?: string;
+}
+/**
+ * The portfolio aggregate (#89): registry + mirror snapshots ONLY -- never
+ * walks the filesystem for repos. Staleness is the card pattern, not a
+ * date: the snapshot's recorded HEAD vs the repo's live HEAD. Per-project
+ * failures become `{name, error}` cards (workspace_status precedent);
+ * one broken project can never take down the board.
+ */
+export declare function outlookAggregate(home?: string): {
+    projects: OutlookCard[];
+};

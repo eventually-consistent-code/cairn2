@@ -8,6 +8,7 @@ import { CairnError } from "../errors.js";
 import { loadConfig } from "../config.js";
 import { projectStatus } from "../planning/status.js";
 import { sessionLandscape } from "../sessions/store.js";
+import { readRegistry } from "./registry.js";
 
 /**
  * The outlook snapshot (#55/#88): a compact, machine-readable "where this
@@ -165,4 +166,61 @@ export function emitOutlook(projectDir: string, patch?: { tracker?: OutlookTrack
 /** Reads a project's mirror snapshot; corrupt or missing reads as null. */
 export function readOutlook(projectDir: string, home?: string): OutlookSnapshot | null {
   return readSnapshot(outlookMirrorPath(projectDir, home));
+}
+
+export interface OutlookCard {
+  name: string;
+  path: string;
+  lastSeen: string;
+  snapshot?: OutlookSnapshot;
+  stale?: boolean;
+  staleReason?: string;
+  error?: string;
+}
+
+/**
+ * The portfolio aggregate (#89): registry + mirror snapshots ONLY -- never
+ * walks the filesystem for repos. Staleness is the card pattern, not a
+ * date: the snapshot's recorded HEAD vs the repo's live HEAD. Per-project
+ * failures become `{name, error}` cards (workspace_status precedent);
+ * one broken project can never take down the board.
+ */
+export function outlookAggregate(home?: string): { projects: OutlookCard[] } {
+  const registry = readRegistry(home);
+  const projects: OutlookCard[] = [];
+
+  for (const entry of registry.projects) {
+    try {
+      const snapshot = readOutlook(entry.path, home) ?? undefined;
+      const card: OutlookCard = {
+        name: entry.name, path: entry.path, lastSeen: entry.lastSeen, snapshot,
+      };
+      if (!snapshot) {
+        card.error = "no snapshot yet -- run any cairn verb in this project to emit one";
+      } else if (snapshot.head !== undefined) {
+        // Frontmatter-adjacent data is attacker-influenceable; validate the
+        // recorded sha before shelling out (same rule as card staleness).
+        if (!/^[0-9a-f]{4,40}$/i.test(snapshot.head)) {
+          card.stale = true;
+          card.staleReason = "snapshot records an invalid commit id";
+        } else {
+          const live = gitHead(entry.path);
+          if (live !== undefined && live !== snapshot.head) {
+            card.stale = true;
+            card.staleReason = `repo moved since snapshot (${snapshot.head.slice(0, 7)} -> ${live.slice(0, 7)})`;
+          } else {
+            card.stale = false;
+          }
+        }
+      }
+      projects.push(card);
+    } catch (e) {
+      projects.push({
+        name: entry.name, path: entry.path, lastSeen: entry.lastSeen,
+        error: e instanceof Error ? e.message : String(e),
+      });
+    }
+  }
+
+  return { projects };
 }

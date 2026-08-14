@@ -4,7 +4,8 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  OutlookSnapshotSchema, emitOutlook, outlookLocalPath, outlookMirrorPath, readOutlook,
+  OutlookSnapshotSchema, emitOutlook, outlookAggregate, outlookLocalPath,
+  outlookMirrorPath, readOutlook,
 } from "../src/core/outlook.js";
 
 const dirs: string[] = [];
@@ -96,6 +97,81 @@ describe("emitOutlook", () => {
 
     emitOutlook(proj, undefined, home);
     expect(OutlookSnapshotSchema.safeParse(JSON.parse(readFileSync(mirror, "utf8"))).success).toBe(true);
+  });
+});
+
+describe("outlookAggregate", () => {
+  const register = (home: string, proj: string) => {
+    mkdirSync(join(home, ".cairn"), { recursive: true });
+    const regPath = join(home, ".cairn", "registry.json");
+    const existing = existsSync(regPath)
+      ? JSON.parse(readFileSync(regPath, "utf8"))
+      : { version: 1, projects: [] };
+    existing.projects.push({
+      name: proj.split("/").pop(), path: proj,
+      firstSeen: "2026-08-14T00:00:00Z", lastSeen: "2026-08-14T00:00:00Z",
+    });
+    writeFileSync(regPath, JSON.stringify(existing));
+  };
+
+  it("empty registry aggregates to zero cards", () => {
+    expect(outlookAggregate(dir()).projects).toEqual([]);
+  });
+
+  it("a registered project with no snapshot gets a card with the guidance error, not an omission", () => {
+    const home = dir();
+    const proj = project();
+    register(home, proj);
+    const { projects } = outlookAggregate(home);
+    expect(projects).toHaveLength(1);
+    expect(projects[0].snapshot).toBeUndefined();
+    expect(projects[0].error).toMatch(/no snapshot yet/);
+  });
+
+  it("fresh snapshot in a repo is stale:false; a new commit flips it stale with a reason", () => {
+    const home = dir();
+    const proj = project();
+    execFileSync("git", ["init", "-q"], { cwd: proj });
+    execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t",
+      "commit", "-q", "--allow-empty", "-m", "one"], { cwd: proj });
+    register(home, proj);
+    emitOutlook(proj, undefined, home);
+    expect(outlookAggregate(home).projects[0].stale).toBe(false);
+
+    execFileSync("git", ["-c", "user.email=t@t", "-c", "user.name=t",
+      "commit", "-q", "--allow-empty", "-m", "two"], { cwd: proj });
+    const card = outlookAggregate(home).projects[0];
+    expect(card.stale).toBe(true);
+    expect(card.staleReason).toMatch(/repo moved since snapshot/);
+  });
+
+  it("one corrupt project cannot take down the board", () => {
+    const home = dir();
+    const good = project();
+    execFileSync("git", ["init", "-q"], { cwd: good });
+    register(home, good);
+    register(home, join(good, "does-not-exist-anymore"));
+    emitOutlook(good, undefined, home);
+
+    const { projects } = outlookAggregate(home);
+    expect(projects).toHaveLength(2);
+    expect(projects.find((p) => p.name === good.split("/").pop())?.snapshot).toBeTruthy();
+    expect(projects.find((p) => p.name === "does-not-exist-anymore")?.error).toBeTruthy();
+  });
+
+  it("a snapshot recording a malformed commit id is flagged stale, no shell-out", () => {
+    const home = dir();
+    const proj = project();
+    register(home, proj);
+    emitOutlook(proj, undefined, home);
+    const mirror = outlookMirrorPath(proj, home);
+    const snap = JSON.parse(readFileSync(mirror, "utf8"));
+    snap.head = "$(rm -rf /)"; // hostile frontmatter-adjacent data
+    writeFileSync(mirror, JSON.stringify(snap));
+
+    const card = outlookAggregate(home).projects[0];
+    expect(card.stale).toBe(true);
+    expect(card.staleReason).toMatch(/invalid commit id/);
   });
 });
 

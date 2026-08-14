@@ -10,7 +10,7 @@ import { CairnError } from "./errors.js";
 import { loadConfig, writeConfigPatch } from "./config.js";
 import { ActiveContext } from "./active-context.js";
 import { registerProject } from "./core/registry.js";
-import { emitOutlook } from "./core/outlook.js";
+import { emitOutlook, outlookAggregate } from "./core/outlook.js";
 import { makeTracker } from "./tracker/registry.js";
 import { CachedTracker } from "./tracker/cached.js";
 import { probeVerdictForError } from "./tracker/probe.js";
@@ -968,6 +968,11 @@ export function buildServer(deps) {
             + "title+project required on create; project must name a workspace member. Rejected "
             + "patches leave the board untouched",
         inputSchema: { patch: z.record(z.union([WorkstreamPatchSchema, z.null()])) } }, wrap((a) => boardUpdate(launchDir, a.patch)));
+    server.registerTool("outlook_get", { description: "Portfolio aggregate (#55): every registered cairn project on this machine as a "
+            + "card — snapshot (phases/sessions/tracker block), staleness vs live git HEAD, per-project "
+            + "{name, error} isolation. Reads ~/.cairn/registry.json + outlook mirrors only; never walks "
+            + "the filesystem",
+        inputSchema: {} }, wrap(() => outlookAggregate()));
     server.registerTool("peer_list", { description: "Detected external AI peer CLIs (codex/opencode/antigravity/grok) — {peers: [on PATH, enabled, "
             + "input cap, execCapable (config-declared trust to execute the product during review)], maxConcurrent: "
             + "resource-aware fan-out budget — dispatch peers in batches of at most this many, never all at once",
