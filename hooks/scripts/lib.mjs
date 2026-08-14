@@ -2,7 +2,8 @@
 
 /**
  * Purpose: shared, dependency-free helpers for cairn's plugin hook scripts
- *   (posttooluse-breadcrumb, precompact-refresh, sessionstart-continuity).
+ *   (posttooluse-breadcrumb, precompact-refresh, sessionstart-continuity,
+ *   task-mirror-spool, task-mirror-worker).
  *   node: builtins only -- these scripts must never import server code, so
  *   the handoff/banner path scheme is recomputed here rather than reused
  *   from server/src/core/continuity.ts (which stays the source of truth).
@@ -35,6 +36,18 @@ export function bannerPath(projectDir) {
 export function metricsPath(projectDir) {
   const { base, hash } = pathHash(projectDir);
   return join(homedir(), ".cairn", "metrics", `${base}-${hash}.jsonl`);
+}
+
+/** Per-project native-Task event spool (task-mirror-spool.mjs appends, task-mirror-worker.mjs drains). */
+export function spoolPath(projectDir) {
+  const { base, hash } = pathHash(projectDir);
+  return join(homedir(), ".cairn", "spool", `${base}-${hash}.jsonl`);
+}
+
+/** (session_id, task_id) -> tracker issue id map the mirror worker keeps beside the spool. */
+export function spoolMapPath(projectDir) {
+  const { base, hash } = pathHash(projectDir);
+  return join(homedir(), ".cairn", "spool", `${base}-${hash}-map.json`);
 }
 
 /** mtime in ms of `path`, or null when it doesn't exist. */
