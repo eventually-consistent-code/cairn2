@@ -23,6 +23,10 @@ jobs:
           npx tsc --noEmit
       - name: surface conformance
         run: node scripts/check-surface.mjs
+      # A half-bumped release (one version file left behind) must fail here,
+      # on every push and PR — not at tag time (see issue #79).
+      - name: version sync
+        run: node scripts/check-versions.mjs
       # Marketplace installs run the committed dist/ — a stale build ships
       # broken no matter how green the tests are (see CRN-58).
       - name: dist freshness
