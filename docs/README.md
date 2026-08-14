@@ -8,6 +8,12 @@
   ~15 minutes: install, credentials, cairn.json, first phase.
 - **[Runbook](01-runbook.md)** — the complete operating manual: every verb,
   every flag, every backend, every error code.
+- **[How cairn compares](comparison.md)** — mechanism-by-mechanism against
+  the nearest alternatives, every competitor claim carrying a
+  last-verified date.
+- **[Council case study](case-study-council.md)** — the 2026-08-12
+  four-vendor product council: 58 findings, source-verified claims, and
+  the dispositions — including the one the tool argued against and lost.
 
 Docs follow the spec → plan → build → review cycle: every phase/tier gets a
 design spec, then an implementation plan, then ships. Specs are decision

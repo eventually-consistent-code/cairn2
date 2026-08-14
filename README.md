@@ -82,7 +82,7 @@ unplanned-work surfacing (tracker issues no plan references), `import`
 assignee-aware claiming, and plans/cards that collaborate through ordinary
 git PRs.
 
-**Verbs (38 live):** `plan` `work` `verify` `ship` `status` `new` `import`
+**Verbs (39 live):** `plan` `work` `verify` `ship` `status` `new` `import`
 `remember` `recall` `help` `do` `waypoint` `scout` `survey` `route` `summit` `auto`
 `fast` `resync` `mark` `retro` `distill` `brief` `tune` `trace` `probe`
 `draft` `audit` `review` `triage` `map` `thread` `profile` `medic`
@@ -90,7 +90,7 @@ git PRs.
 from the routing table.
 The routing table is complete: the reserved verb set is now empty.
 
-**Server:** 79 typed MCP tools, 1086 passing tests — counts move with each
+**Server:** 79 typed MCP tools, 1117 passing tests — counts move with each
 tier and are measured in CI (env-gated live-backend
 suites skip without creds) — three dependencies (`@modelcontextprotocol/sdk`,
 `better-sqlite3`, `zod`). Fail loud, never fake state.
@@ -123,12 +123,12 @@ Installs are stamped (`.cairn-manifest.json`: source version + date), and
 surface against this clone's version — read-only, per-surface table,
 non-zero exit when anything lags, so it can gate.
 
-Every install gets the full 75-tool surface, the generated `AGENTS.md` verb
+Every install gets the full 79-tool surface, the generated `AGENTS.md` verb
 registry (from `scripts/gen-agents.mjs`, drift-checked in CI), and the verb
 subroutines copied to `.cairn/harness/` so any harness can execute them by
 name ("run cairn status"). Honest capability table:
 
-| Harness | Tools (75) | Verbs | Slash commands | Continuity/cost/observe hooks |
+| Harness | Tools (79) | Verbs | Slash commands | Continuity/cost/observe hooks |
 |---|---|---|---|---|
 | Claude Code (plugin) | ✅ | ✅ | ✅ `/cairn:*` | ✅ |
 | Grok Build | ✅ | ✅ by name | via its Claude-compat layer | untested — claims hook compat |
@@ -148,6 +148,11 @@ mechanism and an external tracker holding work truth. Agent IDEs (Cursor,
 Copilot Workspace, Devin) are adjacent but do a different job — they are the
 coding environment; cairn is the work-management layer that rides along in
 it.
+
+The full mechanism-by-mechanism table — with a last-verified date on every
+competitor claim — is maintained at [docs/comparison.md](docs/comparison.md).
+The evidence behind the review claims lives in
+[the council case study](docs/case-study-council.md).
 
 ## Roadmap
 
