@@ -23,7 +23,11 @@ describe("standalone stdio boot (no Claude Code)", () => {
     const transport = new StdioClientTransport({
       command: process.execPath,
       args: [join(serverDir, "dist", "index.js")],
-      env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
+      // HOME points at the temp dir so the spawned server's ~/.cairn writes
+      // (registry auto-register, handoff, outlook mirror) stay hermetic --
+      // a test run must never edit the user's real machine registry (#93).
+      env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir,
+        HOME: projectDir, USERPROFILE: projectDir },
     });
     const client = new Client({ name: "harness-smoke", version: "0.0.0" });
     try {
