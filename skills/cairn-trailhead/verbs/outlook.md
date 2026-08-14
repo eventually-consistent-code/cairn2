@@ -1,6 +1,6 @@
 ---
 verb: outlook
-args: "[<project>]"
+args: "[<project>] | --refresh | forget <project>"
 status: live
 ---
 
@@ -55,3 +55,32 @@ with any cairn verb is enough to put it on the board.
    thin, say so and point at the real fix: run any cairn verb in that
    project (or the lifecycle gates) to refresh its snapshot. Don't fake
    depth the snapshot doesn't have.
+
+## `outlook --refresh` — re-derive stale snapshots
+
+1. `outlook_get()` — collect the cards flagged `stale: true`.
+2. `outlook_refresh(project: <name>)` for each stale card, then
+   `outlook_get(artifact: true)` once for the fresh board. Report which
+   projects were refreshed and which still show stale (a project that
+   moved again mid-refresh is possible, not a failure).
+3. Refresh is LOCAL derivation only — phase table, sessions, HEAD. It
+   cannot invent tracker counts; those still arrive from each project's
+   own lifecycle gates. Say so when a refreshed card still has old
+   work-item numbers.
+
+## `outlook forget <project>` — prune the registry
+
+1. `outlook_forget(project: <name-or-path>)`. Empty `removed` → list
+   what IS registered instead of claiming success.
+2. Forgetting is registry-only — the project, its snapshots, and its
+   history stay on disk; re-registration happens automatically the next
+   time cairn's server starts there. Say exactly that, so "forget" reads
+   as "hide from the board", not "delete".
+
+## Cost on the board
+
+Cards carry `costUsd` / `costByKind` (agent spend, approximate, summed
+from each session's latest metrics row). The board render and OUTLOOK.md
+show per-project spend with the kind split (issue/trace/probe/plan/…)
+and a portfolio total in the rollup line. Always label spend
+approximate — the prices are list-price estimates.

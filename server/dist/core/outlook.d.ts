@@ -64,7 +64,23 @@ export interface OutlookCard {
     stale?: boolean;
     staleReason?: string;
     error?: string;
+    costUsd?: number;
+    costByKind?: Record<string, number>;
 }
+/** Metrics file for a project -- same basename+hash scheme as the mirror.
+ *  This join is WHY the registry keeps absolute paths: the hash alone is
+ *  not reversible. */
+export declare function metricsPathFor(projectDir: string, home?: string): string;
+/**
+ * Per-project agent spend (#92): rows are cumulative per session, so the
+ * total is the sum of each session's LATEST row (cost-report.mjs contract).
+ * Missing or corrupt metrics read as zero -- cost is decoration on the
+ * board, never a reason a card fails.
+ */
+export declare function projectCost(projectDir: string, home?: string): {
+    costUsd: number;
+    costByKind: Record<string, number>;
+} | null;
 /** The written board (#91) -- machine-level on purpose: an in-repo copy of
  *  the FLEET board would leak every other project's name into whichever repo
  *  committed it. One artifact per machine, shareable by hand. */

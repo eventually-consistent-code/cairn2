@@ -36,4 +36,10 @@ export declare function readRegistry(home?: string): Registry;
  * fire-and-forget -- a registry failure must never fail server startup, so
  * anything thrown here is swallowed at the call site.
  */
+/**
+ * Removes a project from the registry by name or path (case-insensitive
+ * substring on name; exact on path). Returns the removed entries -- empty
+ * means nothing matched. Write is atomic like registerProject's.
+ */
+export declare function forgetProject(nameOrPath: string, home?: string): RegistryEntry[];
 export declare function registerProject(projectDir: string, home?: string): void;

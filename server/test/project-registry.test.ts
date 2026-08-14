@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { readRegistry, registerProject, registryPath } from "../src/core/registry.js";
+import { forgetProject, readRegistry, registerProject, registryPath } from "../src/core/registry.js";
 
 const dirs: string[] = [];
 const dir = (prefix = "cairn-registry-") => {
@@ -87,6 +87,31 @@ describe("registerProject", () => {
 
     const paths = readRegistry(home).projects.map((p) => p.path).sort();
     expect(paths).toEqual([resolve(a), resolve(b)].sort());
+  });
+});
+
+describe("forgetProject", () => {
+  it("removes by name substring and reports what went; unknown name removes nothing", () => {
+    const home = dir();
+    const a = registered();
+    const b = registered();
+    registerProject(a, home);
+    registerProject(b, home);
+
+    const removed = forgetProject(a.split("/").pop()!, home);
+    expect(removed.map((r) => r.path)).toEqual([resolve(a)]);
+    expect(readRegistry(home).projects.map((p) => p.path)).toEqual([resolve(b)]);
+
+    expect(forgetProject("no-such-project-anywhere", home)).toEqual([]);
+    expect(readRegistry(home).projects).toHaveLength(1);
+  });
+
+  it("removes by exact path", () => {
+    const home = dir();
+    const a = registered();
+    registerProject(a, home);
+    expect(forgetProject(resolve(a), home)).toHaveLength(1);
+    expect(readRegistry(home).projects).toHaveLength(0);
   });
 });
 

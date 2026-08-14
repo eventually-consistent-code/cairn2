@@ -517,7 +517,7 @@ describe("stop-costtracker + cost-report", () => {
     expect(r.status).toBe(0);
     const rows = readFileSync(metrics, "utf8").trim().split("\n").map((l) => JSON.parse(l));
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ session_id: "s1", phase: 4, issue: "CRN-99" });
+    expect(rows[0]).toMatchObject({ session_id: "s1", phase: 4, issue: "CRN-99", kind: "issue" });
     expect(rows[0].input_tokens).toBe(5000);
     expect(rows[0].output_tokens).toBe(3000);
     expect(rows[0].est_cost_usd).toBeGreaterThan(0);
@@ -534,6 +534,34 @@ describe("stop-costtracker + cost-report", () => {
       cwd: proj, env: { ...process.env, CLAUDE_PROJECT_DIR: proj }, encoding: "utf8",
     });
     expect(Number(rep.stdout.trim())).toBeGreaterThan(0);
+    rmSync(metrics, { force: true });
+  });
+
+  it("tags non-issue work by its open session kind, and bare-phase work as plan (#92)", () => {
+    const proj = freshDir("cairn-cost-kind-");
+    mkdirSync(join(proj, ".cairn", "state"), { recursive: true });
+    writeFileSync(join(proj, ".cairn", "state", "active-context.json"),
+      JSON.stringify({ phase: 4 }));
+    mkdirSync(join(proj, ".cairn", "probe"), { recursive: true });
+    writeFileSync(join(proj, ".cairn", "probe", "probe-abc123.md"), "# open probe\n");
+    const transcript = transcriptWith(proj);
+    const metrics = metricsPathFor(proj);
+    rmSync(metrics, { force: true });
+
+    const r = runHookRaw(COSTTRACKER, proj,
+      JSON.stringify({ session_id: "s-probe", transcript_path: transcript }));
+    expect(r.status).toBe(0);
+    let rows = readFileSync(metrics, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    expect(rows[0].kind).toBe("probe");
+
+    // no open sessions, phase only -> plan
+    rmSync(join(proj, ".cairn", "probe"), { recursive: true, force: true });
+    rmSync(metrics, { force: true });
+    const r2 = runHookRaw(COSTTRACKER, proj,
+      JSON.stringify({ session_id: "s-plan", transcript_path: transcript }));
+    expect(r2.status).toBe(0);
+    rows = readFileSync(metrics, "utf8").trim().split("\n").map((l) => JSON.parse(l));
+    expect(rows[0].kind).toBe("plan");
     rmSync(metrics, { force: true });
   });
 

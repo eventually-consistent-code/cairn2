@@ -4,8 +4,8 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  OutlookSnapshotSchema, emitOutlook, outlookAggregate, outlookArtifactPath,
-  outlookLocalPath, outlookMirrorPath, readOutlook,
+  OutlookSnapshotSchema, emitOutlook, metricsPathFor, outlookAggregate,
+  outlookArtifactPath, outlookLocalPath, outlookMirrorPath, readOutlook,
 } from "../src/core/outlook.js";
 
 const dirs: string[] = [];
@@ -172,6 +172,47 @@ describe("outlookAggregate", () => {
     const card = outlookAggregate(home).projects[0];
     expect(card.stale).toBe(true);
     expect(card.staleReason).toMatch(/invalid commit id/);
+  });
+});
+
+describe("cost rollup on cards (#92)", () => {
+  it("sums each session's latest metrics row, split by kind; corrupt lines skipped", () => {
+    const home = dir();
+    const proj = project();
+    mkdirSync(join(home, ".cairn"), { recursive: true });
+    writeFileSync(join(home, ".cairn", "registry.json"), JSON.stringify({
+      version: 1,
+      projects: [{ name: proj.split("/").pop(), path: proj,
+        firstSeen: "2026-08-14T00:00:00Z", lastSeen: "2026-08-14T00:00:00Z" }],
+    }));
+    emitOutlook(proj, undefined, home);
+
+    const metrics = metricsPathFor(proj, home);
+    mkdirSync(join(home, ".cairn", "metrics"), { recursive: true });
+    writeFileSync(metrics, [
+      JSON.stringify({ session_id: "s1", est_cost_usd: 1.0, kind: "issue" }),
+      JSON.stringify({ session_id: "s1", est_cost_usd: 2.5, kind: "issue" }), // cumulative: latest wins
+      JSON.stringify({ session_id: "s2", est_cost_usd: 0.75, kind: "probe" }),
+      "{corrupt line",
+      JSON.stringify({ session_id: "s3", est_cost_usd: 0.25 }), // no kind -> other
+    ].join("\n") + "\n");
+
+    const card = outlookAggregate(home).projects[0];
+    expect(card.costUsd).toBe(3.5);
+    expect(card.costByKind).toEqual({ issue: 2.5, probe: 0.75, other: 0.25 });
+  });
+
+  it("no metrics file means no cost fields, not zero", () => {
+    const home = dir();
+    const proj = project();
+    mkdirSync(join(home, ".cairn"), { recursive: true });
+    writeFileSync(join(home, ".cairn", "registry.json"), JSON.stringify({
+      version: 1,
+      projects: [{ name: proj.split("/").pop(), path: proj,
+        firstSeen: "2026-08-14T00:00:00Z", lastSeen: "2026-08-14T00:00:00Z" }],
+    }));
+    emitOutlook(proj, undefined, home);
+    expect(outlookAggregate(home).projects[0].costUsd).toBeUndefined();
   });
 });
 

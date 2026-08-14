@@ -10,7 +10,7 @@ import { CairnError } from "./errors.js";
 import { loadConfig, writeConfigPatch } from "./config.js";
 import type { CairnConfig } from "./config.js";
 import { ActiveContext } from "./active-context.js";
-import { registerProject } from "./core/registry.js";
+import { forgetProject, readRegistry, registerProject } from "./core/registry.js";
 import { emitOutlook, outlookAggregate } from "./core/outlook.js";
 import type { OutlookTracker } from "./core/outlook.js";
 import { makeTracker } from "./tracker/registry.js";
@@ -1205,6 +1205,35 @@ export function buildServer(deps: {
       inputSchema: { patch: z.record(z.union([WorkstreamPatchSchema, z.null()])) } },
     wrap((a: { patch: Record<string, Partial<Workstream> | null> }) =>
       boardUpdate(launchDir, a.patch)));
+
+  server.registerTool("outlook_refresh",
+    { description: "Re-derive another registered project's outlook snapshot in place (#92) -- "
+        + "used by outlook --refresh on stale cards. project matches a registry entry by "
+        + "case-insensitive name substring or exact path; ambiguous or missing matches error "
+        + "with the candidates. Local derivation only, no tracker calls",
+      inputSchema: { project: z.string() } },
+    wrap((a: { project: string }) => {
+      const entries = readRegistry().projects.filter((p) =>
+        p.path === a.project || p.name.toLowerCase().includes(a.project.toLowerCase()));
+      if (entries.length === 0) {
+        throw new CairnError("NOT_FOUND", `no registered project matches '${a.project}'`,
+          "outlook_get lists what is registered");
+      }
+      if (entries.length > 1) {
+        throw new CairnError("PRECONDITION_FAILED",
+          `'${a.project}' is ambiguous: ${entries.map((e) => e.name).join(", ")}`,
+          "narrow the name or pass the exact path");
+      }
+      emitOutlook(entries[0].path);
+      return { refreshed: entries[0].name, path: entries[0].path };
+    }));
+
+  server.registerTool("outlook_forget",
+    { description: "Prune a project from the machine registry (#92) -- outlook forget <project>. "
+        + "Matches by case-insensitive name substring or exact path; returns what was removed "
+        + "(empty = no match). Does not touch the project itself or its snapshots",
+      inputSchema: { project: z.string() } },
+    wrap((a: { project: string }) => ({ removed: forgetProject(a.project) })));
 
   server.registerTool("outlook_emit",
     { description: "Explicit outlook snapshot emit for lifecycle gates (verify/ship/summit). "

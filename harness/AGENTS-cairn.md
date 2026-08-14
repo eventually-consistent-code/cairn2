@@ -59,7 +59,7 @@ executing that verb.
 | peers | Convene external AI CLIs as reviewers — convergence with adversarial judgment | (none = status) \| review [target] \| plan <phase> \| council [dimensions] |
 | docs | Publish repo docs to the configured docs connector (Confluence or Docusaurus) — landing page + page tree | publish [--name "<project>"] \| (none = status) |
 | survey | Project-wide research — findings, then discussed roadmap changes | ["<topic>"] |
-| outlook | Portfolio board — every cairn project on this machine, staleness-flagged | [<project>] |
+| outlook | Portfolio board — every cairn project on this machine, staleness-flagged, cost rollup | [<project>] \| --refresh \| forget <project> |
 
 ## Shared rules (inherited by every subroutine)
 

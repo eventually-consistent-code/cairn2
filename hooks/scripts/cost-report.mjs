@@ -77,6 +77,7 @@ function main() {
       total_est_usd: Number(total.toFixed(2)),
       by_phase: Object.fromEntries(groupCost(rows, "phase")),
       by_issue: Object.fromEntries(groupCost(rows, "issue")),
+      by_kind: Object.fromEntries(groupCost(rows, "kind")),
     }));
     return;
   }
@@ -91,6 +92,11 @@ function main() {
   if (byIssue.length) {
     console.log("by issue:");
     for (const [k, v] of byIssue.slice(0, 10)) console.log(`  ${k}: $${v.toFixed(2)}`);
+  }
+  const byKind = groupCost(rows, "kind");
+  if (byKind.length) {
+    console.log("by kind:");
+    for (const [k, v] of byKind) console.log(`  ${k}: $${v.toFixed(2)}`);
   }
 }
 

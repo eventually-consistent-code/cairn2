@@ -44,6 +44,25 @@ export function readRegistry(home) {
  * fire-and-forget -- a registry failure must never fail server startup, so
  * anything thrown here is swallowed at the call site.
  */
+/**
+ * Removes a project from the registry by name or path (case-insensitive
+ * substring on name; exact on path). Returns the removed entries -- empty
+ * means nothing matched. Write is atomic like registerProject's.
+ */
+export function forgetProject(nameOrPath, home) {
+    const registry = readRegistry(home);
+    const needle = nameOrPath.toLowerCase();
+    const removed = registry.projects.filter((p) => p.path === nameOrPath || p.name.toLowerCase().includes(needle));
+    if (removed.length === 0)
+        return [];
+    registry.projects = registry.projects.filter((p) => !removed.includes(p));
+    const path = registryPath(home);
+    mkdirSync(dirname(path), { recursive: true });
+    const tmp = `${path}.tmp`;
+    writeFileSync(tmp, JSON.stringify(registry, null, 2) + "\n");
+    renameSync(tmp, path);
+    return removed;
+}
 export function registerProject(projectDir, home) {
     try {
         loadConfig(projectDir);

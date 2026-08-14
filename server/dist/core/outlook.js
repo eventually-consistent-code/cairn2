@@ -122,6 +122,52 @@ export function emitOutlook(projectDir, patch, home) {
 export function readOutlook(projectDir, home) {
     return readSnapshot(outlookMirrorPath(projectDir, home));
 }
+/** Metrics file for a project -- same basename+hash scheme as the mirror.
+ *  This join is WHY the registry keeps absolute paths: the hash alone is
+ *  not reversible. */
+export function metricsPathFor(projectDir, home = homedir()) {
+    const { base, hash } = pathHash(projectDir);
+    return join(home, ".cairn", "metrics", `${base}-${hash}.jsonl`);
+}
+/**
+ * Per-project agent spend (#92): rows are cumulative per session, so the
+ * total is the sum of each session's LATEST row (cost-report.mjs contract).
+ * Missing or corrupt metrics read as zero -- cost is decoration on the
+ * board, never a reason a card fails.
+ */
+export function projectCost(projectDir, home) {
+    const path = metricsPathFor(projectDir, home);
+    if (!existsSync(path))
+        return null;
+    const latest = new Map();
+    try {
+        for (const line of readFileSync(path, "utf8").split("\n")) {
+            if (!line.trim())
+                continue;
+            try {
+                const row = JSON.parse(line);
+                if (!row.session_id)
+                    continue;
+                latest.set(row.session_id, { cost: row.est_cost_usd ?? 0, kind: row.kind ?? "other" });
+            }
+            catch { /* skip bad line */ }
+        }
+    }
+    catch {
+        return null;
+    }
+    let costUsd = 0;
+    const costByKind = {};
+    for (const { cost, kind } of latest.values()) {
+        costUsd += cost;
+        costByKind[kind] = (costByKind[kind] ?? 0) + cost;
+    }
+    return {
+        costUsd: Number(costUsd.toFixed(2)),
+        costByKind: Object.fromEntries(Object.entries(costByKind)
+            .map(([k, v]) => [k, Number(v.toFixed(2))])),
+    };
+}
 /** The written board (#91) -- machine-level on purpose: an in-repo copy of
  *  the FLEET board would leak every other project's name into whichever repo
  *  committed it. One artifact per machine, shareable by hand. */
@@ -130,13 +176,15 @@ export function outlookArtifactPath(home = homedir()) {
 }
 /** Renders the board as manager-facing markdown -- same data as the cards. */
 export function renderOutlookMd(cards, now) {
+    const spend = cards.reduce((s, c) => s + (c.costUsd ?? 0), 0);
     const lines = [
         "# Portfolio outlook",
         "",
         `_As of ${now}. ${cards.length} project${cards.length === 1 ? "" : "s"}; `
             + `${cards.filter((c) => c.stale === false).length} current, `
             + `${cards.filter((c) => c.stale === true).length} stale, `
-            + `${cards.filter((c) => c.error).length} unreadable._`,
+            + `${cards.filter((c) => c.error).length} unreadable.`
+            + (spend > 0 ? ` Agent spend ~$${spend.toFixed(2)} (approximate).` : "") + "_",
         "",
     ];
     for (const c of cards) {
@@ -171,6 +219,12 @@ export function renderOutlookMd(cards, now) {
             if (t.nextVerb)
                 lines.push(`- suggested next: ${t.nextVerb}`);
         }
+        if (c.costUsd !== undefined) {
+            const kinds = Object.entries(c.costByKind ?? {})
+                .sort(([, a], [, b]) => b - a)
+                .map(([k, v]) => `${k} $${v.toFixed(2)}`).join(", ");
+            lines.push(`- agent spend: ~$${c.costUsd.toFixed(2)}${kinds ? ` (${kinds})` : ""} — approximate`);
+        }
         lines.push("");
     }
     return lines.join("\n");
@@ -191,6 +245,11 @@ export function outlookAggregate(home, opts) {
             const card = {
                 name: entry.name, path: entry.path, lastSeen: entry.lastSeen, snapshot,
             };
+            const cost = projectCost(entry.path, home);
+            if (cost) {
+                card.costUsd = cost.costUsd;
+                card.costByKind = cost.costByKind;
+            }
             if (!snapshot) {
                 card.error = "no snapshot yet -- run any cairn verb in this project to emit one";
             }

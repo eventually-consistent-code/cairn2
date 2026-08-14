@@ -1,6 +1,6 @@
 ---
-description: "Portfolio board — every cairn project on this machine, staleness-flagged (cairn — /cairn:help for the verb reference)"
-argument-hint: "[<project>]"
+description: "Portfolio board — every cairn project on this machine, staleness-flagged, cost rollup (cairn — /cairn:help for the verb reference)"
+argument-hint: "[<project>] | --refresh | forget <project>"
 ---
 
 Execute the cairn verb `outlook`:

@@ -10,7 +10,7 @@
  * Author(s): John Reed
  */
 
-import { readFileSync, statSync, appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync, appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { metricsPath } from "./lib.mjs";
 
@@ -78,6 +78,29 @@ function activeContext(projectDir) {
   }
 }
 
+/**
+ * What KIND of work this session's spend belongs to (#92) -- issue work,
+ * an open trace/probe/draft/thread session, plain planning, or other.
+ * Without this tag, survey and investigation spend vanishes from every
+ * breakdown. Newest open session file wins when several kinds are open.
+ */
+function workKind(projectDir, ctx) {
+  if (ctx.issue) return "issue";
+  let newest = null;
+  for (const kind of ["trace", "probe", "draft", "thread"]) {
+    try {
+      for (const f of readdirSync(join(projectDir, ".cairn", kind))) {
+        if (!f.endsWith(".md")) continue; // archive/ subdir and stray files skip
+        const m = statSync(join(projectDir, ".cairn", kind, f)).mtimeMs;
+        if (!newest || m > newest.m) newest = { kind, m };
+      }
+    } catch { /* kind dir absent -- fine */ }
+  }
+  if (newest) return newest.kind;
+  if (ctx.phase !== undefined) return "plan";
+  return "other";
+}
+
 /** Retention guard -- the metrics log must not grow unbounded (CRN-27). */
 function capFile(path) {
   const lines = readFileSync(path, "utf8").split("\n").filter(Boolean);
@@ -99,10 +122,12 @@ function main() {
   const totals = sumUsage(payload.transcript_path);
   if (totals.input + totals.output === 0) return;
 
+  const ctx = activeContext(projectDir);
   const row = {
     ts: new Date().toISOString(),
     session_id: payload.session_id,
-    ...activeContext(projectDir),
+    ...ctx,
+    kind: workKind(projectDir, ctx),
     input_tokens: totals.input,
     output_tokens: totals.output,
     cache_write_tokens: totals.cacheWrite,
