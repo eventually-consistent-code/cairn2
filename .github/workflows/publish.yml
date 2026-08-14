@@ -51,14 +51,16 @@ jobs:
           node scripts/check-surface.mjs
           cd server && npm run build && git diff --exit-code dist
 
-      # Tag pushes must match both package versions — fail early and clear,
-      # not late at the registry with an E403.
+      # Tag pushes must match all three version files — both packages plus
+      # the marketplace manifest — fail early and clear, not late at the
+      # registry with an E403 (or a marketplace install of the wrong version).
       - name: gate — tag matches package versions
         if: github.ref_type == 'tag'
         run: |
           v="${GITHUB_REF_NAME#v}"
           [ "$(node -p "require('./package.json').version")" = "$v" ] || { echo "root package.json is not $v"; exit 1; }
           [ "$(node -p "require('./server/package.json').version")" = "$v" ] || { echo "server/package.json is not $v"; exit 1; }
+          [ "$(node -p "require('./.claude-plugin/plugin.json').version")" = "$v" ] || { echo ".claude-plugin/plugin.json is not $v"; exit 1; }
 
       # Server first — the root package's cairn-setup falls back to
       # `npx @eventually-consistent/cairn-server`, so it must exist.
