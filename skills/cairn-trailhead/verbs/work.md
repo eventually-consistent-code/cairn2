@@ -40,12 +40,44 @@ pairing overlay applies:
    `/cairn:plan <N>`.
 2. `--wave` (only when PLAN.md has `wave_N` frontmatter — else say so and
    point at `/cairn:plan <N>`): run waves in order (`--wave N` runs just
-   that wave). Within a wave, dispatch one subagent per issue IN PARALLEL —
-   worktree isolation for any file-mutating issue. Each subagent runs the
-   full per-issue lifecycle below (claim → work → close → ledger). Wave
-   N+1 starts only when every wave-N issue is closed and merged. A failed
-   issue: let the wave's others finish, then STOP before the next wave and
-   report — never build on possibly-broken foundations.
+   that wave). Each worker runs the full per-issue lifecycle below
+   (claim → work → close → ledger) — the dispatch mechanism changes,
+   the lifecycle never does. Wave N+1 starts only when every wave-N
+   issue is closed and merged. A failed issue: let the wave's others
+   finish, then STOP before the next wave and report — never build on
+   possibly-broken foundations. Two dispatch paths, checked in order:
+
+   **Primary — the harness has the `Workflow` tool** (probe #86 validated
+   every leg of this path): dispatch the wave as ONE `Workflow` run.
+   Script shape: `pipeline(issues, claim, work, verify, close)` — one
+   `agent()` call per stage per issue, so the run graph mirrors the
+   lifecycle exactly and the platform owns retries, ordering, and fan-in.
+   - Every stage declares a structured-output schema and returns
+     machine-readable status (issue id, stage, ok, detail) — the schema
+     IS the worker contract; a misbehaving worker degrades to a
+     schema-valid failure result without harming its siblings.
+   - Workers reach cairn MCP tools by loading them via `ToolSearch`
+     (`select:mcp__plugin_cairn_cairn__...`) — say so in every agent
+     prompt; workflow subagents don't inherit loaded schemas.
+   - File-mutating work stages get `opts.isolation: "worktree"` — same
+     isolation rule as the fallback path, enforced by the platform.
+   - `.filter(Boolean)` on collected results — the documented contract
+     resolves failed thunks to `null`; keep the filter even though
+     schema'd failures usually arrive as values.
+   - The moment dispatch returns, record the run id in BOTH places so it
+     survives /clear: `continuity_checkpoint(source: "work", notes:
+     "wave <N> run <id>")` AND `outlook_emit(tracker: {open, inProgress,
+     blocked, nextVerb: "work <N> --wave — resume run <id>", asOf})`.
+   - Re-entry on an interrupted wave: resume with `resumeFromRunId: <id>`
+     instead of redispatching — unchanged agent-call prefixes replay from
+     cache, so completed workers are free and only unfinished ones run.
+   After the run: any issue whose result failed (or vanished in the
+   filter) → the failed-issue stop rule above.
+
+   **Fallback — no `Workflow` tool** (other harnesses): within the wave,
+   dispatch one subagent per issue IN PARALLEL — worktree isolation for
+   any file-mutating issue. Each subagent runs the full per-issue
+   lifecycle below (claim → work → close → ledger).
 3. For each issue id, in order: `issue_get(id)` — skip closed ones. If it's
    assigned to someone who is not you (compare against `user.handle` in
    cairn.json, only when it's set there — if unset, there are no ownership
