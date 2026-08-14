@@ -30,6 +30,8 @@ export const configSchema = z
     spaceId: z.string().optional(), // …or directly in this space (exactly one required)
     tokenEnv: z.string().default("CLICKUP_TOKEN"),
     // Extra keys are custom cairn states ("review": "code review") — CRN-26.
+    // Deliberate .default under zod 4 (#95): a provided map replaces wholesale
+    // (no merge with defaults) and the refine below still guards partial maps.
     statuses: z
       .record(z.string(), z.string())
       .default({

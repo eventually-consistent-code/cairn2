@@ -12,6 +12,8 @@ export const configSchema = z.object({
     patEnv: z.string().default("AZURE_DEVOPS_PAT"),
     apiVersion: z.string().default("7.0"),
     // Extra keys are custom cairn states ("review": "In Review") — CRN-26.
+    // Deliberate .default under zod 4 (#95): a provided map replaces wholesale
+    // (no merge with defaults) and the refine below still guards partial maps.
     states: z
         .record(z.string(), z.string())
         .default({ in_progress: "Doing", closed: "Done", open: "To Do" })

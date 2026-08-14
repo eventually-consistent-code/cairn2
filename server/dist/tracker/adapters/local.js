@@ -19,6 +19,8 @@ export const configSchema = z.object({
         .default("lt"),
     /** Custom state vocabulary: name → semantic category (CRN-26).
      *  e.g. { "review": "in_progress", "blocked": "open" } */
+    // Deliberate .default({}) — NOT a missed .prefault (#95): a record carries
+    // no inner defaults, so zod 4's short-circuit and parse-through both yield {}.
     states: z
         .record(z.string(), z.enum(["open", "in_progress", "closed"]))
         .default({}),

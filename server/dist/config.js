@@ -25,6 +25,9 @@ export const ConfigSchema = z.object({
         config: z.record(z.string(), z.unknown()),
     })
         .optional(),
+    // Deliberate .default (not .prefault) on the next two blocks — the default
+    // value is already complete, so zod 4's short-circuit returns exactly what
+    // parse-through would (#95).
     agents: z
         .object({ model: z.enum(["auto", "inherit", "haiku", "sonnet", "opus"]) })
         .default({ model: "auto" }),
