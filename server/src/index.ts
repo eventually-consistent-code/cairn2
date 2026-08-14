@@ -1226,9 +1226,12 @@ export function buildServer(deps: {
     { description: "Portfolio aggregate (#55): every registered cairn project on this machine as a "
         + "card — snapshot (phases/sessions/tracker block), staleness vs live git HEAD, per-project "
         + "{name, error} isolation. Reads ~/.cairn/registry.json + outlook mirrors only; never walks "
-        + "the filesystem",
-      inputSchema: {} },
-    wrap(() => outlookAggregate()));
+        + "the filesystem. artifact: true also writes the shareable board to ~/.cairn/OUTLOOK.md "
+        + "(machine-level on purpose -- an in-repo fleet board would leak other projects' names) "
+        + "and returns artifactPath",
+      inputSchema: { artifact: z.boolean().optional() } },
+    wrap((a: { artifact?: boolean }) =>
+      outlookAggregate(undefined, a.artifact ? { artifact: true } : undefined)));
 
   server.registerTool("peer_list",
     { description: "Detected external AI peer CLIs (codex/opencode/antigravity/grok) — {peers: [on PATH, enabled, "

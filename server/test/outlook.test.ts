@@ -4,8 +4,8 @@ import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
-  OutlookSnapshotSchema, emitOutlook, outlookAggregate, outlookLocalPath,
-  outlookMirrorPath, readOutlook,
+  OutlookSnapshotSchema, emitOutlook, outlookAggregate, outlookArtifactPath,
+  outlookLocalPath, outlookMirrorPath, readOutlook,
 } from "../src/core/outlook.js";
 
 const dirs: string[] = [];
@@ -172,6 +172,52 @@ describe("outlookAggregate", () => {
     const card = outlookAggregate(home).projects[0];
     expect(card.stale).toBe(true);
     expect(card.staleReason).toMatch(/invalid commit id/);
+  });
+});
+
+describe("OUTLOOK.md artifact (#91)", () => {
+  it("artifact: true writes the machine-level board matching the returned cards", () => {
+    const home = dir();
+    const proj = project();
+    mkdirSync(join(home, ".cairn"), { recursive: true });
+    writeFileSync(join(home, ".cairn", "registry.json"), JSON.stringify({
+      version: 1,
+      projects: [{ name: proj.split("/").pop(), path: proj,
+        firstSeen: "2026-08-14T00:00:00Z", lastSeen: "2026-08-14T00:00:00Z" }],
+    }));
+    emitOutlook(proj, { tracker: { open: 2, nextVerb: "work 2" } }, home);
+
+    const out = outlookAggregate(home, { artifact: true });
+    expect(out.artifactPath).toBe(outlookArtifactPath(home));
+    const md = readFileSync(out.artifactPath!, "utf8");
+    expect(md).toContain("# Portfolio outlook");
+    expect(md).toContain(`## ${proj.split("/").pop()}`);
+    expect(md).toContain("verified through phase 1");
+    expect(md).toContain("next up: phase 2 (second, 1 issues)");
+    expect(md).toContain("work items: 2 open");
+    expect(md).toContain("suggested next: work 2");
+    expect(md).toContain("1 project; ");
+  });
+
+  it("plain aggregate does not write the artifact", () => {
+    const home = dir();
+    outlookAggregate(home);
+    expect(existsSync(outlookArtifactPath(home))).toBe(false);
+  });
+
+  it("unreadable projects render flagged, not hidden", () => {
+    const home = dir();
+    mkdirSync(join(home, ".cairn"), { recursive: true });
+    writeFileSync(join(home, ".cairn", "registry.json"), JSON.stringify({
+      version: 1,
+      projects: [{ name: "ghost", path: join(home, "gone"),
+        firstSeen: "2026-08-14T00:00:00Z", lastSeen: "2026-08-14T00:00:00Z" }],
+    }));
+    const out = outlookAggregate(home, { artifact: true });
+    const md = readFileSync(out.artifactPath!, "utf8");
+    expect(md).toContain("## ghost");
+    expect(md).toContain("status: unavailable");
+    expect(md).toContain("1 unreadable");
   });
 });
 

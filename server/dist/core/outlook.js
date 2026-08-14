@@ -122,6 +122,59 @@ export function emitOutlook(projectDir, patch, home) {
 export function readOutlook(projectDir, home) {
     return readSnapshot(outlookMirrorPath(projectDir, home));
 }
+/** The written board (#91) -- machine-level on purpose: an in-repo copy of
+ *  the FLEET board would leak every other project's name into whichever repo
+ *  committed it. One artifact per machine, shareable by hand. */
+export function outlookArtifactPath(home = homedir()) {
+    return join(home, ".cairn", "OUTLOOK.md");
+}
+/** Renders the board as manager-facing markdown -- same data as the cards. */
+export function renderOutlookMd(cards, now) {
+    const lines = [
+        "# Portfolio outlook",
+        "",
+        `_As of ${now}. ${cards.length} project${cards.length === 1 ? "" : "s"}; `
+            + `${cards.filter((c) => c.stale === false).length} current, `
+            + `${cards.filter((c) => c.stale === true).length} stale, `
+            + `${cards.filter((c) => c.error).length} unreadable._`,
+        "",
+    ];
+    for (const c of cards) {
+        lines.push(`## ${c.name}`);
+        lines.push("");
+        if (c.error) {
+            lines.push(`- status: unavailable — ${c.error}`);
+            lines.push("");
+            continue;
+        }
+        const s = c.snapshot;
+        const verified = s.phases.filter((p) => p.verified).map((p) => p.number);
+        const next = s.phases.find((p) => p.planned && !p.verified);
+        lines.push(`- last activity: ${s.ts}${c.stale ? ` — STALE: ${c.staleReason}` : ""}`);
+        if (verified.length)
+            lines.push(`- verified through phase ${Math.max(...verified)}`);
+        if (next)
+            lines.push(`- next up: phase ${next.number} (${next.name}, ${next.issueCount} issues)`);
+        const open = Object.entries(s.sessions).filter(([, n]) => n > 0)
+            .map(([k, n]) => `${n} ${k}`).join(", ");
+        if (open)
+            lines.push(`- open sessions: ${open}`);
+        if (s.tracker) {
+            const t = s.tracker;
+            const bits = [
+                t.open !== undefined ? `${t.open} open` : null,
+                t.inProgress !== undefined ? `${t.inProgress} in progress` : null,
+                t.blocked !== undefined ? `${t.blocked} blocked` : null,
+            ].filter(Boolean).join(", ");
+            if (bits)
+                lines.push(`- work items: ${bits}${t.asOf ? ` (as of ${t.asOf})` : ""}`);
+            if (t.nextVerb)
+                lines.push(`- suggested next: ${t.nextVerb}`);
+        }
+        lines.push("");
+    }
+    return lines.join("\n");
+}
 /**
  * The portfolio aggregate (#89): registry + mirror snapshots ONLY -- never
  * walks the filesystem for repos. Staleness is the card pattern, not a
@@ -129,7 +182,7 @@ export function readOutlook(projectDir, home) {
  * failures become `{name, error}` cards (workspace_status precedent);
  * one broken project can never take down the board.
  */
-export function outlookAggregate(home) {
+export function outlookAggregate(home, opts) {
     const registry = readRegistry(home);
     const projects = [];
     for (const entry of registry.projects) {
@@ -167,6 +220,14 @@ export function outlookAggregate(home) {
                 error: e instanceof Error ? e.message : String(e),
             });
         }
+    }
+    if (opts?.artifact) {
+        const path = outlookArtifactPath(home);
+        mkdirSync(dirname(path), { recursive: true });
+        const tmp = `${path}.tmp`;
+        writeFileSync(tmp, renderOutlookMd(projects, new Date().toISOString()));
+        renameSync(tmp, path);
+        return { projects, artifactPath: path };
     }
     return { projects };
 }

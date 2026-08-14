@@ -65,6 +65,12 @@ export interface OutlookCard {
     staleReason?: string;
     error?: string;
 }
+/** The written board (#91) -- machine-level on purpose: an in-repo copy of
+ *  the FLEET board would leak every other project's name into whichever repo
+ *  committed it. One artifact per machine, shareable by hand. */
+export declare function outlookArtifactPath(home?: string): string;
+/** Renders the board as manager-facing markdown -- same data as the cards. */
+export declare function renderOutlookMd(cards: OutlookCard[], now: string): string;
 /**
  * The portfolio aggregate (#89): registry + mirror snapshots ONLY -- never
  * walks the filesystem for repos. Staleness is the card pattern, not a
@@ -72,6 +78,9 @@ export interface OutlookCard {
  * failures become `{name, error}` cards (workspace_status precedent);
  * one broken project can never take down the board.
  */
-export declare function outlookAggregate(home?: string): {
+export declare function outlookAggregate(home?: string, opts?: {
+    artifact?: boolean;
+}): {
     projects: OutlookCard[];
+    artifactPath?: string;
 };

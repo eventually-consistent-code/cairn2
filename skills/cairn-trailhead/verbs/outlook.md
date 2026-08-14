@@ -12,9 +12,14 @@ even when half the fleet is broken.
 
 ## Bare `outlook` — the board
 
-1. `outlook_get()` — one card per registered project: snapshot (phase
-   table, open-session counts, verb-supplied tracker block), staleness
-   verdict, or `{name, error}` when that project couldn't be read.
+1. `outlook_get(artifact: true)` — one card per registered project:
+   snapshot (phase table, open-session counts, verb-supplied tracker
+   block), staleness verdict, or `{name, error}` when that project
+   couldn't be read. `artifact: true` also refreshes the shareable
+   written board at the returned `artifactPath` (machine-level, NOT
+   in-repo — a committed fleet board would leak every project's name
+   into one repo); mention the path in the render so the user knows
+   where the shareable copy lives.
 2. Render per-project cards, basecamp-board spirit: project name, where
    it stands (highest verified phase / next planned phase from the
    snapshot's phase table), open-session counts, the tracker block's
@@ -38,7 +43,15 @@ with any cairn verb is enough to put it on the board.
 
 ## `outlook <project>` — drill-in
 
-Reserved for the drill-in iteration (#91): match by name (substring,
-case-insensitive) against registry entries; ambiguity lists the matches.
-Until #91 lands, bare-board plus a note that drill-in is coming is the
-honest render — don't fake depth the snapshot doesn't have.
+1. `outlook_get()` and match `<project>` against card names (substring,
+   case-insensitive). Ambiguous → list the matches and stop; no match →
+   list what IS registered.
+2. Render the one card in full: complete phase table (number, name,
+   planned/verified, issue count), open sessions by kind, the tracker
+   block (counts, suggested next verb, as-of date), last activity, and
+   the staleness line with its reason when stale.
+3. Depth honesty: the snapshot is everything the drill-in knows — it
+   does NOT open the project or its tracker. When the card is stale or
+   thin, say so and point at the real fix: run any cairn verb in that
+   project (or the lifecycle gates) to refresh its snapshot. Don't fake
+   depth the snapshot doesn't have.
