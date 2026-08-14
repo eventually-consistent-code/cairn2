@@ -3,15 +3,19 @@
 // Release version bump (#80 — one command bumps every version surface).
 // Bumps all three version files in one shot so they can never drift apart:
 //   package.json, server/package.json, .claude-plugin/plugin.json
-// and prepends a scaffold entry to CHANGELOG.md (heading + date + a
+// plus a fourth surface (#83): the marketplace pin in
+// .claude-plugin/marketplace.json — the plugin's github source is pinned to
+// the release tag (`"ref": "vX.Y.Z"`), so installs get a released tree, not
+// a mutable clone of main. The bump rewrites that pin too.
+// Also prepends a scaffold entry to CHANGELOG.md (heading + date + a
 // fill-me-in bullet — content stays human-written).
 //   node scripts/release.mjs 2.3.0     explicit target version
 //   node scripts/release.mjs patch     2.2.0 -> 2.2.1
 //   node scripts/release.mjs minor     2.2.0 -> 2.3.0
 //   node scripts/release.mjs major     2.2.0 -> 3.0.0
-// Refuses to run when the three files already disagree — pre-existing drift
+// Refuses to run when the surfaces already disagree — pre-existing drift
 // means a human decides which version is right, not this script. Everything
-// is validated before the first write, so either all four files land or
+// is validated before the first write, so either all five files land or
 // none do. No git operations here: commit and tag stay with the human
 // (publish.yml gates the tag against these versions on push).
 // Exit 0 clean, exit 1 with the reason.
@@ -27,6 +31,7 @@ const VERSION_FILES = [
   "server/package.json",
   ".claude-plugin/plugin.json",
 ];
+const MARKETPLACE = ".claude-plugin/marketplace.json";
 const CHANGELOG = "CHANGELOG.md";
 const SEMVER = /^\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$/;
 const BUMPS = ["patch", "minor", "major"];
@@ -69,14 +74,39 @@ const surfaces = VERSION_FILES.map((rel) => {
   return { rel, path, raw, version };
 });
 
+// --- read the marketplace pin (fourth surface, #83) ---------------------------
+
+// The cairn plugin's source is a github source pinned to the release tag.
+// The pin's version participates in the drift check exactly like the three
+// version files — an out-of-step pin is the bug this surface exists to stop.
+const marketplacePath = join(root, MARKETPLACE);
+let marketplaceRaw;
+try {
+  marketplaceRaw = readFileSync(marketplacePath, "utf8");
+} catch {
+  die(`cannot read ${MARKETPLACE}`);
+}
+let pinRef;
+try {
+  const entry = (JSON.parse(marketplaceRaw).plugins ?? []).find((p) => p.name === "cairn");
+  pinRef = entry?.source?.ref;
+} catch {
+  die(`${MARKETPLACE} is not valid JSON`);
+}
+if (typeof pinRef !== "string" || !/^v\d/.test(pinRef) || !SEMVER.test(pinRef.slice(1))) {
+  die(`${MARKETPLACE} has no pinned github source for "cairn" (expected "ref": "vX.Y.Z", got '${pinRef}')`);
+}
+const marketplace = { rel: MARKETPLACE, path: marketplacePath, raw: marketplaceRaw, version: pinRef.slice(1) };
+
 // --- refusal path: pre-existing drift is a human's call -----------------------
 
 const current = surfaces[0].version;
-if (surfaces.some((s) => s.version !== current)) {
-  console.error("release: the version files already disagree — fix that by hand first:");
+if ([...surfaces, marketplace].some((s) => s.version !== current)) {
+  console.error("release: the version surfaces already disagree — fix that by hand first:");
   for (const s of surfaces) {
     console.error(`  ${s.rel.padEnd(28)} ${s.version}`);
   }
+  console.error(`  ${(MARKETPLACE + " (pin)").padEnd(28)} v${marketplace.version}`);
   process.exit(1);
 }
 
@@ -106,6 +136,13 @@ for (const s of surfaces) {
   }
   s.next = s.raw.replace(needle, `"version": "${next}"`);
 }
+
+// marketplace pin: same surgical swap, on the `"ref": "v<current>"` literal.
+const pinNeedle = `"ref": "v${current}"`;
+if (marketplace.raw.indexOf(pinNeedle) === -1) {
+  die(`${MARKETPLACE} does not contain ${pinNeedle} verbatim — bump the pin by hand`);
+}
+marketplace.next = marketplace.raw.replace(pinNeedle, `"ref": "v${next}"`);
 
 // changelog: prepend a scaffold entry above the newest `## v...` heading,
 // matching the house style (## vX.Y.Z — headline (YYYY-MM-DD) + bullets).
@@ -139,7 +176,7 @@ const nextChangelog =
 console.log(`bumping ${current} -> ${next}...`);
 const written = [];
 try {
-  for (const s of surfaces) {
+  for (const s of [...surfaces, marketplace]) {
     writeFileSync(s.path, s.next);
     written.push(s);
     console.log(`  ${s.rel.padEnd(28)} ${current} -> ${next}`);
@@ -151,5 +188,5 @@ try {
   die(`write failed (${err.message}) — version files rolled back`);
 }
 
-console.log(`release surfaces bumped — v${next} across ${VERSION_FILES.length} files + changelog scaffold.`);
+console.log(`release surfaces bumped — v${next} across ${VERSION_FILES.length + 1} files + changelog scaffold.`);
 console.log(`next: fill in the CHANGELOG bullets, commit, tag v${next}.`);

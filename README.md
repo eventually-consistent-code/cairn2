@@ -90,7 +90,7 @@ git PRs.
 from the routing table.
 The routing table is complete: the reserved verb set is now empty.
 
-**Server:** 75 typed MCP tools, 1016 passing tests — counts move with each
+**Server:** 75 typed MCP tools, 1039 passing tests — counts move with each
 tier and are measured in CI (env-gated live-backend
 suites skip without creds) — three dependencies (`@modelcontextprotocol/sdk`,
 `better-sqlite3`, `zod`). Fail loud, never fake state.
@@ -199,6 +199,36 @@ npm run build
 
 Adapter live-status, tool reference, and artifact layout:
 [server/README.md](server/README.md).
+
+### Dev mode vs installed plugin (release integrity, #83)
+
+Two ways to run cairn, deliberately different:
+
+- **Installed (released).** The marketplace entry in
+  `.claude-plugin/marketplace.json` is a **github source pinned to the
+  release tag** (`"ref": "vX.Y.Z"`) — installs and `claude plugin update`
+  fetch that released tree, never a mutable clone of `main`. The pin is the
+  fourth surface `scripts/release.mjs` bumps, and
+  `scripts/check-versions.mjs` fails CI when it disagrees with the version
+  files. Consequence: an installed plugin only moves when a release tag
+  exists — installed = released, by design.
+- **Dev (this repo).** `.mcp.json` launches `server/dist/index.js` straight
+  from the working tree with `server/node_modules` from `npm ci` — edits
+  land on the next session restart, no release needed.
+
+**Why a root lockfile, not a bundle.** Claude Code's plugin installer runs
+`npm install` into the versioned plugin cache **only when the plugin root
+has `package.json` plus a lockfile** — without one the cache gets no
+`node_modules` and the MCP server dies at startup (`ERR_MODULE_NOT_FOUND`,
+the 2026-08-13 incident). So the root `package.json` declares the server's
+three runtime deps and `package-lock.json` pins them (~37 MB installed).
+The bundle alternative was measured and rejected: esbuild collapses
+`server/dist` (772 KB) to a single 881 KB file, but `better-sqlite3` is a
+native addon (`better_sqlite3.node`, ~12 MB) that can't be inlined — npm
+install is required either way, so bundling buys complexity, not
+self-containment. If you add a server runtime dep, mirror it in the root
+`package.json` and refresh the root lockfile
+(`npm install --package-lock-only`) — CI enforces the mirror.
 
 ## Repository layout
 
