@@ -84,12 +84,12 @@ describe("cairn MCP server", () => {
       "board_get", "board_update",
       "peer_list", "peer_run", "peer_state",
       "docs_publish", "docs_status",
-      "research_sections", "outlook_get",
+      "research_sections", "outlook_get", "outlook_emit",
     ].sort());
   });
 
-  it("pins the tool count at 76", async () => {
-    expect((await listToolNames()).length).toBe(76);
+  it("pins the tool count at 77", async () => {
+    expect((await listToolNames()).length).toBe(77);
   });
 
   it("issue_attach reads the file and forwards to the tracker; missing file is NOT_FOUND", async () => {
@@ -846,6 +846,19 @@ describe("continuity: write-through + tools", () => {
     expect(snap.version).toBe(1);
     expect(snap.path).toBe(projectDir);
     expect(existsSync(join(projectDir, ".cairn", "outlook.json"))).toBe(true);
+  });
+
+  it("outlook_emit attaches a tracker block that later plain emits keep (#90)", async () => {
+    const out = await call("outlook_emit",
+      { tracker: { open: 3, blocked: 1, nextVerb: "verify 2", asOf: "2026-08-14" } });
+    expect(out.json.emitted).toBe(true);
+
+    // a routine write-through emit must not erase the verb-supplied block
+    const made = await call("issue_create", { title: "post-gate ride-along" });
+    await call("issue_update", { id: made.json.id, state: "in_progress" });
+
+    const snap = JSON.parse(readFileSync(outlookMirrorPath(projectDir), "utf8"));
+    expect(snap.tracker).toEqual({ open: 3, blocked: 1, nextVerb: "verify 2", asOf: "2026-08-14" });
   });
 
   it("context_set({issueId: null}) clears a stale issue out of the handoff", async () => {

@@ -12,6 +12,7 @@ import type { CairnConfig } from "./config.js";
 import { ActiveContext } from "./active-context.js";
 import { registerProject } from "./core/registry.js";
 import { emitOutlook, outlookAggregate } from "./core/outlook.js";
+import type { OutlookTracker } from "./core/outlook.js";
 import { makeTracker } from "./tracker/registry.js";
 import { CachedTracker } from "./tracker/cached.js";
 import { probeVerdictForError } from "./tracker/probe.js";
@@ -1204,6 +1205,22 @@ export function buildServer(deps: {
       inputSchema: { patch: z.record(z.union([WorkstreamPatchSchema, z.null()])) } },
     wrap((a: { patch: Record<string, Partial<Workstream> | null> }) =>
       boardUpdate(launchDir, a.patch)));
+
+  server.registerTool("outlook_emit",
+    { description: "Explicit outlook snapshot emit for lifecycle gates (verify/ship/summit). "
+        + "Re-derives the local snapshot and optionally attaches a verb-supplied tracker block "
+        + "(open/inProgress/blocked counts, nextVerb, asOf) that carries forward through later "
+        + "plain emits. Ship/summit call this BEFORE continuity_clear — the snapshot outlives "
+        + "the handoff",
+      inputSchema: { tracker: z.object({
+        open: z.number().optional(), inProgress: z.number().optional(),
+        blocked: z.number().optional(), nextVerb: z.string().optional(),
+        asOf: z.string().optional(),
+      }).optional() } },
+    wrap((a: { tracker?: OutlookTracker }) => {
+      emitOutlook(dir(), a.tracker ? { tracker: a.tracker } : undefined);
+      return { emitted: true };
+    }));
 
   server.registerTool("outlook_get",
     { description: "Portfolio aggregate (#55): every registered cairn project on this machine as a "

@@ -968,6 +968,19 @@ export function buildServer(deps) {
             + "title+project required on create; project must name a workspace member. Rejected "
             + "patches leave the board untouched",
         inputSchema: { patch: z.record(z.union([WorkstreamPatchSchema, z.null()])) } }, wrap((a) => boardUpdate(launchDir, a.patch)));
+    server.registerTool("outlook_emit", { description: "Explicit outlook snapshot emit for lifecycle gates (verify/ship/summit). "
+            + "Re-derives the local snapshot and optionally attaches a verb-supplied tracker block "
+            + "(open/inProgress/blocked counts, nextVerb, asOf) that carries forward through later "
+            + "plain emits. Ship/summit call this BEFORE continuity_clear — the snapshot outlives "
+            + "the handoff",
+        inputSchema: { tracker: z.object({
+                open: z.number().optional(), inProgress: z.number().optional(),
+                blocked: z.number().optional(), nextVerb: z.string().optional(),
+                asOf: z.string().optional(),
+            }).optional() } }, wrap((a) => {
+        emitOutlook(dir(), a.tracker ? { tracker: a.tracker } : undefined);
+        return { emitted: true };
+    }));
     server.registerTool("outlook_get", { description: "Portfolio aggregate (#55): every registered cairn project on this machine as a "
             + "card — snapshot (phases/sessions/tracker block), staleness vs live git HEAD, per-project "
             + "{name, error} isolation. Reads ~/.cairn/registry.json + outlook mirrors only; never walks "

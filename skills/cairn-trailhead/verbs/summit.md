@@ -25,7 +25,10 @@ until every phase is verified.
    re-running after a fix is safe (idempotent).
 4. Git (agent-side, server never writes git): commit the archive
    (`chore(cairn): summit — v<N> archived`) and tag `v<N>`.
-5. `continuity_clear()` — the milestone is done; no handoff survives it.
+5. `outlook_emit(tracker: {open, inProgress, blocked, nextVerb, asOf})`
+   BEFORE the clear — the completed milestone is exactly what the
+   portfolio board should show — then `continuity_clear()`: the milestone
+   is done; no handoff survives it.
 6. If starting the next milestone (from step 2's answer):
    `milestone_create("<name>")`, then the next-milestone interview —
    goals, first phases — batched; scaffold via `plan_scaffold_phase` +

@@ -16,7 +16,7 @@ const serverDir = join(dirname(fileURLToPath(import.meta.url)), "..");
 describe("standalone stdio boot (no Claude Code)", () => {
   // This pin tracks the COMMITTED dist build, not src -- it lags src's tool
   // count (mcp.test.ts's pin) until the next `npm run build` commit lands.
-  it("node dist/index.js serves all 76 tools to a plain MCP client", async () => {
+  it("node dist/index.js serves all 77 tools to a plain MCP client", async () => {
     const projectDir = mkdtempSync(join(tmpdir(), "cairn-standalone-"));
     writeFileSync(join(projectDir, "cairn.json"),
       JSON.stringify({ tracker: { type: "local", config: { prefix: "sa" } } }));
@@ -33,7 +33,7 @@ describe("standalone stdio boot (no Claude Code)", () => {
     try {
       await client.connect(transport);
       const tools = await client.listTools();
-      expect(tools.tools.length).toBe(76);
+      expect(tools.tools.length).toBe(77);
       // and one real round trip through the local tracker
       const res = await client.callTool({ name: "issue_create",
         arguments: { title: "standalone boot" } });

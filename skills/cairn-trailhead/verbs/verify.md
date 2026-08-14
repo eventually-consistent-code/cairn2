@@ -19,6 +19,12 @@ Verify the given phase per the `cairn-planning` skill.
 5. Write `.cairn/plans/phases/<NN-dir>/VERIFICATION.md`: what was checked, what
    passed, deviations. (Its presence marks the phase verified — drift treats
    closed issues in verified phases as normal.)
+   Then `outlook_emit(tracker: {open, inProgress, blocked, nextVerb, asOf})`
+   — verify has no continuity write of its own, so this is the moment the
+   portfolio snapshot learns the phase went verified. Counts come from the
+   `issue_list` calls this verb already made; `nextVerb` is the next step
+   you are about to report; `asOf` today. Skip silently only if the emit
+   tool errors — a snapshot problem never fails verification.
 6. Report pass/fail and next step (`/cairn:ship` or the fixes needed).
 7. FAILED verification routes to `trace` — MANDATORY (#726): open a trace
    (`trace_start` with the failure as the description), log the failing

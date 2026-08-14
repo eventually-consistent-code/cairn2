@@ -18,7 +18,10 @@ Pre-ship gate, then ship:
    performed (reassignments, ledger repairs) — and ask ONE AskUserQuestion
    (push / hold). Push only on "push"; on "hold", stop and report.
    `ship.confirm: false` in cairn.json skips the ask (silent flow).
-   After the push: `continuity_clear()` (shipping ends the session), and
+   After the push: `outlook_emit(tracker: {open, inProgress, blocked,
+   nextVerb, asOf})` FIRST — the snapshot outlives the handoff, so the
+   board still knows where this project stands after the session state is
+   wiped — then `continuity_clear()` (shipping ends the session), and
    (if the project uses PRs) offer to open/update one.
 
    > Provenance: adopted from the 2026-08-12 product council (REC-5),
