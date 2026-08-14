@@ -1,6 +1,7 @@
 ---
 description: "Project knowledge graph — build, query, diff, status (cairn — /cairn:help for the verb reference)"
 argument-hint: "build | \"<question>\" | diff | status"
+allowed-tools: "mcp__plugin_cairn_cairn__*, Bash, Read, Write, Edit, Glob, Grep, ToolSearch, Task, AskUserQuestion"
 ---
 
 Execute the cairn verb `map`:

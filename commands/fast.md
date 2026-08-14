@@ -1,6 +1,7 @@
 ---
 description: "Trivial inline change — one issue, ≤3 files, atomic commit (cairn — /cairn:help for the verb reference)"
 argument-hint: "\"<change>\""
+allowed-tools: "mcp__plugin_cairn_cairn__*, Bash, Read, Write, Edit, Glob, Grep, ToolSearch, Task, AskUserQuestion"
 ---
 
 Execute the cairn verb `fast`:

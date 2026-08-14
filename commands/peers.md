@@ -1,6 +1,7 @@
 ---
 description: "Convene external AI CLIs as reviewers — convergence with adversarial judgment (cairn — /cairn:help for the verb reference)"
 argument-hint: "(none = status) | review [target] | plan <phase> | council [dimensions]"
+allowed-tools: "mcp__plugin_cairn_cairn__*, Bash, Read, Write, Edit, Glob, Grep, ToolSearch, Task, AskUserQuestion"
 ---
 
 Execute the cairn verb `peers`:

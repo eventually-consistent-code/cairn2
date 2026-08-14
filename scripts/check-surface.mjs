@@ -4,7 +4,9 @@
 // Verifies the /cairn command surface can't drift:
 //   (a) every `live` routing-table row has its verbs/<verb>.md file
 //   (b) every verbs/*.md file has a `live` table row (reserved-with-file fails)
-//   (c) subroutine frontmatter is exactly verb/args/status and verb matches filename
+//   (c) subroutine frontmatter has required keys (verb/args/status), only
+//       allowed keys (required + any adopted platform fields), and verb
+//       matches filename
 //   (d) every prefixed tool reference in verb docs exists in the server registry
 //   (e) the reserved verb set matches the Tier 0 spec exactly
 //   (f) commands/ holds exactly one shim per live verb (gen-commands.mjs output)
@@ -79,14 +81,28 @@ for (const v of verbFiles) {
 }
 
 // (c) frontmatter shape + (d) tool references
+//
+// Required keys must all be present; anything outside the allowed set fails.
+// Allowed = required + any platform frontmatter fields we deliberately adopt
+// for verb files (none yet) — tolerant of sanctioned additions, still strict
+// about unknown junk keys.
+const VERB_FM_REQUIRED = ["verb", "args", "status"];
+const VERB_FM_ALLOWED = new Set([...VERB_FM_REQUIRED]);
+
 for (const v of verbFiles) {
   const doc = readFileSync(join(root, `skills/cairn-trailhead/verbs/${v}.md`), "utf8");
   const fm = doc.match(/^---\n([\s\S]*?)\n---/);
   if (!fm) { failures.push(`(c) verbs/${v}.md missing frontmatter`); continue; }
   const keys = fm[1].split("\n")
-    .map((l) => l.match(/^([a-z]+):/)).filter(Boolean).map((m) => m[1]);
-  if (keys.join(",") !== "verb,args,status")
-    failures.push(`(c) verbs/${v}.md frontmatter keys [${keys}] != [verb,args,status]`);
+    .map((l) => l.match(/^([a-z-]+):/)).filter(Boolean).map((m) => m[1]);
+  for (const req of VERB_FM_REQUIRED) {
+    if (!keys.includes(req))
+      failures.push(`(c) verbs/${v}.md frontmatter missing required key '${req}'`);
+  }
+  for (const k of keys) {
+    if (!VERB_FM_ALLOWED.has(k))
+      failures.push(`(c) verbs/${v}.md frontmatter has disallowed key '${k}'`);
+  }
   const declared = fm[1].match(/^verb:\s*(\S+)/m)?.[1];
   if (declared !== v)
     failures.push(`(c) verbs/${v}.md declares verb '${declared}', filename says '${v}'`);
