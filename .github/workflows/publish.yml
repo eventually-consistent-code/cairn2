@@ -10,7 +10,12 @@ name: publish
 on:
   push:
     tags:
-      - "v*"
+      # Release-shaped tags only (vX.Y.Z) — a bare "v*" also matched
+      # milestone tags like v3 and fired spurious publish runs.
+      # Actions filter patterns support [0-9] classes and + (one or
+      # more of the preceding character), per the filter-pattern
+      # cheat sheet in the workflow-syntax docs.
+      - "v[0-9]+.[0-9]+.[0-9]+"
   workflow_dispatch:
 
 permissions:
