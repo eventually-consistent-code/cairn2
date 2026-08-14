@@ -8,6 +8,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { buildServer } from "../src/index.js";
 import { FakeTracker } from "../src/tracker/fake.js";
 import { handoffPath } from "../src/core/continuity.js";
+import { outlookMirrorPath } from "../src/core/outlook.js";
 import { listSessions } from "../src/sessions/store.js";
 import { PROVIDERS } from "../src/peers/run.js";
 
@@ -824,6 +825,7 @@ describe("continuity: write-through + tools", () => {
 
   afterAll(() => {
     rmSync(handoffPath(projectDir), { force: true });
+    rmSync(outlookMirrorPath(projectDir), { force: true });
     rmSync(projectDir, { recursive: true, force: true });
   });
 
@@ -833,6 +835,17 @@ describe("continuity: write-through + tools", () => {
     const got = await call("continuity_get", {});
     expect(got.json.handoff.issue).toBe(made.json.id);
     expect(got.json.handoff.source).toBe("tool");
+  });
+
+  it("write-through points also emit an outlook snapshot (#88)", async () => {
+    const made = await call("issue_create", { title: "outlook ride-along" });
+    await call("issue_update", { id: made.json.id, state: "in_progress" });
+    const mirror = outlookMirrorPath(projectDir);
+    expect(existsSync(mirror)).toBe(true);
+    const snap = JSON.parse(readFileSync(mirror, "utf8"));
+    expect(snap.version).toBe(1);
+    expect(snap.path).toBe(projectDir);
+    expect(existsSync(join(projectDir, ".cairn", "outlook.json"))).toBe(true);
   });
 
   it("context_set({issueId: null}) clears a stale issue out of the handoff", async () => {

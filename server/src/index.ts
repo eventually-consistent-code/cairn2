@@ -11,6 +11,7 @@ import { loadConfig, writeConfigPatch } from "./config.js";
 import type { CairnConfig } from "./config.js";
 import { ActiveContext } from "./active-context.js";
 import { registerProject } from "./core/registry.js";
+import { emitOutlook } from "./core/outlook.js";
 import { makeTracker } from "./tracker/registry.js";
 import { CachedTracker } from "./tracker/cached.js";
 import { probeVerdictForError } from "./tracker/probe.js";
@@ -195,6 +196,13 @@ export function buildServer(deps: {
                            d: string = dir()): void => {
     try {
       writeHandoff(d, patch);
+    } catch {
+      // swallowed by design -- see comment above.
+    }
+    // Outlook snapshot rides the same write-through points (#88): one call
+    // here covers every refresh site, same swallow-by-design contract.
+    try {
+      emitOutlook(d);
     } catch {
       // swallowed by design -- see comment above.
     }

@@ -8,7 +8,7 @@ export declare const CardFrontmatterSchema: z.ZodEffects<z.ZodObject<{
     provenanceCommits: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
     created: z.ZodString;
 }, "strip", z.ZodTypeAny, {
-    type: "decision" | "constraint" | "gotcha" | "reference" | "note";
+    type: "decision" | "note" | "constraint" | "gotcha" | "reference";
     created: string;
     provenanceFiles: string[];
     provenanceCommits: string[];
@@ -16,7 +16,7 @@ export declare const CardFrontmatterSchema: z.ZodEffects<z.ZodObject<{
     scopeIssue?: string | undefined;
     confidence?: "high" | "medium" | "low" | undefined;
 }, {
-    type: "decision" | "constraint" | "gotcha" | "reference" | "note";
+    type: "decision" | "note" | "constraint" | "gotcha" | "reference";
     created: string;
     scopePhase?: string | undefined;
     scopeIssue?: string | undefined;
@@ -24,7 +24,7 @@ export declare const CardFrontmatterSchema: z.ZodEffects<z.ZodObject<{
     provenanceFiles?: string[] | undefined;
     provenanceCommits?: string[] | undefined;
 }>, {
-    type: "decision" | "constraint" | "gotcha" | "reference" | "note";
+    type: "decision" | "note" | "constraint" | "gotcha" | "reference";
     created: string;
     provenanceFiles: string[];
     provenanceCommits: string[];
@@ -32,7 +32,7 @@ export declare const CardFrontmatterSchema: z.ZodEffects<z.ZodObject<{
     scopeIssue?: string | undefined;
     confidence?: "high" | "medium" | "low" | undefined;
 }, {
-    type: "decision" | "constraint" | "gotcha" | "reference" | "note";
+    type: "decision" | "note" | "constraint" | "gotcha" | "reference";
     created: string;
     scopePhase?: string | undefined;
     scopeIssue?: string | undefined;
