@@ -47,8 +47,10 @@ const verbFiles = readdirSync(join(root, "skills/cairn-trailhead/verbs"))
 // registerSessionTools("kind", …) factory, which expands to
 // `${kind}_start` / `${kind}_log` / `${kind}_close` at runtime.
 const serverSrc = readFileSync(join(root, "server/src/index.ts"), "utf8");
+// \s* between ( and the name: the v2-migration formatter wraps the call so
+// the string literal lands on its own line (#94).
 const registry = new Set(
-  [...serverSrc.matchAll(/registerTool\("([a-z_]+)"/g)].map((m) => m[1]));
+  [...serverSrc.matchAll(/registerTool\(\s*"([a-z_]+)"/g)].map((m) => m[1]));
 for (const m of serverSrc.matchAll(/registerSessionTools\("([a-z]+)"/g)) {
   const kind = m[1];
   for (const suffix of ["start", "log", "close"]) registry.add(`${kind}_${suffix}`);
@@ -153,7 +155,7 @@ const NUMERIC_PARAM_NAMES = ["phase", "number", "scopePhase"];
 
 const toolNumericParams = {};
 {
-  const toolCalls = [...serverSrc.matchAll(/server\.registerTool\("([a-z_]+)"/g)];
+  const toolCalls = [...serverSrc.matchAll(/server\.registerTool\(\s*"([a-z_]+)"/g)];
   const wrapStarts = [...serverSrc.matchAll(/\bwrap\(/g)].map((m) => m.index);
   for (const tm of toolCalls) {
     const start = tm.index;
