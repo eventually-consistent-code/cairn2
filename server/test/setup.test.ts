@@ -25,9 +25,24 @@ afterEach(() => {
 
 function run(harness: string, project: string, home: string, ...extra: string[]): string {
   return execFileSync(process.execPath, [SETUP, harness, "--project", project, ...extra], {
-    encoding: "utf8", env: { ...process.env, HOME: home },
+    // CAIRN_SETUP_OFFLINE keeps --check's advisory npm lookup out of unit
+    // tests (it fails soft to "unknown" anyway; this skips the wait).
+    encoding: "utf8", env: { ...process.env, HOME: home, CAIRN_SETUP_OFFLINE: "1" },
   });
 }
+
+/** Runs `--check` expecting a non-zero exit; returns its stdout for asserting. */
+function runCheckFail(harness: string, project: string, home: string): string {
+  try {
+    run(harness, project, home, "--check");
+  } catch (e) {
+    return String((e as { stdout?: string }).stdout ?? "");
+  }
+  throw new Error("expected --check to exit non-zero");
+}
+
+const ROOT_VERSION: string = JSON.parse(readFileSync(
+  join(dirname(SETUP), "..", "package.json"), "utf8")).version;
 
 describe("cairn-setup", () => {
   it("grok: merges .mcp.json, installs AGENTS fragment + verb subroutines", () => {
@@ -267,6 +282,66 @@ describe("cairn-setup", () => {
     }
     expect(err).toContain("--project needs a directory");
     expect(err).not.toContain("TypeError");
+  });
+
+  it("stamps every copied surface with a version manifest at install time (#82)", () => {
+    const proj = fresh("cairn-setup-");
+    const home = fresh("cairn-home-");
+    run("copilot", proj, home);
+
+    for (const dir of [join(proj, ".cairn", "harness"), join(proj, ".github", "prompts")]) {
+      const m = JSON.parse(readFileSync(join(dir, ".cairn-manifest.json"), "utf8"));
+      expect(m.version).toBe(ROOT_VERSION);
+      expect(m.installedAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+      expect(m.installedBy).toBe("cairn-setup");
+    }
+  });
+
+  it("--check exits 0 and reports every surface current after a fresh install (#82)", () => {
+    const proj = fresh("cairn-setup-");
+    const home = fresh("cairn-home-");
+    run("copilot", proj, home);
+    const out = run("copilot", proj, home, "--check");
+    expect(out).toContain(`.cairn/harness (verb subroutines): v${ROOT_VERSION} (current`);
+    expect(out).toContain(`.github/prompts (copilot prompts): v${ROOT_VERSION} (current`);
+    expect(out).toContain("all installed surfaces current.");
+  });
+
+  it("--check exits non-zero on a lagging stamp, prints installed-vs-available, writes nothing (#82)", () => {
+    const proj = fresh("cairn-setup-");
+    const home = fresh("cairn-home-");
+    run("grok", proj, home);
+    const manifestPath = join(proj, ".cairn", "harness", ".cairn-manifest.json");
+    const stale = JSON.parse(readFileSync(manifestPath, "utf8"));
+    stale.version = "2.0.0";
+    writeFileSync(manifestPath, JSON.stringify(stale, null, 2) + "\n");
+
+    const out = runCheckFail("grok", proj, home);
+    expect(out).toContain(`installed v2.0.0, available v${ROOT_VERSION}`);
+    expect(out).toContain("surface(s) lag");
+    // --check is read-only: the lagging stamp is reported, never repaired.
+    expect(JSON.parse(readFileSync(manifestPath, "utf8")).version).toBe("2.0.0");
+  });
+
+  it("--check flags an unstamped install as predating stamping (#82)", () => {
+    const proj = fresh("cairn-setup-");
+    const home = fresh("cairn-home-");
+    run("grok", proj, home);
+    rmSync(join(proj, ".cairn", "harness", ".cairn-manifest.json"));
+    const out = runCheckFail("grok", proj, home);
+    expect(out).toContain("no stamp — predates stamping, reinstall to adopt");
+    // Still read-only: no stamp materializes from a check.
+    expect(existsSync(join(proj, ".cairn", "harness", ".cairn-manifest.json"))).toBe(false);
+  });
+
+  it("--check on a project with nothing installed reports 'not installed' and exits 0 (#82)", () => {
+    const proj = fresh("cairn-setup-");
+    const home = fresh("cairn-home-");
+    const out = run("grok", proj, home, "--check");
+    expect(out).toContain(".cairn/harness (verb subroutines): not installed");
+    // Read-only by construction — an empty project stays empty.
+    expect(existsSync(join(proj, ".cairn"))).toBe(false);
+    expect(existsSync(join(proj, "AGENTS.md"))).toBe(false);
   });
 
   it("an existing different cairn MCP entry is left untouched", () => {

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync, rmSync, chmodSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, chmodSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, delimiter } from "node:path";
@@ -40,7 +40,9 @@ describe("cairn MCP server", () => {
     projectDir = mkdtempSync(join(tmpdir(), "cairn-"));
     writeFileSync(join(projectDir, "cairn.json"),
       JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
-    const server = buildServer({ projectDir, tracker: new FakeTracker() });
+    const server = buildServer({ projectDir, tracker: new FakeTracker(),
+      // Deterministic npm-latest lookup (#82): no network in unit tests.
+      fetchLatestVersion: async () => "9.9.9" });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     client = new Client({ name: "test", version: "0.0.0" });
     await Promise.all([server.connect(st), client.connect(ct)]);
@@ -437,10 +439,23 @@ describe("cairn MCP server", () => {
     expect(got.json.leakGuard.enabled).toBe(true); // defaults visible in effective view
   });
 
-  it("config_probe reports {tracker:{verdict:'ok'}} with no docs block configured (CRN-48)", async () => {
+  it("config_probe reports tracker verdict + installed versions, no docs block configured (CRN-48, #82)", async () => {
     const res = await call("config_probe", {});
     expect(res.isError).toBeFalsy();
-    expect(res.json).toEqual({ tracker: { verdict: "ok" } });
+    expect(res.json.tracker).toEqual({ verdict: "ok" });
+    expect(res.json.docs).toBeUndefined();
+    // Versions section (#82): server version comes from server/package.json
+    // (same source serverInfo reports at the MCP handshake); this test runs
+    // from the repo tree so pluginCache is null and the temp project dir is
+    // not the cairn repo so repo is null.
+    const serverVersion = JSON.parse(
+      readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
+    expect(res.json.versions.server).toBe(serverVersion);
+    expect(res.json.versions.pluginCache).toBeNull();
+    expect(res.json.versions.repo).toBeNull();
+    expect(res.json.versions.npmLatest).toBe("9.9.9"); // injected lookup
+    expect(res.json.versions.drift).toContain(
+      `installed v${serverVersion}, available v9.9.9 -- update the plugin (or npm install) to adopt`);
   });
 
   it("CairnError surfaces as isError with code + nextAction", async () => {
@@ -1171,14 +1186,19 @@ describe("docs tools over an injected fake connector", () => {
     const { FakeDocsConnector } = await import("../src/docs/fake.js");
     const fake = new FakeDocsConnector();
     try {
-      const server = buildServer({ projectDir: dir, tracker: new FakeTracker(), docsConnector: fake });
+      const server = buildServer({ projectDir: dir, tracker: new FakeTracker(), docsConnector: fake,
+        fetchLatestVersion: async () => { throw new Error("offline"); } });
       const [ct, st] = InMemoryTransport.createLinkedPair();
       const c = new Client({ name: "docs-probe-test", version: "0.0.0" });
       await Promise.all([server.connect(st), c.connect(ct)]);
       const res = await c.callTool({ name: "config_probe", arguments: {} });
       const json = JSON.parse((res.content as Array<{ text: string }>)[0].text);
       expect(res.isError).toBeFalsy();
-      expect(json).toEqual({ tracker: { verdict: "ok" }, docs: { verdict: "ok" } });
+      expect(json.tracker).toEqual({ verdict: "ok" });
+      expect(json.docs).toEqual({ verdict: "ok" });
+      // #82: a rejecting npm lookup fails SOFT -- "unknown", probe stays green.
+      expect(json.versions.npmLatest).toBe("unknown");
+      expect(json.versions.drift).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

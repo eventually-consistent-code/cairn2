@@ -2,7 +2,7 @@
 
 // cairn-setup — wire cairn into a non-Claude harness (CRN-71).
 //
-//   node setup/cairn-setup.mjs <harness> [--project <dir>] [--local]
+//   node setup/cairn-setup.mjs <harness> [--project <dir>] [--local] [--check]
 //   harness: grok | copilot | codex | gemini | cursor | claude
 //
 // What it does, per project:
@@ -13,6 +13,12 @@
 //      the plugin can read them
 //   4. harness-specific wiring (Copilot mcp-config + instructions + prompts;
 //      Codex prints its config.toml block; Gemini merges settings + GEMINI.md)
+//
+// Every copied-artifact surface gets a version stamp (.cairn-manifest.json:
+// source version + install date) so `--check` can answer "what's actually
+// installed where" (#82): it walks the surfaces, compares stamps against
+// this clone's version, prints a per-surface table, writes NOTHING, and
+// exits non-zero when anything lags — so it can gate.
 //
 // Additive and idempotent: existing config entries are merged, never
 // clobbered; re-running produces byte-identical results.
@@ -32,7 +38,7 @@ const END = "<!-- cairn:end -->";
 
 function usage(msg) {
   if (msg) console.error(msg);
-  console.error(`usage: node setup/cairn-setup.mjs <${HARNESSES.join("|")}> [--project <dir>] [--local]`);
+  console.error(`usage: node setup/cairn-setup.mjs <${HARNESSES.join("|")}> [--project <dir>] [--local] [--check]`);
   process.exit(msg ? 1 : 0);
 }
 
@@ -48,6 +54,7 @@ if (projIdx >= 0 && (!args[projIdx + 1] || args[projIdx + 1].startsWith("--"))) 
 }
 const projectDir = resolve(projIdx >= 0 ? args[projIdx + 1] : process.cwd());
 const useLocal = args.includes("--local");
+const checkMode = args.includes("--check");
 
 // --- helpers -----------------------------------------------------------------
 
@@ -146,7 +153,8 @@ function installVerbs() {
     copyFileSync(join(srcDir, "verbs", f), join(outDir, "verbs", f));
     n++;
   }
-  console.log(`  .cairn/harness/: registry + ${n} verb subroutines installed.`);
+  stampInstall(outDir, "verb subroutines");
+  console.log(`  .cairn/harness/: registry + ${n} verb subroutines installed (stamped v${sourceVersion}).`);
 }
 
 /** Merge the [mcp_servers.cairn] block into ~/.codex/config.toml between
@@ -184,6 +192,97 @@ function mergeCodexToml(path) {
   console.log(`  ${path}: [mcp_servers.cairn] block written.`);
 }
 
+// --- version stamps + --check (#82) ------------------------------------------
+
+// The harness installs above are point-in-time COPIES — without a stamp there
+// is no answer to "what version is actually installed here". So every copied
+// surface gets a small manifest at install time, and --check reads them back.
+const MANIFEST = ".cairn-manifest.json";
+const sourceVersion = JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")).version;
+
+/** Write the version stamp alongside a surface's installed artifacts. */
+function stampInstall(dir, surface) {
+  writeFileSync(join(dir, MANIFEST), JSON.stringify({
+    surface, harness, version: sourceVersion,
+    installedAt: new Date().toISOString(), installedBy: "cairn-setup",
+  }, null, 2) + "\n");
+}
+
+/** The copied-artifact surfaces this harness owns (universal layer first). */
+function surfacesFor(h) {
+  const s = [{ label: ".cairn/harness (verb subroutines)", dir: join(projectDir, ".cairn", "harness") }];
+  if (h === "copilot") s.push({ label: ".github/prompts (copilot prompts)", dir: join(projectDir, ".github", "prompts") });
+  if (h === "gemini") s.push({ label: ".gemini/commands/cairn (gemini TOML commands)", dir: join(projectDir, ".gemini", "commands", "cairn") });
+  if (h === "codex") s.push({ label: "~/.codex/prompts (codex prompts)", dir: join(homedir(), ".codex", "prompts") });
+  if (h === "cursor") s.push({ label: ".cursor/hooks/cairn (adapter + hook scripts)", dir: join(projectDir, ".cursor", "hooks", "cairn") });
+  if (h === "opencode") s.push({ label: ".opencode/commands (opencode commands)", dir: join(projectDir, ".opencode", "commands") });
+  return s;
+}
+
+/** Manifest reader for check mode: a corrupt or missing stamp is "no stamp",
+ *  never a hard stop — check reports, it doesn't repair. */
+function readManifest(dir) {
+  try {
+    const m = JSON.parse(readFileSync(join(dir, MANIFEST), "utf8"));
+    return typeof m.version === "string" ? m : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Latest published npm version — advisory only, fails soft to "unknown"
+ *  (an unreachable registry must never fail the gate). */
+async function npmLatestVersion() {
+  if (process.env.CAIRN_SETUP_OFFLINE) return "unknown";
+  try {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 2000);
+    try {
+      const res = await fetch("https://registry.npmjs.org/@eventually-consistent%2fcairn-server/latest", { signal: ctl.signal });
+      if (!res.ok) return "unknown";
+      const body = await res.json();
+      return typeof body.version === "string" ? body.version : "unknown";
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch {
+    return "unknown";
+  }
+}
+
+if (checkMode) {
+  // Read-only by construction: this branch writes nothing and exits before
+  // any install code runs. Exit 0 = all current, 1 = something lags (gate).
+  console.log(`checking installed cairn artifacts for ${harness} in ${projectDir}...`);
+  let lagging = 0;
+  for (const s of surfacesFor(harness)) {
+    if (!existsSync(s.dir)) {
+      console.log(`  ${s.label}: not installed`);
+      continue;
+    }
+    const m = readManifest(s.dir);
+    if (!m) {
+      console.log(`  ${s.label}: no stamp — predates stamping, reinstall to adopt`);
+      lagging++;
+    } else if (m.version === sourceVersion) {
+      console.log(`  ${s.label}: v${m.version} (current, installed ${m.installedAt ?? "unknown date"})`);
+    } else {
+      console.log(`  ${s.label}: installed v${m.version}, available v${sourceVersion}`);
+      lagging++;
+    }
+  }
+  const latest = await npmLatestVersion();
+  if (latest !== "unknown" && latest !== sourceVersion) {
+    console.log(`  note: npm has v${latest}; this clone is v${sourceVersion} — pull/update before reinstalling.`);
+  }
+  if (lagging > 0) {
+    console.log(`${lagging} surface(s) lag — re-run \`node setup/cairn-setup.mjs ${harness}\` to adopt v${sourceVersion}.`);
+    process.exit(1);
+  }
+  console.log("all installed surfaces current.");
+  process.exit(0);
+}
+
 // --- main --------------------------------------------------------------------
 
 const fragment = readFileSync(join(repoRoot, "harness", "AGENTS-cairn.md"), "utf8");
@@ -204,7 +303,8 @@ if (harness === "copilot") {
     if (f.startsWith(".")) continue; // never ship stray dotfiles (.DS_Store) into a project
     copyFileSync(join(promptsSrc, f), join(promptsOut, f));
   }
-  console.log(`  .github/prompts/: cairn prompt files installed.`);
+  stampInstall(promptsOut, "copilot prompts");
+  console.log(`  .github/prompts/: cairn prompt files installed (stamped v${sourceVersion}).`);
 }
 
 if (harness === "gemini") {
@@ -218,7 +318,8 @@ if (harness === "gemini") {
     if (f.startsWith(".")) continue; // never ship stray dotfiles (.DS_Store) into a project
     copyFileSync(join(cmdSrc, f), join(cmdOut, f));
   }
-  console.log(`  .gemini/commands/cairn/: TOML commands installed (/cairn:plan, /cairn:work, ...).`);
+  stampInstall(cmdOut, "gemini TOML commands");
+  console.log(`  .gemini/commands/cairn/: TOML commands installed (/cairn:plan, /cairn:work, ...) (stamped v${sourceVersion}).`);
 }
 
 if (harness === "codex") {
@@ -230,7 +331,8 @@ if (harness === "codex") {
     if (f.startsWith(".")) continue; // never ship stray dotfiles (.DS_Store) into a project
     copyFileSync(join(promptsSrc, f), join(promptsOut, f));
   }
-  console.log(`  ~/.codex/prompts/: cairn prompt files installed (Codex reads AGENTS.md from the project).`);
+  stampInstall(promptsOut, "codex prompts");
+  console.log(`  ~/.codex/prompts/: cairn prompt files installed (Codex reads AGENTS.md from the project) (stamped v${sourceVersion}).`);
 }
 
 if (harness === "cursor") {
@@ -244,7 +346,8 @@ if (harness === "cursor") {
   for (const f of readdirSync(join(repoRoot, "hooks", "scripts"))) {
     if (f.endsWith(".mjs")) copyFileSync(join(repoRoot, "hooks", "scripts", f), join(hooksOut, f));
   }
-  console.log(`  .cursor/hooks/cairn/: adapter + hook scripts installed.`);
+  stampInstall(hooksOut, "cursor adapter + hook scripts");
+  console.log(`  .cursor/hooks/cairn/: adapter + hook scripts installed (stamped v${sourceVersion}).`);
 
   // Merge our adapter into .cursor/hooks.json, keeping any foreign entries.
   const hooksJsonPath = join(projectDir, ".cursor", "hooks.json");
@@ -298,7 +401,8 @@ if (harness === "opencode") {
     if (f.startsWith(".")) continue; // never ship stray dotfiles (.DS_Store) into a project
     copyFileSync(join(cmdSrc, f), join(cmdOut, f));
   }
-  console.log(`  .opencode/commands/: cairn command files installed (/cairn-plan, /cairn-work, ...).`);
+  stampInstall(cmdOut, "opencode commands");
+  console.log(`  .opencode/commands/: cairn command files installed (/cairn-plan, /cairn-work, ...) (stamped v${sourceVersion}).`);
 }
 
 if (harness === "zed") {

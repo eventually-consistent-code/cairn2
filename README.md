@@ -90,7 +90,7 @@ git PRs.
 from the routing table.
 The routing table is complete: the reserved verb set is now empty.
 
-**Server:** 75 typed MCP tools, 1039 passing tests — counts move with each
+**Server:** 75 typed MCP tools, 1057 passing tests — counts move with each
 tier and are measured in CI (env-gated live-backend
 suites skip without creds) — three dependencies (`@modelcontextprotocol/sdk`,
 `better-sqlite3`, `zod`). Fail loud, never fake state.
@@ -117,6 +117,11 @@ node setup/cairn-setup.mjs cursor    # Cursor — .cursor/mcp.json + AGENTS.md +
 node setup/cairn-setup.mjs opencode  # OpenCode — opencode.json + /cairn-* commands
 node setup/cairn-setup.mjs zed       # Zed — .zed/settings.json context server + AGENTS.md
 ```
+
+Installs are stamped (`.cairn-manifest.json`: source version + date), and
+`node setup/cairn-setup.mjs <harness> --check` compares every installed
+surface against this clone's version — read-only, per-surface table,
+non-zero exit when anything lags, so it can gate.
 
 Every install gets the full 75-tool surface, the generated `AGENTS.md` verb
 registry (from `scripts/gen-agents.mjs`, drift-checked in CI), and the verb
