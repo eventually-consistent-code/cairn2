@@ -1,6 +1,7 @@
 ---
 description: "Multi-variant mockups on a shared theme (cairn — /cairn:help for the verb reference)"
 argument-hint: "\"<design question>\" | (none = frontier) | --wrap [<id>]"
+allowed-tools: "mcp__plugin_cairn_cairn__*, Bash, Read, Write, Edit, Glob, Grep, ToolSearch, Task, AskUserQuestion"
 ---
 
 Execute the cairn verb `draft`:

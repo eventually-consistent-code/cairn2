@@ -1,6 +1,7 @@
 ---
 description: "Store a durable fact as a memory card (or bulk into the index) (cairn — /cairn:help for the verb reference)"
 argument-hint: "\"<fact>\" [--type decision|constraint|gotcha|reference]"
+allowed-tools: "mcp__plugin_cairn_cairn__*, Bash, Read, Write, Edit, Glob, Grep, ToolSearch, Task, AskUserQuestion"
 ---
 
 Execute the cairn verb `remember`:

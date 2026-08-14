@@ -14,6 +14,12 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SENTINEL = "\u0001"; // stand-in for escaped pipes while cell-splitting
 
+// Every cairn verb drives the same tool families: the cairn MCP server plus
+// the core file/exec/agent tools its subroutines lean on. One shared line for
+// all shims — per-verb variance isn't worth the maintenance surface today.
+const ALLOWED_TOOLS =
+  "mcp__plugin_cairn_cairn__*, Bash, Read, Write, Edit, Glob, Grep, ToolSearch, Task, AskUserQuestion";
+
 console.log("generating command shims...");
 
 // --- parse the routing table -------------------------------------------------
@@ -50,6 +56,7 @@ for (const { verb, purpose, args } of rows) {
     `description: ${JSON.stringify(`${purpose} (cairn — /cairn:help for the verb reference)`)}`,
   ];
   if (args) fm.push(`argument-hint: ${JSON.stringify(args)}`);
+  fm.push(`allowed-tools: ${JSON.stringify(ALLOWED_TOOLS)}`);
   fm.push("---");
 
   const body = [

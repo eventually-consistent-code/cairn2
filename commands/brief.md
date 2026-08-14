@@ -1,6 +1,7 @@
 ---
 description: "Onboarding briefing from cards + plans (cairn — /cairn:help for the verb reference)"
 argument-hint: "[--stdout]"
+allowed-tools: "mcp__plugin_cairn_cairn__*, Bash, Read, Write, Edit, Glob, Grep, ToolSearch, Task, AskUserQuestion"
 ---
 
 Execute the cairn verb `brief`:

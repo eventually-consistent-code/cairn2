@@ -1,6 +1,7 @@
 ---
 description: "Safe git undo by phase/plan manifest — reverts only (cairn — /cairn:help for the verb reference)"
 argument-hint: "<phase|plan> | --apply"
+allowed-tools: "mcp__plugin_cairn_cairn__*, Bash, Read, Write, Edit, Glob, Grep, ToolSearch, Task, AskUserQuestion"
 ---
 
 Execute the cairn verb `backtrack`:
