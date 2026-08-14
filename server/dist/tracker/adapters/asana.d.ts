@@ -4,13 +4,7 @@ import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone,
 export declare const configSchema: z.ZodObject<{
     projectGid: z.ZodString;
     tokenEnv: z.ZodDefault<z.ZodString>;
-}, "strip", z.ZodTypeAny, {
-    tokenEnv: string;
-    projectGid: string;
-}, {
-    projectGid: string;
-    tokenEnv?: string | undefined;
-}>;
+}, z.core.$strip>;
 export declare function make(config: z.infer<typeof configSchema>, fetchImpl?: FetchLike): Tracker;
 export declare class AsanaTracker implements Tracker {
     private readonly cfg;

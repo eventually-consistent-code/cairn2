@@ -41,16 +41,6 @@ export declare const configSchema: z.ZodObject<{
     baseUrl: z.ZodDefault<z.ZodString>;
     project: z.ZodString;
     tokenEnv: z.ZodDefault<z.ZodString>;
-    extraLabels: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
-}, "strip", z.ZodTypeAny, {
-    project: string;
-    baseUrl: string;
-    tokenEnv: string;
-    extraLabels: string[];
-}, {
-    project: string;
-    baseUrl?: string | undefined;
-    tokenEnv?: string | undefined;
-    extraLabels?: string[] | undefined;
-}>;
+    extraLabels: z.ZodDefault<z.ZodArray<z.ZodString>>;
+}, z.core.$strip>;
 export declare function make(config: z.infer<typeof configSchema>, fetchImpl?: FetchLike): Tracker;

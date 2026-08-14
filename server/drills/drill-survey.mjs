@@ -9,9 +9,8 @@
 //          mirrored issue into the new phase, and mem_index of the finished
 //          brief.
 // Author(s): John Reed
-
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { Client } from "@modelcontextprotocol/client";
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
@@ -19,12 +18,15 @@ import { join, resolve } from "node:path";
 const PROJECT = resolve(process.argv[2]);
 const SERVER = resolve(process.argv[3]);
 
-const git = (...args) => execFileSync("git", args, { cwd: PROJECT, encoding: "utf8" }).trim();
+const git = (...args) =>
+  execFileSync("git", args, { cwd: PROJECT, encoding: "utf8" }).trim();
 
 const checks = [];
 const check = (label, ok, detail = "") => {
   checks.push([label, ok]);
-  console.log(`${ok ? "PASS" : "FAIL"}  ${label}${detail ? ` — ${detail}` : ""}`);
+  console.log(
+    `${ok ? "PASS" : "FAIL"}  ${label}${detail ? ` — ${detail}` : ""}`,
+  );
 };
 
 // -- scratch project: git repo + a local (zero-dependency) tracker -----------
@@ -32,12 +34,21 @@ console.log("setting up scratch project...");
 git("init", "-q", "-b", "main");
 git("config", "user.email", "drill@example.invalid");
 git("config", "user.name", "drill");
-writeFileSync(join(PROJECT, "cairn.json"),
-  JSON.stringify({ tracker: { type: "local", config: { prefix: "sd" } } }, null, 2) + "\n");
-git("add", "-A"); git("commit", "-q", "-m", "init", "--no-gpg-sign");
+writeFileSync(
+  join(PROJECT, "cairn.json"),
+  JSON.stringify(
+    { tracker: { type: "local", config: { prefix: "sd" } } },
+    null,
+    2,
+  ) + "\n",
+);
+git("add", "-A");
+git("commit", "-q", "-m", "init", "--no-gpg-sign");
 
 const transport = new StdioClientTransport({
-  command: "node", args: [SERVER], cwd: PROJECT,
+  command: "node",
+  args: [SERVER],
+  cwd: PROJECT,
   env: { ...process.env, CLAUDE_PROJECT_DIR: PROJECT },
 });
 const client = new Client({ name: "survey-drill", version: "0.0.0" });
@@ -92,25 +103,50 @@ const appendedSection = [
   "<!-- survey: pending -->",
   "",
 ].join("\n");
-const postResume = ["# Survey", "", doneSection, resumedSection, appendedSection].join("\n");
+const postResume = [
+  "# Survey",
+  "",
+  doneSection,
+  resumedSection,
+  appendedSection,
+].join("\n");
 writeFileSync(surveyPath, postResume);
 const readBack = readFileSync(surveyPath, "utf8");
 
-check("resume: original done section survives byte-identical (not clobbered)",
-  readBack.includes(doneSection));
-check("resume: formerly-pending section now carries the done marker + new content",
-  /## unfinished topic\n<!-- survey: done -->\nfinding: now resolved/.test(readBack));
-check("resume: newly appended section carries the pending marker",
-  /## newly discovered topic\n<!-- survey: pending -->/.test(readBack));
+check(
+  "resume: original done section survives byte-identical (not clobbered)",
+  readBack.includes(doneSection),
+);
+check(
+  "resume: formerly-pending section now carries the done marker + new content",
+  /## unfinished topic\n<!-- survey: done -->\nfinding: now resolved/.test(
+    readBack,
+  ),
+);
+check(
+  "resume: newly appended section carries the pending marker",
+  /## newly discovered topic\n<!-- survey: pending -->/.test(readBack),
+);
 
 // -- decimal insert: phase 1.5 between 1 and 2, no renumber -------------------
 console.log("decimal insert (1.5) between the existing neighbors...");
 const p15 = await call("plan_scaffold_phase", { number: 1.5, name: "gamma" });
 
-check("phase 1 dir form (unaffected by the later insert)", p1.dir === "01-alpha", p1.dir);
-check("phase 2 dir form (unaffected by the later insert)", p2.dir === "02-beta", p2.dir);
-check("decimal insert lands as 01.5-gamma (route's never-renumber rule)",
-  p15.dir === "01.5-gamma", p15.dir);
+check(
+  "phase 1 dir form (unaffected by the later insert)",
+  p1.dir === "01-alpha",
+  p1.dir,
+);
+check(
+  "phase 2 dir form (unaffected by the later insert)",
+  p2.dir === "02-beta",
+  p2.dir,
+);
+check(
+  "decimal insert lands as 01.5-gamma (route's never-renumber rule)",
+  p15.dir === "01.5-gamma",
+  p15.dir,
+);
 
 const phasesDir = join(PROJECT, ".cairn", "plans", "phases");
 const dirs = readdirSync(phasesDir);
@@ -121,15 +157,26 @@ check("decimal phase dir present on disk", dirs.includes("01.5-gamma"));
 console.log("plan_status: numeric ordering of integer + decimal phases...");
 const status = await call("plan_status", {});
 const numbers = status.phases.map((p) => p.number);
-check("plan_status orders phases numerically: [1, 1.5, 2]",
-  JSON.stringify(numbers) === JSON.stringify([1, 1.5, 2]), JSON.stringify(numbers));
+check(
+  "plan_status orders phases numerically: [1, 1.5, 2]",
+  JSON.stringify(numbers) === JSON.stringify([1, 1.5, 2]),
+  JSON.stringify(numbers),
+);
 
 // -- bonus: an invalid decimal is a real CONFIG_INVALID envelope, not a raw
 // SDK/Zod rejection -- 1.55 has two fractional digits, outside N.1-N.9 -------
-console.log("bonus: bad decimal (1.55) rejected with a genuine CONFIG_INVALID envelope...");
-const bad = await call("plan_scaffold_phase", { number: 1.55, name: "not-a-slot" });
-check("invalid decimal surfaces {code: CONFIG_INVALID} (not an SDK-level Zod error)",
-  bad.__error?.code === "CONFIG_INVALID", JSON.stringify(bad.__error ?? bad));
+console.log(
+  "bonus: bad decimal (1.55) rejected with a genuine CONFIG_INVALID envelope...",
+);
+const bad = await call("plan_scaffold_phase", {
+  number: 1.55,
+  name: "not-a-slot",
+});
+check(
+  "invalid decimal surfaces {code: CONFIG_INVALID} (not an SDK-level Zod error)",
+  bad.__error?.code === "CONFIG_INVALID",
+  JSON.stringify(bad.__error ?? bad),
+);
 
 // -- mirrored issue into the new phase ----------------------------------------
 console.log("mirroring the tracker phase object + an issue into phase 1.5...");
@@ -147,7 +194,10 @@ check("issue created with id", Boolean(issue.id));
 
 await call("plan_issues_set", { phaseDir: p15.dir, issues: [issue.id] });
 const planMd = readFileSync(join(phasesDir, p15.dir, "PLAN.md"), "utf8");
-check("PLAN.md frontmatter carries the issue", planMd.includes(String(issue.id)));
+check(
+  "PLAN.md frontmatter carries the issue",
+  planMd.includes(String(issue.id)),
+);
 
 // -- mem_index the finished brief ----------------------------------------------
 console.log("mem_index of the finished SURVEY.md...");
@@ -156,5 +206,7 @@ check("mem_index accepted SURVEY.md", idx.ok === true);
 
 await client.close();
 const failed = checks.filter(([, ok]) => !ok);
-console.log(`\n${failed.length === 0 ? "DRILL PASS" : "DRILL FAIL"} — ${checks.length - failed.length}/${checks.length} checks`);
+console.log(
+  `\n${failed.length === 0 ? "DRILL PASS" : "DRILL FAIL"} — ${checks.length - failed.length}/${checks.length} checks`,
+);
 process.exit(failed.length);

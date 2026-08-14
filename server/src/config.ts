@@ -6,15 +6,24 @@ import { PROVIDERS } from "./peers/providers.js";
 
 export const ConfigSchema = z.object({
   tracker: z.object({
-    type: z.enum(["github", "gitlab", "jira", "asana", "azure-boards", "clickup", "linear", "local"]),
-    config: z.record(z.unknown()),
+    type: z.enum([
+      "github",
+      "gitlab",
+      "jira",
+      "asana",
+      "azure-boards",
+      "clickup",
+      "linear",
+      "local",
+    ]),
+    config: z.record(z.string(), z.unknown()),
   }),
   // Documentation connectors publish repo docs outward (Confluence first);
   // same two-level shape as tracker — deep validation lives in the adapter.
   docs: z
     .object({
       connector: z.enum(["confluence", "docusaurus"]),
-      config: z.record(z.unknown()),
+      config: z.record(z.string(), z.unknown()),
     })
     .optional(),
   agents: z
@@ -23,10 +32,12 @@ export const ConfigSchema = z.object({
   memory: z
     .object({ tokenThreshold: z.number().int().positive() })
     .default({ tokenThreshold: 150000 }),
-  user: z.object({
-    handle: z.string().min(1),
-    mode: z.enum(["vibe", "engineer"]).optional(),
-  }).optional(),
+  user: z
+    .object({
+      handle: z.string().min(1),
+      mode: z.enum(["vibe", "engineer"]).optional(),
+    })
+    .optional(),
   continuity: z
     .object({
       resume: z.enum(["prompt", "auto", "off"]).default("prompt"),
@@ -37,28 +48,26 @@ export const ConfigSchema = z.object({
           enabled: z.boolean().default(true),
           maxCards: z.number().int().positive().default(20),
         })
-        .default({}),
+        .prefault({}),
     })
-    .default({}),
+    .prefault({}),
   leakGuard: z
     .object({
       enabled: z.boolean().default(true),
       allow: z.array(z.string()).default([]),
       extraPatterns: z.array(z.string()).default([]),
     })
-    .default({}),
+    .prefault({}),
   // Confirm-before-push gate on the ship verb (#76) — adopted at the
   // 2026-08-12 product council (REC-5), accepted by the project owner over
   // cairn's no-action recommendation. Default on; confirm: false restores
   // the silent push flow.
-  ship: z
-    .object({ confirm: z.boolean().default(true) })
-    .default({}),
+  ship: z.object({ confirm: z.boolean().default(true) }).prefault({}),
   // Per-provider peer CLI settings (Tier F2 #997) — absent provider or
   // absent field means enabled with defaults; unknown provider keys are
   // rejected by the enum-keyed record below.
   peers: z
-    .record(
+    .partialRecord(
       z.enum(PROVIDERS),
       z.object({
         enabled: z.boolean().optional(),
@@ -87,19 +96,29 @@ export function loadConfig(projectDir: string): CairnConfig {
   try {
     raw = readFileSync(join(projectDir, "cairn.json"), "utf8");
   } catch {
-    throw new CairnError("CONFIG_MISSING", `no cairn.json in ${projectDir}`,
-      "create cairn.json — see templates/cairn.json.example");
+    throw new CairnError(
+      "CONFIG_MISSING",
+      `no cairn.json in ${projectDir}`,
+      "create cairn.json — see templates/cairn.json.example",
+    );
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch (e) {
-    throw new CairnError("CONFIG_INVALID", `cairn.json is not valid JSON: ${e}`);
+    throw new CairnError(
+      "CONFIG_INVALID",
+      `cairn.json is not valid JSON: ${e}`,
+    );
   }
   const result = ConfigSchema.safeParse(parsed);
   if (!result.success) {
-    throw new CairnError("CONFIG_INVALID", result.error.issues
-      .map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+    throw new CairnError(
+      "CONFIG_INVALID",
+      result.error.issues
+        .map((i) => `${i.path.join(".")}: ${i.message}`)
+        .join("; "),
+    );
   }
   return result.data;
 }
@@ -110,30 +129,45 @@ const SECRET_VALUE_RE = /^(ATATT|ghp_|github_pat_|glpat-|xoxb-|sk-)/;
 function assertNoSecrets(patch: unknown, path: string[] = []): void {
   if (patch === null || typeof patch !== "object") {
     if (typeof patch === "string" && SECRET_VALUE_RE.test(patch)) {
-      throw new CairnError("CONFIG_INVALID",
+      throw new CairnError(
+        "CONFIG_INVALID",
         `value at ${path.join(".")} looks like a credential — secrets do not belong in cairn.json`,
-        "put credentials in env vars (see each adapter's *Env config keys)");
+        "put credentials in env vars (see each adapter's *Env config keys)",
+      );
     }
     return;
   }
   for (const [k, v] of Object.entries(patch as Record<string, unknown>)) {
     if (SECRET_KEY_RE.test(k)) {
-      throw new CairnError("CONFIG_INVALID",
+      throw new CairnError(
+        "CONFIG_INVALID",
         `key '${[...path, k].join(".")}' — secrets do not belong in cairn.json`,
-        "put credentials in env vars (see each adapter's *Env config keys)");
+        "put credentials in env vars (see each adapter's *Env config keys)",
+      );
     }
     assertNoSecrets(v, [...path, k]);
   }
 }
 
-function deepMerge(base: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
+function deepMerge(
+  base: Record<string, unknown>,
+  patch: Record<string, unknown>,
+): Record<string, unknown> {
   const out = { ...base };
   for (const [k, v] of Object.entries(patch)) {
     if (v === null) {
       delete out[k];
-    } else if (typeof v === "object" && !Array.isArray(v)
-      && typeof out[k] === "object" && out[k] !== null && !Array.isArray(out[k])) {
-      out[k] = deepMerge(out[k] as Record<string, unknown>, v as Record<string, unknown>);
+    } else if (
+      typeof v === "object" &&
+      !Array.isArray(v) &&
+      typeof out[k] === "object" &&
+      out[k] !== null &&
+      !Array.isArray(out[k])
+    ) {
+      out[k] = deepMerge(
+        out[k] as Record<string, unknown>,
+        v as Record<string, unknown>,
+      );
     } else {
       out[k] = v;
     }
@@ -141,22 +175,31 @@ function deepMerge(base: Record<string, unknown>, patch: Record<string, unknown>
   return out;
 }
 
-export function writeConfigPatch(projectDir: string,
-  patch: Record<string, unknown>): CairnConfig {
+export function writeConfigPatch(
+  projectDir: string,
+  patch: Record<string, unknown>,
+): CairnConfig {
   assertNoSecrets(patch);
   const path = join(projectDir, "cairn.json");
   let raw: Record<string, unknown>;
   try {
     raw = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
   } catch (e) {
-    throw new CairnError("CONFIG_MISSING", `cannot read cairn.json: ${e}`,
-      "create cairn.json — see templates/cairn.json.example");
+    throw new CairnError(
+      "CONFIG_MISSING",
+      `cannot read cairn.json: ${e}`,
+      "create cairn.json — see templates/cairn.json.example",
+    );
   }
   const merged = deepMerge(raw, patch);
   const result = ConfigSchema.safeParse(merged);
   if (!result.success) {
-    throw new CairnError("CONFIG_INVALID", result.error.issues
-      .map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+    throw new CairnError(
+      "CONFIG_INVALID",
+      result.error.issues
+        .map((i) => `${i.path.join(".")}: ${i.message}`)
+        .join("; "),
+    );
   }
   writeFileSync(path, `${JSON.stringify(merged, null, 2)}\n`);
   return result.data;

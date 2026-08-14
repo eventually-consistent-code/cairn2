@@ -3,8 +3,17 @@ import { CairnError } from "../../errors.js";
 import { fetchJson, type FetchLike } from "../http.js";
 import { runProbe } from "../probe.js";
 import type {
-  Capability, Issue, IssueCreate, IssueEstimate, IssuePatch, IssueState, Milestone,
-  Phase, ProbeResult, StateCategory, Tracker,
+  Capability,
+  Issue,
+  IssueCreate,
+  IssueEstimate,
+  IssuePatch,
+  IssueState,
+  Milestone,
+  Phase,
+  ProbeResult,
+  StateCategory,
+  Tracker,
 } from "../types.js";
 import { matchesState } from "../types.js";
 
@@ -13,7 +22,9 @@ const ID_RE = /^[A-Z][A-Z0-9]+-\d+$/i;
 const MAX_RESULTS = 100;
 
 const STATUS_CATEGORY_MAP: Record<string, StateCategory> = {
-  new: "open", indeterminate: "in_progress", done: "closed",
+  new: "open",
+  indeterminate: "in_progress",
+  done: "closed",
 };
 
 export const configSchema = z.object({
@@ -24,10 +35,13 @@ export const configSchema = z.object({
   tokenEnv: z.string().default("JIRA_API_TOKEN"),
   // Arbitrary extra keys are custom cairn states ("review": "In Review") —
   // resolved through the same transition-by-name machinery (CRN-26).
-  transitions: z.record(z.string())
+  transitions: z
+    .record(z.string(), z.string())
     .default({ in_progress: "In Progress", closed: "Done" })
-    .refine((t) => typeof t.in_progress === "string" && typeof t.closed === "string",
-      "transitions must include in_progress and closed"),
+    .refine(
+      (t) => typeof t.in_progress === "string" && typeof t.closed === "string",
+      "transitions must include in_progress and closed",
+    ),
   // Board auto-discovers from the project; set this only when the project
   // has several boards and the first one is the wrong one.
   boardId: z.number().int().positive().optional(),
@@ -44,12 +58,18 @@ export function make(config: JiraConfig, fetchImpl?: FetchLike): Tracker {
   return new JiraTracker(config, fetchImpl);
 }
 
-export function resolveJiraAuth(cfg: JiraConfig): { email: string; token: string } {
+export function resolveJiraAuth(cfg: JiraConfig): {
+  email: string;
+  token: string;
+} {
   const email = process.env[cfg.emailEnv];
   const token = process.env[cfg.tokenEnv];
   if (!email || !token) {
-    throw new CairnError("AUTH_MISSING", "no Jira credentials",
-      `export ${cfg.emailEnv} and ${cfg.tokenEnv} (create a token at https://id.atlassian.com/manage-profile/security/api-tokens)`);
+    throw new CairnError(
+      "AUTH_MISSING",
+      "no Jira credentials",
+      `export ${cfg.emailEnv} and ${cfg.tokenEnv} (create a token at https://id.atlassian.com/manage-profile/security/api-tokens)`,
+    );
   }
   return { email, token };
 }
@@ -88,7 +108,9 @@ function adf(text: string): AdfNode {
   return {
     type: "doc",
     version: 1,
-    content: [{ type: "paragraph", content: [{ type: "text", text: text || " " }] }],
+    content: [
+      { type: "paragraph", content: [{ type: "text", text: text || " " }] },
+    ],
   };
 }
 
@@ -106,7 +128,11 @@ function adfToText(node: AdfNode | null | undefined): string {
  */
 function normalizeTimestamp(raw: string): string {
   const s = raw.trim();
-  if (s.length >= 5 && (s[s.length - 5] === "+" || s[s.length - 5] === "-") && s[s.length - 3] !== ":") {
+  if (
+    s.length >= 5 &&
+    (s[s.length - 5] === "+" || s[s.length - 5] === "-") &&
+    s[s.length - 3] !== ":"
+  ) {
     return `${s.slice(0, -2)}:${s.slice(-2)}`;
   }
   return s;
@@ -114,8 +140,14 @@ function normalizeTimestamp(raw: string): string {
 
 export class JiraTracker implements Tracker {
   readonly capabilities: Capability = {
-    hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-    hasMilestones: true, hasPhaseClose: true, hasComments: true, hasWorklog: true,
+    hasInProgress: true,
+    hasPhases: true,
+    hasDependencies: true,
+    hasLabels: true,
+    hasMilestones: true,
+    hasPhaseClose: true,
+    hasComments: true,
+    hasWorklog: true,
     hasEstimates: true,
     hasIssueAttachments: true,
   };
@@ -127,11 +159,17 @@ export class JiraTracker implements Tracker {
 
   private async storyPointFieldId(): Promise<string | null> {
     if (this.storyPointField === undefined) {
-      const raw = (await this.api("GET", "/rest/api/3/field", undefined,
-        "jira field_list")) as Array<{ id: string; name: string }>;
+      const raw = (await this.api(
+        "GET",
+        "/rest/api/3/field",
+        undefined,
+        "jira field_list",
+      )) as Array<{ id: string; name: string }>;
       const hit = raw.find((f) => /^story points?( estimate)?$/i.test(f.name));
       if (!hit) {
-        console.error("[cairn] jira: no story-point field on this site — points estimates skipped");
+        console.error(
+          "[cairn] jira: no story-point field on this site — points estimates skipped",
+        );
       }
       this.storyPointField = hit?.id ?? null;
     }
@@ -139,9 +177,12 @@ export class JiraTracker implements Tracker {
   }
 
   /** SPI estimate → Jira write fields (timetracking + discovered points field). */
-  private async estimateFields(est: IssueEstimate): Promise<Record<string, unknown>> {
+  private async estimateFields(
+    est: IssueEstimate,
+  ): Promise<Record<string, unknown>> {
     const out: Record<string, unknown> = {};
-    if (est.minutes !== undefined) out.timetracking = { originalEstimate: `${est.minutes}m` };
+    if (est.minutes !== undefined)
+      out.timetracking = { originalEstimate: `${est.minutes}m` };
     if (est.points !== undefined) {
       const fld = await this.storyPointFieldId();
       if (fld) out[fld] = est.points;
@@ -151,8 +192,16 @@ export class JiraTracker implements Tracker {
 
   /** Read-field list: timetracking always; the points field once discovered. */
   private readFields(): string[] {
-    const base = ["summary", "description", "status", "updated", "labels",
-      "parent", "assignee", "timetracking"];
+    const base = [
+      "summary",
+      "description",
+      "status",
+      "updated",
+      "labels",
+      "parent",
+      "assignee",
+      "timetracking",
+    ];
     return this.storyPointField ? [...base, this.storyPointField] : base;
   }
 
@@ -161,7 +210,10 @@ export class JiraTracker implements Tracker {
   constructor(
     private readonly cfg: JiraConfig,
     private readonly fetchImpl: FetchLike = fetch,
-    private readonly authProvider: () => { email: string; token: string } = () => resolveJiraAuth(cfg),
+    private readonly authProvider: () => {
+      email: string;
+      token: string;
+    } = () => resolveJiraAuth(cfg),
   ) {}
 
   private headers(): Record<string, string> {
@@ -193,8 +245,12 @@ export class JiraTracker implements Tracker {
 
   private async resolveCloudId(): Promise<string> {
     if (this.cloudId === undefined) {
-      const info = (await fetchJson(this.fetchImpl, `${this.siteOrigin()}/_edge/tenant_info`,
-        { method: "GET" }, { context: "jira tenant_info" })) as { cloudId: string };
+      const info = (await fetchJson(
+        this.fetchImpl,
+        `${this.siteOrigin()}/_edge/tenant_info`,
+        { method: "GET" },
+        { context: "jira tenant_info" },
+      )) as { cloudId: string };
       this.cloudId = info.cloudId;
     }
     return this.cloudId;
@@ -211,35 +267,52 @@ export class JiraTracker implements Tracker {
     return `https://api.atlassian.com/ex/jira/${cloudId}`;
   }
 
-  private async api(method: string, path: string, body?: unknown, context = "jira"): Promise<unknown> {
+  private async api(
+    method: string,
+    path: string,
+    body?: unknown,
+    context = "jira",
+  ): Promise<unknown> {
     const base = await this.apiBase();
-    return fetchJson(this.fetchImpl, `${base}${path}`, {
-      method,
-      headers: this.headers(),
-      body: body === undefined ? undefined : JSON.stringify(body),
-    }, { context });
+    return fetchJson(
+      this.fetchImpl,
+      `${base}${path}`,
+      {
+        method,
+        headers: this.headers(),
+        body: body === undefined ? undefined : JSON.stringify(body),
+      },
+      { context },
+    );
   }
 
   private assertId(id: string): void {
     if (!ID_RE.test(id)) {
-      throw new CairnError("NOT_FOUND", `invalid issue id: ${id}`,
-        "issue id must look like PROJ-123");
+      throw new CairnError(
+        "NOT_FOUND",
+        `invalid issue id: ${id}`,
+        "issue id must look like PROJ-123",
+      );
     }
   }
 
   private normalize(raw: JiraIssue): Issue {
     const f = raw.fields;
-    const category = STATUS_CATEGORY_MAP[f.status?.statusCategory?.key ?? "new"] ?? "open";
+    const category =
+      STATUS_CATEGORY_MAP[f.status?.statusCategory?.key ?? "new"] ?? "open";
     const state = f.status?.name ?? category;
     const seconds = f.timetracking?.originalEstimateSeconds;
     const points = this.storyPointField
-      ? (f as unknown as Record<string, unknown>)[this.storyPointField] : undefined;
+      ? (f as unknown as Record<string, unknown>)[this.storyPointField]
+      : undefined;
     const estimate: IssueEstimate | undefined =
       seconds !== undefined || typeof points === "number"
         ? {
-          ...(typeof points === "number" ? { points } : {}),
-          ...(seconds !== undefined ? { minutes: Math.round(seconds / 60) } : {}),
-        }
+            ...(typeof points === "number" ? { points } : {}),
+            ...(seconds !== undefined
+              ? { minutes: Math.round(seconds / 60) }
+              : {}),
+          }
         : undefined;
     return {
       estimate,
@@ -257,32 +330,59 @@ export class JiraTracker implements Tracker {
   }
 
   /** GET transitions for `key`, find one whose `to.name` or transition `name` matches (case-insensitive), POST it. */
-  private async transitionByName(key: string, targetName: string): Promise<void> {
-    const resp = (await this.api("GET", `/rest/api/3/issue/${key}/transitions`,
-      undefined, "jira transition_list")) as { transitions: JiraTransition[] };
+  private async transitionByName(
+    key: string,
+    targetName: string,
+  ): Promise<void> {
+    const resp = (await this.api(
+      "GET",
+      `/rest/api/3/issue/${key}/transitions`,
+      undefined,
+      "jira transition_list",
+    )) as { transitions: JiraTransition[] };
     const target = targetName.toLowerCase();
     const match = resp.transitions.find(
-      (t) => t.to?.name?.toLowerCase() === target || t.name?.toLowerCase() === target,
+      (t) =>
+        t.to?.name?.toLowerCase() === target ||
+        t.name?.toLowerCase() === target,
     );
     if (!match) {
-      console.error(`[cairn] jira: no transition to "${targetName}" found for issue ${key}; leaving state unchanged`);
+      console.error(
+        `[cairn] jira: no transition to "${targetName}" found for issue ${key}; leaving state unchanged`,
+      );
       return;
     }
-    await this.api("POST", `/rest/api/3/issue/${key}/transitions`,
-      { transition: { id: match.id } }, "jira transition");
+    await this.api(
+      "POST",
+      `/rest/api/3/issue/${key}/transitions`,
+      { transition: { id: match.id } },
+      "jira transition",
+    );
   }
 
   /** in_progress -> open has no fixed target name; find any transition whose target category is 'new'. */
   private async transitionToOpenCategory(key: string): Promise<void> {
-    const resp = (await this.api("GET", `/rest/api/3/issue/${key}/transitions`,
-      undefined, "jira transition_list")) as { transitions: JiraTransition[] };
-    const match = resp.transitions.find((t) => t.to?.statusCategory?.key === "new");
+    const resp = (await this.api(
+      "GET",
+      `/rest/api/3/issue/${key}/transitions`,
+      undefined,
+      "jira transition_list",
+    )) as { transitions: JiraTransition[] };
+    const match = resp.transitions.find(
+      (t) => t.to?.statusCategory?.key === "new",
+    );
     if (!match) {
-      console.error(`[cairn] jira: no transition to an "open"-category state found for issue ${key}; leaving state unchanged`);
+      console.error(
+        `[cairn] jira: no transition to an "open"-category state found for issue ${key}; leaving state unchanged`,
+      );
       return;
     }
-    await this.api("POST", `/rest/api/3/issue/${key}/transitions`,
-      { transition: { id: match.id } }, "jira transition");
+    await this.api(
+      "POST",
+      `/rest/api/3/issue/${key}/transitions`,
+      { transition: { id: match.id } },
+      "jira transition",
+    );
   }
 
   // Board + active sprint, each resolved once per instance. `null` is a real
@@ -293,13 +393,20 @@ export class JiraTracker implements Tracker {
   private async board(): Promise<{ id: number; type: string } | null> {
     if (this.boardCache === undefined) {
       if (this.cfg.boardId) {
-        const raw = (await this.api("GET", `/rest/agile/1.0/board/${this.cfg.boardId}`,
-          undefined, "jira board_get")) as { id: number; type: string };
+        const raw = (await this.api(
+          "GET",
+          `/rest/agile/1.0/board/${this.cfg.boardId}`,
+          undefined,
+          "jira board_get",
+        )) as { id: number; type: string };
         this.boardCache = { id: raw.id, type: raw.type };
       } else {
-        const raw = (await this.api("GET",
+        const raw = (await this.api(
+          "GET",
           `/rest/agile/1.0/board?projectKeyOrId=${encodeURIComponent(this.cfg.projectKey)}`,
-          undefined, "jira board_list")) as { values: Array<{ id: number; type: string }> };
+          undefined,
+          "jira board_list",
+        )) as { values: Array<{ id: number; type: string }> };
         this.boardCache = raw.values[0] ?? null;
       }
     }
@@ -310,9 +417,12 @@ export class JiraTracker implements Tracker {
     const board = await this.board();
     if (!board || board.type !== "scrum") return null;
     if (this.sprintCache === undefined) {
-      const raw = (await this.api("GET",
+      const raw = (await this.api(
+        "GET",
         `/rest/agile/1.0/board/${board.id}/sprint?state=active`,
-        undefined, "jira sprint_list")) as { values: Array<{ id: number }> };
+        undefined,
+        "jira sprint_list",
+      )) as { values: Array<{ id: number }> };
       this.sprintCache = raw.values[0]?.id ?? null;
     }
     return this.sprintCache;
@@ -324,8 +434,12 @@ export class JiraTracker implements Tracker {
     try {
       const sprint = await this.activeSprintId();
       if (sprint === null) return;
-      await this.api("POST", `/rest/agile/1.0/sprint/${sprint}/issue`,
-        { issues: [key] }, "jira sprint_assign");
+      await this.api(
+        "POST",
+        `/rest/agile/1.0/sprint/${sprint}/issue`,
+        { issues: [key] },
+        "jira sprint_assign",
+      );
     } catch (e) {
       console.error(`[cairn] jira: sprint assignment for ${key} skipped: ${e}`);
     }
@@ -340,18 +454,26 @@ export class JiraTracker implements Tracker {
     };
     if (input.labels?.length) fields.labels = input.labels;
     if (input.phase) fields.parent = { key: input.phase };
-    if (input.estimate) Object.assign(fields, await this.estimateFields(input.estimate));
-    const created = (await this.api("POST", "/rest/api/3/issue", { fields },
-      "jira issue_create")) as { key: string };
+    if (input.estimate)
+      Object.assign(fields, await this.estimateFields(input.estimate));
+    const created = (await this.api(
+      "POST",
+      "/rest/api/3/issue",
+      { fields },
+      "jira issue_create",
+    )) as { key: string };
     await this.assignToActiveSprint(created.key);
     return this.getIssue(created.key);
   }
 
   async getIssue(id: string): Promise<Issue> {
     this.assertId(id);
-    const raw = await this.api("GET",
+    const raw = await this.api(
+      "GET",
       `/rest/api/3/issue/${id}?fields=${this.readFields().join(",")}`,
-      undefined, "jira issue_get");
+      undefined,
+      "jira issue_get",
+    );
     return this.normalize(raw as JiraIssue);
   }
 
@@ -359,8 +481,12 @@ export class JiraTracker implements Tracker {
 
   async resolveSelf(): Promise<string | undefined> {
     if (this.self) return this.self;
-    const me = await this.api("GET", "/rest/api/3/myself", undefined,
-      "jira myself") as { accountId?: string };
+    const me = (await this.api(
+      "GET",
+      "/rest/api/3/myself",
+      undefined,
+      "jira myself",
+    )) as { accountId?: string };
     this.self = me.accountId;
     return this.self;
   }
@@ -375,13 +501,19 @@ export class JiraTracker implements Tracker {
   /** Assignee values may arrive as an email (user.handle) — Jira wants accountId. */
   private async toAccountId(value: string): Promise<string> {
     if (!value.includes("@")) return value;
-    const hits = await this.api("GET",
-      `/rest/api/3/user/search?query=${encodeURIComponent(value)}`, undefined,
-      "jira user_search") as Array<{ accountId?: string }>;
+    const hits = (await this.api(
+      "GET",
+      `/rest/api/3/user/search?query=${encodeURIComponent(value)}`,
+      undefined,
+      "jira user_search",
+    )) as Array<{ accountId?: string }>;
     const id = hits[0]?.accountId;
     if (!id) {
-      throw new CairnError("NOT_FOUND", `no Jira user matches '${value}'`,
-        "set user.handle in cairn.json to a Jira accountId or exact email");
+      throw new CairnError(
+        "NOT_FOUND",
+        `no Jira user matches '${value}'`,
+        "set user.handle in cairn.json to a Jira accountId or exact email",
+      );
     }
     return id;
   }
@@ -395,9 +527,15 @@ export class JiraTracker implements Tracker {
     if (patch.assignee !== undefined) {
       fields.assignee = { accountId: await this.toAccountId(patch.assignee) };
     }
-    if (patch.estimate) Object.assign(fields, await this.estimateFields(patch.estimate));
+    if (patch.estimate)
+      Object.assign(fields, await this.estimateFields(patch.estimate));
     if (Object.keys(fields).length > 0) {
-      await this.api("PUT", `/rest/api/3/issue/${id}`, { fields }, "jira issue_update");
+      await this.api(
+        "PUT",
+        `/rest/api/3/issue/${id}`,
+        { fields },
+        "jira issue_update",
+      );
     }
     if (patch.state === "in_progress") {
       await this.transitionByName(id, this.cfg.transitions.in_progress!);
@@ -408,7 +546,10 @@ export class JiraTracker implements Tracker {
     } else if (patch.state !== undefined) {
       // Custom state: transitions-map alias first, else the literal name —
       // Jira's own transition list is the authority either way.
-      await this.transitionByName(id, this.cfg.transitions[patch.state] ?? patch.state);
+      await this.transitionByName(
+        id,
+        this.cfg.transitions[patch.state] ?? patch.state,
+      );
     }
     return this.getIssue(id);
   }
@@ -417,10 +558,16 @@ export class JiraTracker implements Tracker {
     return this.updateIssue(id, { state: "closed" });
   }
 
-  async listIssues(filter?: { phase?: string; state?: IssueState }): Promise<Issue[]> {
+  async listIssues(filter?: {
+    phase?: string;
+    state?: IssueState;
+  }): Promise<Issue[]> {
     if (filter?.phase && !ID_RE.test(filter.phase)) {
-      throw new CairnError("NOT_FOUND", `invalid phase key: ${filter.phase}`,
-        "phase key must look like PROJ-123");
+      throw new CairnError(
+        "NOT_FOUND",
+        `invalid phase key: ${filter.phase}`,
+        "phase key must look like PROJ-123",
+      );
     }
     // Epics model cairn "phases", not issues — exclude them from the unfiltered
     // list. A parent-filtered query can't match an epic anyway (epics have no
@@ -428,16 +575,24 @@ export class JiraTracker implements Tracker {
     const jql = filter?.phase
       ? `parent = ${filter.phase}`
       : `project = ${this.cfg.projectKey} AND issuetype != Epic`;
-    const raw = (await this.api("POST", "/rest/api/3/search/jql", {
-      jql,
-      maxResults: MAX_RESULTS,
-      fields: this.readFields(),
-    }, "jira issue_list")) as { issues: JiraIssue[]; total?: number };
+    const raw = (await this.api(
+      "POST",
+      "/rest/api/3/search/jql",
+      {
+        jql,
+        maxResults: MAX_RESULTS,
+        fields: this.readFields(),
+      },
+      "jira issue_list",
+    )) as { issues: JiraIssue[]; total?: number };
     if (raw.issues.length === MAX_RESULTS) {
-      console.error(`[cairn] jira issue_list truncated at ${MAX_RESULTS} results (total: ${raw.total ?? "unknown"})`);
+      console.error(
+        `[cairn] jira issue_list truncated at ${MAX_RESULTS} results (total: ${raw.total ?? "unknown"})`,
+      );
     }
     let issues = raw.issues.map((i) => this.normalize(i));
-    if (filter?.state) issues = issues.filter((i) => matchesState(i, filter.state!));
+    if (filter?.state)
+      issues = issues.filter((i) => matchesState(i, filter.state!));
     return issues;
   }
 
@@ -447,40 +602,63 @@ export class JiraTracker implements Tracker {
       summary: name,
       issuetype: { name: "Epic" },
     };
-    const created = (await this.api("POST", "/rest/api/3/issue", { fields },
-      "jira phase_create")) as { key: string };
+    const created = (await this.api(
+      "POST",
+      "/rest/api/3/issue",
+      { fields },
+      "jira phase_create",
+    )) as { key: string };
     return { id: created.key, name, state: "open" };
   }
 
   async listPhases(): Promise<Phase[]> {
-    const raw = (await this.api("POST", "/rest/api/3/search/jql", {
-      jql: `project = ${this.cfg.projectKey} AND issuetype = Epic`,
-      maxResults: MAX_RESULTS,
-      fields: ["summary", "status", "updated"],
-    }, "jira phase_list")) as { issues: JiraIssue[]; total?: number };
+    const raw = (await this.api(
+      "POST",
+      "/rest/api/3/search/jql",
+      {
+        jql: `project = ${this.cfg.projectKey} AND issuetype = Epic`,
+        maxResults: MAX_RESULTS,
+        fields: ["summary", "status", "updated"],
+      },
+      "jira phase_list",
+    )) as { issues: JiraIssue[]; total?: number };
     if (raw.issues.length === MAX_RESULTS) {
-      console.error(`[cairn] jira phase_list truncated at ${MAX_RESULTS} results (total: ${raw.total ?? "unknown"})`);
+      console.error(
+        `[cairn] jira phase_list truncated at ${MAX_RESULTS} results (total: ${raw.total ?? "unknown"})`,
+      );
     }
     return raw.issues.map((i) => ({
       id: i.key,
       name: i.fields.summary,
-      state: STATUS_CATEGORY_MAP[i.fields.status?.statusCategory?.key ?? "new"] === "closed" ? "closed" : "open",
+      state:
+        STATUS_CATEGORY_MAP[i.fields.status?.statusCategory?.key ?? "new"] ===
+        "closed"
+          ? "closed"
+          : "open",
     }));
   }
 
   private async resolveProjectId(): Promise<number> {
     if (this.projectId === undefined) {
-      const raw = (await this.api("GET",
-        `/rest/api/3/project/${this.cfg.projectKey}`, undefined,
-        "jira project_get")) as { id: string };
+      const raw = (await this.api(
+        "GET",
+        `/rest/api/3/project/${this.cfg.projectKey}`,
+        undefined,
+        "jira project_get",
+      )) as { id: string };
       this.projectId = Number(raw.id);
     }
     return this.projectId;
   }
 
-  private normalizeVersion(raw: { id: string; name: string; released?: boolean }): Milestone {
+  private normalizeVersion(raw: {
+    id: string;
+    name: string;
+    released?: boolean;
+  }): Milestone {
     return {
-      id: raw.id, name: raw.name,
+      id: raw.id,
+      name: raw.name,
       state: raw.released ? "released" : "open",
       url: `${this.cfg.baseUrl.replace(/\/$/, "")}/projects/${this.cfg.projectKey}/versions/${raw.id}`,
     };
@@ -494,51 +672,82 @@ export class JiraTracker implements Tracker {
 
   async createMilestone(name: string): Promise<Milestone> {
     const projectId = await this.resolveProjectId();
-    const raw = (await this.api("POST", "/rest/api/3/version",
-      { name, projectId }, "jira milestone_create")) as
-      { id: string; name: string; released?: boolean };
+    const raw = (await this.api(
+      "POST",
+      "/rest/api/3/version",
+      { name, projectId },
+      "jira milestone_create",
+    )) as { id: string; name: string; released?: boolean };
     return this.normalizeVersion(raw);
   }
 
   async listMilestones(): Promise<Milestone[]> {
-    const raw = (await this.api("GET",
-      `/rest/api/3/project/${this.cfg.projectKey}/versions`, undefined,
-      "jira milestone_list")) as Array<{ id: string; name: string; released?: boolean }>;
+    const raw = (await this.api(
+      "GET",
+      `/rest/api/3/project/${this.cfg.projectKey}/versions`,
+      undefined,
+      "jira milestone_list",
+    )) as Array<{ id: string; name: string; released?: boolean }>;
     return raw.map((v) => this.normalizeVersion(v));
   }
 
   async completeMilestone(id: string): Promise<Milestone> {
-    const raw = (await this.api("PUT", `/rest/api/3/version/${id}`,
-      { released: true }, "jira milestone_complete")) as
-      { id: string; name: string; released?: boolean };
+    const raw = (await this.api(
+      "PUT",
+      `/rest/api/3/version/${id}`,
+      { released: true },
+      "jira milestone_complete",
+    )) as { id: string; name: string; released?: boolean };
     return this.normalizeVersion(raw);
   }
 
-  async commentIssue(id: string, text: string): Promise<{ id: string; url?: string }> {
+  async commentIssue(
+    id: string,
+    text: string,
+  ): Promise<{ id: string; url?: string }> {
     this.assertId(id);
-    const raw = (await this.api("POST", `/rest/api/3/issue/${id}/comment`,
-      { body: adf(text) }, "jira issue_comment")) as { id: string };
+    const raw = (await this.api(
+      "POST",
+      `/rest/api/3/issue/${id}/comment`,
+      { body: adf(text) },
+      "jira issue_comment",
+    )) as { id: string };
     return { id: raw.id };
   }
 
   async logWork(id: string, minutes: number): Promise<void> {
     this.assertId(id);
-    await this.api("POST", `/rest/api/3/issue/${id}/worklog`,
-      { timeSpentSeconds: minutes * 60 }, "jira worklog");
+    await this.api(
+      "POST",
+      `/rest/api/3/issue/${id}/worklog`,
+      { timeSpentSeconds: minutes * 60 },
+      "jira worklog",
+    );
   }
 
-  async attachFile(id: string, filename: string, data: Buffer,
-    mediaType?: string): Promise<{ id?: string; url?: string }> {
+  async attachFile(
+    id: string,
+    filename: string,
+    data: Buffer,
+    mediaType?: string,
+  ): Promise<{ id?: string; url?: string }> {
     this.assertId(id);
     const form = new FormData();
-    form.append("file", new Blob([new Uint8Array(data)],
-      { type: mediaType ?? "application/octet-stream" }), filename);
+    form.append(
+      "file",
+      new Blob([new Uint8Array(data)], {
+        type: mediaType ?? "application/octet-stream",
+      }),
+      filename,
+    );
     const { email, token } = this.authProvider();
     const base = await this.apiBase();
     // Multipart — no JSON content-type; fetch sets the boundary itself, and
     // Jira demands the XSRF opt-out header on this endpoint.
-    const raw = (await fetchJson(this.fetchImpl,
-      `${base}/rest/api/3/issue/${id}/attachments`, {
+    const raw = (await fetchJson(
+      this.fetchImpl,
+      `${base}/rest/api/3/issue/${id}/attachments`,
+      {
         method: "POST",
         headers: {
           authorization: `Basic ${Buffer.from(`${email}:${token}`).toString("base64")}`,
@@ -546,7 +755,9 @@ export class JiraTracker implements Tracker {
           "X-Atlassian-Token": "no-check",
         },
         body: form,
-      }, { context: "jira issue_attach" })) as Array<{ id?: string; content?: string }>;
+      },
+      { context: "jira issue_attach" },
+    )) as Array<{ id?: string; content?: string }>;
     return { id: raw[0]?.id, url: raw[0]?.content };
   }
 }

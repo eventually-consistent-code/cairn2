@@ -3,28 +3,51 @@ import { CairnError } from "../../errors.js";
 import { fetchJson, type FetchLike } from "../http.js";
 import { runProbe } from "../probe.js";
 import type {
-  Capability, StateCategory, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase,
-  ProbeResult, Tracker,
+  Capability,
+  StateCategory,
+  Issue,
+  IssueCreate,
+  IssuePatch,
+  IssueState,
+  Milestone,
+  Phase,
+  ProbeResult,
+  Tracker,
 } from "../types.js";
 import { matchesState } from "../types.js";
-import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
+import {
+  milestonesUnsupported,
+  phaseCloseUnsupported,
+} from "../unsupported.js";
 
 const API = "https://api.clickup.com/api/v2";
 const LIST_CAP = 100;
 
-export const configSchema = z.object({
-  defaultListId: z.string().min(1), // un-phased tasks land here
-  folderId: z.string().optional(), // phases become Lists in this folder…
-  spaceId: z.string().optional(), // …or directly in this space (exactly one required)
-  tokenEnv: z.string().default("CLICKUP_TOKEN"),
-  // Extra keys are custom cairn states ("review": "code review") — CRN-26.
-  statuses: z.record(z.string())
-    .default({ open: "to do", in_progress: "in progress", closed: "complete" })
-    .refine((s) => ["open", "in_progress", "closed"].every((k) => typeof s[k] === "string"),
-      "statuses must include open, in_progress, and closed"),
-}).refine((c) => Boolean(c.folderId) !== Boolean(c.spaceId), {
-  message: "exactly one of folderId or spaceId is required",
-});
+export const configSchema = z
+  .object({
+    defaultListId: z.string().min(1), // un-phased tasks land here
+    folderId: z.string().optional(), // phases become Lists in this folder…
+    spaceId: z.string().optional(), // …or directly in this space (exactly one required)
+    tokenEnv: z.string().default("CLICKUP_TOKEN"),
+    // Extra keys are custom cairn states ("review": "code review") — CRN-26.
+    statuses: z
+      .record(z.string(), z.string())
+      .default({
+        open: "to do",
+        in_progress: "in progress",
+        closed: "complete",
+      })
+      .refine(
+        (s) =>
+          ["open", "in_progress", "closed"].every(
+            (k) => typeof s[k] === "string",
+          ),
+        "statuses must include open, in_progress, and closed",
+      ),
+  })
+  .refine((c) => Boolean(c.folderId) !== Boolean(c.spaceId), {
+    message: "exactly one of folderId or spaceId is required",
+  });
 
 export type ClickUpConfig = z.infer<typeof configSchema>;
 
@@ -35,8 +58,11 @@ export function make(config: ClickUpConfig, fetchImpl?: FetchLike): Tracker {
 export function resolveClickUpToken(tokenEnv: string): string {
   const env = process.env[tokenEnv];
   if (env) return env;
-  throw new CairnError("AUTH_MISSING", `no ClickUp credentials (${tokenEnv} not set)`,
-    `export ${tokenEnv}`);
+  throw new CairnError(
+    "AUTH_MISSING",
+    `no ClickUp credentials (${tokenEnv} not set)`,
+    `export ${tokenEnv}`,
+  );
 }
 
 interface CuStatus {
@@ -58,8 +84,14 @@ interface CuTask {
 
 export class ClickUpTracker implements Tracker {
   readonly capabilities: Capability = {
-    hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-    hasMilestones: false, hasPhaseClose: false, hasComments: true, hasWorklog: false,
+    hasInProgress: true,
+    hasPhases: true,
+    hasDependencies: true,
+    hasLabels: true,
+    hasMilestones: false,
+    hasPhaseClose: false,
+    hasComments: true,
+    hasWorklog: false,
     hasEstimates: false,
     hasIssueAttachments: false,
   };
@@ -67,7 +99,8 @@ export class ClickUpTracker implements Tracker {
   constructor(
     private readonly cfg: ClickUpConfig,
     private readonly fetchImpl: FetchLike = fetch,
-    private readonly tokenProvider: () => string = () => resolveClickUpToken(cfg.tokenEnv),
+    private readonly tokenProvider: () => string = () =>
+      resolveClickUpToken(cfg.tokenEnv),
   ) {}
 
   private headers(): Record<string, string> {
@@ -77,18 +110,31 @@ export class ClickUpTracker implements Tracker {
     };
   }
 
-  private async api(method: string, path: string, body?: unknown, context = "clickup"): Promise<unknown> {
-    return fetchJson(this.fetchImpl, `${API}${path}`, {
-      method,
-      headers: this.headers(),
-      body: body === undefined ? undefined : JSON.stringify(body),
-    }, { context });
+  private async api(
+    method: string,
+    path: string,
+    body?: unknown,
+    context = "clickup",
+  ): Promise<unknown> {
+    return fetchJson(
+      this.fetchImpl,
+      `${API}${path}`,
+      {
+        method,
+        headers: this.headers(),
+        body: body === undefined ? undefined : JSON.stringify(body),
+      },
+      { context },
+    );
   }
 
   private assertId(id: string): void {
     if (!/^[a-z0-9]+$/i.test(id)) {
-      throw new CairnError("NOT_FOUND", `invalid task id: ${id}`,
-        "task id must be alphanumeric");
+      throw new CairnError(
+        "NOT_FOUND",
+        `invalid task id: ${id}`,
+        "task id must be alphanumeric",
+      );
     }
   }
 
@@ -96,14 +142,24 @@ export class ClickUpTracker implements Tracker {
    *  token is valid, not that the configured list exists. A typo'd
    *  defaultListId now 404s instead of reading "ok". */
   async probe(): Promise<ProbeResult> {
-    return runProbe(() => this.api("GET", `/list/${this.cfg.defaultListId}`, undefined, "clickup probe"));
+    return runProbe(() =>
+      this.api(
+        "GET",
+        `/list/${this.cfg.defaultListId}`,
+        undefined,
+        "clickup probe",
+      ),
+    );
   }
 
   /** Validates a caller-supplied phase (list) id before it reaches a URL. defaultListId is trusted config, not user input. */
   private assertPhaseId(id: string): void {
     if (!/^[a-z0-9]+$/i.test(id)) {
-      throw new CairnError("NOT_FOUND", `invalid phase id: ${id}`,
-        "phase id must be alphanumeric");
+      throw new CairnError(
+        "NOT_FOUND",
+        `invalid phase id: ${id}`,
+        "phase id must be alphanumeric",
+      );
     }
   }
 
@@ -111,7 +167,8 @@ export class ClickUpTracker implements Tracker {
     if (status.type === "open") return "open";
     if (status.type === "done" || status.type === "closed") return "closed";
     // custom: compare to the configured in_progress status name, case-insensitively
-    return status.status.toLowerCase() === this.cfg.statuses.in_progress.toLowerCase()
+    return status.status.toLowerCase() ===
+      this.cfg.statuses.in_progress.toLowerCase()
       ? "in_progress"
       : "open";
   }
@@ -135,30 +192,56 @@ export class ClickUpTracker implements Tracker {
     if (input.phase) this.assertPhaseId(input.phase);
     const listId = input.phase ?? this.cfg.defaultListId;
     const body: Record<string, unknown> = {
-      name: input.title, description: input.body ?? "",
+      name: input.title,
+      description: input.body ?? "",
     };
-    const raw = (await this.api("POST", `/list/${listId}/task`, body,
-      "clickup createIssue")) as CuTask;
+    const raw = (await this.api(
+      "POST",
+      `/list/${listId}/task`,
+      body,
+      "clickup createIssue",
+    )) as CuTask;
     const issue = this.normalize(raw);
-    if (input.labels?.length) return this.reconcileTags(issue.id, [], input.labels, issue);
+    if (input.labels?.length)
+      return this.reconcileTags(issue.id, [], input.labels, issue);
     return issue;
   }
 
   async getIssue(id: string): Promise<Issue> {
     this.assertId(id);
-    const raw = (await this.api("GET", `/task/${id}`, undefined, "clickup getIssue")) as CuTask;
+    const raw = (await this.api(
+      "GET",
+      `/task/${id}`,
+      undefined,
+      "clickup getIssue",
+    )) as CuTask;
     return this.normalize(raw);
   }
 
   /** Adds/removes tags to match `desired`, given the tags currently on the task (by name). */
-  private async reconcileTags(id: string, current: string[], desired: string[], base: Issue): Promise<Issue> {
+  private async reconcileTags(
+    id: string,
+    current: string[],
+    desired: string[],
+    base: Issue,
+  ): Promise<Issue> {
     const toAdd = desired.filter((l) => !current.includes(l));
     const toRemove = current.filter((l) => !desired.includes(l));
     for (const label of toRemove) {
-      await this.api("DELETE", `/task/${id}/tag/${encodeURIComponent(label)}`, undefined, "clickup removeTag");
+      await this.api(
+        "DELETE",
+        `/task/${id}/tag/${encodeURIComponent(label)}`,
+        undefined,
+        "clickup removeTag",
+      );
     }
     for (const label of toAdd) {
-      await this.api("POST", `/task/${id}/tag/${encodeURIComponent(label)}`, undefined, "clickup addTag");
+      await this.api(
+        "POST",
+        `/task/${id}/tag/${encodeURIComponent(label)}`,
+        undefined,
+        "clickup addTag",
+      );
     }
     if (toAdd.length === 0 && toRemove.length === 0) return base;
     return { ...base, labels: desired };
@@ -173,16 +256,20 @@ export class ClickUpTracker implements Tracker {
     if (patch.state !== undefined) {
       const native = this.cfg.statuses[patch.state];
       if (!native) {
-        throw new CairnError("CONFIG_INVALID",
+        throw new CairnError(
+          "CONFIG_INVALID",
           `no clickup status mapped for state '${patch.state}'`,
-          `add it to tracker.config.statuses in cairn.json (known: ${Object.keys(this.cfg.statuses).join(", ")})`);
+          `add it to tracker.config.statuses in cairn.json (known: ${Object.keys(this.cfg.statuses).join(", ")})`,
+        );
       }
       body.status = native;
     }
 
-    const raw = (Object.keys(body).length > 0
-      ? await this.api("PUT", `/task/${id}`, body, "clickup updateIssue")
-      : await this.api("GET", `/task/${id}`, undefined, "clickup getIssue")) as CuTask;
+    const raw = (
+      Object.keys(body).length > 0
+        ? await this.api("PUT", `/task/${id}`, body, "clickup updateIssue")
+        : await this.api("GET", `/task/${id}`, undefined, "clickup getIssue")
+    ) as CuTask;
     let issue = this.normalize(raw);
 
     if (patch.labels !== undefined) {
@@ -195,21 +282,31 @@ export class ClickUpTracker implements Tracker {
     return this.updateIssue(id, { state: "closed" });
   }
 
-  async listIssues(filter?: { phase?: string; state?: IssueState }): Promise<Issue[]> {
+  async listIssues(filter?: {
+    phase?: string;
+    state?: IssueState;
+  }): Promise<Issue[]> {
     // v1: unfiltered listIssues() covers only the default list — ClickUp has
     // no "all tasks across lists" endpoint without iterating every list, so
     // an unphased call is scoped to defaultListId just like a phased call is
     // scoped to that phase's list.
     if (filter?.phase) this.assertPhaseId(filter.phase);
     const listId = filter?.phase ?? this.cfg.defaultListId;
-    const raw = (await this.api("GET", `/list/${listId}/task?include_closed=true`,
-      undefined, "clickup listIssues")) as { tasks: CuTask[] };
+    const raw = (await this.api(
+      "GET",
+      `/list/${listId}/task?include_closed=true`,
+      undefined,
+      "clickup listIssues",
+    )) as { tasks: CuTask[] };
     const tasks = raw.tasks ?? [];
     if (tasks.length >= LIST_CAP) {
-      console.error(`[cairn] clickup listIssues truncated at ${LIST_CAP} items for list ${listId}`);
+      console.error(
+        `[cairn] clickup listIssues truncated at ${LIST_CAP} items for list ${listId}`,
+      );
     }
     let issues = tasks.slice(0, LIST_CAP).map((t) => this.normalize(t));
-    if (filter?.state) issues = issues.filter((i) => matchesState(i, filter.state!));
+    if (filter?.state)
+      issues = issues.filter((i) => matchesState(i, filter.state!));
     return issues;
   }
 
@@ -217,8 +314,12 @@ export class ClickUpTracker implements Tracker {
     const parentPath = this.cfg.folderId
       ? `/folder/${this.cfg.folderId}/list`
       : `/space/${this.cfg.spaceId}/list`;
-    const raw = (await this.api("POST", parentPath, { name }, "clickup createPhase")) as
-      { id: string; name: string };
+    const raw = (await this.api(
+      "POST",
+      parentPath,
+      { name },
+      "clickup createPhase",
+    )) as { id: string; name: string };
     return { id: raw.id, name: raw.name, state: "open" };
   }
 
@@ -226,19 +327,42 @@ export class ClickUpTracker implements Tracker {
     const parentPath = this.cfg.folderId
       ? `/folder/${this.cfg.folderId}/lists`
       : `/space/${this.cfg.spaceId}/lists`;
-    const raw = (await this.api("GET", parentPath, undefined, "clickup listPhases")) as
-      { lists: Array<{ id: string; name: string }> };
-    return (raw.lists ?? []).map((l) => ({ id: l.id, name: l.name, state: "open" as const }));
+    const raw = (await this.api(
+      "GET",
+      parentPath,
+      undefined,
+      "clickup listPhases",
+    )) as { lists: Array<{ id: string; name: string }> };
+    return (raw.lists ?? []).map((l) => ({
+      id: l.id,
+      name: l.name,
+      state: "open" as const,
+    }));
   }
 
-  async closePhase(_id: string): Promise<Phase> { return phaseCloseUnsupported("clickup"); }
-  async createMilestone(_name: string): Promise<Milestone> { return milestonesUnsupported("clickup"); }
-  async listMilestones(): Promise<Milestone[]> { return milestonesUnsupported("clickup"); }
-  async completeMilestone(_id: string): Promise<Milestone> { return milestonesUnsupported("clickup"); }
-  async commentIssue(id: string, text: string): Promise<{ id: string; url?: string }> {
+  async closePhase(_id: string): Promise<Phase> {
+    return phaseCloseUnsupported("clickup");
+  }
+  async createMilestone(_name: string): Promise<Milestone> {
+    return milestonesUnsupported("clickup");
+  }
+  async listMilestones(): Promise<Milestone[]> {
+    return milestonesUnsupported("clickup");
+  }
+  async completeMilestone(_id: string): Promise<Milestone> {
+    return milestonesUnsupported("clickup");
+  }
+  async commentIssue(
+    id: string,
+    text: string,
+  ): Promise<{ id: string; url?: string }> {
     this.assertId(id);
-    const raw = (await this.api("POST", `/task/${id}/comment`,
-      { comment_text: text }, "clickup issue_comment")) as { id: number | string };
+    const raw = (await this.api(
+      "POST",
+      `/task/${id}/comment`,
+      { comment_text: text },
+      "clickup issue_comment",
+    )) as { id: number | string };
     return { id: String(raw.id) };
   }
 }

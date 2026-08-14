@@ -5,15 +5,13 @@ export declare function parseFrontmatter(text: string): {
 };
 export declare function serializeFrontmatter(data: Record<string, string | string[]>, body: string): string;
 export declare const PlanFrontmatterSchema: z.ZodObject<{
-    issues: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
-    depth: z.ZodOptional<z.ZodEnum<["quick", "standard", "deep"]>>;
-}, "strip", z.ZodTypeAny, {
-    issues: string[];
-    depth?: "quick" | "standard" | "deep" | undefined;
-}, {
-    issues?: string[] | undefined;
-    depth?: "quick" | "standard" | "deep" | undefined;
-}>;
+    issues: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    depth: z.ZodOptional<z.ZodEnum<{
+        quick: "quick";
+        standard: "standard";
+        deep: "deep";
+    }>>;
+}, z.core.$strip>;
 export declare function parsePlanDoc(text: string): {
     frontmatter: z.infer<typeof PlanFrontmatterSchema>;
     body: string;

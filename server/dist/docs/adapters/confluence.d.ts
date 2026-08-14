@@ -3,25 +3,15 @@ import { type FetchLike } from "../../tracker/http.js";
 import type { ProbeResult } from "../../tracker/types.js";
 import type { DocsCapability, DocsConnector, Page, PageSpec } from "../types.js";
 export declare const configSchema: z.ZodObject<{
-    /** Site wiki base, e.g. https://your-domain.atlassian.net/wiki */
     baseUrl: z.ZodString;
     spaceKey: z.ZodString;
     emailEnv: z.ZodDefault<z.ZodString>;
     tokenEnv: z.ZodDefault<z.ZodString>;
-    authMode: z.ZodOptional<z.ZodEnum<["site", "gateway"]>>;
-}, "strip", z.ZodTypeAny, {
-    baseUrl: string;
-    spaceKey: string;
-    emailEnv: string;
-    tokenEnv: string;
-    authMode?: "site" | "gateway" | undefined;
-}, {
-    baseUrl: string;
-    spaceKey: string;
-    emailEnv?: string | undefined;
-    tokenEnv?: string | undefined;
-    authMode?: "site" | "gateway" | undefined;
-}>;
+    authMode: z.ZodOptional<z.ZodEnum<{
+        site: "site";
+        gateway: "gateway";
+    }>>;
+}, z.core.$strip>;
 type ConfluenceConfig = z.infer<typeof configSchema>;
 export declare function make(config: ConfluenceConfig, fetchImpl?: FetchLike): DocsConnector;
 export declare function resolveConfluenceAuth(cfg: ConfluenceConfig): {

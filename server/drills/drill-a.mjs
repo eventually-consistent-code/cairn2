@@ -5,9 +5,8 @@
 //          tracker, get mid-work state into the handoff, then SIGKILL the
 //          server process and prove the handoff survived intact.
 // Author(s): John Reed
-
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { Client } from "@modelcontextprotocol/client";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { resolve, join, basename } from "node:path";
@@ -16,8 +15,16 @@ import { homedir } from "node:os";
 const PROJECT = process.argv[2];
 const SERVER = process.argv[3];
 
-const hash = createHash("sha256").update(resolve(PROJECT)).digest("hex").slice(0, 16);
-const HANDOFF = join(homedir(), ".cairn", "handoff", `${basename(PROJECT)}-${hash}.json`);
+const hash = createHash("sha256")
+  .update(resolve(PROJECT))
+  .digest("hex")
+  .slice(0, 16);
+const HANDOFF = join(
+  homedir(),
+  ".cairn",
+  "handoff",
+  `${basename(PROJECT)}-${hash}.json`,
+);
 
 const transport = new StdioClientTransport({
   command: "node",
@@ -59,9 +66,13 @@ const checks = [
   ["handoff file valid JSON after SIGKILL", true],
   ["issue survives", h.issue === issue.id],
   ["task.current survives", h.task?.current === "step-2"],
-  ["next_action survives", h.next_action === "finish step-2 then close the issue"],
+  [
+    "next_action survives",
+    h.next_action === "finish step-2 then close the issue",
+  ],
   ["version 1", h.version === 1],
 ];
-for (const [name, ok] of checks) console.log(`${ok ? "PASS" : "FAIL"}: ${name}`);
+for (const [name, ok] of checks)
+  console.log(`${ok ? "PASS" : "FAIL"}: ${name}`);
 console.log(`ISSUE_ID=${issue.id}`);
 process.exit(checks.every(([, ok]) => ok) ? 0 : 1);

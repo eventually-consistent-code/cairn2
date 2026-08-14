@@ -2,8 +2,7 @@ import { describe, it, expect, afterEach } from "vitest";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { MemoryIndex, indexDbPath } from "../src/memory/index-store.js";
 import { createCard } from "../src/memory/cards.js";
 import { buildServer } from "../src/index.js";
@@ -17,14 +16,20 @@ describe("MemoryIndex.timeline", () => {
     dbPaths.push(dir);
     return p;
   };
-  afterEach(() => { for (const d of dbPaths.splice(0)) rmSync(d, { recursive: true, force: true }); });
+  afterEach(() => {
+    for (const d of dbPaths.splice(0))
+      rmSync(d, { recursive: true, force: true });
+  });
 
   const seed = (idx: MemoryIndex) => {
     // Six chunks, one per day, all with the same source prefix so we can
     // assert on ordering rather than content matching.
     for (let i = 1; i <= 6; i++) {
       idx.index({
-        content: `entry ${i}`, source: `s${i}`, phase: null, issueId: null,
+        content: `entry ${i}`,
+        source: `s${i}`,
+        phase: null,
+        issueId: null,
         createdAt: `2026-07-1${i}T00:00:00.000Z`,
       });
     }
@@ -106,35 +111,73 @@ describe("mem_timeline tool", () => {
       return d.toISOString();
     };
     const idx = new MemoryIndex(indexDbPath(projectDir));
-    idx.index({ content: "early chunk", source: "early", phase: null, issueId: null, createdAt: dayOffset(-1) });
-    idx.index({ content: "late chunk", source: "late", phase: null, issueId: null, createdAt: dayOffset(1) });
+    idx.index({
+      content: "early chunk",
+      source: "early",
+      phase: null,
+      issueId: null,
+      createdAt: dayOffset(-1),
+    });
+    idx.index({
+      content: "late chunk",
+      source: "late",
+      phase: null,
+      issueId: null,
+      createdAt: dayOffset(1),
+    });
     idx.close();
 
-    const card = createCard(projectDir, { type: "decision", body: "Use FTS5 for the memory index." });
+    const card = createCard(projectDir, {
+      type: "decision",
+      body: "Use FTS5 for the memory index.",
+    });
 
-    const result = await call("mem_timeline", { anchor: "early", before: 3, after: 3 });
+    const result = await call("mem_timeline", {
+      anchor: "early",
+      before: 3,
+      after: 3,
+    });
     expect(result.isError).toBeFalsy();
-    const ids = result.json.map((e: { source?: string; id?: string }) => e.source ?? e.id);
+    const ids = result.json.map(
+      (e: { source?: string; id?: string }) => e.source ?? e.id,
+    );
     // "early" itself is excluded; the card (today, between the two chunks)
     // and "late" chunk should both appear, in chronological order.
     expect(ids).toEqual([card.id, "late"]);
 
-    const cardEntry = result.json.find((e: { id?: string }) => e.id === card.id);
+    const cardEntry = result.json.find(
+      (e: { id?: string }) => e.id === card.id,
+    );
     expect(cardEntry).toMatchObject({
-      id: card.id, type: "decision", created: card.frontmatter.created,
+      id: card.id,
+      type: "decision",
+      created: card.frontmatter.created,
     });
     expect(cardEntry.cost).toBe(Math.ceil(card.body.length / 4));
   });
 
   it("resolves a card anchor and tie-breaks same-day cards by id", async () => {
     await setup();
-    const a = createCard(projectDir, { type: "decision", body: "AAAA decision body." });
-    const b = createCard(projectDir, { type: "decision", body: "BBBB decision body." });
-    const c = createCard(projectDir, { type: "decision", body: "CCCC decision body." });
+    const a = createCard(projectDir, {
+      type: "decision",
+      body: "AAAA decision body.",
+    });
+    const b = createCard(projectDir, {
+      type: "decision",
+      body: "BBBB decision body.",
+    });
+    const c = createCard(projectDir, {
+      type: "decision",
+      body: "CCCC decision body.",
+    });
     const sortedIds = [a.id, b.id, c.id].sort();
     const [lo, mid, hi] = sortedIds;
 
-    const result = await call("mem_timeline", { anchor: mid, before: 3, after: 3 });
+    const result = await call("mem_timeline", {
+      anchor: mid,
+      before: 3,
+      after: 3,
+    });
     expect(result.isError).toBeFalsy();
     expect(result.json.map((e: { id: string }) => e.id)).toEqual([lo, hi]);
   });

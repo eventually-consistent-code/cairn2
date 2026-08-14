@@ -5,9 +5,8 @@
 //          cross-check via issue_get (trust order), PreCompact unthrottled
 //          refresh, then a manufactured tracker contradiction.
 // Author(s): John Reed
-
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { Client } from "@modelcontextprotocol/client";
 import { readFileSync, statSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -19,8 +18,16 @@ const SERVER = process.argv[3];
 const ISSUE_ID = process.argv[4];
 const HOOKS = process.argv[5];
 
-const hash = createHash("sha256").update(resolve(PROJECT)).digest("hex").slice(0, 16);
-const HANDOFF = join(homedir(), ".cairn", "handoff", `${basename(PROJECT)}-${hash}.json`);
+const hash = createHash("sha256")
+  .update(resolve(PROJECT))
+  .digest("hex")
+  .slice(0, 16);
+const HANDOFF = join(
+  homedir(),
+  ".cairn",
+  "handoff",
+  `${basename(PROJECT)}-${hash}.json`,
+);
 
 const transport = new StdioClientTransport({
   command: "node",
@@ -36,7 +43,10 @@ const call = async (name, args = {}) => {
 };
 
 const results = [];
-const check = (name, ok) => { results.push([name, ok]); console.log(`${ok ? "PASS" : "FAIL"}: ${name}`); };
+const check = (name, ok) => {
+  results.push([name, ok]);
+  console.log(`${ok ? "PASS" : "FAIL"}: ${name}`);
+};
 
 // --- Drill A phase 3: resume cross-check ---
 console.log("reading handoff via continuity_get (new session)...");
@@ -46,39 +56,67 @@ check("handoff not stale", got.stale === false);
 check("handoff names exact issue", got.handoff.issue === ISSUE_ID);
 check("handoff names exact task", got.handoff.task?.current === "step-2");
 
-console.log("tracker cross-check via issue_get (trust order: tracker first)...");
+console.log(
+  "tracker cross-check via issue_get (trust order: tracker first)...",
+);
 const live = await call("issue_get", { id: ISSUE_ID });
-check("tracker says in_progress — matches handoff, no contradiction", live.state === "in_progress");
+check(
+  "tracker says in_progress — matches handoff, no contradiction",
+  live.state === "in_progress",
+);
 
 // --- Drill B: PreCompact unthrottled refresh ---
 console.log("drill B: fresh write then immediate precompact...");
-await call("continuity_checkpoint", { source: "tool", notes: "fresh write for drill B" });
+await call("continuity_checkpoint", {
+  source: "tool",
+  notes: "fresh write for drill B",
+});
 const before = statSync(HANDOFF).mtimeMs;
 execFileSync("node", [join(HOOKS, "precompact-refresh.mjs")], {
-  cwd: PROJECT, env: { ...process.env, CLAUDE_PROJECT_DIR: PROJECT },
+  cwd: PROJECT,
+  env: { ...process.env, CLAUDE_PROJECT_DIR: PROJECT },
 });
 const h1 = JSON.parse(readFileSync(HANDOFF, "utf8"));
-check("precompact wrote despite <60s-old file (unthrottled)", statSync(HANDOFF).mtimeMs > before);
+check(
+  "precompact wrote despite <60s-old file (unthrottled)",
+  statSync(HANDOFF).mtimeMs > before,
+);
 check("precompact stamped source", h1.source === "precompact");
 check("task survives precompact refresh", h1.task?.current === "step-2");
 
 // post-compaction resume: same task
 const got2 = await call("continuity_get", {});
-check("post-compaction resume reads exact task", got2.handoff.task?.current === "step-2" && got2.handoff.issue === ISSUE_ID);
+check(
+  "post-compaction resume reads exact task",
+  got2.handoff.task?.current === "step-2" && got2.handoff.issue === ISSUE_ID,
+);
 
 // --- contradiction sub-check (criterion 3 data path) ---
-console.log("closing issue directly on tracker to manufacture contradiction...");
-await call("issue_close", { id: ISSUE_ID, comment: "closed out-of-band for drill" });
+console.log(
+  "closing issue directly on tracker to manufacture contradiction...",
+);
+await call("issue_close", {
+  id: ISSUE_ID,
+  comment: "closed out-of-band for drill",
+});
 // issue_close's write-through refreshes the handoff, so force the stale state back
-await call("continuity_checkpoint", { source: "tool", task: { current: "step-2", title: "write the thing" } });
+await call("continuity_checkpoint", {
+  source: "tool",
+  task: { current: "step-2", title: "write the thing" },
+});
 const liveClosed = await call("issue_get", { id: ISSUE_ID });
 const h2 = JSON.parse(readFileSync(HANDOFF, "utf8"));
-check("contradiction detectable: tracker closed vs handoff still mid-task",
-  liveClosed.state === "closed" && h2.task?.current === "step-2");
+check(
+  "contradiction detectable: tracker closed vs handoff still mid-task",
+  liveClosed.state === "closed" && h2.task?.current === "step-2",
+);
 
 // --- resume completes: clear ---
 const cleared = await call("continuity_clear", {});
-check("continuity_clear removes handoff", cleared.cleared === true || cleared === true || !!cleared);
+check(
+  "continuity_clear removes handoff",
+  cleared.cleared === true || cleared === true || !!cleared,
+);
 
 await client.close();
 process.exit(results.every(([, ok]) => ok) ? 0 : 1);

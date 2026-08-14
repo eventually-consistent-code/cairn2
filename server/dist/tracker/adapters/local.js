@@ -13,10 +13,15 @@ export const configSchema = z.object({
     /** Store directory, relative to the project. Commit it — that's the point. */
     dir: z.string().min(1).default(".tracker"),
     /** Issue-id prefix, e.g. "crn" → crn-x7k2m. */
-    prefix: z.string().regex(/^[a-z0-9]{2,10}$/).default("lt"),
+    prefix: z
+        .string()
+        .regex(/^[a-z0-9]{2,10}$/)
+        .default("lt"),
     /** Custom state vocabulary: name → semantic category (CRN-26).
      *  e.g. { "review": "in_progress", "blocked": "open" } */
-    states: z.record(z.enum(["open", "in_progress", "closed"])).default({}),
+    states: z
+        .record(z.string(), z.enum(["open", "in_progress", "closed"]))
+        .default({}),
 });
 export function make(config, projectDir) {
     return new LocalTracker(config, projectDir);
@@ -84,8 +89,14 @@ export class LocalTracker {
     cfg;
     projectDir;
     capabilities = {
-        hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-        hasMilestones: true, hasPhaseClose: true, hasComments: true, hasWorklog: true,
+        hasInProgress: true,
+        hasPhases: true,
+        hasDependencies: true,
+        hasLabels: true,
+        hasMilestones: true,
+        hasPhaseClose: true,
+        hasComments: true,
+        hasWorklog: true,
         hasEstimates: true,
         hasIssueAttachments: true,
     };
@@ -110,8 +121,12 @@ export class LocalTracker {
         }
         this.initialized = true;
     }
-    issueDir(id) { return join(this.root, "issues", id); }
-    issuePath(id) { return join(this.issueDir(id), "issue.md"); }
+    issueDir(id) {
+        return join(this.root, "issues", id);
+    }
+    issuePath(id) {
+        return join(this.issueDir(id), "issue.md");
+    }
     ids() {
         this.init();
         return new Set(readdirSync(join(this.root, "issues")).filter((e) => !e.startsWith(".")));
@@ -132,11 +147,13 @@ export class LocalTracker {
         try {
             const cfg = JSON.parse(readFileSync(join(this.root, "config.json"), "utf8"));
             if (cfg.migratedTo) {
-                console.error(`[cairn local] warning: this store was migrated to `
-                    + `'${cfg.migratedTo}' — new writes here won't reach it`);
+                console.error(`[cairn local] warning: this store was migrated to ` +
+                    `'${cfg.migratedTo}' — new writes here won't reach it`);
             }
         }
-        catch { /* unscaffolded store — nothing to warn about */ }
+        catch {
+            /* unscaffolded store — nothing to warn about */
+        }
     }
     writeFields(f) {
         this.init();
@@ -190,9 +207,9 @@ export class LocalTracker {
         return this.toIssue(this.readFields(id));
     }
     async updateIssue(id, patch) {
-        if (patch.state !== undefined
-            && !["open", "in_progress", "closed"].includes(patch.state)
-            && this.cfg.states[patch.state] === undefined) {
+        if (patch.state !== undefined &&
+            !["open", "in_progress", "closed"].includes(patch.state) &&
+            this.cfg.states[patch.state] === undefined) {
             throw new CairnError("CONFIG_INVALID", `unknown state '${patch.state}'`, `add it to tracker.config.states in cairn.json (known: ${["open", "in_progress", "closed", ...Object.keys(this.cfg.states)].join(", ")})`);
         }
         const f = this.readFields(id);
@@ -224,14 +241,16 @@ export class LocalTracker {
     async listIssues(filter) {
         return [...this.ids()]
             .map((id) => this.readFields(id))
-            .filter((f) => (filter?.phase === undefined || f.phase === filter.phase)
-            && (filter?.state === undefined || f.state === filter.state
-                || this.categoryOf(f.state) === filter.state))
+            .filter((f) => (filter?.phase === undefined || f.phase === filter.phase) &&
+            (filter?.state === undefined ||
+                f.state === filter.state ||
+                this.categoryOf(f.state) === filter.state))
             .map((f) => this.toIssue(f));
     }
     listJson(dir) {
         this.init();
-        return readdirSync(join(this.root, dir)).filter((e) => e.endsWith(".json"))
+        return readdirSync(join(this.root, dir))
+            .filter((e) => e.endsWith(".json"))
             .map((e) => JSON.parse(readFileSync(join(this.root, dir, e), "utf8")));
     }
     writeJson(dir, id, value) {
@@ -274,7 +293,10 @@ export class LocalTracker {
     /** Filename-safe author tag for comment/worklog records. */
     async who() {
         const raw = (await this.resolveSelf()) ?? "anon";
-        return raw.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "anon";
+        return (raw
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-+|-+$/g, "") || "anon");
     }
     stamp() {
         return new Date().toISOString().replace(/[:.]/g, "").replace("Z", "Z");
@@ -313,7 +335,10 @@ export class LocalTracker {
         const dir = join(this.issueDir(id), sub);
         if (!existsSync(dir))
             return [];
-        return readdirSync(dir).filter((e) => e.endsWith(".md")).sort().map((e) => {
+        return readdirSync(dir)
+            .filter((e) => e.endsWith(".md"))
+            .sort()
+            .map((e) => {
             const m = /^(.+Z)-(.+)\.md$/.exec(e);
             return {
                 at: m?.[1],
@@ -327,7 +352,8 @@ export class LocalTracker {
     }
     async listWorklogs(id) {
         return this.historyFiles(id, "worklog").map((r) => ({
-            at: r.at, author: r.author,
+            at: r.at,
+            author: r.author,
             minutes: Number(/^(\d+)m/.exec(r.text)?.[1] ?? 0),
         }));
     }
@@ -384,15 +410,25 @@ export class LocalTracker {
     }
     async listLinks(id) {
         const all = this.allEdges();
-        return id === undefined ? all : all.filter((l) => l.from === id || l.to === id);
+        return id === undefined
+            ? all
+            : all.filter((l) => l.from === id || l.to === id);
     }
     async resolveSelf() {
         if (this.self)
             return this.self;
         try {
-            this.self = execFileSync("git", ["config", "user.name"], { cwd: this.projectDir, stdio: "pipe" }).toString().trim() || undefined;
+            this.self =
+                execFileSync("git", ["config", "user.name"], {
+                    cwd: this.projectDir,
+                    stdio: "pipe",
+                })
+                    .toString()
+                    .trim() || undefined;
         }
-        catch { /* not a git repo or no identity configured */ }
+        catch {
+            /* not a git repo or no identity configured */
+        }
         this.self ??= process.env.USER || undefined;
         return this.self;
     }

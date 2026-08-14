@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { ProbeResult } from "../tracker/types.js";
 import type { DocsCapability, DocsConnector, Page, PageSpec } from "./types.js";
-export declare const configSchema: z.ZodObject<{}, "strip", z.ZodTypeAny, {}, {}>;
+export declare const configSchema: z.ZodObject<{}, z.core.$strip>;
 export declare function make(): DocsConnector;
 interface StoredPage extends Page {
     markdown: string;
