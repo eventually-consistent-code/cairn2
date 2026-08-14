@@ -78,6 +78,7 @@ import {
 } from "./memory/cards.js";
 import { checkCardStaleness } from "./memory/staleness.js";
 import { readHandoff, writeHandoff, clearHandoff } from "./core/continuity.js";
+import { registerPlanResources } from "./core/resources.js";
 import { installedVersions, type InstalledVersions } from "./core/versions.js";
 import type { Handoff } from "./core/continuity.js";
 import { appendLedger } from "./planning/ledger.js";
@@ -2366,6 +2367,10 @@ export function buildServer(deps: {
       }
     }),
   );
+
+  // Read-only plan artifacts as cairn:// resources (#99) -- the server's
+  // first resources surface. Reads resolve dir() fresh, same as the tools.
+  registerPlanResources(server, dir);
 
   return server;
 }
