@@ -1,5 +1,30 @@
 # Changelog
 
+## v2.3.0 — release integrity (2026-08-14)
+
+- One answer to "what version is running where": `config_probe` reports the
+  running server, plugin-cache, repo-file, and npm-latest versions with
+  plain-language drift lines ("installed vX, available vY"), and
+  `cairn-setup --check` walks every harness install surface read-only —
+  version stamps are now written alongside every installed artifact — and
+  exits non-zero when anything lags, so it can gate.
+- The release itself became one command: `scripts/release.mjs
+  <version|patch|minor|major>` bumps all four version surfaces (three
+  version files + the marketplace pin) atomically with a changelog
+  scaffold, and refuses outright when the surfaces already disagree.
+- CI now enforces version agreement on main before any tag exists
+  (`scripts/check-versions.mjs` — includes the marketplace pin and a
+  runtime-dep mirror check), and the publish workflow's tag gate covers
+  `.claude-plugin/plugin.json`, which was previously checked by nothing.
+- The plugin channel stopped depending on luck: the marketplace source is
+  pinned to the release tag (installed = released, replacing the mutable
+  working-tree clone), and a root lockfile makes Claude Code's installer
+  actually materialize the server's dependencies in the versioned cache —
+  closing the failure class where an installed plugin's MCP server died on
+  a missing package.
+- Publish workflow triggers only on release-shaped tags (vX.Y.Z); milestone
+  tags no longer fire spurious runs.
+
 ## v2.2.0 — the planning intelligence + the product council (2026-08-13)
 
 - `/cairn:peers council [dimensions]`: external AI reviewers judge the
