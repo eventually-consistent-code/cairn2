@@ -19,6 +19,8 @@ export const configSchema = z.object({
     tokenEnv: z.string().default("JIRA_API_TOKEN"),
     // Arbitrary extra keys are custom cairn states ("review": "In Review") —
     // resolved through the same transition-by-name machinery (CRN-26).
+    // Deliberate .default under zod 4 (#95): a provided map replaces wholesale
+    // (no merge with defaults) and the refine below still guards partial maps.
     transitions: z
         .record(z.string(), z.string())
         .default({ in_progress: "In Progress", closed: "Done" })
