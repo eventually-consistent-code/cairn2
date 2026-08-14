@@ -10,6 +10,7 @@ import { CairnError } from "./errors.js";
 import { loadConfig, writeConfigPatch } from "./config.js";
 import type { CairnConfig } from "./config.js";
 import { ActiveContext } from "./active-context.js";
+import { registerProject } from "./core/registry.js";
 import { makeTracker } from "./tracker/registry.js";
 import { CachedTracker } from "./tracker/cached.js";
 import { probeVerdictForError } from "./tracker/probe.js";
@@ -1405,6 +1406,13 @@ if (isMain) {
   // no-workspace compat branch returns the launch dir verbatim, so a relative
   // CLAUDE_PROJECT_DIR would otherwise leak relative paths into every store.
   const projectDir = resolve(process.env.CLAUDE_PROJECT_DIR ?? process.cwd());
+  // Fire-and-forget portfolio registration (#87) -- a registry problem must
+  // never keep the server from coming up.
+  try {
+    registerProject(projectDir);
+  } catch {
+    /* swallow by design */
+  }
   const server = buildServer({ projectDir });
   await server.connect(new StdioServerTransport());
 }
