@@ -1,21 +1,40 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync, } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { CairnError } from "../errors.js";
-const NodeTypeSchema = z.enum(["module", "phase", "issue", "decision", "person"]);
-const EdgeTypeSchema = z.enum(["depends-on", "implements", "decided-in", "owns"]);
+const NodeTypeSchema = z.enum([
+    "module",
+    "phase",
+    "issue",
+    "decision",
+    "person",
+]);
+const EdgeTypeSchema = z.enum([
+    "depends-on",
+    "implements",
+    "decided-in",
+    "owns",
+]);
 const MapNodeSchema = z.object({
-    type: NodeTypeSchema, label: z.string(), detail: z.string().optional(),
+    type: NodeTypeSchema,
+    label: z.string(),
+    detail: z.string().optional(),
 });
-const MapEdgeSchema = z.object({ from: z.string(), to: z.string(), type: EdgeTypeSchema });
+const MapEdgeSchema = z.object({
+    from: z.string(),
+    to: z.string(),
+    type: EdgeTypeSchema,
+});
 const MapMetaSchema = z.object({
-    builtAt: z.string(), updatedAt: z.string(), generation: z.number(),
+    builtAt: z.string(),
+    updatedAt: z.string(),
+    generation: z.number(),
 });
 // The whole on-disk store -- readMap validates against this so a hand-edited
 // map.json (say, a node missing its label) fails loudly at read time with the
 // defect named, instead of TypeError-ing later inside a query.
 const ProjectMapSchema = z.object({
-    nodes: z.record(MapNodeSchema),
+    nodes: z.record(z.string(), MapNodeSchema),
     edges: z.array(MapEdgeSchema),
     meta: MapMetaSchema.optional(),
 });
@@ -33,7 +52,9 @@ function readMap(projectDir) {
     }
     const parsed = ProjectMapSchema.safeParse(raw);
     if (!parsed.success) {
-        throw new CairnError("CONFIG_INVALID", `${path} does not match the map schema: ${parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`, "fix the named field(s) by hand, or delete the map file and rebuild");
+        throw new CairnError("CONFIG_INVALID", `${path} does not match the map schema: ${parsed.error.issues
+            .map((i) => `${i.path.join(".")}: ${i.message}`)
+            .join("; ")}`, "fix the named field(s) by hand, or delete the map file and rebuild");
     }
     return parsed.data;
 }
@@ -80,8 +101,8 @@ function validateEdges(edges) {
  * over a legacy pre-envelope file) counts as a build too.
  */
 export function mapSet(projectDir, patch, opts) {
-    if (patch.edges !== undefined
-        && (patch.edgesAdd !== undefined || patch.edgesRemove !== undefined)) {
+    if (patch.edges !== undefined &&
+        (patch.edgesAdd !== undefined || patch.edgesRemove !== undefined)) {
         throw new CairnError("CONFIG_INVALID", "patch mixes wholesale 'edges' with edgesAdd/edgesRemove -- ambiguous intent", "use edges alone for a full rebuild, or edgesAdd/edgesRemove alone for a surgical patch");
     }
     // Wholesale replacement silently drops every edge not restated -- that is
@@ -130,7 +151,9 @@ export function mapSet(projectDir, patch, opts) {
             continue;
         const attached = edges.filter((e) => e.from === id || e.to === id);
         if (attached.length > 0) {
-            throw new CairnError("PRECONDITION_FAILED", `cannot delete node '${id}' -- still attached to edge(s): ${attached.map((e) => `${e.from}->${e.to}`).join(", ")}`, "drop those edges (patch edges to exclude them) before deleting the node");
+            throw new CairnError("PRECONDITION_FAILED", `cannot delete node '${id}' -- still attached to edge(s): ${attached
+                .map((e) => `${e.from}->${e.to}`)
+                .join(", ")}`, "drop those edges (patch edges to exclude them) before deleting the node");
         }
         delete nodes[id];
     }
@@ -146,7 +169,7 @@ export function mapSet(projectDir, patch, opts) {
     const now = new Date().toISOString();
     const rebuild = opts?.rebuild === true;
     const meta = {
-        builtAt: rebuild ? now : current.meta?.builtAt ?? now,
+        builtAt: rebuild ? now : (current.meta?.builtAt ?? now),
         updatedAt: now,
         generation: rebuild ? 1 : (current.meta?.generation ?? 0) + 1,
     };
@@ -157,9 +180,19 @@ function sortMap(map) {
     const nodes = {};
     for (const id of Object.keys(map.nodes).sort())
         nodes[id] = map.nodes[id];
-    const edges = [...map.edges].sort((a, b) => a.from !== b.from ? (a.from < b.from ? -1 : 1)
-        : a.to !== b.to ? (a.to < b.to ? -1 : 1)
-            : a.type !== b.type ? (a.type < b.type ? -1 : 1) : 0);
+    const edges = [...map.edges].sort((a, b) => a.from !== b.from
+        ? a.from < b.from
+            ? -1
+            : 1
+        : a.to !== b.to
+            ? a.to < b.to
+                ? -1
+                : 1
+            : a.type !== b.type
+                ? a.type < b.type
+                    ? -1
+                    : 1
+                : 0);
     return { nodes, edges, ...(map.meta ? { meta: map.meta } : {}) };
 }
 function pickNodes(nodes, ids) {
@@ -233,7 +266,8 @@ export function queryMap(map, q) {
     const meta = map.meta ? { meta: map.meta } : {};
     const depth = q.depth ?? 1;
     const edgePool = q.edgeType !== undefined
-        ? map.edges.filter((e) => e.type === q.edgeType) : map.edges;
+        ? map.edges.filter((e) => e.type === q.edgeType)
+        : map.edges;
     // Candidate set: BFS neighborhood around the anchor, or every node.
     let candidates;
     if (q.node !== undefined) {

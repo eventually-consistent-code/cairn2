@@ -7,7 +7,9 @@ import { matchesState } from "../types.js";
 const ID_RE = /^[A-Z][A-Z0-9]+-\d+$/i;
 const MAX_RESULTS = 100;
 const STATUS_CATEGORY_MAP = {
-    new: "open", indeterminate: "in_progress", done: "closed",
+    new: "open",
+    indeterminate: "in_progress",
+    done: "closed",
 };
 export const configSchema = z.object({
     baseUrl: z.string().url(),
@@ -17,7 +19,8 @@ export const configSchema = z.object({
     tokenEnv: z.string().default("JIRA_API_TOKEN"),
     // Arbitrary extra keys are custom cairn states ("review": "In Review") —
     // resolved through the same transition-by-name machinery (CRN-26).
-    transitions: z.record(z.string())
+    transitions: z
+        .record(z.string(), z.string())
         .default({ in_progress: "In Progress", closed: "Done" })
         .refine((t) => typeof t.in_progress === "string" && typeof t.closed === "string", "transitions must include in_progress and closed"),
     // Board auto-discovers from the project; set this only when the project
@@ -45,7 +48,9 @@ function adf(text) {
     return {
         type: "doc",
         version: 1,
-        content: [{ type: "paragraph", content: [{ type: "text", text: text || " " }] }],
+        content: [
+            { type: "paragraph", content: [{ type: "text", text: text || " " }] },
+        ],
     };
 }
 /** Recursively walks an ADF document, concatenating all text node contents. */
@@ -63,7 +68,9 @@ function adfToText(node) {
  */
 function normalizeTimestamp(raw) {
     const s = raw.trim();
-    if (s.length >= 5 && (s[s.length - 5] === "+" || s[s.length - 5] === "-") && s[s.length - 3] !== ":") {
+    if (s.length >= 5 &&
+        (s[s.length - 5] === "+" || s[s.length - 5] === "-") &&
+        s[s.length - 3] !== ":") {
         return `${s.slice(0, -2)}:${s.slice(-2)}`;
     }
     return s;
@@ -73,8 +80,14 @@ export class JiraTracker {
     fetchImpl;
     authProvider;
     capabilities = {
-        hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-        hasMilestones: true, hasPhaseClose: true, hasComments: true, hasWorklog: true,
+        hasInProgress: true,
+        hasPhases: true,
+        hasDependencies: true,
+        hasLabels: true,
+        hasMilestones: true,
+        hasPhaseClose: true,
+        hasComments: true,
+        hasWorklog: true,
         hasEstimates: true,
         hasIssueAttachments: true,
     };
@@ -107,8 +120,16 @@ export class JiraTracker {
     }
     /** Read-field list: timetracking always; the points field once discovered. */
     readFields() {
-        const base = ["summary", "description", "status", "updated", "labels",
-            "parent", "assignee", "timetracking"];
+        const base = [
+            "summary",
+            "description",
+            "status",
+            "updated",
+            "labels",
+            "parent",
+            "assignee",
+            "timetracking",
+        ];
         return this.storyPointField ? [...base, this.storyPointField] : base;
     }
     projectId;
@@ -179,11 +200,14 @@ export class JiraTracker {
         const state = f.status?.name ?? category;
         const seconds = f.timetracking?.originalEstimateSeconds;
         const points = this.storyPointField
-            ? f[this.storyPointField] : undefined;
+            ? f[this.storyPointField]
+            : undefined;
         const estimate = seconds !== undefined || typeof points === "number"
             ? {
                 ...(typeof points === "number" ? { points } : {}),
-                ...(seconds !== undefined ? { minutes: Math.round(seconds / 60) } : {}),
+                ...(seconds !== undefined
+                    ? { minutes: Math.round(seconds / 60) }
+                    : {}),
             }
             : undefined;
         return {
@@ -204,7 +228,8 @@ export class JiraTracker {
     async transitionByName(key, targetName) {
         const resp = (await this.api("GET", `/rest/api/3/issue/${key}/transitions`, undefined, "jira transition_list"));
         const target = targetName.toLowerCase();
-        const match = resp.transitions.find((t) => t.to?.name?.toLowerCase() === target || t.name?.toLowerCase() === target);
+        const match = resp.transitions.find((t) => t.to?.name?.toLowerCase() === target ||
+            t.name?.toLowerCase() === target);
         if (!match) {
             console.error(`[cairn] jira: no transition to "${targetName}" found for issue ${key}; leaving state unchanged`);
             return;
@@ -287,7 +312,7 @@ export class JiraTracker {
     async resolveSelf() {
         if (this.self)
             return this.self;
-        const me = await this.api("GET", "/rest/api/3/myself", undefined, "jira myself");
+        const me = (await this.api("GET", "/rest/api/3/myself", undefined, "jira myself"));
         this.self = me.accountId;
         return this.self;
     }
@@ -301,7 +326,7 @@ export class JiraTracker {
     async toAccountId(value) {
         if (!value.includes("@"))
             return value;
-        const hits = await this.api("GET", `/rest/api/3/user/search?query=${encodeURIComponent(value)}`, undefined, "jira user_search");
+        const hits = (await this.api("GET", `/rest/api/3/user/search?query=${encodeURIComponent(value)}`, undefined, "jira user_search"));
         const id = hits[0]?.accountId;
         if (!id) {
             throw new CairnError("NOT_FOUND", `no Jira user matches '${value}'`, "set user.handle in cairn.json to a Jira accountId or exact email");
@@ -388,7 +413,10 @@ export class JiraTracker {
         return raw.issues.map((i) => ({
             id: i.key,
             name: i.fields.summary,
-            state: STATUS_CATEGORY_MAP[i.fields.status?.statusCategory?.key ?? "new"] === "closed" ? "closed" : "open",
+            state: STATUS_CATEGORY_MAP[i.fields.status?.statusCategory?.key ?? "new"] ===
+                "closed"
+                ? "closed"
+                : "open",
         }));
     }
     async resolveProjectId() {
@@ -400,7 +428,8 @@ export class JiraTracker {
     }
     normalizeVersion(raw) {
         return {
-            id: raw.id, name: raw.name,
+            id: raw.id,
+            name: raw.name,
             state: raw.released ? "released" : "open",
             url: `${this.cfg.baseUrl.replace(/\/$/, "")}/projects/${this.cfg.projectKey}/versions/${raw.id}`,
         };
@@ -435,7 +464,9 @@ export class JiraTracker {
     async attachFile(id, filename, data, mediaType) {
         this.assertId(id);
         const form = new FormData();
-        form.append("file", new Blob([new Uint8Array(data)], { type: mediaType ?? "application/octet-stream" }), filename);
+        form.append("file", new Blob([new Uint8Array(data)], {
+            type: mediaType ?? "application/octet-stream",
+        }), filename);
         const { email, token } = this.authProvider();
         const base = await this.apiBase();
         // Multipart — no JSON content-type; fetch sets the boundary itself, and

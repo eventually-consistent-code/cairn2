@@ -3,11 +3,7 @@ import { type FetchLike } from "../http.js";
 import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, ProbeResult, Tracker } from "../types.js";
 export declare const configSchema: z.ZodObject<{
     repo: z.ZodString;
-}, "strip", z.ZodTypeAny, {
-    repo: string;
-}, {
-    repo: string;
-}>;
+}, z.core.$strip>;
 export declare function make(config: z.infer<typeof configSchema>, fetchImpl?: FetchLike): Tracker;
 export declare function resolveGithubToken(): string;
 export declare class GitHubTracker implements Tracker {

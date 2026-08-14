@@ -3,19 +3,26 @@ import { CairnError } from "../../errors.js";
 import { fetchJson } from "../http.js";
 import { runProbe } from "../probe.js";
 import { matchesState } from "../types.js";
-import { milestonesUnsupported, phaseCloseUnsupported } from "../unsupported.js";
+import { milestonesUnsupported, phaseCloseUnsupported, } from "../unsupported.js";
 const API = "https://api.clickup.com/api/v2";
 const LIST_CAP = 100;
-export const configSchema = z.object({
+export const configSchema = z
+    .object({
     defaultListId: z.string().min(1), // un-phased tasks land here
     folderId: z.string().optional(), // phases become Lists in this folder…
     spaceId: z.string().optional(), // …or directly in this space (exactly one required)
     tokenEnv: z.string().default("CLICKUP_TOKEN"),
     // Extra keys are custom cairn states ("review": "code review") — CRN-26.
-    statuses: z.record(z.string())
-        .default({ open: "to do", in_progress: "in progress", closed: "complete" })
+    statuses: z
+        .record(z.string(), z.string())
+        .default({
+        open: "to do",
+        in_progress: "in progress",
+        closed: "complete",
+    })
         .refine((s) => ["open", "in_progress", "closed"].every((k) => typeof s[k] === "string"), "statuses must include open, in_progress, and closed"),
-}).refine((c) => Boolean(c.folderId) !== Boolean(c.spaceId), {
+})
+    .refine((c) => Boolean(c.folderId) !== Boolean(c.spaceId), {
     message: "exactly one of folderId or spaceId is required",
 });
 export function make(config, fetchImpl) {
@@ -32,8 +39,14 @@ export class ClickUpTracker {
     fetchImpl;
     tokenProvider;
     capabilities = {
-        hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-        hasMilestones: false, hasPhaseClose: false, hasComments: true, hasWorklog: false,
+        hasInProgress: true,
+        hasPhases: true,
+        hasDependencies: true,
+        hasLabels: true,
+        hasMilestones: false,
+        hasPhaseClose: false,
+        hasComments: true,
+        hasWorklog: false,
         hasEstimates: false,
         hasIssueAttachments: false,
     };
@@ -78,7 +91,8 @@ export class ClickUpTracker {
         if (status.type === "done" || status.type === "closed")
             return "closed";
         // custom: compare to the configured in_progress status name, case-insensitively
-        return status.status.toLowerCase() === this.cfg.statuses.in_progress.toLowerCase()
+        return status.status.toLowerCase() ===
+            this.cfg.statuses.in_progress.toLowerCase()
             ? "in_progress"
             : "open";
     }
@@ -101,7 +115,8 @@ export class ClickUpTracker {
             this.assertPhaseId(input.phase);
         const listId = input.phase ?? this.cfg.defaultListId;
         const body = {
-            name: input.title, description: input.body ?? "",
+            name: input.title,
+            description: input.body ?? "",
         };
         const raw = (await this.api("POST", `/list/${listId}/task`, body, "clickup createIssue"));
         const issue = this.normalize(raw);
@@ -185,12 +200,24 @@ export class ClickUpTracker {
             ? `/folder/${this.cfg.folderId}/lists`
             : `/space/${this.cfg.spaceId}/lists`;
         const raw = (await this.api("GET", parentPath, undefined, "clickup listPhases"));
-        return (raw.lists ?? []).map((l) => ({ id: l.id, name: l.name, state: "open" }));
+        return (raw.lists ?? []).map((l) => ({
+            id: l.id,
+            name: l.name,
+            state: "open",
+        }));
     }
-    async closePhase(_id) { return phaseCloseUnsupported("clickup"); }
-    async createMilestone(_name) { return milestonesUnsupported("clickup"); }
-    async listMilestones() { return milestonesUnsupported("clickup"); }
-    async completeMilestone(_id) { return milestonesUnsupported("clickup"); }
+    async closePhase(_id) {
+        return phaseCloseUnsupported("clickup");
+    }
+    async createMilestone(_name) {
+        return milestonesUnsupported("clickup");
+    }
+    async listMilestones() {
+        return milestonesUnsupported("clickup");
+    }
+    async completeMilestone(_id) {
+        return milestonesUnsupported("clickup");
+    }
     async commentIssue(id, text) {
         this.assertId(id);
         const raw = (await this.api("POST", `/task/${id}/comment`, { comment_text: text }, "clickup issue_comment"));

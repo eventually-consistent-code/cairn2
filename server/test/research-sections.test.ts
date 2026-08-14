@@ -2,8 +2,7 @@ import { mkdtempSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, beforeAll } from "vitest";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { CairnError } from "../src/errors.js";
 import { parseSections, flipSection } from "../src/research/sections.js";
 import { buildServer } from "../src/index.js";
@@ -45,8 +44,14 @@ describe("parseSections — grammar matrix", () => {
 
   it("finds every ##+ section with level and 1-indexed heading line", () => {
     expect(sections.map((s) => s.heading)).toEqual([
-      "Standard stack", "Architecture", "Pitfalls", "Integrations",
-      "Open questions", "Sub-question", "Legacy notes", "Peer reviewed",
+      "Standard stack",
+      "Architecture",
+      "Pitfalls",
+      "Integrations",
+      "Open questions",
+      "Sub-question",
+      "Legacy notes",
+      "Peer reviewed",
     ]);
     expect(sections[0].line).toBe(3);
     expect(sections[0].level).toBe(2);
@@ -56,11 +61,17 @@ describe("parseSections — grammar matrix", () => {
   });
 
   it("parses bare done/pending/failed states", () => {
-    expect(sections[0]).toMatchObject({ heading: "Standard stack", state: "done", markerLine: 4 });
+    expect(sections[0]).toMatchObject({
+      heading: "Standard stack",
+      state: "done",
+      markerLine: 4,
+    });
     expect(sections[0].date).toBeUndefined();
     expect(sections[0].model).toBeUndefined();
     expect(sections[0].note).toBeUndefined();
-    expect(sections.find((s) => s.heading === "Open questions")!.state).toBe("pending");
+    expect(sections.find((s) => s.heading === "Open questions")!.state).toBe(
+      "pending",
+    );
   });
 
   it("parses the optional ISO date", () => {
@@ -72,7 +83,11 @@ describe("parseSections — grammar matrix", () => {
 
   it("parses date + model tier token", () => {
     const pit = sections.find((s) => s.heading === "Pitfalls")!;
-    expect(pit).toMatchObject({ state: "done", date: "2026-08-10", model: "sonnet" });
+    expect(pit).toMatchObject({
+      state: "done",
+      date: "2026-08-10",
+      model: "sonnet",
+    });
   });
 
   it("parses a free note after the dash", () => {
@@ -92,14 +107,22 @@ describe("parseSections — grammar matrix", () => {
     expect(peer.state).toBe("unmarked");
     // ...and the same doc parsed as survey sees it as done
     const surveyed = parseSections(DOC, "survey");
-    expect(surveyed.find((s) => s.heading === "Peer reviewed")!.state).toBe("done");
-    expect(surveyed.find((s) => s.heading === "Standard stack")!.state).toBe("unmarked");
+    expect(surveyed.find((s) => s.heading === "Peer reviewed")!.state).toBe(
+      "done",
+    );
+    expect(surveyed.find((s) => s.heading === "Standard stack")!.state).toBe(
+      "unmarked",
+    );
   });
 
   it("a typo'd state THROWS CONFIG_INVALID naming the line — never silently classifies", () => {
     const bad = "## Topic\n<!-- scout: don -->\n";
     let caught: unknown;
-    try { parseSections(bad, "scout"); } catch (e) { caught = e; }
+    try {
+      parseSections(bad, "scout");
+    } catch (e) {
+      caught = e;
+    }
     expect(caught).toBeInstanceOf(CairnError);
     const err = caught as CairnError;
     expect(err.code).toBe("CONFIG_INVALID");
@@ -109,9 +132,12 @@ describe("parseSections — grammar matrix", () => {
   });
 
   it("a malformed marker attempt (bad date shape) also throws CONFIG_INVALID", () => {
-    const bad = "## Topic\n<!-- scout: done aug-10 nope not-a-date extra tokens -->\n";
+    const bad =
+      "## Topic\n<!-- scout: done aug-10 nope not-a-date extra tokens -->\n";
     expect(() => parseSections(bad, "scout")).toThrowError(CairnError);
-    try { parseSections(bad, "scout"); } catch (e) {
+    try {
+      parseSections(bad, "scout");
+    } catch (e) {
       expect((e as CairnError).code).toBe("CONFIG_INVALID");
     }
   });
@@ -146,10 +172,18 @@ describe("parseSections — grammar matrix", () => {
 
 describe("flipSection", () => {
   it("replaces an existing marker in place", () => {
-    const out = flipSection(DOC, "scout", "Open questions", "done",
-      { date: "2026-08-11", model: "haiku" });
-    const flipped = parseSections(out, "scout").find((s) => s.heading === "Open questions")!;
-    expect(flipped).toMatchObject({ state: "done", date: "2026-08-11", model: "haiku" });
+    const out = flipSection(DOC, "scout", "Open questions", "done", {
+      date: "2026-08-11",
+      model: "haiku",
+    });
+    const flipped = parseSections(out, "scout").find(
+      (s) => s.heading === "Open questions",
+    )!;
+    expect(flipped).toMatchObject({
+      state: "done",
+      date: "2026-08-11",
+      model: "haiku",
+    });
     expect(out).toContain("<!-- scout: done 2026-08-11 haiku -->");
     expect(out).not.toContain("<!-- scout: pending -->");
   });
@@ -164,39 +198,57 @@ describe("flipSection", () => {
   });
 
   it("carries a note with the em dash", () => {
-    const out = flipSection(DOC, "scout", "Architecture", "failed", { note: "rate limited" });
+    const out = flipSection(DOC, "scout", "Architecture", "failed", {
+      note: "rate limited",
+    });
     expect(out).toContain("<!-- scout: failed — rate limited -->");
-    const parsed = parseSections(out, "scout").find((s) => s.heading === "Architecture")!;
+    const parsed = parseSections(out, "scout").find(
+      (s) => s.heading === "Architecture",
+    )!;
     expect(parsed.note).toBe("rate limited");
   });
 
   it("does not disturb another namespace's marker on the same section", () => {
-    const out = flipSection(DOC, "survey", "Peer reviewed", "failed", { note: "stale" });
+    const out = flipSection(DOC, "survey", "Peer reviewed", "failed", {
+      note: "stale",
+    });
     expect(out).toContain("<!-- survey: failed — stale -->");
     // scout view of the doc is byte-identical in every scout marker
-    expect(parseSections(out, "scout").find((s) => s.heading === "Standard stack")!.state)
-      .toBe("done");
+    expect(
+      parseSections(out, "scout").find((s) => s.heading === "Standard stack")!
+        .state,
+    ).toBe("done");
   });
 
   it("unknown heading throws typed NOT_FOUND", () => {
     let caught: unknown;
-    try { flipSection(DOC, "scout", "No Such Section", "done"); } catch (e) { caught = e; }
+    try {
+      flipSection(DOC, "scout", "No Such Section", "done");
+    } catch (e) {
+      caught = e;
+    }
     expect(caught).toBeInstanceOf(CairnError);
     expect((caught as CairnError).code).toBe("NOT_FOUND");
     expect((caught as CairnError).message).toContain("No Such Section");
   });
 
   it("is idempotent — same state+meta yields identical output", () => {
-    const once = flipSection(DOC, "scout", "Pitfalls", "done",
-      { date: "2026-08-10", model: "sonnet" });
-    const twice = flipSection(once, "scout", "Pitfalls", "done",
-      { date: "2026-08-10", model: "sonnet" });
+    const once = flipSection(DOC, "scout", "Pitfalls", "done", {
+      date: "2026-08-10",
+      model: "sonnet",
+    });
+    const twice = flipSection(once, "scout", "Pitfalls", "done", {
+      date: "2026-08-10",
+      model: "sonnet",
+    });
     expect(twice).toBe(once);
   });
 
   it("round-trips: parse → flip → parse keeps every other section stable", () => {
     const before = parseSections(DOC, "scout");
-    const out = flipSection(DOC, "scout", "Standard stack", "failed", { note: "redo" });
+    const out = flipSection(DOC, "scout", "Standard stack", "failed", {
+      note: "redo",
+    });
     const after = parseSections(out, "scout");
     expect(after.length).toBe(before.length);
     for (const s of after) {
@@ -213,7 +265,11 @@ describe("flipSection", () => {
   });
 
   it("rejects malformed meta (bad date / model / note) as CONFIG_INVALID before writing", () => {
-    for (const meta of [{ date: "aug 10" }, { model: "Sonnet 4.5" }, { note: "evil --> injection" }]) {
+    for (const meta of [
+      { date: "aug 10" },
+      { model: "Sonnet 4.5" },
+      { note: "evil --> injection" },
+    ]) {
       try {
         flipSection(DOC, "scout", "Pitfalls", "done", meta);
         expect.unreachable("should have thrown");
@@ -230,8 +286,10 @@ describe("research_sections MCP tool", () => {
 
   beforeAll(async () => {
     projectDir = mkdtempSync(join(tmpdir(), "cairn-research-"));
-    writeFileSync(join(projectDir, "cairn.json"),
-      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
+    writeFileSync(
+      join(projectDir, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }),
+    );
     writeFileSync(join(projectDir, "RESEARCH.md"), DOC);
     const server = buildServer({ projectDir, tracker: new FakeTracker() });
     const [ct, st] = InMemoryTransport.createLinkedPair();
@@ -246,22 +304,31 @@ describe("research_sections MCP tool", () => {
   };
 
   it("parse-only when no flip is given", async () => {
-    const res = await call("research_sections", { path: "RESEARCH.md", namespace: "scout" });
+    const res = await call("research_sections", {
+      path: "RESEARCH.md",
+      namespace: "scout",
+    });
     expect(res.isError).toBeFalsy();
-    expect(res.json.sections.map((s: { heading: string }) => s.heading))
-      .toContain("Standard stack");
-    expect(res.json.sections.find((s: { heading: string }) => s.heading === "Legacy notes").state)
-      .toBe("unmarked");
+    expect(
+      res.json.sections.map((s: { heading: string }) => s.heading),
+    ).toContain("Standard stack");
+    expect(
+      res.json.sections.find(
+        (s: { heading: string }) => s.heading === "Legacy notes",
+      ).state,
+    ).toBe("unmarked");
   });
 
   it("flip rewrites the file atomically and returns the re-parsed sections", async () => {
     const res = await call("research_sections", {
-      path: "RESEARCH.md", namespace: "scout",
+      path: "RESEARCH.md",
+      namespace: "scout",
       flip: { heading: "Open questions", state: "done", date: "2026-08-11" },
     });
     expect(res.isError).toBeFalsy();
     const flipped = res.json.sections.find(
-      (s: { heading: string }) => s.heading === "Open questions");
+      (s: { heading: string }) => s.heading === "Open questions",
+    );
     expect(flipped.state).toBe("done");
     expect(flipped.date).toBe("2026-08-11");
     const onDisk = readFileSync(join(projectDir, "RESEARCH.md"), "utf8");
@@ -269,56 +336,75 @@ describe("research_sections MCP tool", () => {
   });
 
   it("rejects a path escaping the project dir with CONFIG_INVALID", async () => {
-    const res = await call("research_sections",
-      { path: "../outside.md", namespace: "scout" });
+    const res = await call("research_sections", {
+      path: "../outside.md",
+      namespace: "scout",
+    });
     expect(res.isError).toBe(true);
     expect(res.json.code).toBe("CONFIG_INVALID");
   });
 
   it("missing file is NOT_FOUND", async () => {
-    const res = await call("research_sections",
-      { path: "nope/RESEARCH.md", namespace: "scout" });
+    const res = await call("research_sections", {
+      path: "nope/RESEARCH.md",
+      namespace: "scout",
+    });
     expect(res.isError).toBe(true);
     expect(res.json.code).toBe("NOT_FOUND");
   });
 
-  it("flip validates the WHOLE flipped doc before persisting -- a typo'd marker "
-    + "elsewhere leaves the file untouched (#71)", async () => {
-    const doc = [
-      "## Good",
-      "<!-- scout: pending -->",
-      "",
-      "## Bad",
-      "<!-- scout: don -->", // typo'd marker in ANOTHER section
-      "",
-    ].join("\n");
-    writeFileSync(join(projectDir, "FLIPBAD.md"), doc);
-    const res = await call("research_sections", {
-      path: "FLIPBAD.md", namespace: "scout",
-      flip: { heading: "Good", state: "done" },
-    });
-    expect(res.isError).toBe(true);
-    expect(res.json.code).toBe("CONFIG_INVALID");
-    // the mutation must NOT have persisted
-    expect(readFileSync(join(projectDir, "FLIPBAD.md"), "utf8")).toBe(doc);
-  });
+  it(
+    "flip validates the WHOLE flipped doc before persisting -- a typo'd marker " +
+      "elsewhere leaves the file untouched (#71)",
+    async () => {
+      const doc = [
+        "## Good",
+        "<!-- scout: pending -->",
+        "",
+        "## Bad",
+        "<!-- scout: don -->", // typo'd marker in ANOTHER section
+        "",
+      ].join("\n");
+      writeFileSync(join(projectDir, "FLIPBAD.md"), doc);
+      const res = await call("research_sections", {
+        path: "FLIPBAD.md",
+        namespace: "scout",
+        flip: { heading: "Good", state: "done" },
+      });
+      expect(res.isError).toBe(true);
+      expect(res.json.code).toBe("CONFIG_INVALID");
+      // the mutation must NOT have persisted
+      expect(readFileSync(join(projectDir, "FLIPBAD.md"), "utf8")).toBe(doc);
+    },
+  );
 
-  it("a symlink inside the project pointing outside it is CONFIG_INVALID, "
-    + "for reads and flips (#71)", async () => {
-    const outside = mkdtempSync(join(tmpdir(), "cairn-research-outside-"));
-    writeFileSync(join(outside, "secret.md"), "## Secret\n<!-- scout: done -->\n");
-    symlinkSync(join(outside, "secret.md"), join(projectDir, "link.md"));
-    const read = await call("research_sections", { path: "link.md", namespace: "scout" });
-    expect(read.isError).toBe(true);
-    expect(read.json.code).toBe("CONFIG_INVALID");
-    const flip = await call("research_sections", {
-      path: "link.md", namespace: "scout",
-      flip: { heading: "Secret", state: "pending" },
-    });
-    expect(flip.isError).toBe(true);
-    expect(flip.json.code).toBe("CONFIG_INVALID");
-    // the outside file was never touched
-    expect(readFileSync(join(outside, "secret.md"), "utf8"))
-      .toBe("## Secret\n<!-- scout: done -->\n");
-  });
+  it(
+    "a symlink inside the project pointing outside it is CONFIG_INVALID, " +
+      "for reads and flips (#71)",
+    async () => {
+      const outside = mkdtempSync(join(tmpdir(), "cairn-research-outside-"));
+      writeFileSync(
+        join(outside, "secret.md"),
+        "## Secret\n<!-- scout: done -->\n",
+      );
+      symlinkSync(join(outside, "secret.md"), join(projectDir, "link.md"));
+      const read = await call("research_sections", {
+        path: "link.md",
+        namespace: "scout",
+      });
+      expect(read.isError).toBe(true);
+      expect(read.json.code).toBe("CONFIG_INVALID");
+      const flip = await call("research_sections", {
+        path: "link.md",
+        namespace: "scout",
+        flip: { heading: "Secret", state: "pending" },
+      });
+      expect(flip.isError).toBe(true);
+      expect(flip.json.code).toBe("CONFIG_INVALID");
+      // the outside file was never touched
+      expect(readFileSync(join(outside, "secret.md"), "utf8")).toBe(
+        "## Secret\n<!-- scout: done -->\n",
+      );
+    },
+  );
 });

@@ -1,22 +1,14 @@
 import { z } from "zod";
 import type { Capability, Issue, IssueComment, IssueCreate, IssueLink, IssuePatch, IssueState, LinkType, Milestone, Phase, ProbeResult, Tracker, WorklogEntry } from "../types.js";
 export declare const configSchema: z.ZodObject<{
-    /** Store directory, relative to the project. Commit it — that's the point. */
     dir: z.ZodDefault<z.ZodString>;
-    /** Issue-id prefix, e.g. "crn" → crn-x7k2m. */
     prefix: z.ZodDefault<z.ZodString>;
-    /** Custom state vocabulary: name → semantic category (CRN-26).
-     *  e.g. { "review": "in_progress", "blocked": "open" } */
-    states: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodEnum<["open", "in_progress", "closed"]>>>;
-}, "strip", z.ZodTypeAny, {
-    dir: string;
-    states: Record<string, "open" | "in_progress" | "closed">;
-    prefix: string;
-}, {
-    dir?: string | undefined;
-    states?: Record<string, "open" | "in_progress" | "closed"> | undefined;
-    prefix?: string | undefined;
-}>;
+    states: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodEnum<{
+        open: "open";
+        in_progress: "in_progress";
+        closed: "closed";
+    }>>>;
+}, z.core.$strip>;
 export type LocalConfig = z.infer<typeof configSchema>;
 export declare function make(config: LocalConfig, projectDir: string): Tracker;
 /** Random 5-char base36 suffix, retried against the visible id set. */

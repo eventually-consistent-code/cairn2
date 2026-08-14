@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 import type { Tracker } from "./tracker/types.js";
 import type { DocsConnector } from "./docs/types.js";
 export declare function buildServer(deps: {

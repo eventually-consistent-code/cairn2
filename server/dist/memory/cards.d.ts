@@ -1,45 +1,23 @@
 import { z } from "zod";
-export declare const CardFrontmatterSchema: z.ZodEffects<z.ZodObject<{
-    type: z.ZodEnum<["decision", "constraint", "gotcha", "reference", "note"]>;
+export declare const CardFrontmatterSchema: z.ZodObject<{
+    type: z.ZodEnum<{
+        decision: "decision";
+        note: "note";
+        constraint: "constraint";
+        gotcha: "gotcha";
+        reference: "reference";
+    }>;
     scopePhase: z.ZodOptional<z.ZodString>;
     scopeIssue: z.ZodOptional<z.ZodString>;
-    confidence: z.ZodOptional<z.ZodEnum<["high", "medium", "low"]>>;
-    provenanceFiles: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
-    provenanceCommits: z.ZodDefault<z.ZodArray<z.ZodString, "many">>;
+    confidence: z.ZodOptional<z.ZodEnum<{
+        high: "high";
+        medium: "medium";
+        low: "low";
+    }>>;
+    provenanceFiles: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    provenanceCommits: z.ZodDefault<z.ZodArray<z.ZodString>>;
     created: z.ZodString;
-}, "strip", z.ZodTypeAny, {
-    type: "decision" | "note" | "constraint" | "gotcha" | "reference";
-    created: string;
-    provenanceFiles: string[];
-    provenanceCommits: string[];
-    scopePhase?: string | undefined;
-    scopeIssue?: string | undefined;
-    confidence?: "high" | "medium" | "low" | undefined;
-}, {
-    type: "decision" | "note" | "constraint" | "gotcha" | "reference";
-    created: string;
-    scopePhase?: string | undefined;
-    scopeIssue?: string | undefined;
-    confidence?: "high" | "medium" | "low" | undefined;
-    provenanceFiles?: string[] | undefined;
-    provenanceCommits?: string[] | undefined;
-}>, {
-    type: "decision" | "note" | "constraint" | "gotcha" | "reference";
-    created: string;
-    provenanceFiles: string[];
-    provenanceCommits: string[];
-    scopePhase?: string | undefined;
-    scopeIssue?: string | undefined;
-    confidence?: "high" | "medium" | "low" | undefined;
-}, {
-    type: "decision" | "note" | "constraint" | "gotcha" | "reference";
-    created: string;
-    scopePhase?: string | undefined;
-    scopeIssue?: string | undefined;
-    confidence?: "high" | "medium" | "low" | undefined;
-    provenanceFiles?: string[] | undefined;
-    provenanceCommits?: string[] | undefined;
-}>;
+}, z.core.$strip>;
 export interface Card {
     id: string;
     frontmatter: z.infer<typeof CardFrontmatterSchema>;

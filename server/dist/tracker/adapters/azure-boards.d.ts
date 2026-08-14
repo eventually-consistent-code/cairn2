@@ -7,22 +7,8 @@ export declare const configSchema: z.ZodObject<{
     workItemType: z.ZodDefault<z.ZodString>;
     patEnv: z.ZodDefault<z.ZodString>;
     apiVersion: z.ZodDefault<z.ZodString>;
-    states: z.ZodEffects<z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodString>>, Record<string, string>, Record<string, string> | undefined>;
-}, "strip", z.ZodTypeAny, {
-    project: string;
-    orgUrl: string;
-    workItemType: string;
-    patEnv: string;
-    apiVersion: string;
-    states: Record<string, string>;
-}, {
-    project: string;
-    orgUrl: string;
-    workItemType?: string | undefined;
-    patEnv?: string | undefined;
-    apiVersion?: string | undefined;
-    states?: Record<string, string> | undefined;
-}>;
+    states: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodString>>;
+}, z.core.$strip>;
 type Config = z.infer<typeof configSchema>;
 export declare function make(config: Config, fetchImpl?: FetchLike): Tracker;
 export declare function resolveAzurePat(patEnv: string): string;

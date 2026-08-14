@@ -12,7 +12,8 @@ export const configSchema = z.object({
     patEnv: z.string().default("AZURE_DEVOPS_PAT"),
     apiVersion: z.string().default("7.0"),
     // Extra keys are custom cairn states ("review": "In Review") — CRN-26.
-    states: z.record(z.string())
+    states: z
+        .record(z.string(), z.string())
         .default({ in_progress: "Doing", closed: "Done", open: "To Do" })
         .refine((s) => ["open", "in_progress", "closed"].every((k) => typeof s[k] === "string"), "states must include open, in_progress, and closed"),
 });
@@ -30,8 +31,14 @@ export class AzureBoardsTracker {
     fetchImpl;
     tokenProvider;
     capabilities = {
-        hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
-        hasMilestones: true, hasPhaseClose: false, hasComments: true, hasWorklog: false,
+        hasInProgress: true,
+        hasPhases: true,
+        hasDependencies: true,
+        hasLabels: true,
+        hasMilestones: true,
+        hasPhaseClose: false,
+        hasComments: true,
+        hasWorklog: false,
         hasEstimates: false,
         hasIssueAttachments: false,
     };
@@ -78,17 +85,22 @@ export class AzureBoardsTracker {
     async resolveSelf() {
         if (this.self)
             return this.self;
-        const data = await this.api("GET", "/_apis/connectionData", undefined, { context: "azure-boards connectionData" });
+        const data = (await this.api("GET", "/_apis/connectionData", undefined, {
+            context: "azure-boards connectionData",
+        }));
         // Account.$value is the sign-in email System.AssignedTo accepts
-        this.self = data.authenticatedUser?.properties?.Account?.$value
-            ?? data.authenticatedUser?.providerDisplayName;
+        this.self =
+            data.authenticatedUser?.properties?.Account?.$value ??
+                data.authenticatedUser?.providerDisplayName;
         return this.self;
     }
     /** Preflight: /_apis/projects/{project} over resolveSelf's connectionData
      *  -- connectionData only proves the PAT is valid, not that the configured
      *  project exists. A typo'd project now 404s instead of reading "ok". */
     async probe() {
-        return runProbe(() => this.api("GET", `/_apis/projects/${this.projectPath}`, undefined, { context: "azure-boards probe" }));
+        return runProbe(() => this.api("GET", `/_apis/projects/${this.projectPath}`, undefined, {
+            context: "azure-boards probe",
+        }));
     }
     get projectPath() {
         return encodeURIComponent(this.cfg.project);
@@ -119,7 +131,7 @@ export class AzureBoardsTracker {
         const assignedTo = f["System.AssignedTo"];
         const assignee = typeof assignedTo === "string"
             ? assignedTo
-            : assignedTo?.uniqueName ?? assignedTo?.displayName;
+            : (assignedTo?.uniqueName ?? assignedTo?.displayName);
         const iterationPath = f["System.IterationPath"];
         let phase;
         if (iterationPath) {
@@ -140,7 +152,8 @@ export class AzureBoardsTracker {
             phase,
             assignee,
             updatedAt: f["System.ChangedDate"] ?? new Date(0).toISOString(),
-            url: raw.url ?? this.url(`/${this.projectPath}/_apis/wit/workitems/${raw.id}`),
+            url: raw.url ??
+                this.url(`/${this.projectPath}/_apis/wit/workitems/${raw.id}`),
         };
     }
     /** Escapes single quotes in a WIQL string literal by doubling them. */
@@ -195,17 +208,32 @@ export class AzureBoardsTracker {
     async createIssue(input) {
         const ops = [
             { op: "add", path: "/fields/System.Title", value: input.title },
-            { op: "add", path: "/fields/System.Description", value: input.body ?? "" },
+            {
+                op: "add",
+                path: "/fields/System.Description",
+                value: input.body ?? "",
+            },
         ];
         if (input.labels?.length) {
-            ops.push({ op: "add", path: "/fields/System.Tags", value: input.labels.join("; ") });
+            ops.push({
+                op: "add",
+                path: "/fields/System.Tags",
+                value: input.labels.join("; "),
+            });
         }
         if (input.phase) {
             const path = await this.resolvePhasePath(input.phase);
-            ops.push({ op: "add", path: "/fields/System.IterationPath", value: path });
+            ops.push({
+                op: "add",
+                path: "/fields/System.IterationPath",
+                value: path,
+            });
         }
         const wtype = encodeURIComponent(`$${this.cfg.workItemType}`);
-        const raw = await this.api("POST", `/${this.projectPath}/_apis/wit/workitems/${wtype}`, ops, { contentType: "application/json-patch+json", context: "azure-boards issue_create" });
+        const raw = await this.api("POST", `/${this.projectPath}/_apis/wit/workitems/${wtype}`, ops, {
+            contentType: "application/json-patch+json",
+            context: "azure-boards issue_create",
+        });
         return this.normalize(raw);
     }
     async getIssue(id) {
@@ -224,11 +252,23 @@ export class AzureBoardsTracker {
         if (patch.title !== undefined)
             ops.push({ op: "add", path: "/fields/System.Title", value: patch.title });
         if (patch.body !== undefined)
-            ops.push({ op: "add", path: "/fields/System.Description", value: patch.body });
+            ops.push({
+                op: "add",
+                path: "/fields/System.Description",
+                value: patch.body,
+            });
         if (patch.labels !== undefined)
-            ops.push({ op: "add", path: "/fields/System.Tags", value: patch.labels.join("; ") });
+            ops.push({
+                op: "add",
+                path: "/fields/System.Tags",
+                value: patch.labels.join("; "),
+            });
         if (patch.assignee !== undefined)
-            ops.push({ op: "add", path: "/fields/System.AssignedTo", value: patch.assignee });
+            ops.push({
+                op: "add",
+                path: "/fields/System.AssignedTo",
+                value: patch.assignee,
+            });
         if (patch.state) {
             const stateValue = this.cfg.states[patch.state];
             if (!stateValue) {
@@ -236,7 +276,10 @@ export class AzureBoardsTracker {
             }
             ops.push({ op: "add", path: "/fields/System.State", value: stateValue });
         }
-        const raw = await this.api("PATCH", `/${this.projectPath}/_apis/wit/workitems/${id}`, ops, { contentType: "application/json-patch+json", context: "azure-boards issue_update" });
+        const raw = await this.api("PATCH", `/${this.projectPath}/_apis/wit/workitems/${id}`, ops, {
+            contentType: "application/json-patch+json",
+            context: "azure-boards issue_update",
+        });
         const workItem = raw;
         const issue = this.normalize(workItem);
         if (issue.phase === undefined && workItem.fields["System.IterationPath"]) {
@@ -257,7 +300,7 @@ export class AzureBoardsTracker {
         else {
             query += ` WHERE ${projectClause}`;
         }
-        const wiqlRaw = await this.api("POST", `/${this.projectPath}/_apis/wit/wiql`, { query }, { context: "azure-boards issue_list_wiql" });
+        const wiqlRaw = (await this.api("POST", `/${this.projectPath}/_apis/wit/wiql`, { query }, { context: "azure-boards issue_list_wiql" }));
         let ids = wiqlRaw.workItems.map((w) => w.id);
         if (ids.length > MAX_IDS) {
             console.error(`[cairn] azure-boards listIssues truncated at ${MAX_IDS} ids (WIQL returned ${ids.length})`);
@@ -265,11 +308,15 @@ export class AzureBoardsTracker {
         }
         if (ids.length === 0)
             return [];
-        const batchRaw = await this.api("GET", `/${this.projectPath}/_apis/wit/workitems`, undefined, { params: { ids: ids.join(","), "$expand": "all" }, context: "azure-boards issue_list_batch" });
+        const batchRaw = (await this.api("GET", `/${this.projectPath}/_apis/wit/workitems`, undefined, {
+            params: { ids: ids.join(","), $expand: "all" },
+            context: "azure-boards issue_list_batch",
+        }));
         const workItems = batchRaw.value;
         let issues = workItems.map((w) => this.normalize(w));
         // Self-heal phase resolution for all issues at once (one listPhases call per 100+ items)
-        const unresolved = issues.filter((i) => i.phase === undefined && workItems.find((w) => w.id === Number(i.id))?.fields["System.IterationPath"]);
+        const unresolved = issues.filter((i) => i.phase === undefined &&
+            workItems.find((w) => w.id === Number(i.id))?.fields["System.IterationPath"]);
         if (unresolved.length > 0) {
             for (const issue of unresolved) {
                 const raw = workItems.find((w) => w.id === Number(issue.id));
@@ -281,51 +328,84 @@ export class AzureBoardsTracker {
         return issues;
     }
     async createPhase(name) {
-        const raw = await this.api("POST", `/${this.projectPath}/_apis/wit/classificationnodes/iterations`, { name }, { context: "azure-boards phase_create" });
+        const raw = (await this.api("POST", `/${this.projectPath}/_apis/wit/classificationnodes/iterations`, { name }, { context: "azure-boards phase_create" }));
         const path = raw.path ?? `${this.cfg.project}\\${raw.name}`;
         this.phasePaths.set(raw.identifier, path);
         return { id: raw.identifier, name: raw.name, state: "open" };
     }
     async listPhases() {
-        const raw = await this.api("GET", `/${this.projectPath}/_apis/wit/classificationnodes/iterations`, undefined, { params: { "$depth": "2" }, context: "azure-boards phase_list" });
+        const raw = (await this.api("GET", `/${this.projectPath}/_apis/wit/classificationnodes/iterations`, undefined, { params: { $depth: "2" }, context: "azure-boards phase_list" }));
         // Tolerate both known live-response shapes: a { value: [...] } wrapper, or
         // the root classification node itself with a `children` array (no `value`).
         const nodes = this.flattenIterationNodes(raw);
         this.phasePaths.clear();
         for (const node of nodes) {
-            const path = node.path ? this.normalizeIterationPath(node.path) : `${this.cfg.project}\\${node.name}`;
+            const path = node.path
+                ? this.normalizeIterationPath(node.path)
+                : `${this.cfg.project}\\${node.name}`;
             this.phasePaths.set(node.identifier, path);
         }
         this.phasesLoaded = true; // mark map as refreshed for this instance
-        return nodes.map((node) => ({ id: node.identifier, name: node.name, state: "open" }));
+        return nodes.map((node) => ({
+            id: node.identifier,
+            name: node.name,
+            state: "open",
+        }));
     }
-    async closePhase(_id) { return phaseCloseUnsupported("azure-boards"); }
+    async closePhase(_id) {
+        return phaseCloseUnsupported("azure-boards");
+    }
     /** Maps an Epic work item to a Milestone; "released" once it hits the configured closed state. */
     normalizeEpic(raw) {
-        const state = raw.fields["System.State"] === this.cfg.states.closed ? "released" : "open";
-        return { id: String(raw.id), name: raw.fields["System.Title"] ?? "", state, url: raw.url };
+        const state = raw.fields["System.State"] === this.cfg.states.closed
+            ? "released"
+            : "open";
+        return {
+            id: String(raw.id),
+            name: raw.fields["System.Title"] ?? "",
+            state,
+            url: raw.url,
+        };
     }
     async createMilestone(name) {
-        const raw = await this.api("POST", `/${this.projectPath}/_apis/wit/workitems/${encodeURIComponent("$Epic")}`, [{ op: "add", path: "/fields/System.Title", value: name }], { contentType: "application/json-patch+json", context: "azure-boards milestone_create" });
+        const raw = await this.api("POST", `/${this.projectPath}/_apis/wit/workitems/${encodeURIComponent("$Epic")}`, [{ op: "add", path: "/fields/System.Title", value: name }], {
+            contentType: "application/json-patch+json",
+            context: "azure-boards milestone_create",
+        });
         return this.normalizeEpic(raw);
     }
     async listMilestones() {
-        const query = "SELECT [System.Id] FROM WorkItems WHERE "
-            + `[System.TeamProject] = '${this.escapeWiql(this.cfg.project)}' `
-            + "AND [System.WorkItemType] = 'Epic'";
-        const wiqlRaw = await this.api("POST", `/${this.projectPath}/_apis/wit/wiql`, { query }, { context: "azure-boards milestone_list_wiql" });
+        const query = "SELECT [System.Id] FROM WorkItems WHERE " +
+            `[System.TeamProject] = '${this.escapeWiql(this.cfg.project)}' ` +
+            "AND [System.WorkItemType] = 'Epic'";
+        const wiqlRaw = (await this.api("POST", `/${this.projectPath}/_apis/wit/wiql`, { query }, { context: "azure-boards milestone_list_wiql" }));
         const ids = wiqlRaw.workItems.map((w) => w.id).slice(0, MAX_IDS);
         if (ids.length === 0)
             return [];
-        const batchRaw = await this.api("GET", `/${this.projectPath}/_apis/wit/workitems`, undefined, { params: { ids: ids.join(",") }, context: "azure-boards milestone_list_batch" });
+        const batchRaw = (await this.api("GET", `/${this.projectPath}/_apis/wit/workitems`, undefined, {
+            params: { ids: ids.join(",") },
+            context: "azure-boards milestone_list_batch",
+        }));
         return batchRaw.value.map((w) => this.normalizeEpic(w));
     }
     async completeMilestone(id) {
-        const raw = await this.api("PATCH", `/${this.projectPath}/_apis/wit/workitems/${id}`, [{ op: "add", path: "/fields/System.State", value: this.cfg.states.closed }], { contentType: "application/json-patch+json", context: "azure-boards milestone_complete" });
+        const raw = await this.api("PATCH", `/${this.projectPath}/_apis/wit/workitems/${id}`, [
+            {
+                op: "add",
+                path: "/fields/System.State",
+                value: this.cfg.states.closed,
+            },
+        ], {
+            contentType: "application/json-patch+json",
+            context: "azure-boards milestone_complete",
+        });
         return this.normalizeEpic(raw);
     }
     async commentIssue(id, text) {
-        const raw = await this.api("POST", `/${this.projectPath}/_apis/wit/workItems/${id}/comments`, { text }, { params: { "api-version": "7.1-preview.4" }, context: "azure-boards issue_comment" });
+        const raw = (await this.api("POST", `/${this.projectPath}/_apis/wit/workItems/${id}/comments`, { text }, {
+            params: { "api-version": "7.1-preview.4" },
+            context: "azure-boards issue_comment",
+        }));
         return { id: String(raw.id), url: raw.url };
     }
 }

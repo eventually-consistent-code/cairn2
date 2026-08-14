@@ -7,28 +7,13 @@ export declare const configSchema: z.ZodObject<{
     issueType: z.ZodDefault<z.ZodString>;
     emailEnv: z.ZodDefault<z.ZodString>;
     tokenEnv: z.ZodDefault<z.ZodString>;
-    transitions: z.ZodEffects<z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodString>>, Record<string, string>, Record<string, string> | undefined>;
+    transitions: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodString>>;
     boardId: z.ZodOptional<z.ZodNumber>;
-    authMode: z.ZodOptional<z.ZodEnum<["site", "gateway"]>>;
-}, "strip", z.ZodTypeAny, {
-    baseUrl: string;
-    emailEnv: string;
-    tokenEnv: string;
-    projectKey: string;
-    issueType: string;
-    transitions: Record<string, string>;
-    authMode?: "site" | "gateway" | undefined;
-    boardId?: number | undefined;
-}, {
-    baseUrl: string;
-    projectKey: string;
-    emailEnv?: string | undefined;
-    tokenEnv?: string | undefined;
-    authMode?: "site" | "gateway" | undefined;
-    issueType?: string | undefined;
-    transitions?: Record<string, string> | undefined;
-    boardId?: number | undefined;
-}>;
+    authMode: z.ZodOptional<z.ZodEnum<{
+        site: "site";
+        gateway: "gateway";
+    }>>;
+}, z.core.$strip>;
 type JiraConfig = z.infer<typeof configSchema>;
 export declare function make(config: JiraConfig, fetchImpl?: FetchLike): Tracker;
 export declare function resolveJiraAuth(cfg: JiraConfig): {

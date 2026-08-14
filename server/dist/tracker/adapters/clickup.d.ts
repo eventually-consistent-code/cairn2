@@ -1,37 +1,13 @@
 import { z } from "zod";
 import { type FetchLike } from "../http.js";
 import type { Capability, Issue, IssueCreate, IssuePatch, IssueState, Milestone, Phase, ProbeResult, Tracker } from "../types.js";
-export declare const configSchema: z.ZodEffects<z.ZodObject<{
+export declare const configSchema: z.ZodObject<{
     defaultListId: z.ZodString;
     folderId: z.ZodOptional<z.ZodString>;
     spaceId: z.ZodOptional<z.ZodString>;
     tokenEnv: z.ZodDefault<z.ZodString>;
-    statuses: z.ZodEffects<z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodString>>, Record<string, string>, Record<string, string> | undefined>;
-}, "strip", z.ZodTypeAny, {
-    tokenEnv: string;
-    defaultListId: string;
-    statuses: Record<string, string>;
-    folderId?: string | undefined;
-    spaceId?: string | undefined;
-}, {
-    defaultListId: string;
-    tokenEnv?: string | undefined;
-    folderId?: string | undefined;
-    spaceId?: string | undefined;
-    statuses?: Record<string, string> | undefined;
-}>, {
-    tokenEnv: string;
-    defaultListId: string;
-    statuses: Record<string, string>;
-    folderId?: string | undefined;
-    spaceId?: string | undefined;
-}, {
-    defaultListId: string;
-    tokenEnv?: string | undefined;
-    folderId?: string | undefined;
-    spaceId?: string | undefined;
-    statuses?: Record<string, string> | undefined;
-}>;
+    statuses: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodString>>;
+}, z.core.$strip>;
 export type ClickUpConfig = z.infer<typeof configSchema>;
 export declare function make(config: ClickUpConfig, fetchImpl?: FetchLike): Tracker;
 export declare function resolveClickUpToken(tokenEnv: string): string;

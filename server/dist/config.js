@@ -5,15 +5,24 @@ import { CairnError } from "./errors.js";
 import { PROVIDERS } from "./peers/providers.js";
 export const ConfigSchema = z.object({
     tracker: z.object({
-        type: z.enum(["github", "gitlab", "jira", "asana", "azure-boards", "clickup", "linear", "local"]),
-        config: z.record(z.unknown()),
+        type: z.enum([
+            "github",
+            "gitlab",
+            "jira",
+            "asana",
+            "azure-boards",
+            "clickup",
+            "linear",
+            "local",
+        ]),
+        config: z.record(z.string(), z.unknown()),
     }),
     // Documentation connectors publish repo docs outward (Confluence first);
     // same two-level shape as tracker — deep validation lives in the adapter.
     docs: z
         .object({
         connector: z.enum(["confluence", "docusaurus"]),
-        config: z.record(z.unknown()),
+        config: z.record(z.string(), z.unknown()),
     })
         .optional(),
     agents: z
@@ -22,10 +31,12 @@ export const ConfigSchema = z.object({
     memory: z
         .object({ tokenThreshold: z.number().int().positive() })
         .default({ tokenThreshold: 150000 }),
-    user: z.object({
+    user: z
+        .object({
         handle: z.string().min(1),
         mode: z.enum(["vibe", "engineer"]).optional(),
-    }).optional(),
+    })
+        .optional(),
     continuity: z
         .object({
         resume: z.enum(["prompt", "auto", "off"]).default("prompt"),
@@ -36,28 +47,26 @@ export const ConfigSchema = z.object({
             enabled: z.boolean().default(true),
             maxCards: z.number().int().positive().default(20),
         })
-            .default({}),
+            .prefault({}),
     })
-        .default({}),
+        .prefault({}),
     leakGuard: z
         .object({
         enabled: z.boolean().default(true),
         allow: z.array(z.string()).default([]),
         extraPatterns: z.array(z.string()).default([]),
     })
-        .default({}),
+        .prefault({}),
     // Confirm-before-push gate on the ship verb (#76) — adopted at the
     // 2026-08-12 product council (REC-5), accepted by the project owner over
     // cairn's no-action recommendation. Default on; confirm: false restores
     // the silent push flow.
-    ship: z
-        .object({ confirm: z.boolean().default(true) })
-        .default({}),
+    ship: z.object({ confirm: z.boolean().default(true) }).prefault({}),
     // Per-provider peer CLI settings (Tier F2 #997) — absent provider or
     // absent field means enabled with defaults; unknown provider keys are
     // rejected by the enum-keyed record below.
     peers: z
-        .record(z.enum(PROVIDERS), z.object({
+        .partialRecord(z.enum(PROVIDERS), z.object({
         enabled: z.boolean().optional(),
         maxInputChars: z.number().int().positive().optional(),
         // Config-declared trust decision (#67): the user explicitly marks
@@ -94,7 +103,8 @@ export function loadConfig(projectDir) {
     const result = ConfigSchema.safeParse(parsed);
     if (!result.success) {
         throw new CairnError("CONFIG_INVALID", result.error.issues
-            .map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+            .map((i) => `${i.path.join(".")}: ${i.message}`)
+            .join("; "));
     }
     return result.data;
 }
@@ -120,8 +130,11 @@ function deepMerge(base, patch) {
         if (v === null) {
             delete out[k];
         }
-        else if (typeof v === "object" && !Array.isArray(v)
-            && typeof out[k] === "object" && out[k] !== null && !Array.isArray(out[k])) {
+        else if (typeof v === "object" &&
+            !Array.isArray(v) &&
+            typeof out[k] === "object" &&
+            out[k] !== null &&
+            !Array.isArray(out[k])) {
             out[k] = deepMerge(out[k], v);
         }
         else {
@@ -144,7 +157,8 @@ export function writeConfigPatch(projectDir, patch) {
     const result = ConfigSchema.safeParse(merged);
     if (!result.success) {
         throw new CairnError("CONFIG_INVALID", result.error.issues
-            .map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+            .map((i) => `${i.path.join(".")}: ${i.message}`)
+            .join("; "));
     }
     writeFileSync(path, `${JSON.stringify(merged, null, 2)}\n`);
     return result.data;

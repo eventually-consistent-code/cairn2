@@ -4,13 +4,7 @@ import type { Capability, Issue, IssueCreate, IssueLink, IssuePatch, IssueState,
 export declare const configSchema: z.ZodObject<{
     teamId: z.ZodString;
     apiKeyEnv: z.ZodDefault<z.ZodString>;
-}, "strip", z.ZodTypeAny, {
-    teamId: string;
-    apiKeyEnv: string;
-}, {
-    teamId: string;
-    apiKeyEnv?: string | undefined;
-}>;
+}, z.core.$strip>;
 export declare function make(config: z.infer<typeof configSchema>, fetchImpl?: FetchLike): Tracker;
 export declare class LinearTracker implements Tracker {
     private readonly cfg;

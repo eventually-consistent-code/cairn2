@@ -2,21 +2,10 @@ import { z } from "zod";
 import type { ProbeResult } from "../../tracker/types.js";
 import type { DocsCapability, DocsConnector, Page, PageSpec } from "../types.js";
 export declare const configSchema: z.ZodObject<{
-    /** Docusaurus site checkout, absolute or relative to the cairn project. */
     sitePath: z.ZodString;
-    /** Docs root inside the site. Created if missing. */
     docsDir: z.ZodDefault<z.ZodString>;
-    /** Commit the project folder in the site repo after publish. Never pushes. */
     autoCommit: z.ZodDefault<z.ZodBoolean>;
-}, "strip", z.ZodTypeAny, {
-    sitePath: string;
-    docsDir: string;
-    autoCommit: boolean;
-}, {
-    sitePath: string;
-    docsDir?: string | undefined;
-    autoCommit?: boolean | undefined;
-}>;
+}, z.core.$strip>;
 export type DocusaurusConfig = z.infer<typeof configSchema>;
 export declare function make(config: DocusaurusConfig): DocsConnector;
 /** "Quick Start!" → "quick-start" — filename/id form of a page title. */

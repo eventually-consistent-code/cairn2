@@ -17,25 +17,20 @@ import { z } from "zod";
 export declare const FindingSchema: z.ZodObject<{
     claim: z.ZodString;
     evidence: z.ZodString;
-    evidenceType: z.ZodOptional<z.ZodEnum<["file-line", "doc-section", "transcript", "external"]>>;
-    severity: z.ZodEnum<["critical", "important", "minor"]>;
+    evidenceType: z.ZodOptional<z.ZodEnum<{
+        external: "external";
+        "file-line": "file-line";
+        "doc-section": "doc-section";
+        transcript: "transcript";
+    }>>;
+    severity: z.ZodEnum<{
+        critical: "critical";
+        important: "important";
+        minor: "minor";
+    }>;
     recommendation: z.ZodString;
     axis: z.ZodOptional<z.ZodString>;
-}, "strip", z.ZodTypeAny, {
-    evidence: string;
-    claim: string;
-    severity: "critical" | "important" | "minor";
-    recommendation: string;
-    evidenceType?: "file-line" | "doc-section" | "transcript" | "external" | undefined;
-    axis?: string | undefined;
-}, {
-    evidence: string;
-    claim: string;
-    severity: "critical" | "important" | "minor";
-    recommendation: string;
-    evidenceType?: "file-line" | "doc-section" | "transcript" | "external" | undefined;
-    axis?: string | undefined;
-}>;
+}, z.core.$strip>;
 export type Finding = z.infer<typeof FindingSchema>;
 export interface ParsedFindings {
     findings: Finding[];

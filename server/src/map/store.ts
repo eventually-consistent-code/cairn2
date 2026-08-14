@@ -1,4 +1,10 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
 import { CairnError } from "../errors.js";
@@ -6,8 +12,16 @@ import { CairnError } from "../errors.js";
 export type NodeType = "module" | "phase" | "issue" | "decision" | "person";
 export type EdgeType = "depends-on" | "implements" | "decided-in" | "owns";
 
-export interface MapNode { type: NodeType; label: string; detail?: string; }
-export interface MapEdge { from: string; to: string; type: EdgeType; }
+export interface MapNode {
+  type: NodeType;
+  label: string;
+  detail?: string;
+}
+export interface MapEdge {
+  from: string;
+  to: string;
+  type: EdgeType;
+}
 
 /**
  * Freshness envelope stamped by mapSet on every write. builtAt marks when the
@@ -15,29 +29,57 @@ export interface MapEdge { from: string; to: string; type: EdgeType; }
  * counts writes since the last rebuild. A legacy map.json without meta loads
  * fine -- meta stays absent until the next write stamps it.
  */
-export interface MapMeta { builtAt: string; updatedAt: string; generation: number; }
+export interface MapMeta {
+  builtAt: string;
+  updatedAt: string;
+  generation: number;
+}
 
-export interface ProjectMap { nodes: Record<string, MapNode>; edges: MapEdge[]; meta?: MapMeta; }
+export interface ProjectMap {
+  nodes: Record<string, MapNode>;
+  edges: MapEdge[];
+  meta?: MapMeta;
+}
 
-const NodeTypeSchema = z.enum(["module", "phase", "issue", "decision", "person"]);
-const EdgeTypeSchema = z.enum(["depends-on", "implements", "decided-in", "owns"]);
+const NodeTypeSchema = z.enum([
+  "module",
+  "phase",
+  "issue",
+  "decision",
+  "person",
+]);
+const EdgeTypeSchema = z.enum([
+  "depends-on",
+  "implements",
+  "decided-in",
+  "owns",
+]);
 const MapNodeSchema = z.object({
-  type: NodeTypeSchema, label: z.string(), detail: z.string().optional(),
+  type: NodeTypeSchema,
+  label: z.string(),
+  detail: z.string().optional(),
 });
-const MapEdgeSchema = z.object({ from: z.string(), to: z.string(), type: EdgeTypeSchema });
+const MapEdgeSchema = z.object({
+  from: z.string(),
+  to: z.string(),
+  type: EdgeTypeSchema,
+});
 const MapMetaSchema = z.object({
-  builtAt: z.string(), updatedAt: z.string(), generation: z.number(),
+  builtAt: z.string(),
+  updatedAt: z.string(),
+  generation: z.number(),
 });
 // The whole on-disk store -- readMap validates against this so a hand-edited
 // map.json (say, a node missing its label) fails loudly at read time with the
 // defect named, instead of TypeError-ing later inside a query.
 const ProjectMapSchema = z.object({
-  nodes: z.record(MapNodeSchema),
+  nodes: z.record(z.string(), MapNodeSchema),
   edges: z.array(MapEdgeSchema),
   meta: MapMetaSchema.optional(),
 });
 
-const mapPath = (projectDir: string) => join(projectDir, ".cairn", "map", "map.json");
+const mapPath = (projectDir: string) =>
+  join(projectDir, ".cairn", "map", "map.json");
 
 function readMap(projectDir: string): ProjectMap {
   const path = mapPath(projectDir);
@@ -46,16 +88,21 @@ function readMap(projectDir: string): ProjectMap {
   try {
     raw = JSON.parse(readFileSync(path, "utf8"));
   } catch {
-    throw new CairnError("CONFIG_INVALID",
+    throw new CairnError(
+      "CONFIG_INVALID",
       `${path} is not valid JSON`,
-      "fix or delete the map file -- a missing file reads as an empty store");
+      "fix or delete the map file -- a missing file reads as an empty store",
+    );
   }
   const parsed = ProjectMapSchema.safeParse(raw);
   if (!parsed.success) {
-    throw new CairnError("CONFIG_INVALID",
-      `${path} does not match the map schema: ${
-        parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`,
-      "fix the named field(s) by hand, or delete the map file and rebuild");
+    throw new CairnError(
+      "CONFIG_INVALID",
+      `${path} does not match the map schema: ${parsed.error.issues
+        .map((i) => `${i.path.join(".")}: ${i.message}`)
+        .join("; ")}`,
+      "fix the named field(s) by hand, or delete the map file and rebuild",
+    );
   }
   return parsed.data;
 }
@@ -77,9 +124,11 @@ function validateEdges(edges: MapEdge[]): void {
   for (const e of edges) {
     const parsed = MapEdgeSchema.safeParse(e);
     if (!parsed.success) {
-      throw new CairnError("UNSUPPORTED",
+      throw new CairnError(
+        "UNSUPPORTED",
         `edge '${e?.from}->${e?.to}' has an invalid type: ${parsed.error.issues.map((i) => i.message).join("; ")}`,
-        `use one of: ${EdgeTypeSchema.options.join(", ")}`);
+        `use one of: ${EdgeTypeSchema.options.join(", ")}`,
+      );
     }
   }
 }
@@ -107,23 +156,35 @@ function validateEdges(edges: MapEdge[]): void {
  * resets to now and generation restarts at 1. A first-ever write (or a write
  * over a legacy pre-envelope file) counts as a build too.
  */
-export function mapSet(projectDir: string, patch: {
-  nodes?: Record<string, MapNode | null>; edges?: MapEdge[];
-  edgesAdd?: MapEdge[]; edgesRemove?: MapEdge[];
-}, opts?: { rebuild?: boolean }): { nodes: number; edges: number } {
-  if (patch.edges !== undefined
-      && (patch.edgesAdd !== undefined || patch.edgesRemove !== undefined)) {
-    throw new CairnError("CONFIG_INVALID",
+export function mapSet(
+  projectDir: string,
+  patch: {
+    nodes?: Record<string, MapNode | null>;
+    edges?: MapEdge[];
+    edgesAdd?: MapEdge[];
+    edgesRemove?: MapEdge[];
+  },
+  opts?: { rebuild?: boolean },
+): { nodes: number; edges: number } {
+  if (
+    patch.edges !== undefined &&
+    (patch.edgesAdd !== undefined || patch.edgesRemove !== undefined)
+  ) {
+    throw new CairnError(
+      "CONFIG_INVALID",
       "patch mixes wholesale 'edges' with edgesAdd/edgesRemove -- ambiguous intent",
-      "use edges alone for a full rebuild, or edgesAdd/edgesRemove alone for a surgical patch");
+      "use edges alone for a full rebuild, or edgesAdd/edgesRemove alone for a surgical patch",
+    );
   }
 
   // Wholesale replacement silently drops every edge not restated -- that is
   // only ever right in a from-scratch rebuild, so it demands the explicit flag.
   if (patch.edges !== undefined && opts?.rebuild !== true) {
-    throw new CairnError("CONFIG_INVALID",
+    throw new CairnError(
+      "CONFIG_INVALID",
       "wholesale edges replacement is rebuild-only — pass rebuild: true, or use edgesAdd/edgesRemove",
-      "surgical changes belong to edgesAdd/edgesRemove; a full rebuild passes rebuild: true");
+      "surgical changes belong to edgesAdd/edgesRemove; a full rebuild passes rebuild: true",
+    );
   }
 
   const current = readMap(projectDir);
@@ -135,9 +196,11 @@ export function mapSet(projectDir: string, patch: {
     if (value === null) continue;
     const parsed = MapNodeSchema.safeParse(value);
     if (!parsed.success) {
-      throw new CairnError("UNSUPPORTED",
+      throw new CairnError(
+        "UNSUPPORTED",
         `node '${id}' has an invalid type: ${parsed.error.issues.map((i) => i.message).join("; ")}`,
-        `use one of: ${NodeTypeSchema.options.join(", ")}`);
+        `use one of: ${NodeTypeSchema.options.join(", ")}`,
+      );
     }
     nodes[id] = parsed.data;
   }
@@ -171,10 +234,13 @@ export function mapSet(projectDir: string, patch: {
     if (value !== null) continue;
     const attached = edges.filter((e) => e.from === id || e.to === id);
     if (attached.length > 0) {
-      throw new CairnError("PRECONDITION_FAILED",
-        `cannot delete node '${id}' -- still attached to edge(s): ${
-          attached.map((e) => `${e.from}->${e.to}`).join(", ")}`,
-        "drop those edges (patch edges to exclude them) before deleting the node");
+      throw new CairnError(
+        "PRECONDITION_FAILED",
+        `cannot delete node '${id}' -- still attached to edge(s): ${attached
+          .map((e) => `${e.from}->${e.to}`)
+          .join(", ")}`,
+        "drop those edges (patch edges to exclude them) before deleting the node",
+      );
     }
     delete nodes[id];
   }
@@ -182,9 +248,11 @@ export function mapSet(projectDir: string, patch: {
   for (const e of edges) {
     for (const id of [e.from, e.to]) {
       if (!(id in nodes)) {
-        throw new CairnError("PRECONDITION_FAILED",
+        throw new CairnError(
+          "PRECONDITION_FAILED",
           `edge '${e.from}->${e.to}' references missing node '${id}'`,
-          "create the node first, or fix the edge endpoint");
+          "create the node first, or fix the edge endpoint",
+        );
       }
     }
   }
@@ -194,7 +262,7 @@ export function mapSet(projectDir: string, patch: {
   const now = new Date().toISOString();
   const rebuild = opts?.rebuild === true;
   const meta: MapMeta = {
-    builtAt: rebuild ? now : current.meta?.builtAt ?? now,
+    builtAt: rebuild ? now : (current.meta?.builtAt ?? now),
     updatedAt: now,
     generation: rebuild ? 1 : (current.meta?.generation ?? 0) + 1,
   };
@@ -207,22 +275,41 @@ function sortMap(map: ProjectMap): ProjectMap {
   const nodes: Record<string, MapNode> = {};
   for (const id of Object.keys(map.nodes).sort()) nodes[id] = map.nodes[id];
   const edges = [...map.edges].sort((a, b) =>
-    a.from !== b.from ? (a.from < b.from ? -1 : 1)
-      : a.to !== b.to ? (a.to < b.to ? -1 : 1)
-        : a.type !== b.type ? (a.type < b.type ? -1 : 1) : 0);
+    a.from !== b.from
+      ? a.from < b.from
+        ? -1
+        : 1
+      : a.to !== b.to
+        ? a.to < b.to
+          ? -1
+          : 1
+        : a.type !== b.type
+          ? a.type < b.type
+            ? -1
+            : 1
+          : 0,
+  );
   return { nodes, edges, ...(map.meta ? { meta: map.meta } : {}) };
 }
 
-function pickNodes(nodes: Record<string, MapNode>, ids: Set<string>): Record<string, MapNode> {
+function pickNodes(
+  nodes: Record<string, MapNode>,
+  ids: Set<string>,
+): Record<string, MapNode> {
   const out: Record<string, MapNode> = {};
   for (const id of [...ids].sort()) if (id in nodes) out[id] = nodes[id];
   return out;
 }
 
 /** Missing file reads as an empty store: `{ nodes: {}, edges: [] }`. */
-export function mapGet(projectDir: string, filter?: {
-  nodeType?: NodeType; edgeType?: EdgeType; node?: string;
-}): ProjectMap {
+export function mapGet(
+  projectDir: string,
+  filter?: {
+    nodeType?: NodeType;
+    edgeType?: EdgeType;
+    node?: string;
+  },
+): ProjectMap {
   const map = sortMap(readMap(projectDir));
   if (!filter) return map;
 
@@ -244,10 +331,14 @@ export function mapGet(projectDir: string, filter?: {
       edges = edges.filter((e) => e.type === filter.edgeType);
     }
     const ids = new Set<string>([id]);
-    for (const e of edges) { ids.add(e.from); ids.add(e.to); }
+    for (const e of edges) {
+      ids.add(e.from);
+      ids.add(e.to);
+    }
     if (filter.nodeType !== undefined) {
       for (const nid of [...ids]) {
-        if (nid !== id && map.nodes[nid].type !== filter.nodeType) ids.delete(nid);
+        if (nid !== id && map.nodes[nid].type !== filter.nodeType)
+          ids.delete(nid);
       }
       edges = edges.filter((e) => ids.has(e.from) && ids.has(e.to));
     }
@@ -266,11 +357,11 @@ export function mapGet(projectDir: string, filter?: {
 }
 
 export interface MapQuery {
-  node?: string;      // anchor id for a neighborhood view
-  depth?: number;     // 0-3 hops out from the anchor (default 1)
+  node?: string; // anchor id for a neighborhood view
+  depth?: number; // 0-3 hops out from the anchor (default 1)
   nodeType?: NodeType;
   edgeType?: EdgeType;
-  label?: string;     // case-insensitive substring over node labels
+  label?: string; // case-insensitive substring over node labels
 }
 
 /**
@@ -290,8 +381,10 @@ export interface MapQuery {
 export function queryMap(map: ProjectMap, q: MapQuery): ProjectMap {
   const meta = map.meta ? { meta: map.meta } : {};
   const depth = q.depth ?? 1;
-  const edgePool = q.edgeType !== undefined
-    ? map.edges.filter((e) => e.type === q.edgeType) : map.edges;
+  const edgePool =
+    q.edgeType !== undefined
+      ? map.edges.filter((e) => e.type === q.edgeType)
+      : map.edges;
 
   // Candidate set: BFS neighborhood around the anchor, or every node.
   let candidates: Set<string>;
@@ -315,12 +408,15 @@ export function queryMap(map: ProjectMap, q: MapQuery): ProjectMap {
 
   // Attribute filters AND together over the candidate set.
   const needle = q.label?.toLowerCase();
-  const ids = new Set([...candidates].filter((id) => {
-    const n = map.nodes[id];
-    if (q.nodeType !== undefined && n.type !== q.nodeType) return false;
-    if (needle !== undefined && !n.label.toLowerCase().includes(needle)) return false;
-    return true;
-  }));
+  const ids = new Set(
+    [...candidates].filter((id) => {
+      const n = map.nodes[id];
+      if (q.nodeType !== undefined && n.type !== q.nodeType) return false;
+      if (needle !== undefined && !n.label.toLowerCase().includes(needle))
+        return false;
+      return true;
+    }),
+  );
 
   const edges = edgePool.filter((e) => ids.has(e.from) && ids.has(e.to));
   return sortMap({ nodes: pickNodes(map.nodes, ids), edges, ...meta });

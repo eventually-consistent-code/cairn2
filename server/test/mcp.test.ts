@@ -1,10 +1,17 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync, chmodSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  writeFileSync,
+  rmSync,
+  chmodSync,
+} from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join, delimiter } from "node:path";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { buildServer } from "../src/index.js";
 import { FakeTracker } from "../src/tracker/fake.js";
 import { handoffPath } from "../src/core/continuity.js";
@@ -18,9 +25,13 @@ import { PROVIDERS } from "../src/peers/run.js";
 // chmodding the real shared homedir directory -- vitest runs test files in
 // parallel workers, and other suites write handoffs there unguarded, so a
 // chmod window would EACCES-flake unrelated tests.
-const continuityFailure = vi.hoisted(() => ({ failWrites: false, failedAttempts: 0 }));
+const continuityFailure = vi.hoisted(() => ({
+  failWrites: false,
+  failedAttempts: 0,
+}));
 vi.mock("../src/core/continuity.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../src/core/continuity.js")>();
+  const actual =
+    await importOriginal<typeof import("../src/core/continuity.js")>();
   return {
     ...actual,
     writeHandoff: (...args: Parameters<typeof actual.writeHandoff>) => {
@@ -39,11 +50,16 @@ describe("cairn MCP server", () => {
 
   beforeAll(async () => {
     projectDir = mkdtempSync(join(tmpdir(), "cairn-"));
-    writeFileSync(join(projectDir, "cairn.json"),
-      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
-    const server = buildServer({ projectDir, tracker: new FakeTracker(),
+    writeFileSync(
+      join(projectDir, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }),
+    );
+    const server = buildServer({
+      projectDir,
+      tracker: new FakeTracker(),
       // Deterministic npm-latest lookup (#82): no network in unit tests.
-      fetchLatestVersion: async () => "9.9.9" });
+      fetchLatestVersion: async () => "9.9.9",
+    });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     client = new Client({ name: "test", version: "0.0.0" });
     await Promise.all([server.connect(st), client.connect(ct)]);
@@ -60,32 +76,89 @@ describe("cairn MCP server", () => {
 
   it("lists the expected tools", async () => {
     const tools = await listToolNames();
-    expect(tools).toEqual([
-      "context_get", "context_set", "issue_close", "issue_create", "issue_get",
-      "issue_list", "issue_update", "issue_link", "issue_unlink", "issue_links",
-      "graph_report", "tracker_migrate", "phase_create", "phase_list",
-      "plan_drift", "plan_import", "plan_issues_set", "plan_phase_ensure",
-      "plan_scaffold_project", "plan_scaffold_phase", "plan_status", "plan_unplanned",
-      "mem_index", "mem_search", "mem_stats",
-      "mem_card_create", "mem_card_list", "mem_card_recall", "mem_card_update", "mem_timeline",
-      "continuity_checkpoint", "continuity_get", "continuity_clear",
-      "ledger_append",
-      "milestone_create", "milestone_list", "milestone_complete",
-      "plan_resync", "plan_tracker_delta", "plan_meta_set",
-      "config_get", "config_set", "config_probe",
-      "issue_comment", "issue_attach", "trace_start", "trace_log", "trace_list", "trace_close",
-      "probe_start", "probe_log", "probe_close",
-      "draft_start", "draft_log", "draft_close",
-      "thread_start", "thread_log", "thread_close",
-      "session_landscape",
-      "plan_check", "audit_record",
-      "map_set", "map_get", "map_query",
-      "workspace_list", "workspace_focus", "workspace_status",
-      "board_get", "board_update",
-      "peer_list", "peer_run", "peer_state",
-      "docs_publish", "docs_status",
-      "research_sections", "outlook_get", "outlook_emit", "outlook_refresh", "outlook_forget",
-    ].sort());
+    expect(tools).toEqual(
+      [
+        "context_get",
+        "context_set",
+        "issue_close",
+        "issue_create",
+        "issue_get",
+        "issue_list",
+        "issue_update",
+        "issue_link",
+        "issue_unlink",
+        "issue_links",
+        "graph_report",
+        "tracker_migrate",
+        "phase_create",
+        "phase_list",
+        "plan_drift",
+        "plan_import",
+        "plan_issues_set",
+        "plan_phase_ensure",
+        "plan_scaffold_project",
+        "plan_scaffold_phase",
+        "plan_status",
+        "plan_unplanned",
+        "mem_index",
+        "mem_search",
+        "mem_stats",
+        "mem_card_create",
+        "mem_card_list",
+        "mem_card_recall",
+        "mem_card_update",
+        "mem_timeline",
+        "continuity_checkpoint",
+        "continuity_get",
+        "continuity_clear",
+        "ledger_append",
+        "milestone_create",
+        "milestone_list",
+        "milestone_complete",
+        "plan_resync",
+        "plan_tracker_delta",
+        "plan_meta_set",
+        "config_get",
+        "config_set",
+        "config_probe",
+        "issue_comment",
+        "issue_attach",
+        "trace_start",
+        "trace_log",
+        "trace_list",
+        "trace_close",
+        "probe_start",
+        "probe_log",
+        "probe_close",
+        "draft_start",
+        "draft_log",
+        "draft_close",
+        "thread_start",
+        "thread_log",
+        "thread_close",
+        "session_landscape",
+        "plan_check",
+        "audit_record",
+        "map_set",
+        "map_get",
+        "map_query",
+        "workspace_list",
+        "workspace_focus",
+        "workspace_status",
+        "board_get",
+        "board_update",
+        "peer_list",
+        "peer_run",
+        "peer_state",
+        "docs_publish",
+        "docs_status",
+        "research_sections",
+        "outlook_get",
+        "outlook_emit",
+        "outlook_refresh",
+        "outlook_forget",
+      ].sort(),
+    );
   });
 
   it("pins the tool count at 79", async () => {
@@ -95,16 +168,26 @@ describe("cairn MCP server", () => {
   it("issue_attach reads the file and forwards to the tracker; missing file is NOT_FOUND", async () => {
     const made = await call("issue_create", { title: "attach target" });
     writeFileSync(join(projectDir, "shot.png"), Buffer.from([137, 80, 78, 71]));
-    const res = await call("issue_attach", { id: made.json.id, path: "shot.png" });
+    const res = await call("issue_attach", {
+      id: made.json.id,
+      path: "shot.png",
+    });
     expect(res.json.id).toBeTruthy();
-    const missing = await client.callTool({ name: "issue_attach",
-      arguments: { id: made.json.id, path: "nope.png" } });
+    const missing = await client.callTool({
+      name: "issue_attach",
+      arguments: { id: made.json.id, path: "nope.png" },
+    });
     expect(missing.isError).toBe(true);
-    expect((missing.content as Array<{ text: string }>)[0].text).toContain("NOT_FOUND");
+    expect((missing.content as Array<{ text: string }>)[0].text).toContain(
+      "NOT_FOUND",
+    );
   });
 
   it("tracker_migrate refuses a non-local source", async () => {
-    const res = await call("tracker_migrate", { targetType: "github", targetConfig: { repo: "o/r" } });
+    const res = await call("tracker_migrate", {
+      targetType: "github",
+      targetConfig: { repo: "o/r" },
+    });
     expect(res.isError).toBe(true);
     expect(res.json.code).toBe("CONFIG_INVALID");
   });
@@ -129,8 +212,14 @@ describe("cairn MCP server", () => {
 
   it("registers the Tier A tools", async () => {
     const names = await listToolNames();
-    for (const n of ["milestone_create", "milestone_list", "milestone_complete",
-      "plan_resync", "plan_meta_set"]) expect(names).toContain(n);
+    for (const n of [
+      "milestone_create",
+      "milestone_list",
+      "milestone_complete",
+      "plan_resync",
+      "plan_meta_set",
+    ])
+      expect(names).toContain(n);
   });
 
   it("plan_check runs clean on an empty project", async () => {
@@ -152,11 +241,17 @@ describe("cairn MCP server", () => {
   });
 
   it("audit_record writes and validates", async () => {
-    const out = await call("audit_record", { scope: "drill-scope", verdict: "findings",
-      findings: [{ severity: "important", title: "t" }] });
+    const out = await call("audit_record", {
+      scope: "drill-scope",
+      verdict: "findings",
+      findings: [{ severity: "important", title: "t" }],
+    });
     expect(out.json.findings).toBe(1);
-    const bad = await call("audit_record", { scope: "drill-scope", verdict: "pass",
-      findings: [{ severity: "critical", title: "boom" }] });
+    const bad = await call("audit_record", {
+      scope: "drill-scope",
+      verdict: "pass",
+      findings: [{ severity: "critical", title: "boom" }],
+    });
     expect(bad.isError).toBe(true);
   });
 
@@ -165,10 +260,19 @@ describe("cairn MCP server", () => {
     expect(proj.json.created.length).toBe(2);
     const ph = await call("plan_scaffold_phase", { number: 1, name: "Core" });
     expect(ph.json.dir).toBe("01-core");
-    const ensured = await call("plan_phase_ensure", { number: 1, name: "Core" });
+    const ensured = await call("plan_phase_ensure", {
+      number: 1,
+      name: "Core",
+    });
     expect(ensured.json.name).toBe("Phase 1: Core");
-    const made = await call("issue_create", { title: "req 1", phase: ensured.json.id });
-    await call("plan_issues_set", { phaseDir: "01-core", issues: [made.json.id] });
+    const made = await call("issue_create", {
+      title: "req 1",
+      phase: ensured.json.id,
+    });
+    await call("plan_issues_set", {
+      phaseDir: "01-core",
+      issues: [made.json.id],
+    });
     const status = await call("plan_status", {});
     expect(status.json.phases[0].issues).toEqual([made.json.id]);
     const drift = await call("plan_drift", {});
@@ -177,14 +281,23 @@ describe("cairn MCP server", () => {
   });
 
   it("plan_scaffold_phase accepts a decimal phase number (1.5) — dir is 01.5-slug", async () => {
-    const ph = await call("plan_scaffold_phase", { number: 1.5, name: "Gamma" });
+    const ph = await call("plan_scaffold_phase", {
+      number: 1.5,
+      name: "Gamma",
+    });
     expect(ph.json.dir).toBe("01.5-gamma");
-    const ensured = await call("plan_phase_ensure", { number: 1.5, name: "Gamma" });
+    const ensured = await call("plan_phase_ensure", {
+      number: 1.5,
+      name: "Gamma",
+    });
     expect(ensured.json.name).toBe("Phase 1.5: Gamma");
   });
 
   it("plan_scaffold_phase rejects an over-precise decimal (1.55) as CONFIG_INVALID", async () => {
-    const res = await call("plan_scaffold_phase", { number: 1.55, name: "Bad" });
+    const res = await call("plan_scaffold_phase", {
+      number: 1.55,
+      name: "Bad",
+    });
     expect(res.isError).toBe(true);
     expect(res.json.code).toBe("CONFIG_INVALID");
   });
@@ -200,44 +313,67 @@ describe("cairn MCP server", () => {
     await call("plan_scaffold_phase", { number: 1.5, name: "OnePointFive" });
     await call("plan_scaffold_phase", { number: 2, name: "Two" });
     const status = await call("plan_status", {});
-    const relevant = (status.json.phases as Array<{ number: number; dir: string }>)
-      .filter((p) => ["01-one", "01.5-onepointfive", "02-two"].includes(p.dir));
-    expect(relevant.map((p) => p.dir)).toEqual(["01-one", "01.5-onepointfive", "02-two"]);
+    const relevant = (
+      status.json.phases as Array<{ number: number; dir: string }>
+    ).filter((p) => ["01-one", "01.5-onepointfive", "02-two"].includes(p.dir));
+    expect(relevant.map((p) => p.dir)).toEqual([
+      "01-one",
+      "01.5-onepointfive",
+      "02-two",
+    ]);
     expect(relevant.map((p) => p.number)).toEqual([1, 1.5, 2]);
   });
 
   it("plan_issues_set on a decimal phaseDir round-trips the phase number into the handoff (not the slice(0,2) bug)", async () => {
     await call("plan_scaffold_phase", { number: 1.5, name: "Handoff Check" });
     const made = await call("issue_create", { title: "decimal handoff req" });
-    const res = await call("plan_issues_set",
-      { phaseDir: "01.5-handoff-check", issues: [made.json.id] });
+    const res = await call("plan_issues_set", {
+      phaseDir: "01.5-handoff-check",
+      issues: [made.json.id],
+    });
     expect(res.isError).toBeFalsy();
     const handoff = await call("continuity_get", {});
-    expect(handoff.json.handoff.phase).toEqual({ number: 1.5, slug: "handoff-check" });
+    expect(handoff.json.handoff.phase).toEqual({
+      number: 1.5,
+      slug: "handoff-check",
+    });
   });
 
   it("plan_issues_set rejects traversal-shaped phaseDir", async () => {
-    const res = await call("plan_issues_set", { phaseDir: "../evil", issues: [] });
+    const res = await call("plan_issues_set", {
+      phaseDir: "../evil",
+      issues: [],
+    });
     expect(res.isError).toBe(true);
   });
 
   it("plan_issues_set rejects a phaseDir with no scaffolded PLAN.md", async () => {
-    const res = await call("plan_issues_set", { phaseDir: "99-unscaffolded", issues: [] });
+    const res = await call("plan_issues_set", {
+      phaseDir: "99-unscaffolded",
+      issues: [],
+    });
     expect(res.isError).toBe(true);
     expect(res.json.code).toBe("NOT_FOUND");
   });
 
   it("plan_issues_set rejects an issue id containing a comma", async () => {
-    const res = await call("plan_issues_set", { phaseDir: "01-core", issues: ["A,B"] });
+    const res = await call("plan_issues_set", {
+      phaseDir: "01-core",
+      issues: ["A,B"],
+    });
     expect(res.isError).toBe(true);
     expect(res.json.code).toBe("CONFIG_INVALID");
   });
 
   it("ledger_append writes a formatted line to the phase's LEDGER.md", async () => {
     const res = await call("ledger_append", {
-      phaseDir: "01-core", taskRef: "task-1", summary: "wire the tool",
-      baseCommit: "a1b2c3d4e5f6", headCommit: "d4e5f6a1b2c3",
-      issueId: "PROJ-1", closedDate: "2026-07-16",
+      phaseDir: "01-core",
+      taskRef: "task-1",
+      summary: "wire the tool",
+      baseCommit: "a1b2c3d4e5f6",
+      headCommit: "d4e5f6a1b2c3",
+      issueId: "PROJ-1",
+      closedDate: "2026-07-16",
     });
     expect(res.isError).toBeFalsy();
     expect(res.json.line).toBe(
@@ -247,9 +383,13 @@ describe("cairn MCP server", () => {
 
   it("ledger_append rejects a phaseDir with no scaffolded phase", async () => {
     const res = await call("ledger_append", {
-      phaseDir: "99-unscaffolded", taskRef: "task-1", summary: "x",
-      baseCommit: "a1b2c3d4e5f6", headCommit: "d4e5f6a1b2c3",
-      issueId: "PROJ-1", closedDate: "2026-07-16",
+      phaseDir: "99-unscaffolded",
+      taskRef: "task-1",
+      summary: "x",
+      baseCommit: "a1b2c3d4e5f6",
+      headCommit: "d4e5f6a1b2c3",
+      issueId: "PROJ-1",
+      closedDate: "2026-07-16",
     });
     expect(res.isError).toBe(true);
     expect(res.json.code).toBe("NOT_FOUND");
@@ -259,7 +399,10 @@ describe("cairn MCP server", () => {
   it("issue lifecycle: create → in_progress → close through tools", async () => {
     const made = await call("issue_create", { title: "via mcp" });
     expect(made.json.state).toBe("open");
-    const wip = await call("issue_update", { id: made.json.id, state: "in_progress" });
+    const wip = await call("issue_update", {
+      id: made.json.id,
+      state: "in_progress",
+    });
     expect(wip.json.state).toBe("in_progress");
     const closed = await call("issue_close", { id: made.json.id });
     expect(closed.json.state).toBe("closed");
@@ -267,15 +410,21 @@ describe("cairn MCP server", () => {
 
   it("claiming an unassigned issue auto-assigns the working user", async () => {
     const made = await call("issue_create", { title: "claim me" });
-    const wip = await call("issue_update", { id: made.json.id, state: "in_progress" });
+    const wip = await call("issue_update", {
+      id: made.json.id,
+      state: "in_progress",
+    });
     expect(wip.json.assignee).toBe("fake-user");
     expect(wip.json.autoAssigned).toBe(true);
   });
 
   it("an explicit assignee wins over auto-assign", async () => {
     const made = await call("issue_create", { title: "explicit" });
-    const wip = await call("issue_update",
-      { id: made.json.id, state: "in_progress", assignee: "someone-else" });
+    const wip = await call("issue_update", {
+      id: made.json.id,
+      state: "in_progress",
+      assignee: "someone-else",
+    });
     expect(wip.json.assignee).toBe("someone-else");
     expect(wip.json.autoAssigned).toBeUndefined();
   });
@@ -283,7 +432,10 @@ describe("cairn MCP server", () => {
   it("an already-assigned issue is left untouched on claim", async () => {
     const made = await call("issue_create", { title: "taken" });
     await call("issue_update", { id: made.json.id, assignee: "owner" });
-    const wip = await call("issue_update", { id: made.json.id, state: "in_progress" });
+    const wip = await call("issue_update", {
+      id: made.json.id,
+      state: "in_progress",
+    });
     expect(wip.json.assignee).toBe("owner");
     expect(wip.json.autoAssigned).toBeUndefined();
   });
@@ -291,26 +443,57 @@ describe("cairn MCP server", () => {
   it("issue_link → issue_links → issue_unlink roundtrip", async () => {
     const a = await call("issue_create", { title: "link a" });
     const b = await call("issue_create", { title: "link b" });
-    await call("issue_link", { from: a.json.id, type: "blocks", to: b.json.id });
+    await call("issue_link", {
+      from: a.json.id,
+      type: "blocks",
+      to: b.json.id,
+    });
     const links = await call("issue_links", { id: a.json.id });
-    expect(links.json.links).toContainEqual({ from: a.json.id, type: "blocks", to: b.json.id });
-    await call("issue_unlink", { from: a.json.id, type: "blocks", to: b.json.id });
-    expect((await call("issue_links", { id: a.json.id })).json.links).toEqual([]);
+    expect(links.json.links).toContainEqual({
+      from: a.json.id,
+      type: "blocks",
+      to: b.json.id,
+    });
+    await call("issue_unlink", {
+      from: a.json.id,
+      type: "blocks",
+      to: b.json.id,
+    });
+    expect((await call("issue_links", { id: a.json.id })).json.links).toEqual(
+      [],
+    );
   });
 
   it("graph_report: frontier, inherited priority, lineage", async () => {
-    const blocker = await call("issue_create", { title: "graph blocker", labels: ["priority:P3"] });
-    const blocked = await call("issue_create", { title: "graph blocked", labels: ["priority:P1"] });
-    await call("issue_link", { from: blocker.json.id, type: "blocks", to: blocked.json.id });
+    const blocker = await call("issue_create", {
+      title: "graph blocker",
+      labels: ["priority:P3"],
+    });
+    const blocked = await call("issue_create", {
+      title: "graph blocked",
+      labels: ["priority:P1"],
+    });
+    await call("issue_link", {
+      from: blocker.json.id,
+      type: "blocks",
+      to: blocked.json.id,
+    });
     const v2 = await call("issue_create", { title: "graph v2" });
-    await call("issue_link", { from: v2.json.id, type: "supersedes", to: blocker.json.id });
+    await call("issue_link", {
+      from: v2.json.id,
+      type: "supersedes",
+      to: blocker.json.id,
+    });
 
     const report = await call("graph_report", { lineageOf: v2.json.id });
     const frontierIds = report.json.frontier.map((i: { id: string }) => i.id);
-    expect(frontierIds).toContain(blocker.json.id);      // nothing blocks it
-    expect(frontierIds).not.toContain(blocked.json.id);  // blocker still open
+    expect(frontierIds).toContain(blocker.json.id); // nothing blocks it
+    expect(frontierIds).not.toContain(blocked.json.id); // blocker still open
     expect(report.json.priorities).toContainEqual({
-      id: blocker.json.id, declared: "P3", effective: "P1", inheritedFrom: blocked.json.id,
+      id: blocker.json.id,
+      declared: "P3",
+      effective: "P1",
+      inheritedFrom: blocked.json.id,
     });
     expect(report.json.lineage).toEqual([blocker.json.id, v2.json.id]);
     expect(report.json.dangling).toEqual([]);
@@ -319,29 +502,46 @@ describe("cairn MCP server", () => {
   it("issue_link surfaces cycle rejection as a typed error", async () => {
     const a = await call("issue_create", { title: "cyc a" });
     const b = await call("issue_create", { title: "cyc b" });
-    await call("issue_link", { from: a.json.id, type: "blocks", to: b.json.id });
-    const res = await call("issue_link", { from: b.json.id, type: "blocks", to: a.json.id });
+    await call("issue_link", {
+      from: a.json.id,
+      type: "blocks",
+      to: b.json.id,
+    });
+    const res = await call("issue_link", {
+      from: b.json.id,
+      type: "blocks",
+      to: a.json.id,
+    });
     expect(res.isError).toBe(true);
     expect(res.json.code).toBe("CONFIG_INVALID");
   });
 
   it("non-claim transitions never auto-assign", async () => {
     const made = await call("issue_create", { title: "close only" });
-    const closed = await call("issue_update", { id: made.json.id, state: "closed" });
+    const closed = await call("issue_update", {
+      id: made.json.id,
+      state: "closed",
+    });
     expect(closed.json.assignee).toBeUndefined();
   });
 
   it("issue_close with timeSpentMinutes on a no-worklog backend says why it skipped", async () => {
     const made = await call("issue_create", { title: "timed close" });
-    const closed = await call("issue_close", { id: made.json.id, timeSpentMinutes: 15 });
+    const closed = await call("issue_close", {
+      id: made.json.id,
+      timeSpentMinutes: 15,
+    });
     expect(closed.json.state).toBe("closed");
     expect(closed.json.worklogLogged).toBe(false);
     expect(closed.json.worklogError).toMatch(/no worklog support/);
   });
 
   it("issue_create passes an estimate through on a hasEstimates backend, no skip note", async () => {
-    const made = await call("issue_create",
-      { title: "estimated on jira-like", estimatePoints: 3, estimateMinutes: 90 });
+    const made = await call("issue_create", {
+      title: "estimated on jira-like",
+      estimatePoints: 3,
+      estimateMinutes: 90,
+    });
     expect(made.json.estimate).toEqual({ points: 3, minutes: 90 });
     expect(made.json.estimateSkipped).toBeUndefined();
   });
@@ -358,50 +558,71 @@ describe("cairn MCP server", () => {
     // posture, so a dedicated tracker + server/client pair overrides it, same
     // pattern as the git-fixture server above.
     class NoEstimatesFake extends FakeTracker {
-      override readonly capabilities = { ...new FakeTracker().capabilities, hasEstimates: false };
+      override readonly capabilities = {
+        ...new FakeTracker().capabilities,
+        hasEstimates: false,
+      };
     }
 
     let neClient: Client;
     const neCall = async (name: string, args: Record<string, unknown> = {}) => {
       const res = await neClient.callTool({ name, arguments: args });
-      const text = (res.content as Array<{ type: string; text: string }>)[0].text;
+      const text = (res.content as Array<{ type: string; text: string }>)[0]
+        .text;
       return { ...res, json: JSON.parse(text) };
     };
 
     beforeAll(async () => {
       const dir = mkdtempSync(join(tmpdir(), "cairn-mcp-no-estimates-"));
-      const server = buildServer({ projectDir: dir, tracker: new NoEstimatesFake() });
+      const server = buildServer({
+        projectDir: dir,
+        tracker: new NoEstimatesFake(),
+      });
       const [ct, st] = InMemoryTransport.createLinkedPair();
       neClient = new Client({ name: "test-no-estimates", version: "0.0.0" });
       await Promise.all([server.connect(st), neClient.connect(ct)]);
     });
 
     it("issue_create drops the estimate and reports estimateSkipped", async () => {
-      const made = await neCall("issue_create",
-        { title: "unestimatable", estimatePoints: 5, estimateMinutes: 120 });
+      const made = await neCall("issue_create", {
+        title: "unestimatable",
+        estimatePoints: 5,
+        estimateMinutes: 120,
+      });
       expect(made.json.estimate).toBeUndefined();
-      expect(made.json.estimateSkipped)
-        .toBe("backend has no estimate support; fold points/minutes into the issue body");
+      expect(made.json.estimateSkipped).toBe(
+        "backend has no estimate support; fold points/minutes into the issue body",
+      );
     });
 
     it("issue_create with no estimate requested carries no skip note", async () => {
-      const made = await neCall("issue_create", { title: "plain, no estimate" });
+      const made = await neCall("issue_create", {
+        title: "plain, no estimate",
+      });
       expect(made.json.estimate).toBeUndefined();
       expect(made.json.estimateSkipped).toBeUndefined();
     });
 
     it("issue_update drops the estimate and reports estimateSkipped", async () => {
       const made = await neCall("issue_create", { title: "update target" });
-      const updated = await neCall("issue_update",
-        { id: made.json.id, estimatePoints: 8 });
+      const updated = await neCall("issue_update", {
+        id: made.json.id,
+        estimatePoints: 8,
+      });
       expect(updated.json.estimate).toBeUndefined();
-      expect(updated.json.estimateSkipped)
-        .toBe("backend has no estimate support; fold points/minutes into the issue body");
+      expect(updated.json.estimateSkipped).toBe(
+        "backend has no estimate support; fold points/minutes into the issue body",
+      );
     });
 
     it("issue_update with no estimate requested carries no skip note", async () => {
-      const made = await neCall("issue_create", { title: "update target, no estimate" });
-      const updated = await neCall("issue_update", { id: made.json.id, title: "renamed" });
+      const made = await neCall("issue_create", {
+        title: "update target, no estimate",
+      });
+      const updated = await neCall("issue_update", {
+        id: made.json.id,
+        title: "renamed",
+      });
       expect(updated.json.estimate).toBeUndefined();
       expect(updated.json.estimateSkipped).toBeUndefined();
     });
@@ -433,7 +654,9 @@ describe("cairn MCP server", () => {
   });
 
   it("config_set merges and config_get reflects it", async () => {
-    const set = await call("config_set", { patch: { continuity: { resume: "auto" } } });
+    const set = await call("config_set", {
+      patch: { continuity: { resume: "auto" } },
+    });
     expect(set.json.continuity.resume).toBe("auto");
     const got = await call("config_get", {});
     expect(got.json.continuity.resume).toBe("auto");
@@ -450,13 +673,15 @@ describe("cairn MCP server", () => {
     // from the repo tree so pluginCache is null and the temp project dir is
     // not the cairn repo so repo is null.
     const serverVersion = JSON.parse(
-      readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
+      readFileSync(new URL("../package.json", import.meta.url), "utf8"),
+    ).version;
     expect(res.json.versions.server).toBe(serverVersion);
     expect(res.json.versions.pluginCache).toBeNull();
     expect(res.json.versions.repo).toBeNull();
     expect(res.json.versions.npmLatest).toBe("9.9.9"); // injected lookup
     expect(res.json.versions.drift).toContain(
-      `installed v${serverVersion}, available v9.9.9 -- update the plugin (or npm install) to adopt`);
+      `installed v${serverVersion}, available v9.9.9 -- update the plugin (or npm install) to adopt`,
+    );
   });
 
   it("CairnError surfaces as isError with code + nextAction", async () => {
@@ -468,19 +693,36 @@ describe("cairn MCP server", () => {
     const started = await call("trace_start", { description: "mcp drill bug" });
     expect(started.json.id).toMatch(/^trace-[0-9a-f]{8}$/);
     expect(started.json.issue).toBeTruthy();
-    await call("trace_log", { id: started.json.id, kind: "evidence", text: "e1" });
-    await call("trace_log", { id: started.json.id, kind: "verdict", text: "cause found" });
+    await call("trace_log", {
+      id: started.json.id,
+      kind: "evidence",
+      text: "e1",
+    });
+    await call("trace_log", {
+      id: started.json.id,
+      kind: "verdict",
+      text: "cause found",
+    });
     const open = await call("trace_list", { status: "open" });
-    expect(open.json.some((t: { id: string }) => t.id === started.json.id)).toBe(true);
-    const closed = await call("trace_close", { id: started.json.id, resolution: "fixed" });
+    expect(
+      open.json.some((t: { id: string }) => t.id === started.json.id),
+    ).toBe(true);
+    const closed = await call("trace_close", {
+      id: started.json.id,
+      resolution: "fixed",
+    });
     expect(closed.json.issueClosed).toBe(true);
     const gone = await call("trace_list", { status: "open" });
-    expect(gone.json.some((t: { id: string }) => t.id === started.json.id)).toBe(false);
+    expect(
+      gone.json.some((t: { id: string }) => t.id === started.json.id),
+    ).toBe(false);
   });
 
   it("probe_start creates a cairn:spike issue and stamps the active phase", async () => {
     await call("context_set", { phase: 3 });
-    const out = await call("probe_start", { description: "can the SDK stream?" });
+    const out = await call("probe_start", {
+      description: "can the SDK stream?",
+    });
     expect(out.json.id).toMatch(/^probe-[0-9a-f]{8}$/);
     const issue = await call("issue_get", { id: out.json.issue });
     expect(issue.json.labels).toContain("cairn:spike");
@@ -490,96 +732,189 @@ describe("cairn MCP server", () => {
 
   it("probe_log enforces the probe entry vocabulary", async () => {
     const started = await call("probe_start", { description: "vocab" });
-    await call("probe_log", { id: started.json.id, kind: "experiment", text: "ran it" });
+    await call("probe_log", {
+      id: started.json.id,
+      kind: "experiment",
+      text: "ran it",
+    });
     // "hypothesis" isn't a probe entry kind -- the input schema's z.enum rejects
     // it at the protocol layer before appendSession's UNSUPPORTED check ever runs
     // (same shape as the mem_search negative-limit boundary test above).
-    await expect(call("probe_log", { id: started.json.id, kind: "hypothesis", text: "nope" }))
-      .rejects.toThrow();
+    await expect(
+      call("probe_log", {
+        id: started.json.id,
+        kind: "hypothesis",
+        text: "nope",
+      }),
+    ).rejects.toThrow();
   });
 
   it("probe_close gates on verdict then closes the issue", async () => {
     const started = await call("probe_start", { description: "gate" });
-    const early = await call("probe_close", { id: started.json.id, resolution: "stop" });
+    const early = await call("probe_close", {
+      id: started.json.id,
+      resolution: "stop",
+    });
     expect(early.isError).toBe(true);
-    await call("probe_log", { id: started.json.id, kind: "verdict", text: "VALIDATED" });
-    const out = await call("probe_close", { id: started.json.id, resolution: "proceed — holds up" });
+    await call("probe_log", {
+      id: started.json.id,
+      kind: "verdict",
+      text: "VALIDATED",
+    });
+    const out = await call("probe_close", {
+      id: started.json.id,
+      resolution: "proceed — holds up",
+    });
     expect(out.json.issueClosed).toBe(true);
-    expect((await call("issue_get", { id: started.json.issue })).json.state).toBe("closed");
+    expect(
+      (await call("issue_get", { id: started.json.issue })).json.state,
+    ).toBe("closed");
   });
 
   it("draft tools: cairn:sketch label, decision gate", async () => {
-    const started = await call("draft_start", { description: "dashboard layout" });
-    expect((await call("issue_get", { id: started.json.issue })).json.labels).toContain("cairn:sketch");
-    await call("draft_log", { id: started.json.id, kind: "variant", text: "001-cards.html" });
-    const early = await call("draft_close", { id: started.json.id, resolution: "cards" });
+    const started = await call("draft_start", {
+      description: "dashboard layout",
+    });
+    expect(
+      (await call("issue_get", { id: started.json.issue })).json.labels,
+    ).toContain("cairn:sketch");
+    await call("draft_log", {
+      id: started.json.id,
+      kind: "variant",
+      text: "001-cards.html",
+    });
+    const early = await call("draft_close", {
+      id: started.json.id,
+      resolution: "cards",
+    });
     expect(early.isError).toBe(true);
-    await call("draft_log", { id: started.json.id, kind: "decision", text: "card grid" });
-    expect((await call("draft_close", { id: started.json.id, resolution: "card grid locked" })).json.issueClosed)
-      .toBe(true);
+    await call("draft_log", {
+      id: started.json.id,
+      kind: "decision",
+      text: "card grid",
+    });
+    expect(
+      (
+        await call("draft_close", {
+          id: started.json.id,
+          resolution: "card grid locked",
+        })
+      ).json.issueClosed,
+    ).toBe(true);
   });
 
   it("thread tools: cairn:thread label, wrap gate", async () => {
-    const started = await call("thread_start", { description: "design musing" });
-    expect((await call("issue_get", { id: started.json.issue })).json.labels).toContain("cairn:thread");
-    await call("thread_log", { id: started.json.id, kind: "note", text: "a note worth keeping" });
-    const early = await call("thread_close", { id: started.json.id, resolution: "landed here" });
+    const started = await call("thread_start", {
+      description: "design musing",
+    });
+    expect(
+      (await call("issue_get", { id: started.json.issue })).json.labels,
+    ).toContain("cairn:thread");
+    await call("thread_log", {
+      id: started.json.id,
+      kind: "note",
+      text: "a note worth keeping",
+    });
+    const early = await call("thread_close", {
+      id: started.json.id,
+      resolution: "landed here",
+    });
     expect(early.isError).toBe(true);
-    await call("thread_log", { id: started.json.id, kind: "wrap", text: "wrapped: landed here" });
-    expect((await call("thread_close", { id: started.json.id, resolution: "landed here" })).json.issueClosed)
-      .toBe(true);
+    await call("thread_log", {
+      id: started.json.id,
+      kind: "wrap",
+      text: "wrapped: landed here",
+    });
+    expect(
+      (
+        await call("thread_close", {
+          id: started.json.id,
+          resolution: "landed here",
+        })
+      ).json.issueClosed,
+    ).toBe(true);
   });
 
   it("map tools: round-trips a two-node one-edge graph and rejects a dangling edge", async () => {
-    const set = await call("map_set", { patch: {
-      nodes: {
-        "mod-a": { type: "module", label: "A" },
-        "mod-b": { type: "module", label: "B" },
+    const set = await call("map_set", {
+      patch: {
+        nodes: {
+          "mod-a": { type: "module", label: "A" },
+          "mod-b": { type: "module", label: "B" },
+        },
+        edges: [{ from: "mod-a", to: "mod-b", type: "depends-on" }],
       },
-      edges: [{ from: "mod-a", to: "mod-b", type: "depends-on" }],
-    }, rebuild: true });
+      rebuild: true,
+    });
     expect(set.json).toEqual({ nodes: 2, edges: 1 });
 
     const got = await call("map_get", {});
     expect(got.json.nodes["mod-a"]).toEqual({ type: "module", label: "A" });
-    expect(got.json.edges).toEqual([{ from: "mod-a", to: "mod-b", type: "depends-on" }]);
+    expect(got.json.edges).toEqual([
+      { from: "mod-a", to: "mod-b", type: "depends-on" },
+    ]);
 
-    const dangling = await call("map_set", { patch: {
-      edges: [{ from: "mod-a", to: "mod-ghost", type: "depends-on" }],
-    }, rebuild: true });
+    const dangling = await call("map_set", {
+      patch: {
+        edges: [{ from: "mod-a", to: "mod-ghost", type: "depends-on" }],
+      },
+      rebuild: true,
+    });
     expect(dangling.isError).toBe(true);
   });
 
   it("map_query: neighborhood + filters over the wire, with the meta envelope", async () => {
-    await call("map_set", { patch: {
-      nodes: {
-        "mod-a": { type: "module", label: "A" },
-        "mod-b": { type: "module", label: "B" },
-        "issue-x": { type: "issue", label: "b leaks" },
+    await call("map_set", {
+      patch: {
+        nodes: {
+          "mod-a": { type: "module", label: "A" },
+          "mod-b": { type: "module", label: "B" },
+          "issue-x": { type: "issue", label: "b leaks" },
+        },
+        edges: [
+          { from: "mod-a", to: "mod-b", type: "depends-on" },
+          { from: "mod-b", to: "issue-x", type: "implements" },
+        ],
       },
-      edges: [
-        { from: "mod-a", to: "mod-b", type: "depends-on" },
-        { from: "mod-b", to: "issue-x", type: "implements" },
-      ],
-    }, rebuild: true });
-    const out = await call("map_query", { node: "mod-a", depth: 1, nodeType: "module" });
+      rebuild: true,
+    });
+    const out = await call("map_query", {
+      node: "mod-a",
+      depth: 1,
+      nodeType: "module",
+    });
     expect(Object.keys(out.json.nodes).sort()).toEqual(["mod-a", "mod-b"]);
-    expect(out.json.edges).toEqual([{ from: "mod-a", to: "mod-b", type: "depends-on" }]);
+    expect(out.json.edges).toEqual([
+      { from: "mod-a", to: "mod-b", type: "depends-on" },
+    ]);
     expect(out.json.meta.generation).toBeGreaterThanOrEqual(1);
   });
 
   it("session_landscape's openByKind reflects an open probe created via probe_start", async () => {
-    const started = await call("probe_start", { description: "landscape check" });
+    const started = await call("probe_start", {
+      description: "landscape check",
+    });
     const scape = await call("session_landscape", {});
-    expect(Object.keys(scape.json.openByKind).sort()).toEqual(["draft", "probe", "thread", "trace"]);
+    expect(Object.keys(scape.json.openByKind).sort()).toEqual([
+      "draft",
+      "probe",
+      "thread",
+      "trace",
+    ]);
     expect(scape.json.openByKind.probe).toBeGreaterThanOrEqual(1);
-    const found = scape.json.sessions.find((s: { id: string }) => s.id === started.json.id);
+    const found = scape.json.sessions.find(
+      (s: { id: string }) => s.id === started.json.id,
+    );
     expect(found?.kind).toBe("probe");
     expect(found?.status).toBe("open");
   });
 
   it("memory lifecycle: index -> search -> stats -> card create -> list -> recall (fresh)", async () => {
-    await call("mem_index", { content: "GitHub secondary rate limits return 403", source: "research", phase: 1 });
+    await call("mem_index", {
+      content: "GitHub secondary rate limits return 403",
+      source: "research",
+      phase: 1,
+    });
     const found = await call("mem_search", { query: "rate limits" });
     expect(found.json.length).toBeGreaterThan(0);
 
@@ -587,7 +922,9 @@ describe("cairn MCP server", () => {
     expect(stats.json.chunkCount).toBeGreaterThan(0);
 
     const card = await call("mem_card_create", {
-      type: "gotcha", body: "GitHub 403 can mean auth failure OR rate limiting.", scopePhase: 1,
+      type: "gotcha",
+      body: "GitHub 403 can mean auth failure OR rate limiting.",
+      scopePhase: 1,
     });
     expect(card.json.id).toBeTruthy();
 
@@ -595,17 +932,27 @@ describe("cairn MCP server", () => {
     expect(list.json.length).toBe(1);
 
     const recall = await call("mem_card_recall", {});
-    expect(recall.json.find((c: { id: string }) => c.id === card.json.id).stale).toBe(false);
+    expect(
+      recall.json.find((c: { id: string }) => c.id === card.json.id).stale,
+    ).toBe(false);
   });
 
   it("mem_index/mem_search accept a decimal phase (1.5) and round-trip the scoped search (#40)", async () => {
-    await call("mem_index", { content: "decimal phase gremlin", source: "research", phase: 1.5 });
+    await call("mem_index", {
+      content: "decimal phase gremlin",
+      source: "research",
+      phase: 1.5,
+    });
     const found = await call("mem_search", { query: "gremlin", phase: 1.5 });
     expect(found.json.length).toBeGreaterThan(0);
   });
 
   it("mem_index rejects an over-precise decimal phase (1.55) as CONFIG_INVALID (#40)", async () => {
-    const res = await call("mem_index", { content: "x", source: "research", phase: 1.55 });
+    const res = await call("mem_index", {
+      content: "x",
+      source: "research",
+      phase: 1.55,
+    });
     expect(res.isError).toBe(true);
     expect(res.json.code).toBe("CONFIG_INVALID");
   });
@@ -618,15 +965,23 @@ describe("cairn MCP server", () => {
 
   it("mem_card_create/mem_card_list accept a decimal scopePhase (1.5) and recall it (#40)", async () => {
     const card = await call("mem_card_create", {
-      type: "note", body: "decimal-scoped card", scopePhase: 1.5,
+      type: "note",
+      body: "decimal-scoped card",
+      scopePhase: 1.5,
     });
     expect(card.isError).toBeFalsy();
     const list = await call("mem_card_list", { scopePhase: 1.5 });
-    expect(list.json.some((c: { id: string }) => c.id === card.json.id)).toBe(true);
+    expect(list.json.some((c: { id: string }) => c.id === card.json.id)).toBe(
+      true,
+    );
   });
 
   it("mem_card_create rejects an over-precise decimal scopePhase (1.55) as CONFIG_INVALID (#40)", async () => {
-    const res = await call("mem_card_create", { type: "note", body: "bad", scopePhase: 1.55 });
+    const res = await call("mem_card_create", {
+      type: "note",
+      body: "bad",
+      scopePhase: 1.55,
+    });
     expect(res.isError).toBe(true);
     expect(res.json.code).toBe("CONFIG_INVALID");
   });
@@ -645,7 +1000,9 @@ describe("cairn MCP server", () => {
     // handler ever sees it -- so this surfaces as a protocol-level rejection
     // rather than a { isError: true } tool result. Either way, -1 never reaches
     // the query (SQLite treats LIMIT -1 as "unlimited").
-    await expect(call("mem_search", { query: "anything", limit: -1 })).rejects.toThrow();
+    await expect(
+      call("mem_search", { query: "anything", limit: -1 }),
+    ).rejects.toThrow();
   });
 
   it("mem_card_recall flags a card stale when its provenance file changed", async () => {
@@ -656,19 +1013,32 @@ describe("cairn MCP server", () => {
     writeFileSync(join(gitDir, "f.ts"), "v1\n");
     execFileSync("git", ["add", "f.ts"], { cwd: gitDir });
     execFileSync("git", ["commit", "-q", "-m", "v1"], { cwd: gitDir });
-    const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: gitDir }).toString().trim();
+    const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: gitDir })
+      .toString()
+      .trim();
 
-    const gitServer = buildServer({ projectDir: gitDir, tracker: new FakeTracker() });
+    const gitServer = buildServer({
+      projectDir: gitDir,
+      tracker: new FakeTracker(),
+    });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     const gitClient = new Client({ name: "test-git", version: "0.0.0" });
     await Promise.all([gitServer.connect(st), gitClient.connect(ct)]);
-    const gitCall = async (name: string, args: Record<string, unknown> = {}) => {
+    const gitCall = async (
+      name: string,
+      args: Record<string, unknown> = {},
+    ) => {
       const res = await gitClient.callTool({ name, arguments: args });
-      const text = (res.content as Array<{ type: string; text: string }>)[0].text;
+      const text = (res.content as Array<{ type: string; text: string }>)[0]
+        .text;
       return { ...res, json: JSON.parse(text) };
     };
 
-    await gitCall("mem_card_create", { type: "gotcha", body: "test", provenance: [{ file: "f.ts", commit }] });
+    await gitCall("mem_card_create", {
+      type: "gotcha",
+      body: "test",
+      provenance: [{ file: "f.ts", commit }],
+    });
     writeFileSync(join(gitDir, "f.ts"), "v2 changed\n");
     const recall = await gitCall("mem_card_recall", {});
     expect(recall.json[0].stale).toBe(true);
@@ -678,20 +1048,27 @@ describe("cairn MCP server", () => {
   it("plan_unplanned surfaces tracker issues no plan references", async () => {
     const stray = await call("issue_create", { title: "tracker-origin stray" });
     const report = await call("plan_unplanned", {});
-    expect(report.json.unplanned.map((i: { id: string }) => i.id))
-      .toContain(stray.json.id);
+    expect(report.json.unplanned.map((i: { id: string }) => i.id)).toContain(
+      stray.json.id,
+    );
   });
 
   it("plan_import reverse-mirrors a tracker phase into plan artifacts", async () => {
     const ph = await call("phase_create", { name: "Phase 7: Imported Work" });
-    const issue = await call("issue_create", { title: "imported req", phase: ph.json.id });
+    const issue = await call("issue_create", {
+      title: "imported req",
+      phase: ph.json.id,
+    });
     const result = await call("plan_import", { phaseRef: ph.json.id });
     expect(result.json).toMatchObject({
-      dir: "07-imported-work", number: 7, issues: [issue.json.id],
+      dir: "07-imported-work",
+      number: 7,
+      issues: [issue.json.id],
     });
     const status = await call("plan_status", {});
-    expect(status.json.phases.find((p: { number: number }) => p.number === 7).issues)
-      .toEqual([issue.json.id]);
+    expect(
+      status.json.phases.find((p: { number: number }) => p.number === 7).issues,
+    ).toEqual([issue.json.id]);
   });
 
   it("peer_list reports all four providers plus the fan-out budget, onPath false in the bare harness", async () => {
@@ -705,8 +1082,9 @@ describe("cairn MCP server", () => {
       // along so council mode can batch its fan-out instead of dispatching
       // every seat at once.
       expect(out.json.peers).toHaveLength(4);
-      expect(out.json.peers.map((p: { provider: string }) => p.provider).sort())
-        .toEqual([...PROVIDERS].sort());
+      expect(
+        out.json.peers.map((p: { provider: string }) => p.provider).sort(),
+      ).toEqual([...PROVIDERS].sort());
       for (const entry of out.json.peers) expect(entry.onPath).toBe(false);
       expect(Number.isInteger(out.json.maxConcurrent)).toBe(true);
       expect(out.json.maxConcurrent).toBeGreaterThanOrEqual(1);
@@ -725,7 +1103,7 @@ describe("cairn MCP server", () => {
     const ORIGINAL_PATH = process.env.PATH;
     const stubDir = mkdtempSync(join(tmpdir(), "cairn-mcp-peer-stub-"));
     const stubPath = join(stubDir, "codex");
-    writeFileSync(stubPath, "#!/bin/sh\ncat > /dev/null\necho \"stub ok\"\n");
+    writeFileSync(stubPath, '#!/bin/sh\ncat > /dev/null\necho "stub ok"\n');
     chmodSync(stubPath, 0o755);
     process.env.PATH = `${stubDir}${delimiter}${ORIGINAL_PATH}`;
     try {
@@ -744,56 +1122,125 @@ describe("cairn MCP server", () => {
   // -- the wire test covers the dispatch plus the structured CONFIG_INVALID
   // for a missing op-specific field (never a raw SDK -32602).
   it("peer_state dispatches ops over the wire; missing op field is CONFIG_INVALID", async () => {
-    const missing = await call("peer_state", { slug: "mcp smoke", op: "start" });
+    const missing = await call("peer_state", {
+      slug: "mcp smoke",
+      op: "start",
+    });
     expect(missing.isError).toBe(true);
     expect(missing.json.code).toBe("CONFIG_INVALID");
 
-    const started = await call("peer_state", { slug: "mcp smoke", op: "start",
-      mode: "review", target: "diff", peers: ["codex"] });
+    const started = await call("peer_state", {
+      slug: "mcp smoke",
+      op: "start",
+      mode: "review",
+      target: "diff",
+      peers: ["codex"],
+    });
     expect(started.isError).toBeFalsy();
     expect(started.json.slug).toBe("mcp-smoke");
 
-    await call("peer_state", { slug: "mcp smoke", op: "record_output",
-      peer: "codex", round: 1, output: "raw reply" });
-    await call("peer_state", { slug: "mcp smoke", op: "record_findings",
-      peer: "codex", round: 1, findings: [{
-        claim: "c", evidence: "e", severity: "minor", recommendation: "r" }] });
-    await call("peer_state", { slug: "mcp smoke", op: "verdict",
-      findingId: "f1", verdict: "verified" });
+    await call("peer_state", {
+      slug: "mcp smoke",
+      op: "record_output",
+      peer: "codex",
+      round: 1,
+      output: "raw reply",
+    });
+    await call("peer_state", {
+      slug: "mcp smoke",
+      op: "record_findings",
+      peer: "codex",
+      round: 1,
+      findings: [
+        {
+          claim: "c",
+          evidence: "e",
+          severity: "minor",
+          recommendation: "r",
+        },
+      ],
+    });
+    await call("peer_state", {
+      slug: "mcp smoke",
+      op: "verdict",
+      findingId: "f1",
+      verdict: "verified",
+    });
 
-    const status = await call("peer_state", { slug: "mcp smoke", op: "status" });
+    const status = await call("peer_state", {
+      slug: "mcp smoke",
+      op: "status",
+    });
     expect(status.json.resumable.complete).toBe(true);
 
     const closed = await call("peer_state", { slug: "mcp smoke", op: "close" });
     expect(closed.json.verdict).toBe("findings");
-    expect(closed.json.findings[0].detail).toBe("raised by codex round 1; verdict verified");
+    expect(closed.json.findings[0].detail).toBe(
+      "raised by codex round 1; verdict verified",
+    );
   });
 
   it("peer_state start accepts mode 'council' over the wire (#71)", async () => {
-    const started = await call("peer_state", { slug: "mcp council", op: "start",
-      mode: "council", target: "product council", peers: ["codex"] });
+    const started = await call("peer_state", {
+      slug: "mcp council",
+      op: "start",
+      mode: "council",
+      target: "product council",
+      peers: ["codex"],
+    });
     expect(started.isError).toBeFalsy();
     expect(started.json.state.meta.mode).toBe("council");
   });
 
   it("peer_state close refuses a silent seat; allowIncomplete stamps incompleteSeats (#71)", async () => {
-    await call("peer_state", { slug: "mcp incomplete", op: "start",
-      mode: "review", target: "diff", peers: ["codex", "grok"] });
-    await call("peer_state", { slug: "mcp incomplete", op: "record_output",
-      peer: "codex", round: 1, output: "raw reply" });
-    await call("peer_state", { slug: "mcp incomplete", op: "record_findings",
-      peer: "codex", round: 1, findings: [{
-        claim: "c", evidence: "e", severity: "minor", recommendation: "r" }] });
-    await call("peer_state", { slug: "mcp incomplete", op: "verdict",
-      findingId: "f1", verdict: "verified" });
+    await call("peer_state", {
+      slug: "mcp incomplete",
+      op: "start",
+      mode: "review",
+      target: "diff",
+      peers: ["codex", "grok"],
+    });
+    await call("peer_state", {
+      slug: "mcp incomplete",
+      op: "record_output",
+      peer: "codex",
+      round: 1,
+      output: "raw reply",
+    });
+    await call("peer_state", {
+      slug: "mcp incomplete",
+      op: "record_findings",
+      peer: "codex",
+      round: 1,
+      findings: [
+        {
+          claim: "c",
+          evidence: "e",
+          severity: "minor",
+          recommendation: "r",
+        },
+      ],
+    });
+    await call("peer_state", {
+      slug: "mcp incomplete",
+      op: "verdict",
+      findingId: "f1",
+      verdict: "verified",
+    });
 
-    const refused = await call("peer_state", { slug: "mcp incomplete", op: "close" });
+    const refused = await call("peer_state", {
+      slug: "mcp incomplete",
+      op: "close",
+    });
     expect(refused.isError).toBe(true);
     expect(refused.json.code).toBe("CONFIG_INVALID");
     expect(refused.json.message).toContain("grok");
 
-    const closed = await call("peer_state", { slug: "mcp incomplete", op: "close",
-      allowIncomplete: true });
+    const closed = await call("peer_state", {
+      slug: "mcp incomplete",
+      op: "close",
+      allowIncomplete: true,
+    });
     expect(closed.isError).toBeFalsy();
     expect(closed.json.incompleteSeats).toEqual(["grok"]);
   });
@@ -815,8 +1262,10 @@ describe("continuity: write-through + tools", () => {
 
   beforeAll(async () => {
     projectDir = mkdtempSync(join(tmpdir(), "cairn-continuity-mcp-"));
-    writeFileSync(join(projectDir, "cairn.json"),
-      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
+    writeFileSync(
+      join(projectDir, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }),
+    );
     const server = buildServer({ projectDir, tracker: new FakeTracker() });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     client = new Client({ name: "test-continuity", version: "0.0.0" });
@@ -849,16 +1298,29 @@ describe("continuity: write-through + tools", () => {
   });
 
   it("outlook_emit attaches a tracker block that later plain emits keep (#90)", async () => {
-    const out = await call("outlook_emit",
-      { tracker: { open: 3, blocked: 1, nextVerb: "verify 2", asOf: "2026-08-14" } });
+    const out = await call("outlook_emit", {
+      tracker: {
+        open: 3,
+        blocked: 1,
+        nextVerb: "verify 2",
+        asOf: "2026-08-14",
+      },
+    });
     expect(out.json.emitted).toBe(true);
 
     // a routine write-through emit must not erase the verb-supplied block
     const made = await call("issue_create", { title: "post-gate ride-along" });
     await call("issue_update", { id: made.json.id, state: "in_progress" });
 
-    const snap = JSON.parse(readFileSync(outlookMirrorPath(projectDir), "utf8"));
-    expect(snap.tracker).toEqual({ open: 3, blocked: 1, nextVerb: "verify 2", asOf: "2026-08-14" });
+    const snap = JSON.parse(
+      readFileSync(outlookMirrorPath(projectDir), "utf8"),
+    );
+    expect(snap.tracker).toEqual({
+      open: 3,
+      blocked: 1,
+      nextVerb: "verify 2",
+      asOf: "2026-08-14",
+    });
   });
 
   it("context_set({issueId: null}) clears a stale issue out of the handoff", async () => {
@@ -877,9 +1339,13 @@ describe("continuity: write-through + tools", () => {
     await call("plan_scaffold_project", { name: "T" });
     await call("plan_scaffold_phase", { number: 1, name: "Core" });
     await call("ledger_append", {
-      phaseDir: "01-core", taskRef: "task-1", summary: "wire the tool",
-      baseCommit: "a1b2c3d4e5f6", headCommit: "d4e5f6a1b2c3",
-      issueId: "PROJ-9", closedDate: "2026-07-16",
+      phaseDir: "01-core",
+      taskRef: "task-1",
+      summary: "wire the tool",
+      baseCommit: "a1b2c3d4e5f6",
+      headCommit: "d4e5f6a1b2c3",
+      issueId: "PROJ-9",
+      closedDate: "2026-07-16",
     });
     const got = await call("continuity_get", {});
     expect(got.json.handoff.phase).toEqual({ number: 1, slug: "core" });
@@ -888,19 +1354,26 @@ describe("continuity: write-through + tools", () => {
 
   it("continuity_checkpoint then continuity_get round-trips", async () => {
     await call("continuity_checkpoint", {
-      next_action: "finish the write-through wiring", notes: "task 2",
+      next_action: "finish the write-through wiring",
+      notes: "task 2",
     });
     const got = await call("continuity_get", {});
-    expect(got.json.handoff.next_action).toBe("finish the write-through wiring");
+    expect(got.json.handoff.next_action).toBe(
+      "finish the write-through wiring",
+    );
     expect(got.json.handoff.notes).toBe("task 2");
     expect(got.json.stale).toBe(false);
   });
 
   it("continuity_checkpoint accepts a decimal phase ref and rejects an over-precise one as CONFIG_INVALID", async () => {
-    const ok = await call("continuity_checkpoint", { phase: { number: 1.5, slug: "gamma" } });
+    const ok = await call("continuity_checkpoint", {
+      phase: { number: 1.5, slug: "gamma" },
+    });
     expect(ok.isError).toBeFalsy();
     expect(ok.json.handoff.phase).toEqual({ number: 1.5, slug: "gamma" });
-    const bad = await call("continuity_checkpoint", { phase: { number: 1.55, slug: "gamma" } });
+    const bad = await call("continuity_checkpoint", {
+      phase: { number: 1.55, slug: "gamma" },
+    });
     expect(bad.isError).toBe(true);
     expect(bad.json.code).toBe("CONFIG_INVALID");
   });
@@ -917,8 +1390,13 @@ describe("continuity: write-through + tools", () => {
     continuityFailure.failWrites = true; // writeHandoff throws (simulated unwritable dir)
     continuityFailure.failedAttempts = 0;
     try {
-      const made = await call("issue_create", { title: "unaffected by continuity failure" });
-      const updated = await call("issue_update", { id: made.json.id, state: "closed" });
+      const made = await call("issue_create", {
+        title: "unaffected by continuity failure",
+      });
+      const updated = await call("issue_update", {
+        id: made.json.id,
+        state: "closed",
+      });
       expect(updated.json.state).toBe("closed"); // primary tool result, unaffected
       expect(updated.isError).toBeFalsy();
       // Prove the failing path was actually exercised, not vacuously skipped:
@@ -931,7 +1409,9 @@ describe("continuity: write-through + tools", () => {
 });
 
 // A valid single-member cairn.json body, reused across the workspace fixtures.
-const CAIRN_JSON = JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } });
+const CAIRN_JSON = JSON.stringify({
+  tracker: { type: "github", config: { repo: "o/r" } },
+});
 
 describe("workspace: focus redirect + board (two-member fixture)", () => {
   let wsRoot: string;
@@ -949,11 +1429,20 @@ describe("workspace: focus redirect + board (two-member fixture)", () => {
     mkdirSync(join(wsRoot, "member-b"));
     writeFileSync(join(wsRoot, "member-a", "cairn.json"), CAIRN_JSON);
     writeFileSync(join(wsRoot, "member-b", "cairn.json"), CAIRN_JSON);
-    writeFileSync(join(wsRoot, "cairn-workspace.json"), JSON.stringify({
-      workspace: "ws-test",
-      members: [{ name: "a", path: "member-a" }, { name: "b", path: "member-b" }],
-    }));
-    const server = buildServer({ projectDir: wsRoot, tracker: new FakeTracker() });
+    writeFileSync(
+      join(wsRoot, "cairn-workspace.json"),
+      JSON.stringify({
+        workspace: "ws-test",
+        members: [
+          { name: "a", path: "member-a" },
+          { name: "b", path: "member-b" },
+        ],
+      }),
+    );
+    const server = buildServer({
+      projectDir: wsRoot,
+      tracker: new FakeTracker(),
+    });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     client = new Client({ name: "test-ws", version: "0.0.0" });
     await Promise.all([server.connect(st), client.connect(ct)]);
@@ -966,8 +1455,12 @@ describe("workspace: focus redirect + board (two-member fixture)", () => {
   it("workspace_list reports the workspace, members, and null focus", async () => {
     const out = await call("workspace_list", {});
     expect(out.json.workspace).toBe("ws-test");
-    expect(out.json.members.map((m: { name: string }) => m.name).sort()).toEqual(["a", "b"]);
-    expect(out.json.members.every((m: { configured: boolean }) => m.configured)).toBe(true);
+    expect(
+      out.json.members.map((m: { name: string }) => m.name).sort(),
+    ).toEqual(["a", "b"]);
+    expect(
+      out.json.members.every((m: { configured: boolean }) => m.configured),
+    ).toBe(true);
     expect(out.json.focus).toBeNull();
   });
 
@@ -979,7 +1472,10 @@ describe("workspace: focus redirect + board (two-member fixture)", () => {
 
   it("focus on b redirects context_set into member b's .cairn/ only", async () => {
     const focused = await call("workspace_focus", { project: "b" });
-    expect(focused.json).toEqual({ focus: "b", projectDir: join(wsRoot, "member-b") });
+    expect(focused.json).toEqual({
+      focus: "b",
+      projectDir: join(wsRoot, "member-b"),
+    });
 
     await call("context_set", { phase: 7 });
     const got = await call("context_get", {});
@@ -1000,17 +1496,31 @@ describe("workspace: focus redirect + board (two-member fixture)", () => {
 
   it("board round-trips through board_update / board_get", async () => {
     const created = await call("board_update", {
-      patch: { ws1: { title: "wire the resolver", project: "a" } } });
+      patch: { ws1: { title: "wire the resolver", project: "a" } },
+    });
     expect(created.json).toEqual({ workstreams: 1 });
 
     const got = await call("board_get", {});
     expect(got.json.workstreams.ws1).toMatchObject({
-      title: "wire the resolver", project: "a", status: "queued" });
-    expect(got.json.counts).toEqual({ queued: 1, active: 0, blocked: 0, done: 0 });
+      title: "wire the resolver",
+      project: "a",
+      status: "queued",
+    });
+    expect(got.json.counts).toEqual({
+      queued: 1,
+      active: 0,
+      blocked: 0,
+      done: 0,
+    });
 
-    await call("board_update", { patch: { ws1: { status: "active", note: "claimed" } } });
+    await call("board_update", {
+      patch: { ws1: { status: "active", note: "claimed" } },
+    });
     const after = await call("board_get", {});
-    expect(after.json.workstreams.ws1).toMatchObject({ status: "active", note: "claimed" });
+    expect(after.json.workstreams.ws1).toMatchObject({
+      status: "active",
+      note: "claimed",
+    });
     expect(after.json.counts.active).toBe(1);
 
     const deleted = await call("board_update", { patch: { ws1: null } });
@@ -1018,7 +1528,9 @@ describe("workspace: focus redirect + board (two-member fixture)", () => {
   });
 
   it("board_update rejects a workstream naming a non-member project", async () => {
-    const res = await call("board_update", { patch: { bad: { title: "t", project: "ghost" } } });
+    const res = await call("board_update", {
+      patch: { bad: { title: "t", project: "ghost" } },
+    });
     expect(res.isError).toBe(true);
   });
 });
@@ -1041,13 +1553,26 @@ describe("workspace_status: per-member isolation", () => {
     // member "broken" has a cairn.json whose tracker config fails adapter
     // validation (repo isn't owner/name) -- makeTracker throws fast, no network.
     mkdirSync(join(wsRoot, "member-broken"));
-    writeFileSync(join(wsRoot, "member-broken", "cairn.json"),
-      JSON.stringify({ tracker: { type: "github", config: { repo: "not-a-slug" } } }));
-    writeFileSync(join(wsRoot, "cairn-workspace.json"), JSON.stringify({
-      workspace: "ws-status",
-      members: [{ name: "a", path: "." }, { name: "broken", path: "member-broken" }],
-    }));
-    const server = buildServer({ projectDir: wsRoot, tracker: new FakeTracker() });
+    writeFileSync(
+      join(wsRoot, "member-broken", "cairn.json"),
+      JSON.stringify({
+        tracker: { type: "github", config: { repo: "not-a-slug" } },
+      }),
+    );
+    writeFileSync(
+      join(wsRoot, "cairn-workspace.json"),
+      JSON.stringify({
+        workspace: "ws-status",
+        members: [
+          { name: "a", path: "." },
+          { name: "broken", path: "member-broken" },
+        ],
+      }),
+    );
+    const server = buildServer({
+      projectDir: wsRoot,
+      tracker: new FakeTracker(),
+    });
     const [ct, st] = InMemoryTransport.createLinkedPair();
     client = new Client({ name: "test-ws-status", version: "0.0.0" });
     await Promise.all([server.connect(st), client.connect(ct)]);
@@ -1070,7 +1595,9 @@ describe("workspace_status: per-member isolation", () => {
     expect(a.openIssues).toBeGreaterThanOrEqual(1);
     expect(a.error).toBeUndefined();
 
-    const broken = out.json.members.find((m: { name: string }) => m.name === "broken");
+    const broken = out.json.members.find(
+      (m: { name: string }) => m.name === "broken",
+    );
     expect(broken.error).toBeTruthy();
     expect(broken.openIssues).toBeUndefined();
   });
@@ -1082,16 +1609,23 @@ describe("config_set tracker memo eviction", () => {
   // old backend (stale baseUrl) until the server was restarted.
   it("rebuilds the tracker from the new config after config_set", async () => {
     const dir = mkdtempSync(join(tmpdir(), "cairn-evict-"));
-    writeFileSync(join(dir, "cairn.json"), JSON.stringify({
-      tracker: { type: "jira", config: { baseUrl: "https://old.example.com", projectKey: "T" } },
-    }));
+    writeFileSync(
+      join(dir, "cairn.json"),
+      JSON.stringify({
+        tracker: {
+          type: "jira",
+          config: { baseUrl: "https://old.example.com", projectKey: "T" },
+        },
+      }),
+    );
     vi.stubEnv("JIRA_EMAIL", "t@example.com");
     vi.stubEnv("JIRA_API_TOKEN", "tok");
     const urls: string[] = [];
     vi.stubGlobal("fetch", async (url: string | URL) => {
       urls.push(String(url));
       return new Response(JSON.stringify({ issues: [] }), {
-        status: 200, headers: { "content-type": "application/json" },
+        status: 200,
+        headers: { "content-type": "application/json" },
       });
     });
     try {
@@ -1104,8 +1638,14 @@ describe("config_set tracker memo eviction", () => {
       await c.callTool({ name: "issue_list", arguments: {} });
       expect(urls.at(-1)).toContain("old.example.com");
 
-      await c.callTool({ name: "config_set",
-        arguments: { patch: { tracker: { config: { baseUrl: "https://new.example.com" } } } } });
+      await c.callTool({
+        name: "config_set",
+        arguments: {
+          patch: {
+            tracker: { config: { baseUrl: "https://new.example.com" } },
+          },
+        },
+      });
       await c.callTool({ name: "issue_list", arguments: {} });
       expect(urls.at(-1)).toContain("new.example.com");
     } finally {
@@ -1119,30 +1659,50 @@ describe("config_set tracker memo eviction", () => {
 describe("docs tools over an injected fake connector", () => {
   it("docs_publish publishes the tree; docs_status reports the landing page", async () => {
     const dir = mkdtempSync(join(tmpdir(), "cairn-docs-"));
-    writeFileSync(join(dir, "cairn.json"), JSON.stringify({
-      tracker: { type: "github", config: { repo: "o/r" } },
-      docs: { connector: "confluence", config: { baseUrl: "https://x.atlassian.net/wiki", spaceKey: "D" } },
-    }));
+    writeFileSync(
+      join(dir, "cairn.json"),
+      JSON.stringify({
+        tracker: { type: "github", config: { repo: "o/r" } },
+        docs: {
+          connector: "confluence",
+          config: { baseUrl: "https://x.atlassian.net/wiki", spaceKey: "D" },
+        },
+      }),
+    );
     writeFileSync(join(dir, "README.md"), "# Landing");
     mkdirSync(join(dir, "docs"));
     writeFileSync(join(dir, "docs", "guide.md"), "# Guide\n\nBody.");
     const { FakeDocsConnector } = await import("../src/docs/fake.js");
     const fake = new FakeDocsConnector();
     try {
-      const server = buildServer({ projectDir: dir, tracker: new FakeTracker(), docsConnector: fake });
+      const server = buildServer({
+        projectDir: dir,
+        tracker: new FakeTracker(),
+        docsConnector: fake,
+      });
       const [ct, st] = InMemoryTransport.createLinkedPair();
       const c = new Client({ name: "docs-test", version: "0.0.0" });
       await Promise.all([server.connect(st), c.connect(ct)]);
 
-      const pub = await c.callTool({ name: "docs_publish", arguments: { projectName: "proj" } });
-      const pubJson = JSON.parse((pub.content as Array<{ text: string }>)[0].text);
+      const pub = await c.callTool({
+        name: "docs_publish",
+        arguments: { projectName: "proj" },
+      });
+      const pubJson = JSON.parse(
+        (pub.content as Array<{ text: string }>)[0].text,
+      );
       expect(pub.isError).toBeFalsy();
       expect(pubJson.published).toBe(2);
       expect(pubJson.root.title).toBe("proj");
       expect(fake.pages.size).toBe(2);
 
-      const status = await c.callTool({ name: "docs_status", arguments: { projectName: "proj" } });
-      const statusJson = JSON.parse((status.content as Array<{ text: string }>)[0].text);
+      const status = await c.callTool({
+        name: "docs_status",
+        arguments: { projectName: "proj" },
+      });
+      const statusJson = JSON.parse(
+        (status.content as Array<{ text: string }>)[0].text,
+      );
       expect(statusJson.configured).toBe(true);
       expect(statusJson.connector).toBe("confluence");
       expect(statusJson.root.title).toBe("proj");
@@ -1153,29 +1713,67 @@ describe("docs tools over an injected fake connector", () => {
 
   it("docs_status reports a graceful shape when a configured connector is unreachable (#46)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "cairn-docs-down-"));
-    writeFileSync(join(dir, "cairn.json"), JSON.stringify({
-      tracker: { type: "github", config: { repo: "o/r" } },
-      docs: { connector: "confluence", config: { baseUrl: "https://x.atlassian.net/wiki", spaceKey: "D" } },
-    }));
+    writeFileSync(
+      join(dir, "cairn.json"),
+      JSON.stringify({
+        tracker: { type: "github", config: { repo: "o/r" } },
+        docs: {
+          connector: "confluence",
+          config: { baseUrl: "https://x.atlassian.net/wiki", spaceKey: "D" },
+        },
+      }),
+    );
     const { CairnError } = await import("../src/errors.js");
     const unreachable: import("../src/docs/types.js").DocsConnector = {
-      capabilities: { hasPageTree: true, hasAttachments: false, hasLabels: false, hasNativeToc: false },
-      ensureRoot: () => { throw new CairnError("AUTH_MISSING", "HTTP 401 from https://x — body: invalid token",
-        "token was rejected — regenerate or check it matches the account"); },
-      getPage: () => { throw new Error("not used"); },
-      findPage: async () => { throw new CairnError("AUTH_MISSING", "HTTP 401 from https://x — body: invalid token",
-        "token was rejected — regenerate or check it matches the account"); },
-      listChildren: () => { throw new Error("not used"); },
-      createPage: () => { throw new Error("not used"); },
-      updatePage: () => { throw new Error("not used"); },
+      capabilities: {
+        hasPageTree: true,
+        hasAttachments: false,
+        hasLabels: false,
+        hasNativeToc: false,
+      },
+      ensureRoot: () => {
+        throw new CairnError(
+          "AUTH_MISSING",
+          "HTTP 401 from https://x — body: invalid token",
+          "token was rejected — regenerate or check it matches the account",
+        );
+      },
+      getPage: () => {
+        throw new Error("not used");
+      },
+      findPage: async () => {
+        throw new CairnError(
+          "AUTH_MISSING",
+          "HTTP 401 from https://x — body: invalid token",
+          "token was rejected — regenerate or check it matches the account",
+        );
+      },
+      listChildren: () => {
+        throw new Error("not used");
+      },
+      createPage: () => {
+        throw new Error("not used");
+      },
+      updatePage: () => {
+        throw new Error("not used");
+      },
     };
     try {
-      const server = buildServer({ projectDir: dir, tracker: new FakeTracker(), docsConnector: unreachable });
+      const server = buildServer({
+        projectDir: dir,
+        tracker: new FakeTracker(),
+        docsConnector: unreachable,
+      });
       const [ct, st] = InMemoryTransport.createLinkedPair();
       const c = new Client({ name: "docs-test-3", version: "0.0.0" });
       await Promise.all([server.connect(st), c.connect(ct)]);
-      const status = await c.callTool({ name: "docs_status", arguments: { projectName: "proj" } });
-      const statusJson = JSON.parse((status.content as Array<{ text: string }>)[0].text);
+      const status = await c.callTool({
+        name: "docs_status",
+        arguments: { projectName: "proj" },
+      });
+      const statusJson = JSON.parse(
+        (status.content as Array<{ text: string }>)[0].text,
+      );
       expect(status.isError).toBeFalsy();
       expect(statusJson.configured).toBe(true);
       expect(statusJson.reachable).toBe(false);
@@ -1188,15 +1786,22 @@ describe("docs tools over an injected fake connector", () => {
 
   it("docs_status reports configured:false without a docs block", async () => {
     const dir = mkdtempSync(join(tmpdir(), "cairn-nodocs-"));
-    writeFileSync(join(dir, "cairn.json"),
-      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
+    writeFileSync(
+      join(dir, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }),
+    );
     try {
-      const server = buildServer({ projectDir: dir, tracker: new FakeTracker() });
+      const server = buildServer({
+        projectDir: dir,
+        tracker: new FakeTracker(),
+      });
       const [ct, st] = InMemoryTransport.createLinkedPair();
       const c = new Client({ name: "docs-test-2", version: "0.0.0" });
       await Promise.all([server.connect(st), c.connect(ct)]);
       const status = await c.callTool({ name: "docs_status", arguments: {} });
-      const statusJson = JSON.parse((status.content as Array<{ text: string }>)[0].text);
+      const statusJson = JSON.parse(
+        (status.content as Array<{ text: string }>)[0].text,
+      );
       expect(statusJson.configured).toBe(false);
     } finally {
       rmSync(dir, { recursive: true, force: true });
@@ -1205,15 +1810,27 @@ describe("docs tools over an injected fake connector", () => {
 
   it("config_probe also probes a configured docs connector (CRN-48)", async () => {
     const dir = mkdtempSync(join(tmpdir(), "cairn-docs-probe-"));
-    writeFileSync(join(dir, "cairn.json"), JSON.stringify({
-      tracker: { type: "github", config: { repo: "o/r" } },
-      docs: { connector: "confluence", config: { baseUrl: "https://x.atlassian.net/wiki", spaceKey: "D" } },
-    }));
+    writeFileSync(
+      join(dir, "cairn.json"),
+      JSON.stringify({
+        tracker: { type: "github", config: { repo: "o/r" } },
+        docs: {
+          connector: "confluence",
+          config: { baseUrl: "https://x.atlassian.net/wiki", spaceKey: "D" },
+        },
+      }),
+    );
     const { FakeDocsConnector } = await import("../src/docs/fake.js");
     const fake = new FakeDocsConnector();
     try {
-      const server = buildServer({ projectDir: dir, tracker: new FakeTracker(), docsConnector: fake,
-        fetchLatestVersion: async () => { throw new Error("offline"); } });
+      const server = buildServer({
+        projectDir: dir,
+        tracker: new FakeTracker(),
+        docsConnector: fake,
+        fetchLatestVersion: async () => {
+          throw new Error("offline");
+        },
+      });
       const [ct, st] = InMemoryTransport.createLinkedPair();
       const c = new Client({ name: "docs-probe-test", version: "0.0.0" });
       await Promise.all([server.connect(st), c.connect(ct)]);
