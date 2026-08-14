@@ -30,6 +30,7 @@ import { MemoryIndex, indexDbPath, } from "./memory/index-store.js";
 import { createCard, listCards, readCard, updateCardConfidence, } from "./memory/cards.js";
 import { checkCardStaleness } from "./memory/staleness.js";
 import { readHandoff, writeHandoff, clearHandoff } from "./core/continuity.js";
+import { registerPlanResources } from "./core/resources.js";
 import { installedVersions } from "./core/versions.js";
 import { appendLedger } from "./planning/ledger.js";
 import { writeBanner, bannerStats } from "./memory/banner.js";
@@ -1510,6 +1511,9 @@ export function buildServer(deps) {
             throw e;
         }
     }));
+    // Read-only plan artifacts as cairn:// resources (#99) -- the server's
+    // first resources surface. Reads resolve dir() fresh, same as the tools.
+    registerPlanResources(server, dir);
     return server;
 }
 // CLI entry — stdio transport; config loads lazily per tool call.
