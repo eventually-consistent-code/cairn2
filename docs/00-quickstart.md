@@ -10,9 +10,10 @@ For the full operating manual, see the Runbook.
 Cairn is a Claude Code plugin backed by a typed MCP server. Three stores,
 three jobs:
 
-- **Your issue tracker** (GitHub, GitLab, Jira, Asana, Azure Boards, or
-  ClickUp) holds the work items — the single source of truth for what's
-  planned, in progress, and done.
+- **Your issue tracker** (GitHub, GitLab, Jira, Asana, Azure Boards,
+  ClickUp, Linear, or the zero-credential local backend) holds the work
+  items — the single source of truth for what's planned, in progress, and
+  done.
 - **Your git repo** holds the prose — plans, decisions, memory cards.
 - **`~/.cairn/`** is a disposable cache. Losing it costs nothing.
 
