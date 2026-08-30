@@ -86,8 +86,8 @@ git PRs.
 `remember` `recall` `help` `do` `waypoint` `scout` `survey` `route` `summit` `auto`
 `fast` `resync` `mark` `retro` `distill` `brief` `tune` `trace` `probe`
 `draft` `audit` `review` `triage` `map` `thread` `profile` `medic`
-`backtrack` `basecamp` `peers` `docs` — each a `/cairn:<verb>` command, generated
-from the routing table.
+`backtrack` `basecamp` `peers` `docs` `outlook` — each a `/cairn:<verb>` command,
+generated from the routing table.
 The routing table is complete: the reserved verb set is now empty.
 
 **Server:** 79 typed MCP tools, 1117 passing tests — counts move with each
