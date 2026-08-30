@@ -32,7 +32,7 @@ In Claude Code:
 Then build the MCP server the plugin launches — the one manual build step:
 
 ```bash
-cd ~/.claude/plugins/cache/cairn*/server   # wherever the plugin landed
+cd ~/.claude/plugins/cache/*/cairn/*/server   # cache/<marketplace>/<plugin>/<version>
 npm ci
 npm run build
 ```
