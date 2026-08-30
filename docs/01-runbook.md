@@ -703,7 +703,7 @@ comment to the affected issues, and writes a record. Never-rules: never
 manifest, and the remote is always untouched — pushing the reverts is your
 call.
 
-**`peers (none = status) | review [target] | plan <phase>`** — convene
+**`peers (none = status) | review [target] | plan <phase> | council [dimensions]`** — convene
 external AI CLIs (codex, opencode, antigravity, grok) as reviewers — a second
 opinion on top of cairn's judgment, never a replacement. **A peer saying
 something doesn't make it true**: every peer finding is verified against the
@@ -719,9 +719,14 @@ disagreement, not given a round 3); survivors follow review's closing
 discipline plus provenance — which peer, which round. `peers plan <phase>`:
 same shape over PLAN.md — unambiguous verified critiques become plan edits;
 anything opinionated enough that the plan's owner should decide becomes a
-`cairn:audit` issue instead. Absent peers never block anything — the verb
-degrades gracefully to "cairn reviewed this alone" and records the run as
-usual.
+`cairn:audit` issue instead. `peers council [dimensions]`: the widest
+lens — the peers sit as a product council across up to four dimensions
+(code, functionality, look-and-feel, market fit; you pick which in one
+question up front). Same containment as review — leak scan, adversarial
+verification of every claim, bounded rounds, resumable state — with the
+verified output landing as recommendations for the roadmap discussion,
+not silent changes. Absent peers never block anything — the verb degrades
+gracefully to "cairn reviewed this alone" and records the run as usual.
 
 ### Workspaces & collaboration
 
