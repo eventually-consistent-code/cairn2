@@ -18,7 +18,20 @@ for work items; git owns prose.
 - `memory/` — disposable FTS index + git-committed memory cards with
   provenance and staleness checking.
 - `docs/` — documentation connectors (below).
-- `core/` — continuity, sessions, active context.
+- `research/` — research-artifact section markers (scout/survey
+  checkpoint discipline, server-validated).
+- `sessions/` — persistent session stores for trace/probe/draft/thread
+  work.
+- `trace/` — debugging-session records (evidence → hypothesis → test →
+  verdict).
+- `audit/` — audit records: single-writer, date-scoped, immutable
+  history.
+- `map/` — the project knowledge graph (build, query, diff).
+- `peers/` — external-CLI peer review and council runs (roster,
+  throttled fan-out, resumable state).
+- `workspace/` — multi-project workspaces and the dispatch board.
+- `core/` — continuity, active context, project registry, outlook
+  emission.
 
 ## Docs connector subsystem (v2)
 
