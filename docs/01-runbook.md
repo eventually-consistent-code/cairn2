@@ -268,9 +268,12 @@ The pre-push gate:
    (spot-checked live) — any still open: stop.
 3. Engineer mode only: no cairn-authored PR may still be awaiting human
    review. Human review is the merge gate; ship never overrides it.
-4. Clean gate → commit outstanding plan-doc changes, push the branch, clear
-   the session handoff (shipping ends the session), and offer a PR if the
-   project uses them.
+4. Clean gate → commit outstanding plan-doc changes, then STOP and ask:
+   push or hold. Nothing leaves the machine until you say push (on by
+   default; `ship.confirm: false` in cairn.json restores the old
+   no-questions behavior). On push: emit the outlook snapshot, push the
+   branch, clear the session handoff (shipping ends the session), and
+   offer a PR if the project uses them.
 
 Never pushes with flagged drift or open issues on a verified phase. That's
 the whole point of the gate.
