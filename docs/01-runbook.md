@@ -921,7 +921,9 @@ if your board says "Doing" instead of "In Progress", say so here. Jira is
 the one backend with **worklog support**: `issue_close` with a time spent
 writes a real worklog entry (a worklog failure never fails a close that
 already succeeded — the close comment's time line is the fallback
-everywhere). Assignee writes: not yet mapped. Listing capped at 100 items.
+everywhere). Assignee writes are supported — give an email and cairn
+resolves it to the Atlassian account behind the scenes. Listing capped at
+100 items.
 
 **Sprint awareness:** cairn detects the project's board via the Agile API.
 On a scrum board, new issues land in the active sprint automatically (no
@@ -1017,7 +1019,7 @@ by name. Listing capped at 100 items.
 | Capability | Backends |
 |---|---|
 | Issue comments | all eight |
-| Assignee **writes** | Local, GitHub, Azure Boards (others accept the call but don't propagate) |
+| Assignee **writes** | Local, GitHub, Azure Boards, Jira (email→account resolution; others accept the call but don't propagate) |
 | Worklog (real time entries on close) | Local, Jira |
 | Estimates (story points + original time) | Local, Jira — populated at plan time; others ignore silently |
 | Issue attachments (`issue_attach` — screenshots as evidence) | Local, Jira; audit ui/uat attach visual findings |
