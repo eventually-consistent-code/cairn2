@@ -58,6 +58,11 @@ HTTP core and the config pattern.
   under the space root, with the landing page and doc tree inside it
   (folder lookup is case-insensitive via CQL search; folders have no
   title-filtered v2 listing).
+- **Docusaurus adapter** (`server/src/docs/adapters/docusaurus.ts`) — the
+  default connector: a filesystem backend that writes the doc tree into a
+  Docusaurus site checkout (markdown pages plus `_category_.json` for the
+  sidebar tree). No HTTP, no credentials; optional auto-commit to the site
+  repo, and it never pushes.
 - **Converter** (`server/src/docs/markdown.ts`) — dependency-free
   markdown → Confluence storage format (XHTML) for a supported subset:
   headings, paragraphs, nested lists, fenced code (code macro with CDATA
