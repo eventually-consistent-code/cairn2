@@ -8,10 +8,11 @@ for work items; git owns prose.
 
 ## Server subsystems
 
-- `tracker/` — six tracker adapters (GitHub, GitLab, Jira, Asana,
-  Azure Boards, ClickUp) behind one normalized interface with per-backend
-  capability flags, a shared HTTP core (retry/backoff, typed errors), and a
-  contract test suite every adapter must pass.
+- `tracker/` — eight tracker adapters (GitHub, GitLab, Jira, Asana,
+  Azure Boards, ClickUp, Linear, and a zero-credential local backend)
+  behind one normalized interface with per-backend capability flags, a
+  shared HTTP core (retry/backoff, typed errors), and a contract test
+  suite every adapter must pass.
 - `planning/` — plan artifacts, tracker mirroring, drift detection,
   milestone lifecycle.
 - `memory/` — disposable FTS index + git-committed memory cards with
