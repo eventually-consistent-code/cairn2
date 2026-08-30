@@ -14,7 +14,7 @@ reading source.
 Cairn is a Claude Code plugin backed by a TypeScript MCP server. The plugin
 layer (commands, skills, hooks) owns *policy and judgment*; the server owns
 every mechanism with a wrong answer — state transitions, tracker mirroring,
-drift math, staleness checks. You talk to it through 37 `/cairn:<verb>`
+drift math, staleness checks. You talk to it through 39 `/cairn:<verb>`
 commands, all generated from one routing table.
 
 ### The three truths
@@ -24,7 +24,7 @@ and the rest of the system makes sense:
 
 | Truth | Lives in | What it owns |
 |---|---|---|
-| **Work truth** | Your external tracker (GitHub, GitLab, Jira, Asana, Azure Boards, ClickUp) | Issues, states, assignees, milestones — the single source of truth for *work items* |
+| **Work truth** | Your external tracker (GitHub, GitLab, Jira, Asana, Azure Boards, ClickUp, Linear, or the local backend) | Issues, states, assignees, milestones — the single source of truth for *work items* |
 | **Prose truth** | Git, inside your repo | Plans, phase context, verification records, memory cards, session files — everything written down |
 | **Disposable cache** | `~/.cairn/` on your machine | The full-text memory index, the session handoff, the recall banner — rebuildable, never git-tracked, safe to delete |
 
@@ -47,6 +47,7 @@ decision, which stops for you).
 | See everything — phases, issues, drift, open sessions — in one screen | `/cairn:status` |
 | Pull an existing tracker epic/milestone/list into cairn | `/cairn:import <ref>` |
 | Research a phase without planning it yet | `/cairn:scout <N>` |
+| Research the whole project, then change the roadmap through a gate | `/cairn:survey` |
 | Insert/remove/rename a phase without renumbering anything | `/cairn:route …` |
 | Run all remaining phases hands-off (opt-in, with hard stops) | `/cairn:auto` |
 | Make a trivial ≤3-file change with a full tracker paper trail | `/cairn:fast "<change>"` |
@@ -69,6 +70,7 @@ decision, which stops for you).
 | Check the planning directory's own health, repair, or forensics | `/cairn:medic` |
 | Safely revert a phase's shipped commits (reverts only) | `/cairn:backtrack <phase>` |
 | Manage multi-project workspaces and the dispatch board | `/cairn:basecamp` |
+| See every cairn project on this machine on one board | `/cairn:outlook` |
 | Convene external AI CLIs as reviewers | `/cairn:peers review` |
 | Publish README + docs/ to the docs connector | `/cairn:docs publish` |
 | Edit cairn.json safely | `/cairn:tune` |
@@ -370,6 +372,28 @@ close (with approximate time), or parked comments, leak-guard discipline
 throughout.
 
 ### Planning aids
+
+**`survey ["<topic>"]`** — project-wide research, then roadmap changes —
+but only through a discussion gate. Where `scout` researches one phase,
+survey researches the terrain: roadmap gaps, cross-phase unknowns,
+assumptions gone stale since planning. Three stages: multi-agent research
+into SURVEY.md (one file, epoch blocks per run, resumable with the same
+section markers as scout), typed proposals batched into ONE question
+(new phase / rescope / new issues / no action — nothing mutates before
+your answer, in any mode), then apply + a dispositions footer so future
+runs never re-raise a rejected proposal without new evidence. Mirrored as
+a research issue with manager-language progress comments.
+
+**`outlook [<project>] | --refresh | forget <project>`** — the portfolio
+view: every cairn project on this machine on one board, rendered from the
+snapshots each project already writes about itself. Aggregation never
+opens a project or touches a tracker — the registry and mirror snapshots
+are the whole read surface, so the board renders in one call even when
+half the fleet is broken. Cards show where each project stands, open
+sessions, tracker numbers when present, last activity; staleness is a
+flag with a reason, not an apology. `--refresh` re-emits from the
+projects; `forget` unregisters one. Also maintains a shareable written
+board outside any repo.
 
 **`scout <N>`** — research a phase WITHOUT planning it: `plan`'s research
 stage alone, resumable. RESEARCH.md sections carry `<!-- scout: done -->` or
@@ -1078,7 +1102,7 @@ or Zed (verbs run by name), and the cost tracker stays Claude Code-only
 everywhere — it reads Claude's transcript JSONL for token usage, which no
 other harness produces (Cursor exposes a transcript_path, but not in that
 format). Grok Build claims Claude hook compatibility (untested). Everything the
-SERVER owns — all 71 tools, mirroring, drift math, estimates, attachments,
+SERVER owns — all 79 tools, mirroring, drift math, estimates, attachments,
 custom states — works identically everywhere, which is the point: the
 tracker paper trail doesn't care which model wrote it.
 
@@ -1649,14 +1673,14 @@ you need to know what actually happened versus what the docs claim.
 | `~/.cairn/handoff/<project>-<hash>.json` | session handoff — ephemeral, per-machine | every state-changing tool + hooks |
 | `~/.cairn/banner/<project>-<hash>.md` | pre-rendered recall banner | re-rendered on card/context changes |
 
-### The 70 MCP tools, by subsystem
+### The 79 MCP tools, by subsystem
 
 **Active context (2):** `context_get` · `context_set`
 
-**Tracker / issues (13):** `issue_create` · `issue_get` · `issue_update` ·
-`issue_close` · `issue_list` · `issue_comment` · `issue_link` ·
-`issue_unlink` · `issue_links` · `graph_report` · `tracker_migrate` ·
-`phase_create` · `phase_list`
+**Tracker / issues (14):** `issue_create` · `issue_get` · `issue_update` ·
+`issue_close` · `issue_list` · `issue_comment` · `issue_attach` ·
+`issue_link` · `issue_unlink` · `issue_links` · `graph_report` ·
+`tracker_migrate` · `phase_create` · `phase_list`
 
 **Milestones (3):** `milestone_create` · `milestone_list` ·
 `milestone_complete`
@@ -1673,7 +1697,7 @@ you need to know what actually happened versus what the docs claim.
 **Continuity (4):** `continuity_checkpoint` · `continuity_get` ·
 `continuity_clear` · `ledger_append`
 
-**Config (2):** `config_get` · `config_set`
+**Config (3):** `config_get` · `config_set` · `config_probe`
 
 **Sessions (14):** `trace_start` · `trace_log` · `trace_list` ·
 `trace_close` · `probe_start` · `probe_log` · `probe_close` ·
@@ -1682,12 +1706,17 @@ you need to know what actually happened versus what the docs claim.
 
 **Plan checks / audit records (2):** `plan_check` · `audit_record`
 
-**Knowledge graph (2):** `map_set` · `map_get`
+**Research checkpoints (1):** `research_sections`
+
+**Knowledge graph (3):** `map_set` · `map_get` · `map_query`
 
 **Workspace & board (5):** `workspace_list` · `workspace_focus` ·
 `workspace_status` · `board_get` · `board_update`
 
-**Peers (2):** `peer_list` · `peer_run`
+**Peers (3):** `peer_list` · `peer_run` · `peer_state`
+
+**Outlook / portfolio (4):** `outlook_emit` · `outlook_get` ·
+`outlook_refresh` · `outlook_forget`
 
 **Docs connector (2):** `docs_publish` · `docs_status`
 
