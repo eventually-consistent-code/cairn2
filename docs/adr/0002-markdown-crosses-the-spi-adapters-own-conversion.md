@@ -20,4 +20,5 @@ unknown constructs to escaped text rather than failing (commit b4c0d69).
 - The publisher and structure mapper stay pure and product-agnostic.
 - Conversion fidelity is bounded by the subset; adapters may differ in
   richness. Acceptable: a publish never fails on exotic markdown.
-- No heavy markdown dependency in the server (three runtime deps total).
+- No heavy markdown dependency in the server (four runtime deps total, as
+  of the MCP v2 migration — three at the time of this decision).
