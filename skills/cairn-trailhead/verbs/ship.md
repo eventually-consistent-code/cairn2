@@ -12,10 +12,23 @@ Pre-ship gate, then ship:
 3. Engineer mode only (`user.mode: engineer` in cairn.json): no
    cairn-authored PR may still be awaiting human review — list any that
    are and stop. Human review is the merge gate; ship never overrides it.
-4. Clean gate → commit outstanding plan-doc changes, then confirm before
+4. Docs catch-up (repo-local tier, gates passed, BEFORE the push
+   confirmation): `docs_drift()` — for each verified phase being shipped
+   that it flags, run the per-phase distill sequence (`distill <N>` in
+   verbs/distill.md: CHANGELOG entry, that phase's ADRs, marked
+   ARCHITECTURE sections via the section writer) and commit the generated
+   docs (`docs(distill): …`). The leak-pattern gate stays mandatory —
+   distill's own scan-until-clean rule applies unchanged — but distill's
+   diff confirmation MERGES into step 5's push question: ONE question
+   total, never a second ask. Advisory: any docs-generation failure
+   (drift report or distill) is reported and skipped — it never blocks
+   a good push.
+5. Clean gate → commit outstanding plan-doc changes, then confirm before
    pushing: render a one-line summary of exactly what's about to happen —
-   `N commits → origin/<branch>`, plus any tracker mutations the gate itself
-   performed (reassignments, ledger repairs) — and ask ONE AskUserQuestion
+   `N commits → origin/<branch>`, now including the generated-docs diff
+   summary from step 4 (files, sections touched, ADR titles), plus any
+   tracker mutations the gate itself performed (reassignments, ledger
+   repairs) — and ask ONE AskUserQuestion
    (push / hold). Push only on "push"; on "hold", stop and report.
    `ship.confirm: false` in cairn.json skips the ask (silent flow).
    After the push: `outlook_emit(tracker: {open, inProgress, blocked,
