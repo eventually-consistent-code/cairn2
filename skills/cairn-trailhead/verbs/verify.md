@@ -25,8 +25,14 @@ Verify the given phase per the `cairn-planning` skill.
    `issue_list` calls this verb already made; `nextVerb` is the next step
    you are about to report; `asOf` today. Skip silently only if the emit
    tool errors — a snapshot problem never fails verification.
-6. Report pass/fail and next step (`/cairn:ship` or the fixes needed).
-7. FAILED verification routes to `trace` — MANDATORY (#726): open a trace
+6. PASSING verification only: `docs_drift()` — report the flagged list as
+   a docs-debt line ("docs owe entries for phases X, Y —
+   `/cairn:distill <N>` generates them"). Report ONLY: verify never
+   generates docs, and a docs_drift error never blocks the verification
+   result — skip silently on error, same posture as the outlook emit
+   above. Nothing flagged → one line: docs are current.
+7. Report pass/fail and next step (`/cairn:ship` or the fixes needed).
+8. FAILED verification routes to `trace` — MANDATORY (#726): open a trace
    (`trace_start` with the failure as the description), log the failing
    output as the first `evidence`, and continue there. Never patch-and-
    rerun inline. Proven-obvious ≤3-line causes may take trace's fast lane —
