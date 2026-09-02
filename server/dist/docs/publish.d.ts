@@ -6,7 +6,18 @@ export interface PublishResult {
         title: string;
         url: string;
     }>;
-    /** Degraded-but-successful post-publish step (e.g. auto-commit skipped). */
+    /** Release stamp applied to every published page — the project's
+     *  package.json version. Absent = project has no version to stamp. */
+    releaseVersion?: string;
+    /** Remote pages under the project root with no local counterpart (#126).
+     *  Reported only — cairn never deletes remote pages; pruning a shared docs
+     *  space is a human decision. */
+    orphans?: Array<{
+        title: string;
+        url: string;
+    }>;
+    /** Degraded-but-successful post-publish step (e.g. auto-commit skipped,
+     *  orphan pages left behind). */
     warning?: string;
 }
 /** Default project name: the repo directory's basename. */

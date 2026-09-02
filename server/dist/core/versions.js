@@ -25,6 +25,12 @@ function readVersionFile(path) {
         return null;
     }
 }
+/** The project's own package.json version — the release stamp a docs publish
+ *  carries (#126). Null when the project has no package.json or no version
+ *  field; callers treat null as "publish unstamped", never an error. */
+export function projectVersion(projectDir) {
+    return readVersionFile(join(projectDir, "package.json"));
+}
 /** Parses the plugin-cache version out of a module path. Claude Code installs
  *  plugins under ~/.claude/plugins/cache/<marketplace>/<plugin>/<version>/...,
  *  so a server running from there knows its installed version from its own

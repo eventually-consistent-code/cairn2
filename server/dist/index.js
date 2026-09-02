@@ -26,6 +26,7 @@ import { importPhase } from "./planning/import.js";
 import { milestoneCreate, milestoneList, milestoneComplete, } from "./planning/milestones.js";
 import { resyncReport } from "./planning/resync.js";
 import { docsDriftReport } from "./planning/docs-drift.js";
+import { distillManifest } from "./planning/distill-manifest.js";
 import { snapshotNote, trackerDelta } from "./planning/tracker-delta.js";
 import { MemoryIndex, indexDbPath, } from "./memory/index-store.js";
 import { createCard, listCards, readCard, updateCardConfidence, } from "./memory/cards.js";
@@ -1519,6 +1520,15 @@ export function buildServer(deps) {
             "reads, no tracker calls, no LLM judgment",
         inputSchema: z.object({}),
     }, wrap(async () => docsDriftReport(dir())));
+    server.registerTool("distill_manifest", {
+        description: "Assemble one phase's distill manifest — the scope an incremental distill run may " +
+            "synthesize from: the phase's PLAN.md issues, its parsed LEDGER.md entries (each " +
+            "carrying the commit range the task landed as), and the union commit range those " +
+            "entries span. Resolves live phases and archived ones under milestones/vN " +
+            "(decimal phase numbers like 1.5 accepted); malformed ledger lines are skipped " +
+            "with a note. Pure filesystem reads — no tracker, no git, no LLM judgment",
+        inputSchema: z.object({ phase: z.number() }),
+    }, wrap((a) => distillManifest(dir(), a.phase)));
     // Read-only plan artifacts as cairn:// resources (#99) -- the server's
     // first resources surface. Reads resolve dir() fresh, same as the tools.
     registerPlanResources(server, dir);
