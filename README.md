@@ -11,7 +11,7 @@ What makes it different — mechanism, not vocabulary:
 | | |
 |---|---|
 | **Server-validated lifecycle** | Plan↔tracker drift is computed math, verify gates work goal-backward from the phase goal, and checkpoint markers are parsed by a real server — correctness is code, not prompt discipline. |
-| **Tracker-first** | Eight write-through backends (GitHub, GitLab, Jira, Asana, Azure Boards, ClickUp, Linear, local files) hold the single source of truth for work, mirrored in plain language a non-engineer can read. |
+| **Tracker-first** | <!-- auto:trackers -->Eight write-through backends (GitHub, GitLab, Jira, Asana, Azure Boards, ClickUp, Linear, local files)<!-- /auto:trackers --> hold the single source of truth for work, mirrored in plain language a non-engineer can read. |
 | **Cross-vendor adversarial review** | `peers` seats codex, grok, antigravity, and opencode as reviewers — and their claims are verified against source before they count. (Install the CLIs you want seated.) |
 | **Memory with provenance** | Git-committed memory cards record their source commit; recall serves a `STALE` flag when the code moved — and the cards feed `plan`, `work`, and `verify`. |
 
@@ -43,7 +43,7 @@ subsystems underneath (sources in [`docs/diagrams/`](docs/diagrams/)):
 
 ## Features (shipped — P0–P4)
 
-**Tracker layer** — eight adapters behind one normalized interface: GitHub,
+**Tracker layer** — <!-- auto:tracker-count -->eight<!-- /auto:tracker-count --> adapters behind one normalized interface: GitHub,
 GitLab, Jira, Asana, Azure Boards, ClickUp, Linear (native issue links +
 dependency graph), and a zero-credential local backend that stores issues
 as plain files in your repo (links and graph included). Capability matrix per backend
@@ -57,7 +57,7 @@ into Confluence (per-project folder, landing page + child-page tree,
 generated contents sections, space-wide title-conflict handling) or into a
 local Docusaurus site checkout (markdown + `_category_.json`, native
 sidebar, optional auto-commit — never push). Idempotent re-publish on both.
-The SPI is product-neutral — Confluence and Docusaurus ship today, and new
+The SPI is product-neutral — <!-- auto:docs-connectors -->Confluence and Docusaurus<!-- /auto:docs-connectors --> ship today, and new
 targets slot in behind the same contract suite on demand, not roadmapped
 ahead of need.
 
@@ -82,15 +82,15 @@ unplanned-work surfacing (tracker issues no plan references), `import`
 assignee-aware claiming, and plans/cards that collaborate through ordinary
 git PRs.
 
-**Verbs (39 live):** `plan` `work` `verify` `ship` `status` `new` `import`
-`remember` `recall` `help` `do` `waypoint` `scout` `survey` `route` `summit` `auto`
-`fast` `resync` `mark` `retro` `distill` `brief` `tune` `trace` `probe`
-`draft` `audit` `review` `triage` `map` `thread` `profile` `medic`
-`backtrack` `basecamp` `peers` `docs` `outlook` — each a `/cairn:<verb>` command,
+<!-- auto:verbs -->**Verbs (39 live):** `audit` `auto` `backtrack` `basecamp` `brief` `distill`
+`do` `docs` `draft` `fast` `help` `import` `map` `mark` `medic` `new`
+`outlook` `peers` `plan` `probe` `profile` `recall` `remember` `resync`
+`retro` `review` `route` `scout` `ship` `status` `summit` `survey` `thread`
+`trace` `triage` `tune` `verify` `waypoint` `work`<!-- /auto:verbs --> — each a `/cairn:<verb>` command,
 generated from the routing table.
 The routing table is complete: the reserved verb set is now empty.
 
-**Server:** 79 typed MCP tools, 1117 passing tests — counts move with each
+**Server:** <!-- auto:tool-count -->79<!-- /auto:tool-count --> typed MCP tools, 1117 passing tests — counts move with each
 tier and are measured in CI (env-gated live-backend
 suites skip without creds) — three dependencies (`@modelcontextprotocol/sdk`,
 `better-sqlite3`, `zod`). Fail loud, never fake state.
@@ -128,7 +128,7 @@ registry (from `scripts/gen-agents.mjs`, drift-checked in CI), and the verb
 subroutines copied to `.cairn/harness/` so any harness can execute them by
 name ("run cairn status"). Honest capability table:
 
-| Harness | Tools (79) | Verbs | Slash commands | Continuity/cost/observe hooks |
+| Harness | Tools (<!-- auto:tool-count -->79<!-- /auto:tool-count -->) | Verbs | Slash commands | Continuity/cost/observe hooks |
 |---|---|---|---|---|
 | Claude Code (plugin) | ✅ | ✅ | ✅ `/cairn:*` | ✅ |
 | Grok Build | ✅ | ✅ by name | via its Claude-compat layer | untested — claims hook compat |
