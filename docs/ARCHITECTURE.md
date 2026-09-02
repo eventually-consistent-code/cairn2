@@ -7,20 +7,25 @@ drift math, staleness checks. External work trackers are the source of truth
 for work items; git owns prose.
 
 ## Server subsystems
-<!-- docs: done 2026-09-01 -->
+<!-- docs: done -->
 
 - `tracker/` — eight tracker adapters (GitHub, GitLab, Jira, Asana,
   Azure Boards, ClickUp, Linear, and a zero-credential local backend)
   behind one normalized interface with per-backend capability flags, a
   shared HTTP core (retry/backoff, typed errors), and a contract test
   suite every adapter must pass.
-- `planning/` — plan artifacts, tracker mirroring, drift detection,
-  milestone lifecycle.
+- `planning/` — plan artifacts, tracker mirroring, drift detection
+  (plan↔tracker and docs↔shipped-phases both — `docs_drift` reports
+  which verified phases the docs haven't caught up with), per-phase
+  distill manifests, milestone lifecycle.
 - `memory/` — disposable FTS index + git-committed memory cards with
   provenance and staleness checking.
-- `docs/` — documentation connectors (below).
+- `docs/` — documentation connectors (below) plus the marked-section
+  writer: generated doc content lands only inside explicitly marked
+  sections, never over hand-written prose (ADR 0006).
 - `research/` — research-artifact section markers (scout/survey
-  checkpoint discipline, server-validated).
+  checkpoint discipline, server-validated; the docs writer shares this
+  marker grammar).
 - `sessions/` — persistent session stores for trace/probe/draft/thread
   work.
 - `trace/` — debugging-session records (evidence → hypothesis → test →
@@ -35,7 +40,7 @@ for work items; git owns prose.
   emission.
 
 ## Docs connector subsystem (v2)
-<!-- docs: done 2026-09-01 -->
+<!-- docs: done -->
 
 Publishes repo documentation outward to a team wiki. Deliberately a sibling
 of the tracker subsystem, not an extension of it — trackers manage work
@@ -79,8 +84,11 @@ HTTP core and the config pattern.
   publish). Idempotent: pages are matched by title + ancestry and updated
   in place. Confluence titles are unique per **space**, so a title already
   taken elsewhere publishes under a `Title (Context)` disambiguation
-  instead of failing. Remote pages are not deleted when local files
-  disappear.
+  instead of failing. Remote pages are never deleted when local files
+  disappear — instead the publish result reports them as orphans
+  (structured list + warning line), and every published page is stamped
+  with the release it came from (Docusaurus front matter, Confluence
+  footer; re-publish never duplicates the stamp).
 - **Surface** — `docs_publish` / `docs_status` MCP tools with a per-project
   connector memo (evicted on config writes), and the `docs` verb for
   publish/status from chat.

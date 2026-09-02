@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased — auto-docs (phase 14, 2026-09-01)
+
+- Documentation staleness became computed math: a deterministic `docs_drift`
+  report names every verified phase the changelog and docs haven't caught
+  up with — live or archived — and its first production run immediately
+  surfaced four older phases whose entries had silently never landed.
+- Generated documentation can no longer clobber hand-written prose: doc
+  synthesis writes only inside explicitly marked sections (an unmarked
+  section is an error, never a silent append; identical rewrites are a
+  proven no-op), and the synthesis step now runs per phase, scoped by a
+  server-built manifest of exactly what that phase changed.
+- The lifecycle grew documentation reflexes: verification reports docs
+  debt after a pass, shipping generates the catch-up entries behind the
+  existing single push confirmation (a docs failure never blocks a good
+  push), and milestone completion runs the full synthesis with an explicit
+  publish offer — never an automatic publish.
+- Publishing got honest about the remote side: pages orphaned by deleted
+  local docs are reported (never auto-deleted), and every published page
+  now carries the release it came from.
+- The README keeps its own counts: a refresh script recomputes the
+  mechanical claims (verbs, tools, backends) from the live registry and
+  fails CI-style when they drift — it caught two real drifts in its first
+  hour.
+
 ## v2.3.0 — release integrity (2026-08-14)
 
 - One answer to "what version is running where": `config_probe` reports the
