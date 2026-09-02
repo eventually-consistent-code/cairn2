@@ -250,7 +250,11 @@ merely have its tasks closed.
    passed, deviations. **Its existence is the machine-read signal that the
    phase is verified** — drift treats closed issues in verified phases as
    normal from then on.
-6. **A failed verification routes to `trace` — mandatory.** Open a trace with
+6. A passing verify also runs the docs-drift report and tells you what the
+   public docs owe — "docs owe entries for phases X, Y —
+   `/cairn:distill <N>` generates them". Report only: verify never
+   generates docs, and a drift-report error never fails the verification.
+7. **A failed verification routes to `trace` — mandatory.** Open a trace with
    the failure as the description, log the failing output as the first
    evidence entry, and continue there. Never patch-and-rerun inline.
    Proven-obvious ≤3-line causes may use trace's fast lane — still traced,
@@ -268,12 +272,17 @@ The pre-push gate:
    (spot-checked live) — any still open: stop.
 3. Engineer mode only: no cairn-authored PR may still be awaiting human
    review. Human review is the merge gate; ship never overrides it.
-4. Clean gate → commit outstanding plan-doc changes, then STOP and ask:
-   push or hold. Nothing leaves the machine until you say push (on by
-   default; `ship.confirm: false` in cairn.json restores the old
-   no-questions behavior). On push: emit the outlook snapshot, push the
-   branch, clear the session handoff (shipping ends the session), and
-   offer a PR if the project uses them.
+4. Docs catch-up: any verified phase the docs-drift report still flags
+   gets a per-phase distill pass — CHANGELOG entry, phase ADRs, marked
+   ARCHITECTURE sections — committed before the push. Advisory: a docs
+   failure is reported and skipped; it never blocks a good push.
+5. Clean gate → commit outstanding plan-doc changes, then STOP and ask:
+   push or hold. The push summary includes the generated-docs diff, so
+   it's still exactly one question. Nothing leaves the machine until you
+   say push (on by default; `ship.confirm: false` in cairn.json restores
+   the old no-questions behavior). On push: emit the outlook snapshot,
+   push the branch, clear the session handoff (shipping ends the
+   session), and offer a PR if the project uses them.
 
 Never pushes with flagged drift or open issues on a verified phase. That's
 the whole point of the gate.
@@ -289,15 +298,20 @@ phase is verified.
 2. One batched question: the milestone summary (1–3 sentences), whether to
    start the next milestone, and — if no native milestone exists yet —
    whether to create one now.
-3. Complete the milestone: closes tracker phases (recording skips for
+3. Docs, before anything archives: a full-milestone distill into `docs/`,
+   plus — when a docs connector is configured — an explicit offer to
+   publish (never automatic). A docs failure is reported and skipped;
+   distill resolves archived phases too, so it can be redone after the
+   summit.
+4. Complete the milestone: closes tracker phases (recording skips for
    backends whose phase primitive can't close), releases the native milestone
    when supported, archives `phases/` to `milestones/vN/`, bumps the roadmap.
    On `PRECONDITION_FAILED` or `TRACKER_DOWN`: report and stop — re-running
    after a fix is safe; the operation is idempotent.
-4. Git side (always agent-side — the server never writes git): commit the
+5. Git side (always agent-side — the server never writes git): commit the
    archive and tag `v<N>`.
-5. Clear the handoff — the milestone is done; no session survives it.
-6. If you said yes to the next milestone: create it, interview goals and
+6. Clear the handoff — the milestone is done; no session survives it.
+7. If you said yes to the next milestone: create it, interview goals and
    first phases (batched), scaffold, add roadmap rows.
 
 ---
@@ -324,16 +338,21 @@ never blocks planning; `/cairn:resync` is the integration path.
 when `user.handle` is set; the mid-issue-bug rule is absolute — route to
 `trace`, don't detour.
 
-**`verify <N>`** — goal-backward phase check. See section 2. Gotcha:
-VERIFICATION.md's *existence* is the verified signal, so it is never written
-on a failure — and a failed verify mandatorily opens a trace.
+**`verify <N>`** — goal-backward phase check. See section 2. On a pass it
+also reports docs drift — which phases the public docs owe entries for —
+report only, never generating. Gotcha: VERIFICATION.md's *existence* is the
+verified signal, so it is never written on a failure — and a failed verify
+mandatorily opens a trace.
 
 **`ship`** — gate on drift-clean + no open issues in verified phases, then
-push. See section 2.
+push. See section 2. Between the gates and the push question it distills
+docs for any flagged phase being shipped (advisory — a docs failure never
+blocks the push) and folds the docs diff into the one push/hold ask.
 
 **`summit`** — complete the milestone: verify gate, tracker close/release,
-archive, tag. See section 2. Gotcha: safe to re-run after a partial tracker
-failure — the completion is idempotent.
+archive, tag. See section 2. Runs a full-milestone distill and offers a
+docs publish (never automatic) before anything archives. Gotcha: safe to
+re-run after a partial tracker failure — the completion is idempotent.
 
 **`status [--stats]`** — the one-screen view. Peeks the tracker delta, then
 renders: the phase table (artifacts present as C/R/P/V, issue counts), the
