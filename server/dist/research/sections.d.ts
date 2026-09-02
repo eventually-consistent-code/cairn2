@@ -16,6 +16,18 @@ export interface SectionMeta {
     model?: string;
     note?: string;
 }
+export declare const attemptRe: (namespace: string) => RegExp;
+export declare const buildMarker: (namespace: string, state: SectionState, meta?: SectionMeta) => string;
+export interface RawSection {
+    heading: string;
+    level: number;
+    index: number;
+}
+export declare const findHeadings: (lines: string[]) => RawSection[];
+export declare const findMarker: (lines: string[], headingIndex: number, namespace: string) => {
+    index: number;
+    match: RegExpExecArray;
+} | undefined;
 /**
  * Parse a research artifact's ##+ sections and their completion markers for
  * one namespace. A heading with no marker is state 'unmarked' (legacy --

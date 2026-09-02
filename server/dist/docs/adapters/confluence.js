@@ -2,7 +2,7 @@ import { z } from "zod";
 import { CairnError } from "../../errors.js";
 import { fetchJson, paginateCursor } from "../../tracker/http.js";
 import { runProbe } from "../../tracker/probe.js";
-import { markdownToStorage } from "../markdown.js";
+import { escapeHtml, markdownToStorage } from "../markdown.js";
 export const configSchema = z.object({
     /** Site wiki base, e.g. https://your-domain.atlassian.net/wiki */
     baseUrl: z.string().url(),
@@ -193,6 +193,17 @@ export class ConfluenceConnector {
             return undefined;
         return new Map(spec.images.map((i) => [i.ref, i.filename]));
     }
+    /** Release stamp mechanism (#126): a footer line in the storage body.
+     *  Labels were the alternative (capabilities.hasLabels), but they cost an
+     *  extra API round-trip per page and are invisible on the page itself; the
+     *  footer is part of the body, which every publish regenerates wholesale —
+     *  re-publishing replaces the stamp instead of stacking copies. */
+    static storageBody(spec) {
+        const body = markdownToStorage(spec.markdown, ConfluenceConnector.imageMap(spec));
+        if (!spec.releaseVersion)
+            return body;
+        return `${body}<hr /><p><em>Published by cairn — release ${escapeHtml(spec.releaseVersion)}</em></p>`;
+    }
     /**
      * Upload one image as a page attachment — idempotent by filename: an
      * existing attachment gets its data updated, never a duplicate. Best-effort:
@@ -234,7 +245,7 @@ export class ConfluenceConnector {
             title: spec.title,
             ...(spec.parentId ? { parentId: spec.parentId } : {}),
             body: { representation: "storage",
-                value: markdownToStorage(spec.markdown, ConfluenceConnector.imageMap(spec)) },
+                value: ConfluenceConnector.storageBody(spec) },
         });
         const page = this.normalize(raw);
         await this.uploadImages(page.id, spec.images);
@@ -247,7 +258,7 @@ export class ConfluenceConnector {
             status: "current",
             title: spec.title,
             body: { representation: "storage",
-                value: markdownToStorage(spec.markdown, ConfluenceConnector.imageMap(spec)) },
+                value: ConfluenceConnector.storageBody(spec) },
             version: { number: (current.version ?? 0) + 1 },
         });
         const page = this.normalize(raw);

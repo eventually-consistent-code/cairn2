@@ -37,7 +37,7 @@ enforces both.
 | `resync` | Detect out-of-band commits; refresh plan context | | verbs/resync.md | live |
 | `mark` | Zero-friction capture — backlog/seed to tracker, note to memory | `"<text>" [--seed "<trigger>"] [--note]` | verbs/mark.md | live |
 | `retro` | Retrospective — provenance-backed lesson cards, confidence re-grading | `[<N> \| --milestone]` | verbs/retro.md | live |
-| `distill` | Ship-time synthesis — plans + cards → public-safe docs/ | | verbs/distill.md | live |
+| `distill` | Ship-time synthesis — plans + cards → public-safe docs/ | `[<N>]` | verbs/distill.md | live |
 | `brief` | Onboarding briefing from cards + plans | `[--stdout]` | verbs/brief.md | live |
 | `tune` | Configure cairn.json — models, continuity, leak guard | `[key] [value]` | verbs/tune.md | live |
 | `trace` | Persistent debugging session — evidence→hypothesis→test, tracker-mirrored | `["<bug>" \| <id> \| close <id>]` | verbs/trace.md | live |

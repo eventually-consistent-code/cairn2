@@ -71,6 +71,12 @@ export declare class ConfluenceConnector implements DocsConnector {
     listChildren(parentId: string): Promise<Page[]>;
     /** ref → filename map for the storage conversion (renders ri:attachment). */
     private static imageMap;
+    /** Release stamp mechanism (#126): a footer line in the storage body.
+     *  Labels were the alternative (capabilities.hasLabels), but they cost an
+     *  extra API round-trip per page and are invisible on the page itself; the
+     *  footer is part of the body, which every publish regenerates wholesale —
+     *  re-publishing replaces the stamp instead of stacking copies. */
+    private static storageBody;
     /**
      * Upload one image as a page attachment — idempotent by filename: an
      * existing attachment gets its data updated, never a duplicate. Best-effort:

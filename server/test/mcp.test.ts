@@ -153,6 +153,7 @@ describe("cairn MCP server", () => {
         "docs_publish",
         "docs_status",
         "docs_drift",
+        "distill_manifest",
         "research_sections",
         "outlook_get",
         "outlook_emit",
@@ -162,8 +163,8 @@ describe("cairn MCP server", () => {
     );
   });
 
-  it("pins the tool count at 80", async () => {
-    expect((await listToolNames()).length).toBe(80);
+  it("pins the tool count at 81", async () => {
+    expect((await listToolNames()).length).toBe(81);
   });
 
   it("issue_attach reads the file and forwards to the tracker; missing file is NOT_FOUND", async () => {

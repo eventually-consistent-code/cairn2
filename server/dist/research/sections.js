@@ -23,13 +23,14 @@ const COMMENT_RE = /^<!--.*-->$/;
 // "Looks like a marker attempt for this namespace" -- the namespace name
 // followed by a colon inside a comment. Anything matching this that fails the
 // strict grammar above is a typo, never a legacy no-marker section.
-const attemptRe = (namespace) => new RegExp(`^<!--\\s*${namespace}\\s*:`);
+// (Exported for the docs writer -- one grammar, two namespaces.)
+export const attemptRe = (namespace) => new RegExp(`^<!--\\s*${namespace}\\s*:`);
 const assertNamespace = (namespace) => {
     if (!NAMESPACE_RE.test(namespace)) {
         throw new CairnError("CONFIG_INVALID", `namespace must be lowercase letters only, got '${namespace}'`, "use a plain lowercase namespace like scout, survey, or council");
     }
 };
-const buildMarker = (namespace, state, meta) => {
+export const buildMarker = (namespace, state, meta) => {
     if (meta?.date !== undefined && !DATE_RE.test(meta.date)) {
         throw new CairnError("CONFIG_INVALID", `date must be YYYY-MM-DD, got '${meta.date}'`, "pass an ISO date like 2026-08-10, or omit it");
     }
@@ -51,7 +52,7 @@ const buildMarker = (namespace, state, meta) => {
 };
 // Sections are ##+ headings outside fenced code blocks -- a ```-fenced
 // example containing '## Fake' must never register (or typo-throw).
-const findHeadings = (lines) => {
+export const findHeadings = (lines) => {
     const out = [];
     let inFence = false;
     for (let i = 0; i < lines.length; i++) {
@@ -72,7 +73,7 @@ const findHeadings = (lines) => {
 // this namespace's marker line index, or undefined when the section carries
 // no marker for it. A comment that ATTEMPTS this namespace but fails the
 // grammar throws -- never silently classifies.
-const findMarker = (lines, headingIndex, namespace) => {
+export const findMarker = (lines, headingIndex, namespace) => {
     const attempt = attemptRe(namespace);
     for (let i = headingIndex + 1; i < lines.length; i++) {
         const line = lines[i].trim();

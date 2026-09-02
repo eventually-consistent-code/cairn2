@@ -37,6 +37,11 @@ export declare class DocusaurusConnector implements DocsConnector {
     findPage(title: string, parentId?: string): Promise<Page | null>;
     private findInDir;
     private findRecursive;
+    /** A directory counts as a page only when it carries category metadata or
+     *  holds markdown. Bare asset dirs (images written next to a page by
+     *  writeImages) are storage, not pages — listing them would make every
+     *  image folder read as an orphan in the publisher's post-publish diff. */
+    private isPageDir;
     private childPages;
     listChildren(parentId: string): Promise<Page[]>;
     /** Filesystem attachment story: write each image under the page's dir at
