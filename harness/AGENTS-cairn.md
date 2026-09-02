@@ -43,7 +43,7 @@ executing that verb.
 | resync | Detect out-of-band commits; refresh plan context |  |
 | mark | Zero-friction capture — backlog/seed to tracker, note to memory | "<text>" [--seed "<trigger>"] [--note] |
 | retro | Retrospective — provenance-backed lesson cards, confidence re-grading | [<N> \| --milestone] |
-| distill | Ship-time synthesis — plans + cards → public-safe docs/ |  |
+| distill | Ship-time synthesis — plans + cards → public-safe docs/ | [<N>] |
 | brief | Onboarding briefing from cards + plans | [--stdout] |
 | tune | Configure cairn.json — models, continuity, leak guard | [key] [value] |
 | trace | Persistent debugging session — evidence→hypothesis→test, tracker-mirrored | ["<bug>" \| <id> \| close <id>] |
