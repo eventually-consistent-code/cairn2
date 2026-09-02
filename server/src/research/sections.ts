@@ -45,7 +45,8 @@ const COMMENT_RE = /^<!--.*-->$/;
 // "Looks like a marker attempt for this namespace" -- the namespace name
 // followed by a colon inside a comment. Anything matching this that fails the
 // strict grammar above is a typo, never a legacy no-marker section.
-const attemptRe = (namespace: string): RegExp =>
+// (Exported for the docs writer -- one grammar, two namespaces.)
+export const attemptRe = (namespace: string): RegExp =>
   new RegExp(`^<!--\\s*${namespace}\\s*:`);
 
 const assertNamespace = (namespace: string): void => {
@@ -56,7 +57,7 @@ const assertNamespace = (namespace: string): void => {
   }
 };
 
-const buildMarker = (namespace: string, state: SectionState, meta?: SectionMeta): string => {
+export const buildMarker = (namespace: string, state: SectionState, meta?: SectionMeta): string => {
   if (meta?.date !== undefined && !DATE_RE.test(meta.date)) {
     throw new CairnError("CONFIG_INVALID",
       `date must be YYYY-MM-DD, got '${meta.date}'`,
@@ -80,11 +81,11 @@ const buildMarker = (namespace: string, state: SectionState, meta?: SectionMeta)
   return parts.join("");
 };
 
-interface RawSection { heading: string; level: number; index: number; }
+export interface RawSection { heading: string; level: number; index: number; }
 
 // Sections are ##+ headings outside fenced code blocks -- a ```-fenced
 // example containing '## Fake' must never register (or typo-throw).
-const findHeadings = (lines: string[]): RawSection[] => {
+export const findHeadings = (lines: string[]): RawSection[] => {
   const out: RawSection[] = [];
   let inFence = false;
   for (let i = 0; i < lines.length; i++) {
@@ -101,7 +102,7 @@ const findHeadings = (lines: string[]): RawSection[] => {
 // this namespace's marker line index, or undefined when the section carries
 // no marker for it. A comment that ATTEMPTS this namespace but fails the
 // grammar throws -- never silently classifies.
-const findMarker = (lines: string[], headingIndex: number, namespace: string):
+export const findMarker = (lines: string[], headingIndex: number, namespace: string):
   { index: number; match: RegExpExecArray } | undefined => {
   const attempt = attemptRe(namespace);
   for (let i = headingIndex + 1; i < lines.length; i++) {
