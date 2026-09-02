@@ -24,6 +24,10 @@ export interface Page {
   /** Backend version counter, when the product exposes one. */
   version?: number;
   url: string;
+  /** Release stamp the page currently carries, when the backend can surface
+   *  it cheaply (e.g. front matter). Backends that store the stamp inside the
+   *  rendered body (Confluence footer) may omit it. */
+  releaseVersion?: string;
 }
 
 /** A local image referenced by a page's markdown, resolved and read by the
@@ -53,6 +57,12 @@ export interface PageSpec {
    *  store under this name so repo-relative links between docs keep
    *  resolving; API backends may ignore it. */
   sourceName?: string;
+  /** Release/milestone identity of the publish — the publishing repo's
+   *  package.json version. Each adapter stamps it where its product fits
+   *  (Docusaurus front matter, Confluence body footer). Omitted = unstamped.
+   *  Stamps are regenerated wholesale on update, never appended, so
+   *  re-publishing must not duplicate them. */
+  releaseVersion?: string;
 }
 
 export interface DocsConnector {

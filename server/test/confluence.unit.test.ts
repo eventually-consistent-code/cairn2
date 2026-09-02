@@ -161,6 +161,55 @@ describe("ConfluenceConnector", () => {
   });
 });
 
+describe("ConfluenceConnector release stamp footer (#126)", () => {
+  const FOOTER = "<hr /><p><em>Published by cairn — release 1.2.3</em></p>";
+
+  it("createPage with releaseVersion appends the footer to the storage body", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: SPACE },
+      { status: 200, body: rawPage() },
+    ]);
+    await makeConn(f).createPage({
+      title: "T", markdown: "# Hi", parentId: "900", releaseVersion: "1.2.3",
+    });
+    const value = (calls[1].body as { body: { value: string } }).body.value;
+    expect(value).toBe(`<h1>Hi</h1>${FOOTER}`);
+  });
+
+  it("updatePage regenerates the footer with the body — exactly one stamp", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: rawPage({ version: { number: 7 } }) },
+      { status: 200, body: rawPage({ version: { number: 8 } }) },
+    ]);
+    await makeConn(f).updatePage("123", { title: "T", markdown: "x", releaseVersion: "1.2.3" });
+    const value = (calls[1].body as { body: { value: string } }).body.value;
+    expect(value.match(/Published by cairn/g)).toHaveLength(1);
+    expect(value.endsWith(FOOTER)).toBe(true);
+  });
+
+  it("no releaseVersion → no footer", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: SPACE },
+      { status: 200, body: rawPage() },
+    ]);
+    await makeConn(f).createPage({ title: "T", markdown: "# Hi", parentId: "900" });
+    const value = (calls[1].body as { body: { value: string } }).body.value;
+    expect(value).toBe("<h1>Hi</h1>");
+  });
+
+  it("footer escapes markup in the version string", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: SPACE },
+      { status: 200, body: rawPage() },
+    ]);
+    await makeConn(f).createPage({
+      title: "T", markdown: "x", parentId: "900", releaseVersion: "1.0<beta>",
+    });
+    const value = (calls[1].body as { body: { value: string } }).body.value;
+    expect(value).toContain("release 1.0&lt;beta&gt;");
+  });
+});
+
 describe("ConfluenceConnector image attachments", () => {
   const img = { ref: "diagrams/x.png", filename: "x.png",
     data: Buffer.from([1, 2, 3]), mediaType: "image/png" };

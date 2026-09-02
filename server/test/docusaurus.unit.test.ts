@@ -156,6 +156,78 @@ describe("sourceName mirroring", () => {
   });
 });
 
+describe("release stamp (#126)", () => {
+  it("createPage writes cairn_release front matter; getPage reports it", async () => {
+    const site = tempSite();
+    const { c } = connectorAt(site);
+    const root = await c.ensureRoot("proj");
+    const page = await c.createPage({
+      title: "Guide", markdown: "body", parentId: root.id, releaseVersion: "2.5.0",
+    });
+    const raw = readFileSync(join(site, "docs", page.id), "utf8");
+    expect(raw).toMatch(/^  cairn_release: "2\.5\.0"$/m);
+    expect((await c.getPage(page.id)).releaseVersion).toBe("2.5.0");
+  });
+
+  it("container stamp lands in _category_.json customProps and the index.md front matter", async () => {
+    const site = tempSite();
+    const { c } = connectorAt(site);
+    const root = await c.ensureRoot("proj");
+    const dir = await c.createPage({
+      title: "Sub", markdown: "landing", parentId: root.id, container: true, releaseVersion: "2.5.0",
+    });
+    const cat = JSON.parse(readFileSync(join(site, "docs", dir.id, "_category_.json"), "utf8"));
+    expect(cat.customProps.cairn_release).toBe("2.5.0");
+    const idx = readFileSync(join(site, "docs", dir.id, "index.md"), "utf8");
+    expect(idx).toMatch(/^  cairn_release: "2\.5\.0"$/m);
+    expect((await c.getPage(dir.id)).releaseVersion).toBe("2.5.0");
+  });
+
+  it("re-publish with the same release keeps exactly one stamp — never stacks", async () => {
+    const site = tempSite();
+    const { c } = connectorAt(site);
+    const root = await c.ensureRoot("proj");
+    const page = await c.createPage({
+      title: "Guide", markdown: "v1", parentId: root.id, releaseVersion: "2.5.0",
+    });
+    await c.updatePage(page.id, { title: "Guide", markdown: "v2", parentId: root.id, releaseVersion: "2.5.0" });
+    await c.updatePage(page.id, { title: "Guide", markdown: "v3", parentId: root.id, releaseVersion: "2.5.0" });
+    const raw = readFileSync(join(site, "docs", page.id), "utf8");
+    expect(raw.match(/cairn_release/g)).toHaveLength(1);
+  });
+
+  it("a new release replaces the old stamp; no releaseVersion → no stamp key", async () => {
+    const site = tempSite();
+    const { c } = connectorAt(site);
+    const root = await c.ensureRoot("proj");
+    const page = await c.createPage({
+      title: "Guide", markdown: "v1", parentId: root.id, releaseVersion: "2.5.0",
+    });
+    await c.updatePage(page.id, { title: "Guide", markdown: "v2", parentId: root.id, releaseVersion: "2.6.0" });
+    expect((await c.getPage(page.id)).releaseVersion).toBe("2.6.0");
+    await c.updatePage(page.id, { title: "Guide", markdown: "v3", parentId: root.id });
+    const raw = readFileSync(join(site, "docs", page.id), "utf8");
+    expect(raw).not.toContain("cairn_release");
+  });
+});
+
+describe("asset directories (#126)", () => {
+  it("a dir holding only images is storage, not a page — listChildren skips it", async () => {
+    const site = tempSite();
+    const { c } = connectorAt(site);
+    const root = await c.ensureRoot("proj");
+    await c.createPage({
+      title: "Guide", markdown: "![m](diagrams/map.png)", parentId: root.id,
+      images: [{ ref: "diagrams/map.png", filename: "map.png",
+        data: Buffer.from([137, 80, 78, 71]), mediaType: "image/png" }],
+    });
+    const kids = await c.listChildren(root.id);
+    // writeImages created docs/proj/diagrams/ — it must not read as a page,
+    // or every image folder would look like an orphan to the publisher
+    expect(kids.map((k) => k.title)).toEqual(["Guide"]);
+  });
+});
+
 function gitSite(): string {
   const site = tempSite();
   execFileSync("git", ["init", "-q"], { cwd: site });

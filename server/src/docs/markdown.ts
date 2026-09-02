@@ -4,7 +4,9 @@
 // (degraded to links), bold/italic/inline code. Unknown constructs degrade
 // to escaped text — conversion never throws.
 
-function escapeHtml(s: string): string {
+/** Exported for adapters that hand-build small storage fragments (e.g. the
+ *  Confluence release-stamp footer). */
+export function escapeHtml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
 }

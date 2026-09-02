@@ -68,6 +68,7 @@ export class FakeDocsConnector implements DocsConnector {
     const page: StoredPage = {
       id: String(++this.seq), title: spec.title, parentId: spec.parentId,
       version: 1, url: `fake://page/${this.seq}`, markdown: spec.markdown,
+      releaseVersion: spec.releaseVersion,
     };
     this.pages.set(page.id, page);
     this.storeImages(page.id, spec);
@@ -81,6 +82,9 @@ export class FakeDocsConnector implements DocsConnector {
       ...prev, title: spec.title, markdown: spec.markdown,
       parentId: spec.parentId ?? prev.parentId,
       version: (prev.version ?? 0) + 1,
+      // Stamp semantics mirror the real adapters: regenerated wholesale per
+      // publish — an unstamped update clears, never inherits.
+      releaseVersion: spec.releaseVersion,
     };
     this.pages.set(id, page);
     this.storeImages(id, spec);

@@ -40,33 +40,45 @@ export function slugify(title: string): string {
 const SITE_CONFIGS = ["docusaurus.config.js", "docusaurus.config.ts", "docusaurus.config.mjs"];
 const FRONT_MATTER_RE = /^---\n([\s\S]*?)\n---\n/;
 
-function frontMatter(title: string, version: number, position?: number): string {
-  const quoted = `"${title.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+const yamlQuote = (s: string) => `"${s.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+
+// Release stamp mechanism (#126): front matter. cairn_release rides
+// sidebar_custom_props next to cairn_version, so the stamp is machine-readable
+// (theme components can render it) and regenerated wholesale on every write —
+// re-publishing can never stack duplicate stamps.
+function frontMatter(title: string, version: number, position?: number,
+  release?: string): string {
   const pos = position === undefined ? "" : `sidebar_position: ${position}\n`;
+  const rel = release === undefined ? "" : `  cairn_release: ${yamlQuote(release)}\n`;
   // mdx.format: md — bodies cross the SPI as raw markdown, and Docusaurus v3
   // compiles .md as MDX by default, where any literal <tag> is a parse error.
-  return `---\ntitle: ${quoted}\n${pos}mdx:\n  format: md\n`
-    + `sidebar_custom_props:\n  cairn_version: ${version}\n---\n\n`;
+  return `---\ntitle: ${yamlQuote(title)}\n${pos}mdx:\n  format: md\n`
+    + `sidebar_custom_props:\n  cairn_version: ${version}\n${rel}---\n\n`;
 }
 
-function readFrontMatter(raw: string): { title?: string; position?: number; version?: number } {
+function readFrontMatter(raw: string): {
+  title?: string; position?: number; version?: number; release?: string;
+} {
   const block = FRONT_MATTER_RE.exec(raw)?.[1];
   if (!block) return {};
   const title = /^title:\s*"(.*)"\s*$/m.exec(block)?.[1]
     ?.replace(/\\(["\\])/g, "$1");
   const position = /^sidebar_position:\s*(\d+)\s*$/m.exec(block)?.[1];
   const version = /^\s*cairn_version:\s*(\d+)\s*$/m.exec(block)?.[1];
+  const release = /^\s*cairn_release:\s*"(.*)"\s*$/m.exec(block)?.[1]
+    ?.replace(/\\(["\\])/g, "$1");
   return {
     title,
     position: position === undefined ? undefined : Number(position),
     version: version === undefined ? undefined : Number(version),
+    release,
   };
 }
 
 interface CategoryFile {
   label: string;
   position?: number;
-  customProps?: { cairn_version?: number };
+  customProps?: { cairn_version?: number; cairn_release?: string };
   link?: { type: string };
 }
 
@@ -135,6 +147,7 @@ export class DocusaurusConnector implements DocsConnector {
         ...base,
         title: cat?.label ?? nameToTitle(posix.basename(id)),
         version: cat?.customProps?.cairn_version,
+        releaseVersion: cat?.customProps?.cairn_release,
       };
     }
     const fm = readFrontMatter(readFileSync(this.abs(id), "utf8"));
@@ -142,6 +155,7 @@ export class DocusaurusConnector implements DocsConnector {
       ...base,
       title: fm.title ?? nameToTitle(posix.basename(id)),
       version: fm.version,
+      releaseVersion: fm.release,
     };
   }
 
@@ -217,12 +231,23 @@ export class DocusaurusConnector implements DocsConnector {
     return null;
   }
 
+  /** A directory counts as a page only when it carries category metadata or
+   *  holds markdown. Bare asset dirs (images written next to a page by
+   *  writeImages) are storage, not pages — listing them would make every
+   *  image folder read as an orphan in the publisher's post-publish diff. */
+  private isPageDir(dirAbs: string): boolean {
+    if (existsSync(join(dirAbs, "_category_.json"))) return true;
+    return readdirSync(dirAbs).some((e) => /\.md$/i.test(e));
+  }
+
   private childPages(dirId: string): Page[] {
     const dirAbs = dirId === "" ? this.docsAbs : this.abs(dirId);
     if (!existsSync(dirAbs)) return [];
     return readdirSync(dirAbs)
       .filter((e) => !e.startsWith(".") && e !== "_category_.json" && e !== "index.md")
-      .filter((e) => statSync(join(dirAbs, e)).isDirectory() || /\.md$/i.test(e))
+      .filter((e) => (statSync(join(dirAbs, e)).isDirectory()
+        ? this.isPageDir(join(dirAbs, e))
+        : /\.md$/i.test(e)))
       .map((e) => this.pageFor(dirId === "" ? e : posix.join(dirId, e)));
   }
 
@@ -259,7 +284,7 @@ export class DocusaurusConnector implements DocsConnector {
     const fileName = spec.sourceName ?? `${slugify(spec.title)}.md`;
     const fileId = dirId === "" ? fileName : posix.join(dirId, fileName);
     writeFileSync(join(dirAbs, fileName),
-      frontMatter(spec.title, 1, position) + this.body(spec.markdown));
+      frontMatter(spec.title, 1, position, spec.releaseVersion) + this.body(spec.markdown));
     return this.pageFor(fileId);
   }
 
@@ -277,7 +302,8 @@ export class DocusaurusConnector implements DocsConnector {
     const fm = readFrontMatter(readFileSync(this.abs(id), "utf8"));
     this.writeImages(dirname(this.abs(id)), spec);
     writeFileSync(this.abs(id),
-      frontMatter(spec.title, (fm.version ?? 0) + 1, fm.position) + this.body(spec.markdown));
+      frontMatter(spec.title, (fm.version ?? 0) + 1, fm.position, spec.releaseVersion)
+        + this.body(spec.markdown));
     return this.pageFor(id);
   }
 
@@ -291,14 +317,18 @@ export class DocusaurusConnector implements DocsConnector {
     this.writeCategory(id, {
       label: spec.title,
       ...(position === undefined ? {} : { position }),
-      customProps: { cairn_version: version },
+      customProps: {
+        cairn_version: version,
+        ...(spec.releaseVersion === undefined ? {} : { cairn_release: spec.releaseVersion }),
+      },
       ...(empty ? { link: { type: "generated-index" } } : {}),
     });
     const indexAbs = join(this.abs(id), "index.md");
     if (empty) {
       rmSync(indexAbs, { force: true });
     } else {
-      writeFileSync(indexAbs, frontMatter(spec.title, version) + this.body(spec.markdown));
+      writeFileSync(indexAbs,
+        frontMatter(spec.title, version, undefined, spec.releaseVersion) + this.body(spec.markdown));
     }
   }
 
