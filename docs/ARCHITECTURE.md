@@ -7,6 +7,7 @@ drift math, staleness checks. External work trackers are the source of truth
 for work items; git owns prose.
 
 ## Server subsystems
+<!-- docs: done 2026-09-01 -->
 
 - `tracker/` — eight tracker adapters (GitHub, GitLab, Jira, Asana,
   Azure Boards, ClickUp, Linear, and a zero-credential local backend)
@@ -34,6 +35,7 @@ for work items; git owns prose.
   emission.
 
 ## Docs connector subsystem (v2)
+<!-- docs: done 2026-09-01 -->
 
 Publishes repo documentation outward to a team wiki. Deliberately a sibling
 of the tracker subsystem, not an extension of it — trackers manage work
