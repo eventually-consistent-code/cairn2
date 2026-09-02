@@ -64,6 +64,7 @@ import {
   milestoneComplete,
 } from "./planning/milestones.js";
 import { resyncReport } from "./planning/resync.js";
+import { docsDriftReport } from "./planning/docs-drift.js";
 import { snapshotNote, trackerDelta } from "./planning/tracker-delta.js";
 import {
   MemoryIndex,
@@ -2366,6 +2367,19 @@ export function buildServer(deps: {
         throw e;
       }
     }),
+  );
+
+  server.registerTool(
+    "docs_drift",
+    {
+      description:
+        "Deterministic docs-drift report — flags verified phases (live and archived) the public " +
+        "docs have NOT caught up with: no CHANGELOG.md/docs/ entry mentions the phase, or the " +
+        "newest docs commit predates the phase's last LEDGER.md commit. Pure filesystem + git " +
+        "reads, no tracker calls, no LLM judgment",
+      inputSchema: z.object({}),
+    },
+    wrap(async () => docsDriftReport(dir())),
   );
 
   // Read-only plan artifacts as cairn:// resources (#99) -- the server's
