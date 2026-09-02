@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   UNKNOWN, driftLines, fetchNpmLatest, installedVersions,
-  pluginCacheVersion, repoVersions,
+  pluginCacheVersion, projectVersion, repoVersions,
 } from "../src/core/versions.js";
 
 const dirs: string[] = [];
@@ -109,6 +109,24 @@ describe("driftLines", () => {
       repo: { root: "2.2.0", server: "2.2.0", plugin: "2.1.0" }, npmLatest: UNKNOWN,
     });
     expect(lines.some((l) => l.includes("repo version files disagree"))).toBe(true);
+  });
+});
+
+describe("projectVersion (#126)", () => {
+  it("reads the project's package.json version", () => {
+    const d = fresh("cairn-projver-");
+    writeFileSync(join(d, "package.json"), JSON.stringify({ version: "2.5.0" }));
+    expect(projectVersion(d)).toBe("2.5.0");
+  });
+
+  it("degrades to null on a missing file, bad JSON, or absent version field", () => {
+    expect(projectVersion(fresh("cairn-projver-"))).toBeNull();
+    const bad = fresh("cairn-projver-");
+    writeFileSync(join(bad, "package.json"), "{not json");
+    expect(projectVersion(bad)).toBeNull();
+    const noVer = fresh("cairn-projver-");
+    writeFileSync(join(noVer, "package.json"), JSON.stringify({ name: "x" }));
+    expect(projectVersion(noVer)).toBeNull();
   });
 });
 

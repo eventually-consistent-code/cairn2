@@ -140,6 +140,144 @@ describe("publishTree", () => {
   });
 });
 
+describe("publishTree orphan reporting (#126)", () => {
+  function docsProject(): string {
+    const dir = tempProject("# Readme body");
+    mkdirSync(join(dir, "docs", "adr"), { recursive: true });
+    writeFileSync(join(dir, "docs", "ARCHITECTURE.md"), "# Architecture\n\nShape.");
+    writeFileSync(join(dir, "docs", "adr", "0001-x.md"), "# First\n\nWhy.");
+    writeFileSync(join(dir, "docs", "adr", "0002-y.md"), "# Second\n\nHow.");
+    return dir;
+  }
+
+  it("a doc deleted locally leaves the remote page in place and reports it", async () => {
+    const dir = docsProject();
+    const conn = new FakeDocsConnector();
+    try {
+      await publishTree(conn, dir, "proj");
+      const count = conn.pages.size;
+      rmSync(join(dir, "docs", "adr", "0002-y.md"));
+      const result = await publishTree(conn, dir, "proj");
+      expect(result.orphans).toEqual([{ title: "Second", url: expect.any(String) }]);
+      expect(result.warning).toContain("'Second'");
+      expect(result.warning).toContain("no local counterpart");
+      // NEVER deleted — the remote page survives, page count unchanged
+      expect(conn.pages.size).toBe(count);
+      expect([...conn.pages.values()].some((p) => p.title === "Second")).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("an orphaned subtree is reported once, at its top", async () => {
+    const dir = docsProject();
+    const conn = new FakeDocsConnector();
+    try {
+      await publishTree(conn, dir, "proj");
+      rmSync(join(dir, "docs", "adr"), { recursive: true });
+      const result = await publishTree(conn, dir, "proj");
+      // "Adr" is the orphan; "First"/"Second" are implied by their parent
+      expect(result.orphans?.map((o) => o.title)).toEqual(["Adr"]);
+      expect([...conn.pages.values()].some((p) => p.title === "First")).toBe(true);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("a clean re-publish reports no orphans and no warning", async () => {
+    const dir = docsProject();
+    const conn = new FakeDocsConnector();
+    try {
+      await publishTree(conn, dir, "proj");
+      const result = await publishTree(conn, dir, "proj");
+      expect(result.orphans).toBeUndefined();
+      expect(result.warning).toBeUndefined();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("orphan warning composes with a finalize warning", async () => {
+    class FinalizingFake extends FakeDocsConnector {
+      async finalize(): Promise<string | undefined> {
+        return "auto-commit skipped: not a git repo";
+      }
+    }
+    const dir = docsProject();
+    const conn = new FinalizingFake();
+    try {
+      await publishTree(conn, dir, "proj");
+      rmSync(join(dir, "docs", "adr", "0002-y.md"));
+      const result = await publishTree(conn, dir, "proj");
+      expect(result.warning).toContain("'Second'");
+      expect(result.warning).toContain("auto-commit skipped");
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("publishReadme flags every leftover child — the degenerate case stays consistent", async () => {
+    const dir = docsProject();
+    const conn = new FakeDocsConnector();
+    try {
+      await publishTree(conn, dir, "proj");
+      const count = conn.pages.size;
+      const result = await publishReadme(conn, dir, "proj");
+      expect(result.orphans?.map((o) => o.title).sort()).toEqual(["Adr", "Architecture"]);
+      expect(conn.pages.size).toBe(count); // nothing deleted
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
+describe("publish release stamp (#126)", () => {
+  function versionedProject(): string {
+    const dir = tempProject("# Readme body");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ version: "2.5.0" }));
+    mkdirSync(join(dir, "docs", "adr"), { recursive: true });
+    writeFileSync(join(dir, "docs", "ARCHITECTURE.md"), "# Architecture\n\nShape.");
+    writeFileSync(join(dir, "docs", "adr", "0001-x.md"), "# First\n\nWhy.");
+    return dir;
+  }
+
+  it("stamps every page (root, dirs, leaves) with the project's package.json version", async () => {
+    const dir = versionedProject();
+    const conn = new FakeDocsConnector();
+    try {
+      const result = await publishTree(conn, dir, "proj");
+      expect(result.releaseVersion).toBe("2.5.0");
+      for (const p of conn.pages.values()) {
+        expect(p.releaseVersion).toBe("2.5.0");
+      }
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("re-publish re-stamps in place — same pages, same single stamp", async () => {
+    const dir = versionedProject();
+    const conn = new FakeDocsConnector();
+    try {
+      await publishTree(conn, dir, "proj");
+      const count = conn.pages.size;
+      const again = await publishTree(conn, dir, "proj");
+      expect(conn.pages.size).toBe(count);
+      expect(again.releaseVersion).toBe("2.5.0");
+      for (const p of conn.pages.values()) expect(p.releaseVersion).toBe("2.5.0");
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("no package.json → unstamped publish, not an error", async () => {
+    const dir = tempProject("# Solo");
+    const conn = new FakeDocsConnector();
+    try {
+      const result = await publishTree(conn, dir, "proj");
+      expect(result.releaseVersion).toBeUndefined();
+      expect([...conn.pages.values()][0].releaseVersion).toBeUndefined();
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("publishReadme stamps the landing page too", async () => {
+    const dir = tempProject("# Solo");
+    writeFileSync(join(dir, "package.json"), JSON.stringify({ version: "0.9.1" }));
+    const conn = new FakeDocsConnector();
+    try {
+      const result = await publishReadme(conn, dir, "proj");
+      expect(result.releaseVersion).toBe("0.9.1");
+      expect(conn.pages.get(result.root.id)!.releaseVersion).toBe("0.9.1");
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
 describe("publishTree image attachments", () => {
   function projectWithImage(): string {
     const dir = tempProject("# Landing\n\n![root map](docs/diagrams/map.png)");
