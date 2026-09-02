@@ -73,5 +73,42 @@ export function docsConnectorContract(
       const kids = await c.listChildren(root.id);
       expect(kids.map((k) => k.title)).toContain(t("contract-listed"));
     });
+
+    // Orphan visibility (#126): the publisher diffs listChildren against what
+    // it wrote, so pages a publish did NOT touch must stay listed — and stay
+    // alive. Connectors never delete; pruning is a human decision.
+    it("a page untouched by later writes stays listed and intact (orphan visibility)", async () => {
+      const c = await factory();
+      const root = await c.ensureRoot(t("contract-root"));
+      const stale = await c.findPage(t("contract-stale"), root.id)
+        ?? await c.createPage({ title: t("contract-stale"), markdown: "old", parentId: root.id });
+      // a later "publish cycle" that never mentions the stale page
+      const kept = await c.findPage(t("contract-kept"), root.id)
+        ?? await c.createPage({ title: t("contract-kept"), markdown: "v1", parentId: root.id });
+      await c.updatePage(kept.id, { title: t("contract-kept"), markdown: "v2", parentId: root.id });
+      const kids = await c.listChildren(root.id);
+      expect(kids.map((k) => k.id)).toContain(stale.id);
+      expect((await c.getPage(stale.id)).title).toBe(t("contract-stale"));
+    });
+
+    // Release stamp (#126): specs may carry a releaseVersion; adapters stamp
+    // it in their native mechanism and regenerate it wholesale on update.
+    it("accepts a release stamp and re-stamping stays idempotent", async () => {
+      const c = await factory();
+      const root = await c.ensureRoot(t("contract-root"));
+      const title = t("contract-stamped");
+      const page = await c.findPage(title, root.id)
+        ?? await c.createPage({ title, markdown: "body", parentId: root.id, releaseVersion: "1.2.3" });
+      const updated = await c.updatePage(page.id,
+        { title, markdown: "body", parentId: root.id, releaseVersion: "1.2.3" });
+      expect(updated.id).toBe(page.id);
+      const got = await c.getPage(page.id);
+      expect(got.title).toBe(title);
+      // Backends that surface the stamp on the Page (filesystem front matter,
+      // the fake) must echo it exactly; backends that store it inside the
+      // rendered body (Confluence footer) report nothing — a WRONG echo never
+      // passes.
+      if (got.releaseVersion !== undefined) expect(got.releaseVersion).toBe("1.2.3");
+    });
   });
 }
