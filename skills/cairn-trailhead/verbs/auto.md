@@ -97,7 +97,89 @@ Staging sequence, in order:
    in-flight wave finishes; bounded overshoot ≤ one wave). Then
    `run_manifest(action: "set_status", status: "running")` and report
    "staged — run starts now."
-6. **Execution — next wave (#133).** The executor consumes the manifest
-   from here: phase loop, wave dispatch, boundary budget checks,
-   tracker-first progress comments, and the end-of-run report (including
-   estimate-vs-actual) are its job, not this doc's.
+6. **Execution.** The run starts — the sequence below consumes the
+   manifest from here. Everything above this line happened with the user
+   present; everything below runs without them.
+
+### Execution sequence — the headless run
+
+Bare auto's rules ride along unchanged: the hard stops (tracker error,
+security-relevant decision, engineer-mode PR gate), the
+unattended-decision principles, and the taste batch all apply inside
+batch mode exactly as written in steps 3–5 above. What follows is the
+batch-specific loop.
+
+1. **Preconditions + run visibility.** Manifest status must be
+   `running` (`run_manifest(action: "read")`) and the ledger open
+   (`budget_check(runId)` with no phase — a read-only poll). A manifest
+   reading `complete` or `stopped` is terminal: report, don't run —
+   re-staging means a new runId, never a resurrected old one.
+   First act: the run's umbrella tracker issue — `issue_create` (label
+   `batch-run`, runId in the title), opening comment in plain language:
+   the phase list as staged, the ceiling, push authority granted or
+   declined. Then `continuity_checkpoint(source: "auto", notes:
+   "batch run <runId> — phase <first>")` so a killed run leaves a trail.
+   **Resume path — a killed run re-enters HERE.** The checkpoint notes
+   hold the runId; `run_manifest(action: "read")` is the authority on
+   what was approved (a resumed run never widens scope or push
+   authority). "Where was I" resolves by trust order: tracker + git
+   first (VERIFICATION.md present, issues closed, commits/pushes
+   landed), then the ledger's boundary rows, then the handoff note.
+   Manifest phases already verified/shipped by that evidence SKIP; the
+   loop resumes at the first phase the evidence can't vouch for. The
+   umbrella issue is found (runId search), never recreated.
+2. **Per manifest phase, in manifest order:**
+   - **Boundary budget check.** `budget_check(runId, phase: <N>)` —
+     records the boundary row. Verdict `stop` → no new phase starts:
+     `run_manifest(action: "set_status", status: "stopped")`, one
+     plain-language comment on the umbrella issue AND on the stopped
+     phase's open issues ("budget ceiling reached — run stopped before
+     phase N started; spent ~X of ~Y"), then wrap (step 4).
+   - **Plan if untasked.** PLAN.md has no tasks → the `plan` verb's
+     steps, standard depth. Research already exists — staging's scout
+     batch wrote RESEARCH.md and the manifest's `answers` carry the
+     user's staging answers; planning consumes both, never re-asks.
+   - **Work.** The `work` verb's `--wave` steps, per-issue lifecycle
+     unchanged, with ONE addition: the wave's inner budget is the
+     ledger's word — pass `budget_check`'s `innerBudgetSuggestion` down
+     as the Workflow run's budget (the inner ceiling; this ledger stays
+     the outer authority). BETWEEN waves: `budget_check(runId, phase:
+     <N>, wave: <W>)` — same stop semantics: the in-flight wave
+     finishes, a `stop` verdict refuses the next wave, then the same
+     stopped-marking, comments, and wrap as the phase boundary.
+   - **Verify.** The `verify` verb's steps; failure = auto's posture,
+     unchanged: stop THIS phase, prepare the `trace_start` handoff
+     (never start it), skip dependent phases, continue independent
+     ones. "Dependent" = a later manifest phase whose CONTEXT.md or
+     PLAN.md references this phase or its issues. No dependency data
+     to consult → the conservative default: treat manifest order as a
+     dependency chain and stop the whole run.
+   - **Ship if authorized.** Manifest `pushAuth.granted` → the `ship`
+     verb's steps, all gates intact (drift, open issues, the docs
+     catch-up tier — a gate failure stops, it is never bypassed). The
+     manifest pre-auth SUBSTITUTES for ship's step-5 AskUserQuestion:
+     the push proceeds on the authority collected at the staging gate,
+     scope-limited to the manifest's phases — REC-5's confirmation
+     moved to run start, never silently skipped (record that line in
+     the push summary). `pushAuth.granted: false` → the phase ends
+     verified-not-pushed, recorded for the report; nothing pushes.
+3. **Tracker-first visibility.** Per-issue claim/close comments already
+   come from work's lifecycle — never duplicate them. ADD, on the
+   umbrella issue, ONE comment per phase transition: phase N started /
+   verified / shipped / stopped (with why). Small steps batch into that
+   one comment — tracker noise is a failure mode, not diligence. At
+   every phase boundary: `outlook_emit(tracker: {open, inProgress,
+   blocked, nextVerb, asOf})` so the board tracks the run in real time
+   — the final report is a summary, not the only visibility.
+4. **Wrap — every exit lands here (complete or stopped).** In order:
+   final `budget_check(runId, phase: "wrap")` boundary — the honest
+   last spend row, overshoot included; `run_manifest(action:
+   "set_status", status: "complete")` when the loop reached the
+   manifest's end (even with failed/skipped phases — those are report
+   lines), `"stopped"` when the run halted early (budget, dependency
+   chain, hard stop); umbrella-issue closing comment: phases
+   done/stopped/skipped, spend vs ceiling, the verified-not-pushed
+   list, stop reason if any. Then hand off to the run report — next
+   wave (#134), not this doc's job — and close continuity:
+   `continuity_checkpoint(source: "auto", notes: "batch run <runId>
+   ended <status> — next: <action>")` + one last `outlook_emit`.

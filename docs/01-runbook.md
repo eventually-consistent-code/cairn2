@@ -50,6 +50,7 @@ decision, which stops for you).
 | Research the whole project, then change the roadmap through a gate | `/cairn:survey` |
 | Insert/remove/rename a phase without renumbering anything | `/cairn:route …` |
 | Run all remaining phases hands-off (opt-in, with hard stops) | `/cairn:auto` |
+| Stage a budgeted walk-away batch run — interview up front, headless after | `/cairn:auto --batch` |
 | Make a trivial ≤3-file change with a full tracker paper trail | `/cairn:fast "<change>"` |
 | Reconcile out-of-band commits and tracker edits with the plan | `/cairn:resync` |
 | Capture an idea in one tool call, zero questions | `/cairn:mark "<text>"` |
@@ -382,6 +383,26 @@ ambiguity, escalate security) and every one is logged with the principle that
 resolved it. Genuinely subjective taste calls don't stop the run — the
 reversible option is taken and the batch is presented as ONE review at the
 end. A killed run resumes via `/cairn:waypoint resume`.
+
+`auto --batch [--budget <tokens|$usd>] [--phases <N,N,...>]` is the
+budgeted, walk-away form. Everything is staged while you're still present:
+phase selection (explicit list, or budget-fit on worst-case estimate
+ranges), the research question round, and — in ONE staging question — the
+phase list, estimates vs ceiling, and explicit push pre-authorization,
+scope-limited to those phases (ship's push confirmation moved to run
+start, never silently bypassed; declining it just downgrades the run to
+verify-without-push). Approval writes a run manifest — the executor's sole
+source of authority — then the run goes headless: per phase, plan if
+needed → work in waves → verify → ship if pre-authorized, with actual
+spend re-checked at every phase and wave boundary. The budget is hard at
+boundaries and honest about overshoot: no new phase or wave starts past
+the ceiling, an in-flight wave finishes (bounded overshoot ≤ one wave).
+The tracker stays first-class throughout — an umbrella issue for the run
+gets one plain-language comment per phase transition, and the usual
+per-issue comments keep flowing — so you can watch a run you're not
+attending. Any exit, complete or stopped, ends in the run report:
+phases done, spend vs estimate, what's verified but not pushed, and the
+stop reason if there is one.
 
 **`fast "<change>"`** — trivial inline change: one issue, ≤3 files, one
 atomic commit. Guardrail first: if the change plausibly touches more than 3
