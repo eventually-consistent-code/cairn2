@@ -27,7 +27,7 @@ enforces both.
 | `help` | Render this verb reference | `[verb]` | verbs/help.md | live |
 | `do` | Freeform smart router — classify intent, dispatch the right verb | `"<request>"` | verbs/do.md | live |
 | `waypoint` | Pause/resume session continuity | `[resume]` | verbs/waypoint.md | live |
-| `scout` | Research a phase only — resumable RESEARCH.md checkpoints | `<N>` | verbs/scout.md | live |
+| `scout` | Research a phase only — resumable RESEARCH.md checkpoints | `<N> [<N> ...]` | verbs/scout.md | live |
 | `route` | Re-route the roadmap — insert/remove/edit phases | `insert\|remove\|edit <N> ["name"]` | verbs/route.md | live |
 | `probe` | Risk-ordered throwaway spike experiments with verdicts | `"<question>"` \| (none = frontier) \| `--wrap [<id>]` | verbs/probe.md | live |
 | `draft` | Multi-variant mockups on a shared theme | `"<design question>"` \| (none = frontier) \| `--wrap [<id>]` | verbs/draft.md | live |
