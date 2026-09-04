@@ -21,6 +21,12 @@ export function bannerPath(projectDir) {
     const { base, hash } = pathHash(projectDir);
     return join(homedir(), ".cairn", "banner", `${base}-${hash}.md`);
 }
+/** The Stop hook's cumulative cost log (stop-costtracker.mjs writes it; the
+ *  token estimator reads it). Scheme mirrored in hooks/scripts/lib.mjs. */
+export function metricsPath(projectDir) {
+    const { base, hash } = pathHash(projectDir);
+    return join(homedir(), ".cairn", "metrics", `${base}-${hash}.jsonl`);
+}
 export const HandoffSchema = z.object({
     version: z.literal(1),
     created: z.string(),

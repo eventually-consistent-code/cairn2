@@ -28,6 +28,13 @@ export function bannerPath(projectDir: string): string {
   return join(homedir(), ".cairn", "banner", `${base}-${hash}.md`);
 }
 
+/** The Stop hook's cumulative cost log (stop-costtracker.mjs writes it; the
+ *  token estimator reads it). Scheme mirrored in hooks/scripts/lib.mjs. */
+export function metricsPath(projectDir: string): string {
+  const { base, hash } = pathHash(projectDir);
+  return join(homedir(), ".cairn", "metrics", `${base}-${hash}.jsonl`);
+}
+
 export interface Handoff {
   version: 1;
   created: string;

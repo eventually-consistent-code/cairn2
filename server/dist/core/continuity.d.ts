@@ -1,6 +1,9 @@
 import { z } from "zod";
 export declare function handoffPath(projectDir: string): string;
 export declare function bannerPath(projectDir: string): string;
+/** The Stop hook's cumulative cost log (stop-costtracker.mjs writes it; the
+ *  token estimator reads it). Scheme mirrored in hooks/scripts/lib.mjs. */
+export declare function metricsPath(projectDir: string): string;
 export interface Handoff {
     version: 1;
     created: string;
