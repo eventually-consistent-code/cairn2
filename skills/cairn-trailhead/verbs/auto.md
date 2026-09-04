@@ -177,9 +177,69 @@ batch-specific loop.
    "set_status", status: "complete")` when the loop reached the
    manifest's end (even with failed/skipped phases — those are report
    lines), `"stopped"` when the run halted early (budget, dependency
-   chain, hard stop); umbrella-issue closing comment: phases
-   done/stopped/skipped, spend vs ceiling, the verified-not-pushed
-   list, stop reason if any. Then hand off to the run report — next
-   wave (#134), not this doc's job — and close continuity:
-   `continuity_checkpoint(source: "auto", notes: "batch run <runId>
-   ended <status> — next: <action>")` + one last `outlook_emit`.
+   chain, hard stop); then the run report (next section) — it owns the
+   umbrella issue's closing comment, the close itself, and the run's
+   final board emit. Last, close continuity: `continuity_checkpoint(
+   source: "auto", notes: "batch run <runId> ended <status> — next:
+   <action>")`.
+
+### The run report — the artifact the dev reads when they're back
+
+Every exit — complete or stopped — produces one report. It is assembled
+from the run's own records, never from the session's memory of what
+happened: the manifest (`run_manifest(action: "read")` — phases as
+approved, estimate ranges, push authority, staged answers), the budget
+ledger's append-only boundary rows (spend at every phase/wave boundary,
+overshoot), each phase's VERIFICATION.md and LEDGER.md, and the umbrella
+issue's comment trail. A phase none of those records can vouch for is
+reported as unknown — the report never upgrades an outcome the evidence
+doesn't support.
+
+1. **Per-phase outcome table.** One row per manifest phase, in manifest
+   order. Outcome is exactly one of: `shipped` /
+   `verified-not-pushed` / `stopped-budget` / `stopped-verify-failure` /
+   `skipped-dependent` — each with ONE plain-language reason line
+   ("verified and pushed", "verified; push authority was declined at
+   staging", "never started — ceiling hit at this phase's boundary",
+   "verify failed: 2 acceptance checks unmet", "skipped — depends on
+   failed phase 7").
+2. **Estimate vs actual — the calibration section.** Per phase: the
+   staged range (low–high, tokens and ~$) vs actual spend — the delta
+   between that phase's boundary row and the next (the wrap row closes
+   out the last phase) — and the run total vs the ceiling, overshoot
+   stated when the ledger recorded one. Call out, one line each, every
+   phase that landed OUTSIDE its range, beat or blew — this is the
+   estimate-vs-actual feedback the estimator promised, written so a
+   non-engineer can read it ("phase 16 cost ~300k tokens (~$35)
+   against an estimate of 400k–2.1M — well under"). There is NO
+   write-back step, on purpose: the run's actual spend already lives in
+   the metrics history the Stop hook wrote while the run executed, and
+   `token_estimate` calibrates from exactly that history the moment a
+   phase has its VERIFICATION.md — the next staging interview's ranges
+   tighten automatically.
+3. **Pushes made under pre-auth.** Per shipped phase: branch and short
+   commit range (`abc1234..def5678`), each carrying the standing line —
+   authority collected at the staging gate, scope-limited to the
+   manifest's phases (REC-5 moved to run start, never silently
+   bypassed).
+4. **Bare auto's report conventions, unchanged.** Every unattended
+   decision with the principle that resolved it; the taste batch as ONE
+   review list — the dev's first interactive act next session; the stop
+   reason when stopped; engineer mode's waiting-PR list; and on a
+   failed verify, the ready-made trace handoff — the exact
+   `trace_start` description + first-evidence text, never started.
+5. **Write the file — beside the manifest, never in the repo.** The
+   `path` field on `run_manifest(action: "read")` names the manifest's
+   real location under `~/.cairn/runs/`; the report is that same
+   filename with `.json` replaced by `-report.md`, so the runId rides
+   along in the name. Run artifacts live under `~/.cairn`: never
+   committed, never referenced from repo docs.
+6. **Tracker mirror, then close.** ONE closing comment on the umbrella
+   issue carrying the full report in plain language — outcome table,
+   estimate-vs-actual lines, pushes, decisions, stop reason. Leak-guard
+   discipline applies: no file paths, no internal doc references; short
+   commit refs (`abc1234..def5678`) are fine, house precedent. Then
+   `issue_close` on the umbrella. LAST, one final `outlook_emit(
+   tracker: {open, inProgress, blocked, nextVerb, asOf})` AFTER the
+   comment — the board outlives the run, and its final state should
+   show the run's true ending, not its second-to-last boundary.
