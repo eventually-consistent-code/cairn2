@@ -265,6 +265,23 @@ export function readRunManifest(
 }
 
 /**
+ * Reads the manifest AND says where it lives. The run report (#134) writes
+ * beside the manifest file, so the read carries the real resolved path —
+ * the agent never re-derives hashed filenames from naming conventions.
+ *
+ * :param projectDir: the project the run belongs to
+ * :param runId: the run to read
+ * :returns the manifest state plus its absolute file path
+ */
+export function readRunManifestWithPath(
+  projectDir: string, runId: string, baseDir?: string,
+): RunManifestState & { path: string } {
+  const base = baseDir ?? join(homedir(), ".cairn");
+  const { path, state } = loadManifest(projectDir, runId, base);
+  return { ...state, path };
+}
+
+/**
  * Records the user's explicit push pre-authorization from the staging gate.
  * Only callable while the run is still 'staged' — authority is granted at
  * the front door or not at all, never mid-run.

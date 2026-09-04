@@ -37,7 +37,7 @@ import { registerPlanResources } from "./core/resources.js";
 import { installedVersions } from "./core/versions.js";
 import { appendLedger } from "./planning/ledger.js";
 import { checkBudget, openRunLedger, recordBoundary, refreshSpend, } from "./planning/budget-ledger.js";
-import { createRunManifest, grantPushAuth, readRunManifest, setRunStatus, } from "./planning/run-manifest.js";
+import { createRunManifest, grantPushAuth, readRunManifestWithPath, setRunStatus, } from "./planning/run-manifest.js";
 import { writeBanner, bannerStats } from "./memory/banner.js";
 import { startTrace, appendTrace, listTraces, closeTrace, } from "./trace/store.js";
 import { KIND_SPECS, appendSession, closeSession, sessionLandscape, startSession, } from "./sessions/store.js";
@@ -873,7 +873,8 @@ export function buildServer(deps) {
     server.registerTool("run_manifest", {
         description: "The run manifest for headless batch runs (#132) — the staging interview's output and "
             + "the executor's SOLE source of authority. action 'create' writes a fresh manifest "
-            + "(one per run; pushAuth ALWAYS starts false), 'read' returns it without mutation, "
+            + "(one per run; pushAuth ALWAYS starts false), 'read' returns it without mutation "
+            + "plus its file path (the run report writes beside the manifest), "
             + "'grant_push' records the staging gate's explicit push pre-authorization (REC-5 at "
             + "run start, scope-limited to the manifest's phases; staged runs only), 'set_status' "
             + "advances the lifecycle staged → running → complete|stopped. Lives under "
@@ -923,7 +924,9 @@ export function buildServer(deps) {
                 });
             }
             case "read":
-                return readRunManifest(d, a.runId);
+                // path rides along (#134) -- the run report writes beside the
+                // manifest, so the read says exactly where that is.
+                return readRunManifestWithPath(d, a.runId);
             case "grant_push":
                 return grantPushAuth(d, a.runId);
             case "set_status": {
