@@ -155,6 +155,7 @@ describe("cairn MCP server", () => {
         "docs_status",
         "docs_drift",
         "distill_manifest",
+        "token_estimate",
         "research_sections",
         "outlook_get",
         "outlook_emit",
@@ -164,10 +165,8 @@ describe("cairn MCP server", () => {
     );
   });
 
-  // 82 = 81 + budget_check (#131). A sibling branch adds token_estimate off
-  // the same 81 base; the merge coordinator reconciles this pin to 83.
-  it("pins the tool count at 82", async () => {
-    expect((await listToolNames()).length).toBe(82);
+  it("pins the tool count at 83", async () => {
+    expect((await listToolNames()).length).toBe(83);
   });
 
   it("issue_attach reads the file and forwards to the tracker; missing file is NOT_FOUND", async () => {
