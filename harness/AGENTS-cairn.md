@@ -38,7 +38,7 @@ executing that verb.
 | probe | Risk-ordered throwaway spike experiments with verdicts | "<question>" \| (none = frontier) \| --wrap [<id>] |
 | draft | Multi-variant mockups on a shared theme | "<design question>" \| (none = frontier) \| --wrap [<id>] |
 | summit | Complete the milestone — verify gate, tracker close/release, archive, tag |  |
-| auto | Chained hands-off execution of remaining phases (opt-in) |  |
+| auto | Chained hands-off execution of remaining phases (opt-in) | [--batch [--budget <tokens\|$usd>] [--phases <N,N,...>]] |
 | fast | Trivial inline change — one issue, ≤3 files, atomic commit | "<change>" |
 | resync | Detect out-of-band commits; refresh plan context |  |
 | mark | Zero-friction capture — backlog/seed to tracker, note to memory | "<text>" [--seed "<trigger>"] [--note] |

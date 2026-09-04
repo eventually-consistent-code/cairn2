@@ -32,7 +32,7 @@ enforces both.
 | `probe` | Risk-ordered throwaway spike experiments with verdicts | `"<question>"` \| (none = frontier) \| `--wrap [<id>]` | verbs/probe.md | live |
 | `draft` | Multi-variant mockups on a shared theme | `"<design question>"` \| (none = frontier) \| `--wrap [<id>]` | verbs/draft.md | live |
 | `summit` | Complete the milestone — verify gate, tracker close/release, archive, tag | | verbs/summit.md | live |
-| `auto` | Chained hands-off execution of remaining phases (opt-in) | | verbs/auto.md | live |
+| `auto` | Chained hands-off execution of remaining phases (opt-in) | `[--batch [--budget <tokens\|$usd>] [--phases <N,N,...>]]` | verbs/auto.md | live |
 | `fast` | Trivial inline change — one issue, ≤3 files, atomic commit | `"<change>"` | verbs/fast.md | live |
 | `resync` | Detect out-of-band commits; refresh plan context | | verbs/resync.md | live |
 | `mark` | Zero-friction capture — backlog/seed to tracker, note to memory | `"<text>" [--seed "<trigger>"] [--note]` | verbs/mark.md | live |
