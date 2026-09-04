@@ -11,6 +11,7 @@ import {
   createRunManifest,
   grantPushAuth,
   readRunManifest,
+  readRunManifestWithPath,
   runManifestPath,
   setRunStatus,
 } from "../src/planning/run-manifest.js";
@@ -114,6 +115,18 @@ describe("createRunManifest / readRunManifest", () => {
         runId: "run-1", phases: [], createdAt: CREATED, baseDir,
       }),
     ).toThrowError(/no phases/);
+  });
+
+  it("readRunManifestWithPath carries the resolved manifest path (#134)", () => {
+    const { projectDir, baseDir } = setup();
+    const written = createRunManifest(projectDir, {
+      runId: "run-1", phases: PHASES, createdAt: CREATED, baseDir,
+    });
+    const read = readRunManifestWithPath(projectDir, "run-1", baseDir);
+    // the report writer needs the real location -- never a guessed filename
+    expect(read.path).toBe(runManifestPath(projectDir, "run-1", baseDir));
+    const { path: _path, ...state } = read;
+    expect(state).toEqual(written);
   });
 
   it("reading a never-staged run is NOT_FOUND", () => {

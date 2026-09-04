@@ -94,7 +94,7 @@ import {
 import {
   createRunManifest,
   grantPushAuth,
-  readRunManifest,
+  readRunManifestWithPath,
   setRunStatus,
   type ManifestPhase,
   type RunStatus,
@@ -1372,7 +1372,8 @@ export function buildServer(deps: {
       description:
         "The run manifest for headless batch runs (#132) — the staging interview's output and "
         + "the executor's SOLE source of authority. action 'create' writes a fresh manifest "
-        + "(one per run; pushAuth ALWAYS starts false), 'read' returns it without mutation, "
+        + "(one per run; pushAuth ALWAYS starts false), 'read' returns it without mutation "
+        + "plus its file path (the run report writes beside the manifest), "
         + "'grant_push' records the staging gate's explicit push pre-authorization (REC-5 at "
         + "run start, scope-limited to the manifest's phases; staged runs only), 'set_status' "
         + "advances the lifecycle staged → running → complete|stopped. Lives under "
@@ -1437,7 +1438,9 @@ export function buildServer(deps: {
             });
           }
           case "read":
-            return readRunManifest(d, a.runId);
+            // path rides along (#134) -- the run report writes beside the
+            // manifest, so the read says exactly where that is.
+            return readRunManifestWithPath(d, a.runId);
           case "grant_push":
             return grantPushAuth(d, a.runId);
           case "set_status": {
