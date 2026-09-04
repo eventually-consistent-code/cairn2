@@ -37,6 +37,7 @@ import { registerPlanResources } from "./core/resources.js";
 import { installedVersions } from "./core/versions.js";
 import { appendLedger } from "./planning/ledger.js";
 import { checkBudget, openRunLedger, recordBoundary, refreshSpend, } from "./planning/budget-ledger.js";
+import { createRunManifest, grantPushAuth, readRunManifest, setRunStatus, } from "./planning/run-manifest.js";
 import { writeBanner, bannerStats } from "./memory/banner.js";
 import { startTrace, appendTrace, listTraces, closeTrace, } from "./trace/store.js";
 import { KIND_SPECS, appendSession, closeSession, sessionLandscape, startSession, } from "./sessions/store.js";
@@ -868,6 +869,70 @@ export function buildServer(deps) {
             });
         }
         return checkBudget(refreshSpend(ledger));
+    }));
+    server.registerTool("run_manifest", {
+        description: "The run manifest for headless batch runs (#132) — the staging interview's output and "
+            + "the executor's SOLE source of authority. action 'create' writes a fresh manifest "
+            + "(one per run; pushAuth ALWAYS starts false), 'read' returns it without mutation, "
+            + "'grant_push' records the staging gate's explicit push pre-authorization (REC-5 at "
+            + "run start, scope-limited to the manifest's phases; staged runs only), 'set_status' "
+            + "advances the lifecycle staged → running → complete|stopped. Lives under "
+            + "~/.cairn/runs/ — never the repo",
+        inputSchema: z.object({
+            action: z.enum(["create", "read", "grant_push", "set_status"]),
+            runId: z.string(),
+            phases: z
+                .array(z.object({
+                number: z.number(),
+                name: z.string(),
+                estimate: z.object({
+                    low: z.number(),
+                    high: z.number(),
+                    estUsd: z.object({ low: z.number(), high: z.number() }),
+                }),
+                waves: z.number().optional(),
+            }))
+                .optional(),
+            ceilingTokens: z.number().positive().optional(),
+            ceilingUsd: z.number().positive().optional(),
+            answers: z
+                .array(z.object({
+                phase: z.union([z.number(), z.string()]).optional(),
+                question: z.string(),
+                answer: z.string(),
+            }))
+                .optional(),
+            status: z.enum(["staged", "running", "complete", "stopped"]).optional(),
+        }),
+    }, wrap((a) => {
+        const d = dir();
+        switch (a.action) {
+            case "create": {
+                const ceiling = a.ceilingTokens !== undefined || a.ceilingUsd !== undefined
+                    ? {
+                        ...(a.ceilingTokens !== undefined
+                            ? { tokens: a.ceilingTokens } : {}),
+                        ...(a.ceilingUsd !== undefined ? { usd: a.ceilingUsd } : {}),
+                    }
+                    : null;
+                return createRunManifest(d, {
+                    runId: a.runId,
+                    phases: a.phases ?? [],
+                    ceiling,
+                    answers: a.answers,
+                });
+            }
+            case "read":
+                return readRunManifest(d, a.runId);
+            case "grant_push":
+                return grantPushAuth(d, a.runId);
+            case "set_status": {
+                if (a.status === undefined) {
+                    throw new CairnError("CONFIG_INVALID", "set_status needs a status", "pass status: staged|running|complete|stopped");
+                }
+                return setRunStatus(d, a.runId, a.status);
+            }
+        }
     }));
     server.registerTool("milestone_create", {
         description: "Start the next milestone — native tracker object when the backend supports it; stamps milestone_id into roadmap.md",

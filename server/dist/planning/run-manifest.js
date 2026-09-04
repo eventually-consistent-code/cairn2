@@ -1,0 +1,208 @@
+/**
+ * Purpose: the run manifest for headless batch runs (#132) — the staging
+ *   interview's output and the executor's SOLE source of authority. One
+ *   manifest per run, written when the user approves the staging gate:
+ *   which phases run, their estimate ranges, the budget ceiling, and the
+ *   push pre-authorization (REC-5 moved to run start, scope-limited to
+ *   the manifest's phases — a phase outside the manifest never pushes).
+ *
+ *   Lives under ~/.cairn (never the repo) with the same path/injection
+ *   conventions as budget-ledger.ts: per-machine project hash, filename-
+ *   safe runId, raw run_id verified on load so a sanitize collision can't
+ *   silently merge two runs. Versioned state file — z.literal(1) +
+ *   safeParse + atomic tmp-then-rename write, continuity.ts precedent.
+ *
+ *   pushAuth starts FALSE and only grantPushAuth() flips it — creation can
+ *   never smuggle authority in. Status walks a one-way lifecycle:
+ *   staged → running → complete|stopped (staged may also go straight to
+ *   stopped when a run is abandoned before it starts).
+ * Author(s): John Reed
+ */
+// Imports
+import { z } from "zod";
+import { createHash } from "node:crypto";
+import { homedir } from "node:os";
+import { mkdirSync, readFileSync, renameSync, writeFileSync, } from "node:fs";
+import { basename, dirname, join, resolve } from "node:path";
+import { CairnError } from "../errors.js";
+// Constants
+/** The only legal status moves — anything else is a lifecycle bug. */
+const STATUS_TRANSITIONS = {
+    staged: ["running", "stopped"],
+    running: ["complete", "stopped"],
+    complete: [],
+    stopped: [],
+};
+// Paths
+/** Same per-machine hashing scheme as continuity.ts / budget-ledger.ts. */
+function pathHash(projectDir) {
+    const abs = resolve(projectDir);
+    const hash = createHash("sha256").update(abs).digest("hex").slice(0, 16);
+    return { base: basename(abs), hash };
+}
+/** Filename-safe runId — exotic characters collapse to '-'; the raw run_id
+ * stays inside the file and is verified on load. */
+function safeRunId(runId) {
+    return runId.replace(/[^A-Za-z0-9._-]/g, "-");
+}
+/** ~/.cairn/runs/<project>-<hash>-<runId>.json — one manifest per run,
+ * outside the repo. baseDir injectable for tests (budget-ledger convention). */
+export function runManifestPath(projectDir, runId, baseDir = join(homedir(), ".cairn")) {
+    const { base, hash } = pathHash(projectDir);
+    return join(baseDir, "runs", `${base}-${hash}-${safeRunId(runId)}.json`);
+}
+const ManifestPhaseSchema = z.object({
+    number: z.number(),
+    name: z.string(),
+    estimate: z.object({
+        low: z.number(),
+        high: z.number(),
+        estUsd: z.object({ low: z.number(), high: z.number() }),
+    }),
+    waves: z.number().optional(),
+});
+const StagedAnswerSchema = z.object({
+    phase: z.union([z.number(), z.string()]).optional(),
+    question: z.string(),
+    answer: z.string(),
+});
+export const RunManifestSchema = z.object({
+    version: z.literal(1),
+    runId: z.string(),
+    project: z.string(),
+    created: z.string(),
+    phases: z.array(ManifestPhaseSchema),
+    ceiling: z
+        .object({ tokens: z.number().optional(), usd: z.number().optional() })
+        .nullable(),
+    pushAuth: z.object({
+        granted: z.boolean(),
+        scope: z.literal("manifest-phases"),
+        grantedAt: z.string().optional(),
+    }),
+    answers: z.array(StagedAnswerSchema).optional(),
+    status: z.enum(["staged", "running", "complete", "stopped"]),
+});
+// Internals
+/** Reads and validates the manifest file at `path`; null when absent. */
+function readManifestFile(path) {
+    let raw;
+    try {
+        raw = readFileSync(path, "utf8");
+    }
+    catch {
+        return null;
+    }
+    let parsed;
+    try {
+        parsed = JSON.parse(raw);
+    }
+    catch (e) {
+        throw new CairnError("HANDOFF_INVALID", `run manifest at ${path} is not valid JSON: ${e}`, "inspect or discard ~/.cairn/runs/…");
+    }
+    const result = RunManifestSchema.safeParse(parsed);
+    if (!result.success) {
+        throw new CairnError("HANDOFF_INVALID", `run manifest at ${path} failed schema validation: ${result.error.issues
+            .map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`, "inspect or discard ~/.cairn/runs/…");
+    }
+    return result.data;
+}
+/** Atomic write — tmp then rename, continuity's handoff writer pattern. */
+function writeManifestFile(path, state) {
+    mkdirSync(dirname(path), { recursive: true });
+    const tmp = `${path}.tmp`;
+    writeFileSync(tmp, JSON.stringify(state, null, 2) + "\n");
+    renameSync(tmp, path);
+}
+/** Loads the manifest for a run, guarding against sanitize collisions the
+ * same way the budget ledger does. Throws NOT_FOUND when absent. */
+function loadManifest(projectDir, runId, baseDir) {
+    const path = runManifestPath(projectDir, runId, baseDir);
+    const state = readManifestFile(path);
+    if (!state) {
+        throw new CairnError("NOT_FOUND", `no run manifest for run '${runId}'`, "stage the run first (auto --batch writes the manifest at the staging gate)");
+    }
+    if (state.runId !== runId) {
+        throw new CairnError("HANDOFF_INVALID", `manifest at ${path} belongs to run '${state.runId}', not '${runId}'`, "pick a runId that differs in more than punctuation");
+    }
+    return { path, state };
+}
+// API
+/**
+ * Writes a fresh manifest at staging time. One manifest per run — an
+ * existing manifest for this runId throws instead of being overwritten
+ * (re-staging a run means a new runId; history never gets clobbered).
+ * pushAuth always starts granted:false — only grantPushAuth() can flip it.
+ *
+ * :param projectDir: the project the run belongs to
+ * :returns the manifest state as written
+ */
+export function createRunManifest(projectDir, opts) {
+    if (!opts.runId || !opts.runId.trim()) {
+        throw new CairnError("HANDOFF_INVALID", "runId must be a non-empty string");
+    }
+    if (!opts.phases.length) {
+        throw new CairnError("PRECONDITION_FAILED", `run '${opts.runId}' has no phases — nothing to stage`, "pick at least one phase (--phases) or widen the budget");
+    }
+    const baseDir = opts.baseDir ?? join(homedir(), ".cairn");
+    const path = runManifestPath(projectDir, opts.runId, baseDir);
+    const existing = readManifestFile(path);
+    if (existing) {
+        throw new CairnError("PRECONDITION_FAILED", `a manifest for run '${existing.runId}' already exists at ${path}`, "one manifest per run — pick a new runId to re-stage");
+    }
+    const state = {
+        version: 1,
+        runId: opts.runId,
+        project: basename(resolve(projectDir)),
+        created: opts.createdAt ?? new Date().toISOString(),
+        phases: opts.phases,
+        ceiling: opts.ceiling ?? null,
+        pushAuth: { granted: false, scope: "manifest-phases" },
+        ...(opts.answers !== undefined ? { answers: opts.answers } : {}),
+        status: "staged",
+    };
+    writeManifestFile(path, state);
+    return state;
+}
+/**
+ * Reads a run's manifest without mutating anything — the executor's (and
+ * status displays') view. Throws NOT_FOUND when the run was never staged.
+ */
+export function readRunManifest(projectDir, runId, baseDir) {
+    const base = baseDir ?? join(homedir(), ".cairn");
+    return loadManifest(projectDir, runId, base).state;
+}
+/**
+ * Records the user's explicit push pre-authorization from the staging gate.
+ * Only callable while the run is still 'staged' — authority is granted at
+ * the front door or not at all, never mid-run.
+ */
+export function grantPushAuth(projectDir, runId, opts) {
+    const base = opts?.baseDir ?? join(homedir(), ".cairn");
+    const { path, state } = loadManifest(projectDir, runId, base);
+    if (state.status !== "staged") {
+        throw new CairnError("PRECONDITION_FAILED", `run '${runId}' is '${state.status}' — push authorization is granted at staging only`, "stage a new run to grant push authority");
+    }
+    state.pushAuth = {
+        granted: true,
+        scope: "manifest-phases",
+        grantedAt: opts?.grantedAt ?? new Date().toISOString(),
+    };
+    writeManifestFile(path, state);
+    return state;
+}
+/**
+ * Advances the run's status along the legal lifecycle
+ * (staged → running → complete|stopped; staged → stopped for a run
+ * abandoned before start). Any other move throws.
+ */
+export function setRunStatus(projectDir, runId, status, baseDir) {
+    const base = baseDir ?? join(homedir(), ".cairn");
+    const { path, state } = loadManifest(projectDir, runId, base);
+    if (!STATUS_TRANSITIONS[state.status].includes(status)) {
+        throw new CairnError("PRECONDITION_FAILED", `run '${runId}' cannot move '${state.status}' → '${status}'`, `legal moves from '${state.status}': ${STATUS_TRANSITIONS[state.status].join(", ") || "(none — terminal)"}`);
+    }
+    state.status = status;
+    writeManifestFile(path, state);
+    return state;
+}
