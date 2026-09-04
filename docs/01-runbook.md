@@ -402,7 +402,13 @@ gets one plain-language comment per phase transition, and the usual
 per-issue comments keep flowing — so you can watch a run you're not
 attending. Any exit, complete or stopped, ends in the run report:
 phases done, spend vs estimate, what's verified but not pushed, and the
-stop reason if there is one.
+stop reason if there is one. The report file lands beside the run's
+manifest under `~/.cairn` (never committed), and the same content — in
+plain language a non-engineer can read — becomes the closing comment on
+the run's umbrella issue, which then closes. Its estimate-vs-actual
+lines double as calibration: the spend history the run leaves behind is
+exactly what the estimator reads, so the next staging interview's
+ranges tighten on their own.
 
 **`fast "<change>"`** — trivial inline change: one issue, ≤3 files, one
 atomic commit. Guardrail first: if the change plausibly touches more than 3
