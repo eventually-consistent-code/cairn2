@@ -27,6 +27,7 @@ import { milestoneCreate, milestoneList, milestoneComplete, } from "./planning/m
 import { resyncReport } from "./planning/resync.js";
 import { docsDriftReport } from "./planning/docs-drift.js";
 import { distillManifest } from "./planning/distill-manifest.js";
+import { estimatePhaseTokens } from "./planning/token-estimate.js";
 import { snapshotNote, trackerDelta } from "./planning/tracker-delta.js";
 import { MemoryIndex, indexDbPath, } from "./memory/index-store.js";
 import { createCard, listCards, readCard, updateCardConfidence, } from "./memory/cards.js";
@@ -1529,6 +1530,29 @@ export function buildServer(deps) {
             "with a note. Pure filesystem reads — no tracker, no git, no LLM judgment",
         inputSchema: z.object({ phase: z.number() }),
     }, wrap((a) => distillManifest(dir(), a.phase)));
+    server.registerTool("token_estimate", {
+        description: "Predict a phase's approximate agent-token spend as a RANGE before it runs (#129), " +
+            "calibrated from the metrics history the Stop hook writes (latest row per session — " +
+            "rows are cumulative). Tokens-per-point and tokens-per-issue distributions from " +
+            "completed phases scale by the target phase's PLAN.md issue count + tracker/body-line " +
+            "point estimates; no usable history degrades to a published wide default with " +
+            "confidence 'wide'. Decimal phase numbers (1.5) accepted. Deterministic given its " +
+            "inputs — the staging interview consumes this",
+        inputSchema: z.object({ phase: z.number() }),
+    }, wrap(async (a) => {
+        assertValidPhase(a.phase);
+        const d = dir();
+        // points are a nice-to-have -- an unconfigured/broken tracker must not
+        // sink the estimate, it just degrades to issue-count grain.
+        let tracker;
+        try {
+            tracker = await getTracker(d);
+        }
+        catch {
+            tracker = undefined;
+        }
+        return estimatePhaseTokens(d, a.phase, { tracker });
+    }));
     // Read-only plan artifacts as cairn:// resources (#99) -- the server's
     // first resources surface. Reads resolve dir() fresh, same as the tools.
     registerPlanResources(server, dir);

@@ -66,6 +66,7 @@ import {
 import { resyncReport } from "./planning/resync.js";
 import { docsDriftReport } from "./planning/docs-drift.js";
 import { distillManifest } from "./planning/distill-manifest.js";
+import { estimatePhaseTokens } from "./planning/token-estimate.js";
 import { snapshotNote, trackerDelta } from "./planning/tracker-delta.js";
 import {
   MemoryIndex,
@@ -2396,6 +2397,34 @@ export function buildServer(deps: {
       inputSchema: z.object({ phase: z.number() }),
     },
     wrap((a: { phase: number }) => distillManifest(dir(), a.phase)),
+  );
+
+  server.registerTool(
+    "token_estimate",
+    {
+      description:
+        "Predict a phase's approximate agent-token spend as a RANGE before it runs (#129), " +
+        "calibrated from the metrics history the Stop hook writes (latest row per session — " +
+        "rows are cumulative). Tokens-per-point and tokens-per-issue distributions from " +
+        "completed phases scale by the target phase's PLAN.md issue count + tracker/body-line " +
+        "point estimates; no usable history degrades to a published wide default with " +
+        "confidence 'wide'. Decimal phase numbers (1.5) accepted. Deterministic given its " +
+        "inputs — the staging interview consumes this",
+      inputSchema: z.object({ phase: z.number() }),
+    },
+    wrap(async (a: { phase: number }) => {
+      assertValidPhase(a.phase);
+      const d = dir();
+      // points are a nice-to-have -- an unconfigured/broken tracker must not
+      // sink the estimate, it just degrades to issue-count grain.
+      let tracker: Tracker | undefined;
+      try {
+        tracker = await getTracker(d);
+      } catch {
+        tracker = undefined;
+      }
+      return estimatePhaseTokens(d, a.phase, { tracker });
+    }),
   );
 
   // Read-only plan artifacts as cairn:// resources (#99) -- the server's
