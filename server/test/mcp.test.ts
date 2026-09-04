@@ -112,6 +112,7 @@ describe("cairn MCP server", () => {
         "continuity_get",
         "continuity_clear",
         "ledger_append",
+        "budget_check",
         "milestone_create",
         "milestone_list",
         "milestone_complete",
@@ -163,8 +164,10 @@ describe("cairn MCP server", () => {
     );
   });
 
-  it("pins the tool count at 81", async () => {
-    expect((await listToolNames()).length).toBe(81);
+  // 82 = 81 + budget_check (#131). A sibling branch adds token_estimate off
+  // the same 81 base; the merge coordinator reconciles this pin to 83.
+  it("pins the tool count at 82", async () => {
+    expect((await listToolNames()).length).toBe(82);
   });
 
   it("issue_attach reads the file and forwards to the tracker; missing file is NOT_FOUND", async () => {

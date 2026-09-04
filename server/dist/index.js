@@ -35,6 +35,7 @@ import { readHandoff, writeHandoff, clearHandoff } from "./core/continuity.js";
 import { registerPlanResources } from "./core/resources.js";
 import { installedVersions } from "./core/versions.js";
 import { appendLedger } from "./planning/ledger.js";
+import { checkBudget, openRunLedger, recordBoundary, refreshSpend, } from "./planning/budget-ledger.js";
 import { writeBanner, bannerStats } from "./memory/banner.js";
 import { startTrace, appendTrace, listTraces, closeTrace, } from "./trace/store.js";
 import { KIND_SPECS, appendSession, closeSession, sessionLandscape, startSession, } from "./sessions/store.js";
@@ -835,6 +836,37 @@ export function buildServer(deps) {
             issue: entry.issueId,
         }, d);
         return result;
+    }));
+    server.registerTool("budget_check", {
+        description: "Spend ledger gate for headless batch runs — re-reads actual spend (latest metrics row per session, "
+            + "sessions since the run opened) and answers proceed/stop against the run's ceilings. "
+            + "'stop' means START no new phase/wave; in-flight work finishes (bounded overshoot ≤ one wave). "
+            + "Pass phase to record an append-only boundary row; omit it for a read-only status poll. "
+            + "innerBudgetSuggestion is the inner in-run Workflow budget the executor passes down.",
+        inputSchema: z.object({
+            runId: z.string(),
+            phase: z.union([z.number(), z.string()]).optional(),
+            wave: z.union([z.number(), z.string()]).optional(),
+            note: z.string().optional(),
+            ceilingTokens: z.number().positive().optional(),
+            ceilingUsd: z.number().positive().optional(),
+            startedAt: z.string().optional(),
+        }),
+    }, wrap((a) => {
+        const ledger = openRunLedger(dir(), {
+            runId: a.runId,
+            ceilingTokens: a.ceilingTokens,
+            ceilingUsd: a.ceilingUsd,
+            startedAt: a.startedAt,
+        });
+        // phase given -> this is a real boundary: persist the row. Otherwise
+        // a status poll: refresh totals in memory, never grow the history.
+        if (a.phase !== undefined) {
+            return recordBoundary(ledger, {
+                phase: a.phase, wave: a.wave, note: a.note,
+            });
+        }
+        return checkBudget(refreshSpend(ledger));
     }));
     server.registerTool("milestone_create", {
         description: "Start the next milestone — native tracker object when the backend supports it; stamps milestone_id into roadmap.md",
