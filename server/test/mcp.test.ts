@@ -113,6 +113,7 @@ describe("cairn MCP server", () => {
         "continuity_clear",
         "ledger_append",
         "budget_check",
+        "run_manifest",
         "milestone_create",
         "milestone_list",
         "milestone_complete",
@@ -165,8 +166,8 @@ describe("cairn MCP server", () => {
     );
   });
 
-  it("pins the tool count at 83", async () => {
-    expect((await listToolNames()).length).toBe(83);
+  it("pins the tool count at 84", async () => {
+    expect((await listToolNames()).length).toBe(84);
   });
 
   it("issue_attach reads the file and forwards to the tracker; missing file is NOT_FOUND", async () => {

@@ -1,0 +1,272 @@
+// The run manifest (#132): the staging interview's output and the headless
+// executor's sole source of authority. These tests cover the store contract —
+// round-trip fidelity, the version gate, runId isolation, pushAuth starting
+// false until explicitly granted, and the one-way status lifecycle.
+
+import { describe, it, expect, afterEach } from "vitest";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync, mkdirSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import {
+  createRunManifest,
+  grantPushAuth,
+  readRunManifest,
+  runManifestPath,
+  setRunStatus,
+} from "../src/planning/run-manifest.js";
+import type { ManifestPhase } from "../src/planning/run-manifest.js";
+import { CairnError } from "../src/errors.js";
+
+const dirs: string[] = [];
+afterEach(() => {
+  for (const d of dirs.splice(0)) rmSync(d, { recursive: true, force: true });
+});
+
+const tempDir = (prefix: string): string => {
+  const d = mkdtempSync(join(tmpdir(), prefix));
+  dirs.push(d);
+  return d;
+};
+
+const CREATED = "2026-09-01T00:00:00.000Z";
+
+const PHASES: ManifestPhase[] = [
+  {
+    number: 15,
+    name: "headless-build",
+    estimate: { low: 400_000, high: 2_100_000, estUsd: { low: 20, high: 525 } },
+    waves: 3,
+  },
+  {
+    number: 16,
+    name: "cleanup",
+    estimate: { low: 100_000, high: 1_000_000, estUsd: { low: 5, high: 250 } },
+  },
+];
+
+/** Fresh project + injectable base dir per test (budget-ledger convention). */
+function setup() {
+  const projectDir = tempDir("cairn-manifest-proj-");
+  const baseDir = tempDir("cairn-manifest-home-");
+  return { projectDir, baseDir };
+}
+
+describe("createRunManifest / readRunManifest", () => {
+  it("round-trips the full staging payload", () => {
+    const { projectDir, baseDir } = setup();
+    const written = createRunManifest(projectDir, {
+      runId: "run-1",
+      phases: PHASES,
+      ceiling: { tokens: 5_000_000, usd: 300 },
+      answers: [
+        { phase: 15, question: "which auth provider?", answer: "keep github" },
+      ],
+      createdAt: CREATED,
+      baseDir,
+    });
+    const read = readRunManifest(projectDir, "run-1", baseDir);
+    expect(read).toEqual(written);
+    expect(read.version).toBe(1);
+    expect(read.created).toBe(CREATED);
+    expect(read.phases).toEqual(PHASES);
+    expect(read.ceiling).toEqual({ tokens: 5_000_000, usd: 300 });
+    expect(read.answers).toEqual([
+      { phase: 15, question: "which auth provider?", answer: "keep github" },
+    ]);
+    expect(read.status).toBe("staged");
+  });
+
+  it("read is pure — the file's bytes are identical before and after", () => {
+    const { projectDir, baseDir } = setup();
+    createRunManifest(projectDir, {
+      runId: "run-1", phases: PHASES, createdAt: CREATED, baseDir,
+    });
+    const path = runManifestPath(projectDir, "run-1", baseDir);
+    const before = readFileSync(path, "utf8");
+    readRunManifest(projectDir, "run-1", baseDir);
+    expect(readFileSync(path, "utf8")).toBe(before);
+  });
+
+  it("no ceiling given persists as explicit null (uncapped, on purpose)", () => {
+    const { projectDir, baseDir } = setup();
+    createRunManifest(projectDir, {
+      runId: "run-1", phases: PHASES, createdAt: CREATED, baseDir,
+    });
+    expect(readRunManifest(projectDir, "run-1", baseDir).ceiling).toBeNull();
+  });
+
+  it("refuses to overwrite an existing manifest — one per run", () => {
+    const { projectDir, baseDir } = setup();
+    createRunManifest(projectDir, {
+      runId: "run-1", phases: PHASES, createdAt: CREATED, baseDir,
+    });
+    expect(() =>
+      createRunManifest(projectDir, {
+        runId: "run-1", phases: PHASES, createdAt: CREATED, baseDir,
+      }),
+    ).toThrowError(CairnError);
+  });
+
+  it("refuses an empty phase list — nothing to stage", () => {
+    const { projectDir, baseDir } = setup();
+    expect(() =>
+      createRunManifest(projectDir, {
+        runId: "run-1", phases: [], createdAt: CREATED, baseDir,
+      }),
+    ).toThrowError(/no phases/);
+  });
+
+  it("reading a never-staged run is NOT_FOUND", () => {
+    const { projectDir, baseDir } = setup();
+    try {
+      readRunManifest(projectDir, "ghost", baseDir);
+      expect.unreachable("should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(CairnError);
+      expect((e as CairnError).code).toBe("NOT_FOUND");
+    }
+  });
+});
+
+describe("version gate", () => {
+  it("rejects a manifest with a future version instead of guessing", () => {
+    const { projectDir, baseDir } = setup();
+    createRunManifest(projectDir, {
+      runId: "run-1", phases: PHASES, createdAt: CREATED, baseDir,
+    });
+    const path = runManifestPath(projectDir, "run-1", baseDir);
+    const doc = JSON.parse(readFileSync(path, "utf8"));
+    doc.version = 2;
+    writeFileSync(path, JSON.stringify(doc));
+    expect(() => readRunManifest(projectDir, "run-1", baseDir))
+      .toThrowError(/schema validation/);
+  });
+
+  it("rejects a corrupt (non-JSON) manifest with a human-first error", () => {
+    const { projectDir, baseDir } = setup();
+    const path = runManifestPath(projectDir, "run-1", baseDir);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "not json {");
+    expect(() => readRunManifest(projectDir, "run-1", baseDir))
+      .toThrowError(/not valid JSON/);
+  });
+});
+
+describe("runId isolation", () => {
+  it("two runs in one project never see each other's state", () => {
+    const { projectDir, baseDir } = setup();
+    createRunManifest(projectDir, {
+      runId: "run-a", phases: PHASES, createdAt: CREATED, baseDir,
+    });
+    createRunManifest(projectDir, {
+      runId: "run-b", phases: [PHASES[1]], createdAt: CREATED, baseDir,
+    });
+    grantPushAuth(projectDir, "run-a", { grantedAt: CREATED, baseDir });
+
+    const a = readRunManifest(projectDir, "run-a", baseDir);
+    const b = readRunManifest(projectDir, "run-b", baseDir);
+    expect(a.phases).toHaveLength(2);
+    expect(b.phases).toHaveLength(1);
+    expect(a.pushAuth.granted).toBe(true);
+    expect(b.pushAuth.granted).toBe(false); // run-a's grant never leaks
+  });
+
+  it("runIds that sanitize to the same filename cannot silently merge", () => {
+    const { projectDir, baseDir } = setup();
+    // 'run/1' and 'run:1' both collapse to 'run-1' on disk
+    createRunManifest(projectDir, {
+      runId: "run/1", phases: PHASES, createdAt: CREATED, baseDir,
+    });
+    expect(() => readRunManifest(projectDir, "run:1", baseDir))
+      .toThrowError(/belongs to run/);
+  });
+});
+
+describe("pushAuth", () => {
+  it("defaults to granted:false with manifest-phases scope and no grantedAt", () => {
+    const { projectDir, baseDir } = setup();
+    createRunManifest(projectDir, {
+      runId: "run-1", phases: PHASES, createdAt: CREATED, baseDir,
+    });
+    const m = readRunManifest(projectDir, "run-1", baseDir);
+    expect(m.pushAuth).toEqual({ granted: false, scope: "manifest-phases" });
+    expect(m.pushAuth.grantedAt).toBeUndefined();
+  });
+
+  it("grantPushAuth flips it and stamps grantedAt, persisted", () => {
+    const { projectDir, baseDir } = setup();
+    createRunManifest(projectDir, {
+      runId: "run-1", phases: PHASES, createdAt: CREATED, baseDir,
+    });
+    grantPushAuth(projectDir, "run-1", { grantedAt: CREATED, baseDir });
+    const m = readRunManifest(projectDir, "run-1", baseDir);
+    expect(m.pushAuth).toEqual({
+      granted: true, scope: "manifest-phases", grantedAt: CREATED,
+    });
+  });
+
+  it("cannot be granted once the run has left 'staged' — front door only", () => {
+    const { projectDir, baseDir } = setup();
+    createRunManifest(projectDir, {
+      runId: "run-1", phases: PHASES, createdAt: CREATED, baseDir,
+    });
+    setRunStatus(projectDir, "run-1", "running", baseDir);
+    expect(() => grantPushAuth(projectDir, "run-1", { baseDir }))
+      .toThrowError(/staging only/);
+  });
+});
+
+describe("status lifecycle", () => {
+  it("walks staged → running → complete", () => {
+    const { projectDir, baseDir } = setup();
+    createRunManifest(projectDir, {
+      runId: "run-1", phases: PHASES, createdAt: CREATED, baseDir,
+    });
+    expect(setRunStatus(projectDir, "run-1", "running", baseDir).status)
+      .toBe("running");
+    expect(setRunStatus(projectDir, "run-1", "complete", baseDir).status)
+      .toBe("complete");
+  });
+
+  it("allows running → stopped and staged → stopped (abandoned run)", () => {
+    const { projectDir, baseDir } = setup();
+    createRunManifest(projectDir, {
+      runId: "run-a", phases: PHASES, createdAt: CREATED, baseDir,
+    });
+    setRunStatus(projectDir, "run-a", "running", baseDir);
+    expect(setRunStatus(projectDir, "run-a", "stopped", baseDir).status)
+      .toBe("stopped");
+
+    createRunManifest(projectDir, {
+      runId: "run-b", phases: PHASES, createdAt: CREATED, baseDir,
+    });
+    expect(setRunStatus(projectDir, "run-b", "stopped", baseDir).status)
+      .toBe("stopped");
+  });
+
+  it("rejects every illegal move — no skipping, no resurrection", () => {
+    const { projectDir, baseDir } = setup();
+    createRunManifest(projectDir, {
+      runId: "run-1", phases: PHASES, createdAt: CREATED, baseDir,
+    });
+    // staged cannot jump straight to complete
+    expect(() => setRunStatus(projectDir, "run-1", "complete", baseDir))
+      .toThrowError(/cannot move/);
+    setRunStatus(projectDir, "run-1", "running", baseDir);
+    // running cannot go back to staged
+    expect(() => setRunStatus(projectDir, "run-1", "staged", baseDir))
+      .toThrowError(/cannot move/);
+    setRunStatus(projectDir, "run-1", "complete", baseDir);
+    // terminal states stay terminal — and the fix hint says so
+    try {
+      setRunStatus(projectDir, "run-1", "running", baseDir);
+      expect.unreachable("should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(CairnError);
+      expect((e as CairnError).message).toMatch(/cannot move/);
+      expect((e as CairnError).nextAction).toMatch(/terminal/);
+    }
+    expect(() => setRunStatus(projectDir, "run-1", "stopped", baseDir))
+      .toThrowError(/cannot move/);
+  });
+});
