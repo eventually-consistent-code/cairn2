@@ -33,7 +33,7 @@ executing that verb.
 | help | Render this verb reference | [verb] |
 | do | Freeform smart router — classify intent, dispatch the right verb | "<request>" |
 | waypoint | Pause/resume session continuity | [resume] |
-| scout | Research a phase only — resumable RESEARCH.md checkpoints | <N> |
+| scout | Research a phase only — resumable RESEARCH.md checkpoints | <N> [<N> ...] |
 | route | Re-route the roadmap — insert/remove/edit phases | insert\|remove\|edit <N> ["name"] |
 | probe | Risk-ordered throwaway spike experiments with verdicts | "<question>" \| (none = frontier) \| --wrap [<id>] |
 | draft | Multi-variant mockups on a shared theme | "<design question>" \| (none = frontier) \| --wrap [<id>] |
