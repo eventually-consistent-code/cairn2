@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased — headless-build (phase 15, 2026-09-04)
+
+- Building became budgetable: a token estimator turns any phase into an
+  honest cost range calibrated from real recorded spend (never a point
+  claim, wide by admission when history is thin), and every finished run
+  feeds the history that tightens the next estimate — the loop closes
+  itself.
+- The hands-off verb grew a batch mode: one staging conversation selects
+  phases (or fits them to a budget), runs the cross-phase research and its
+  single question round, and captures push authorization up front — the
+  council-adopted ship confirmation moved to run start, scope-limited to
+  exactly the approved phases, and declinable without losing the run.
+- Headless execution respects a hard boundary: actual spend is re-read at
+  every phase and wave boundary and no new work starts past the ceiling,
+  with the honest guarantee stated everywhere — overshoot is bounded by
+  at most one in-flight wave, recorded rather than hidden.
+- Headless never means invisible: a run announces itself on its own
+  tracker issue, comments every phase transition, refreshes the portfolio
+  board at each boundary, and survives kills — the run manifest is the
+  resume authority and can never widen its own scope or authorization.
+- The run ends in a report worth reading: per-phase outcomes with
+  reasons, estimate-versus-actual for each phase and the run, pushes made
+  under the pre-authorization, unattended decisions, and why the run
+  ended.
+- Research can sweep many phases at once: the phase-research command
+  accepts a list, works every phase's topics from one agent pool, and
+  still leaves each phase individually resumable.
+
 ## Unreleased — auto-docs (phase 14, 2026-09-01)
 
 - Documentation staleness became computed math: a deterministic `docs_drift`

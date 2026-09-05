@@ -17,7 +17,11 @@ for work items; git owns prose.
 - `planning/` — plan artifacts, tracker mirroring, drift detection
   (plan↔tracker and docs↔shipped-phases both — `docs_drift` reports
   which verified phases the docs haven't caught up with), per-phase
-  distill manifests, milestone lifecycle.
+  distill manifests, milestone lifecycle — plus the headless-batch
+  primitives: per-phase token estimation calibrated from recorded spend,
+  the run manifest (push authorization and scope, ADR 0007), and the
+  budget ledger enforcing the ceiling at phase/wave boundaries (ADR
+  0008).
 - `memory/` — disposable FTS index + git-committed memory cards with
   provenance and staleness checking.
 - `docs/` — documentation connectors (below) plus the marked-section
