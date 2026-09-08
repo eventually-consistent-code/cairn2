@@ -10,6 +10,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # check-dist.mjs reasons from git history (last commit touching
+          # server/dist) — a shallow clone would blind it, and it fails loudly
+          # on one rather than silently passing.
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -23,6 +28,16 @@ jobs:
           npx tsc --noEmit
       - name: surface conformance
         run: node scripts/check-surface.mjs
+      # A stray hardcoded tool total outside the two sanctioned pin sites
+      # survives merge-resolve passes silently — fail it here, and fail the
+      # known sites when they disagree with the live registry (issue #139).
+      - name: tool-count pins
+        run: node scripts/check-pins.mjs
+      # Install-free dist staleness triage from git shape alone — names the
+      # src files that moved after the last dist commit. The rebuild-and-diff
+      # step below stays the authoritative gate (issue #139).
+      - name: dist freshness (git shape)
+        run: node scripts/check-dist.mjs
       # A half-bumped release (one version file left behind) must fail here,
       # on every push and PR — not at tag time (see issue #79).
       - name: version sync
