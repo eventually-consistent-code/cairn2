@@ -9,6 +9,24 @@
 //   so the ~10-line collapse lives on both sides of that wall.
 //   Deterministic given its inputs -- no Date.now, no randomness. An estimate
 //   you can't reproduce is an estimate you can't trust.
+//
+//   Per-issue grain (#144): history phases keep their PLAN.md issue lists
+//   after summit archives them -- milestones/vN/<phase>/PLAN.md, the dir
+//   moves wholesale (see milestoneComplete). Both live and archived plans
+//   feed the tokens-per-issue distribution; real (phase total, issue count)
+//   pairs are what let a 4-issue phase estimate differently from a 3-issue
+//   one instead of both inheriting the same whole-phase envelope.
+//
+//   Cushion tightening curve (#144) -- a simple step function on the sample
+//   count of the distribution being spanned, nothing cleverer:
+//     n <= 2 samples: 0.75 / 1.25  (thin history -- the original cushions)
+//     3 <= n <= 5:    0.85 / 1.15
+//     n >= 6:         0.90 / 1.10  (floor -- token spend stays noisy)
+//   Rationale: each step needs enough real pairs to trust the min/max span
+//   itself before the cushion shrinks, and the floor admits that agent runs
+//   never get more predictable than roughly +/-10%. Only size-normalized
+//   grains (per-issue, per-point) tighten; the whole-phase fallback keeps
+//   the thin cushion forever because it can't see the target's size.
 // Author(s): John Reed
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -31,9 +49,23 @@ export const DEFAULT_PHASE_TOKENS = { low: 100_000, high: 1_000_000 };
 export const DEFAULT_USD_PER_MTOK = { low: 50, high: 250 };
 
 // Cushion applied around history-derived bounds -- admits estimator error and
-// turns a single-sample "distribution" into a real range.
-const LOW_CUSHION = 0.75;
-const HIGH_CUSHION = 1.25;
+// turns a single-sample "distribution" into a real range. Thin cushion is the
+// original 0.75/1.25; the curve (see header) narrows it as real sample pairs
+// accumulate. Steps are checked widest-threshold-first.
+const THIN_CUSHION = { low: 0.75, high: 1.25 };
+const CUSHION_STEPS: { minSamples: number; low: number; high: number }[] = [
+  { minSamples: 6, low: 0.9, high: 1.1 },
+  { minSamples: 3, low: 0.85, high: 1.15 },
+];
+
+/** Cushion for a size-normalized grain with `n` samples -- steps down per the
+ *  header's curve. The whole-phase fallback never calls this (stays thin). */
+function cushionFor(n: number): { low: number; high: number } {
+  for (const step of CUSHION_STEPS) {
+    if (n >= step.minSamples) return { low: step.low, high: step.high };
+  }
+  return THIN_CUSHION;
+}
 
 // The plan verb's body-line degrade convention for estimate-less backends:
 // "Estimate: N points / ~Xh." -- points required, hours optional.
@@ -45,7 +77,14 @@ export interface TokenEstimate {
   range: { low: number; high: number };
   unit: "tokens";
   estUsd: { low: number; high: number };
-  basis: { historyPhases: number; pointsTotal: number | null; issueCount: number };
+  basis: {
+    historyPhases: number;
+    pointsTotal: number | null;
+    issueCount: number;
+    /** How many real (phase total, issue count) pairs fed the per-issue
+     *  grain -- 0 means the range came from whole-phase totals or defaults. */
+    perIssuePairs: number;
+  };
   confidence: "wide" | "calibrated";
   notes: string[];
 }
@@ -99,7 +138,11 @@ interface PhaseDirInfo { base: string; issues: string[]; verified: boolean; arch
 
 /** Resolve a phase number to its dir -- live under phases/, else archived
  *  under milestones/vN (newest vN wins, mirroring distill-manifest's rule).
- *  Returns null when the phase has no local dir at all. */
+ *  Archived phase dirs sit DIRECTLY under milestones/vN -- milestoneComplete
+ *  renames phases/<dir> to milestones/vN/<dir>, no phases/ level in between
+ *  (the old scan looked for one and never found archived plans, which is why
+ *  completed history used to lose its per-issue grain). Returns null when
+ *  the phase has no local dir at all. */
 function findPhaseDir(projectDir: string, phaseNumber: number): PhaseDirInfo | null {
   const root = plansRoot(projectDir);
   const scan = (dir: string, archived: boolean): PhaseDirInfo | null => {
@@ -124,7 +167,7 @@ function findPhaseDir(projectDir: string, phaseNumber: number): PhaseDirInfo | n
       .filter((v) => /^v\d+$/.test(v))
       .sort((a, b) => Number(b.slice(1)) - Number(a.slice(1)));
     for (const v of versions) {
-      const hit = scan(join(msDir, v, "phases"), true);
+      const hit = scan(join(msDir, v), true);
       if (hit) return hit;
     }
   }
@@ -229,6 +272,7 @@ export async function estimatePhaseTokens(
 
   const perPhase: number[] = []; // total counted tokens per completed phase
   const perIssue: number[] = []; // tokens per issue, where issue count known
+  const perIssuePhases: number[] = []; // which phases contributed those pairs
   const perPoint: number[] = []; // tokens per point, where points known
   const rates: number[] = []; // usd per counted token
   let skippedInFlight = 0;
@@ -245,6 +289,7 @@ export async function estimatePhaseTokens(
     if (g.usd > 0) rates.push(g.usd / g.tokens);
     if (info && info.issues.length > 0) {
       perIssue.push(g.tokens / info.issues.length);
+      perIssuePhases.push(p);
       const pts = await pointsFor(info.issues, opts.tracker);
       if (pts.total !== null && pts.total > 0) perPoint.push(g.tokens / pts.total);
     }
@@ -254,23 +299,30 @@ export async function estimatePhaseTokens(
   }
 
   // -- combine ---------------------------------------------------------------
-  const span = (samples: number[], scale: number): { low: number; high: number } => ({
-    low: Math.min(...samples) * scale * LOW_CUSHION,
-    high: Math.max(...samples) * scale * HIGH_CUSHION,
+  const span = (
+    samples: number[], scale: number, cushion: { low: number; high: number },
+  ): { low: number; high: number } => ({
+    low: Math.min(...samples) * scale * cushion.low,
+    high: Math.max(...samples) * scale * cushion.high,
   });
+  const pct = (c: { low: number; high: number }): string =>
+    `-${Math.round((1 - c.low) * 100)}%/+${Math.round((c.high - 1) * 100)}%`;
 
   const candidates: { low: number; high: number }[] = [];
   if (perPoint.length > 0 && targetPoints.total !== null && targetPoints.total > 0) {
-    candidates.push(span(perPoint, targetPoints.total));
-    notes.push(`tokens-per-point calibrated from ${perPoint.length} completed phase(s)`);
+    const cushion = cushionFor(perPoint.length);
+    candidates.push(span(perPoint, targetPoints.total, cushion));
+    notes.push(`tokens-per-point calibrated from ${perPoint.length} completed phase(s), cushion ${pct(cushion)}`);
   }
   if (perIssue.length > 0 && issueCount > 0) {
-    candidates.push(span(perIssue, issueCount));
-    notes.push(`tokens-per-issue calibrated from ${perIssue.length} completed phase(s)`);
+    const cushion = cushionFor(perIssue.length);
+    candidates.push(span(perIssue, issueCount, cushion));
+    notes.push(`tokens-per-issue calibrated from ${perIssue.length} completed phase(s) (${perIssuePhases.join(", ")}), cushion ${pct(cushion)}`);
   }
   if (candidates.length === 0 && perPhase.length > 0) {
-    candidates.push(span(perPhase, 1));
-    notes.push(`no per-issue grain available (history phases lack local PLAN.md issue lists) -- range scaled from ${perPhase.length} completed phase total(s)`);
+    // whole-phase totals can't see the target's size -- thin cushion forever
+    candidates.push(span(perPhase, 1, THIN_CUSHION));
+    notes.push(`no per-issue grain available (no PLAN.md issue list found for history phases, live or archived) -- range scaled from ${perPhase.length} completed phase total(s), cushion ${pct(THIN_CUSHION)}`);
   }
 
   let range: { low: number; high: number };
@@ -311,6 +363,7 @@ export async function estimatePhaseTokens(
       historyPhases: used.length,
       pointsTotal: targetPoints.total,
       issueCount,
+      perIssuePairs: perIssue.length,
     },
     confidence,
     notes,

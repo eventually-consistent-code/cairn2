@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { appendFileSync, mkdtempSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync, mkdirSync, mkdtempSync, renameSync, writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -65,7 +67,9 @@ describe("estimatePhaseTokens", () => {
       (est.range.low / 1e6) * DEFAULT_USD_PER_MTOK.low, 2);
     expect(est.estUsd.high).toBeCloseTo(
       (est.range.high / 1e6) * DEFAULT_USD_PER_MTOK.high, 2);
-    expect(est.basis).toEqual({ historyPhases: 0, pointsTotal: null, issueCount: 3 });
+    expect(est.basis).toEqual({
+      historyPhases: 0, pointsTotal: null, issueCount: 3, perIssuePairs: 0,
+    });
     expect(est.notes.join(" ")).toContain("wide default");
   });
 
@@ -135,6 +139,85 @@ describe("estimatePhaseTokens", () => {
       .rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(estimatePhaseTokens(dir, 42, { metricsFile }))
       .rejects.toBeInstanceOf(CairnError);
+  });
+
+  // Move a scaffolded live phase into milestones/v1/<dir> the same way
+  // milestoneComplete does -- the dir moves wholesale, PLAN.md and all.
+  function archivePhase(phaseDir: string): void {
+    const msDir = join(dir, ".cairn", "plans", "milestones", "v1");
+    mkdirSync(msDir, { recursive: true });
+    renameSync(join(dir, ".cairn", "plans", "phases", phaseDir),
+      join(msDir, phaseDir));
+  }
+
+  it("archived plans feed per-issue grain: rehearsal shape narrows visibly vs the whole-phase fallback", async () => {
+    // Rehearsal shape (#144): history phase totals differ wildly because the
+    // phases differ in SIZE, while per-issue rates stay consistent. The old
+    // code never found archived PLAN.md issue lists, fell back to whole-phase
+    // totals, and staged the same enormous range for every target.
+    scaffoldPhase(dir, 14, "alpha");
+    writePlanIssues(dir, "14-alpha", ["GH-11", "GH-12"]); // 2 issues
+    archivePhase("14-alpha");
+    scaffoldPhase(dir, 15, "beta");
+    writePlanIssues(dir, "15-beta",
+      ["GH-13", "GH-14", "GH-15", "GH-16", "GH-17", "GH-18", "GH-19", "GH-20"]); // 8 issues
+    archivePhase("15-beta");
+    // 160k over 2 issues (80k/issue); 720k over 8 issues (90k/issue)
+    appendFileSync(metricsFile, row("s14", 14, 100_000, 60_000, 32));
+    appendFileSync(metricsFile, row("s15", 15, 600_000, 120_000, 144));
+    // target: 4 issues, live
+    scaffoldPhase(dir, 16, "gamma");
+    writePlanIssues(dir, "16-gamma", ["GH-21", "GH-22", "GH-23", "GH-24"]);
+
+    const est = await estimatePhaseTokens(dir, 16, { metricsFile });
+    expect(est.confidence).toBe("calibrated");
+    // per-issue grain recovered from the ARCHIVED plans: 80k..90k per issue
+    // x 4 issues, thin cushion 0.75/1.25 (only 2 pairs)
+    expect(est.range).toEqual({ low: 240_000, high: 450_000 });
+    expect(est.basis.perIssuePairs).toBe(2);
+    expect(est.notes.join(" ")).toContain("(14, 15)");
+    // the old whole-phase fallback spanned raw totals: 120k..900k -- the new
+    // range must be visibly narrower (here: 210k wide vs 780k wide)
+    const oldFallback = { low: 160_000 * 0.75, high: 720_000 * 1.25 };
+    expect(est.range.high - est.range.low)
+      .toBeLessThan((oldFallback.high - oldFallback.low) / 3);
+    expect(est.notes.join(" ")).not.toContain("no per-issue grain");
+  });
+
+  it("cushions tighten to -15%/+15% once three per-issue pairs exist", async () => {
+    // phase 1 (beforeEach): 2 issues, 150k -> 75k/issue
+    appendFileSync(metricsFile, row("s1", 1, 100_000, 50_000, 30));
+    // phase 3: 3 issues, 240k -> 80k/issue
+    scaffoldPhase(dir, 3, "more");
+    writePlanIssues(dir, "03-more", ["GH-6", "GH-7", "GH-8"]);
+    writeFileSync(join(dir, ".cairn", "plans", "phases", "03-more", "VERIFICATION.md"), "passed\n");
+    appendFileSync(metricsFile, row("s3", 3, 200_000, 40_000, 48));
+    // phase 4: 2 issues, 180k -> 90k/issue
+    scaffoldPhase(dir, 4, "even");
+    writePlanIssues(dir, "04-even", ["GH-9", "GH-10"]);
+    writeFileSync(join(dir, ".cairn", "plans", "phases", "04-even", "VERIFICATION.md"), "passed\n");
+    appendFileSync(metricsFile, row("s4", 4, 150_000, 30_000, 36));
+
+    const est = await estimatePhaseTokens(dir, 2, { metricsFile }); // 3 issues
+    // 75k..90k per issue x 3 issues, cushion 0.85/1.15 (3 pairs)
+    expect(est.range).toEqual({ low: 191_250, high: 310_500 });
+    expect(est.basis.perIssuePairs).toBe(3);
+    expect(est.notes.join(" ")).toContain("-15%/+15%");
+  });
+
+  it("cushions floor at -10%/+10% with six per-issue pairs", async () => {
+    for (let p = 3; p <= 8; p++) {
+      const phaseDir = `0${p}-h${p}`;
+      scaffoldPhase(dir, p, `h${p}`);
+      writePlanIssues(dir, phaseDir, [`GH-${p}a`, `GH-${p}b`]); // 2 issues each
+      writeFileSync(join(dir, ".cairn", "plans", "phases", phaseDir, "VERIFICATION.md"), "passed\n");
+      appendFileSync(metricsFile, row(`s${p}`, p, 80_000, 20_000, 20)); // 50k/issue
+    }
+    const est = await estimatePhaseTokens(dir, 2, { metricsFile }); // 3 issues
+    // 50k per issue x 3 issues, floor cushion 0.90/1.10 (6 pairs)
+    expect(est.range).toEqual({ low: 135_000, high: 165_000 });
+    expect(est.basis.perIssuePairs).toBe(6);
+    expect(est.notes.join(" ")).toContain("-10%/+10%");
   });
 
   it("deterministic: same inputs, byte-identical result", async () => {
