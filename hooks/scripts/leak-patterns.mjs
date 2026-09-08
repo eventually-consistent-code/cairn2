@@ -4,15 +4,30 @@
  * Purpose: THE single source for cairn leak patterns (#2221) -- consumed by
  *   the pretooluse-leakguard hook and, via the CLI mode, by the distill and
  *   ship verbs for output scrubbing. node: builtins only (lib.mjs rule).
+ *
+ *   Path-scoped exemption (#140): files under server/src/ and server/dist/
+ *   are exempt from the `cairn-path` pattern ONLY. The server MANAGES the
+ *   .cairn planning dirs -- ledger.ts, milestones.ts, distill-manifest.ts
+ *   and friends must spell out .cairn paths to do their job. The guard
+ *   protects OUTBOUND text (docs, tracker-bound prose, misc source) from
+ *   internal refs; it is not meant to forbid the implementation from naming
+ *   the dirs it manages. Every OTHER pattern (phase refs, seed/backlog
+ *   labels, tracker ids, extras) still applies to server source at full
+ *   strength. This lives in code rather than cairn.json `leakGuard.allow`
+ *   because allow is all-or-nothing per path: allowlisting server/src/**
+ *   would silently drop tracker-id and label scanning there too.
  * Author(s): John Reed
  */
 
 import { readFileSync, existsSync } from "node:fs";
 import { basename, join } from "node:path";
 
+// Constants
+const CAIRN_PATH_EXEMPT_PREFIXES = ["server/src/", "server/dist/"];
+
 export function buildPatterns(config) {
   const patterns = [
-    { name: "cairn-path", re: /\.cairn\// },
+    { name: "cairn-path", re: /\.cairn\//, exemptPrefixes: CAIRN_PATH_EXEMPT_PREFIXES },
     { name: "phase-ref", re: /\b(?:phases\/\d{2}(?:\.\d+)?-[a-z0-9-]+|milestones\/v\d+)\b/ },
     { name: "cairn-label", re: /cairn:(?:seed|backlog)/ },
   ];
@@ -29,6 +44,16 @@ export function buildPatterns(config) {
     }
   }
   return patterns;
+}
+
+// Filters the pattern list down to what applies to one file -- drops any
+// pattern whose exemptPrefixes match the path (repo-relative from the hook's
+// diff headers; the `/`-infix check also catches absolute paths from CLI use).
+export function patternsForFile(path, patterns) {
+  return patterns.filter(({ exemptPrefixes }) => {
+    if (!exemptPrefixes) return true;
+    return !exemptPrefixes.some((p) => path.startsWith(p) || path.includes(`/${p}`));
+  });
 }
 
 export function scanLines(lines, patterns) {
@@ -72,7 +97,7 @@ if (invokedDirectly && process.argv.length > 2) {
     } catch {
       continue;
     }
-    for (const h of scanLines(text.split("\n"), patterns)) {
+    for (const h of scanLines(text.split("\n"), patternsForFile(file, patterns))) {
       console.log(`${file}:${h.line}: [${h.name}] ${h.match}`);
       bad = true;
     }
