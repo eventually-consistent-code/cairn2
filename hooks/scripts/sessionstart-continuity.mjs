@@ -4,7 +4,9 @@
  * Purpose: SessionStart hook -- inject the project's recall banner (if any)
  *   and a compact resume block (if a handoff exists and continuity.resume
  *   isn't "off") as additionalContext, so a new session picks up where the
- *   last one left off without the user re-explaining state. Fire-and-forget:
+ *   last one left off without the user re-explaining state. Also emits a
+ *   one-line task-mirror advisory in cairn projects when
+ *   CLAUDE_CODE_ENABLE_TODO_TOOLS isn't set (#107). Fire-and-forget:
  *   any error, or nothing to show, is a silent no-op.
  * Author(s): John Reed
  */
@@ -13,6 +15,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
   handoffPath, bannerPath, mtimeMs, readJson, resumeMode, humanizeAge, existsSync,
+  readCairnConfig,
 } from "./lib.mjs";
 
 /** Compact resume block: phase, issue, current task, next_action, age. Phrasing depends on mode. */
@@ -61,6 +64,17 @@ function main() {
         " — the next /cairn:status, /cairn:plan, or /cairn:work scans it.");
     }
   } catch { /* no marker or unreadable: no nudge */ }
+
+  // Task-mirror advisory (#107): Claude Code 2.1.233+ ships the native task
+  // tools default-OFF on newer models unless CLAUDE_CODE_ENABLE_TODO_TOOLS=1.
+  // No tools -> no tasks -> no TaskCreated/TaskCompleted events -> the mirror
+  // spool never fires. The model isn't visible from hook context, so this is
+  // phrased conditionally and only emitted for cairn projects.
+  if (readCairnConfig(projectDir) && process.env.CLAUDE_CODE_ENABLE_TODO_TOOLS !== "1") {
+    parts.push("note: Claude Code 2.1.233+ ships task tools default-off on newer models" +
+      " — if TaskCreate is unavailable this session, cairn's native-task tracker mirror" +
+      " is dormant; set CLAUDE_CODE_ENABLE_TODO_TOOLS=1 to wake it.");
+  }
 
   if (parts.length === 0) return;
 

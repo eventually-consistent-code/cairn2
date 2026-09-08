@@ -49,8 +49,11 @@ team's tracker say". The two compose instead of competing: cairn
 mirrors native Tasks to your tracker automatically — a task created
 in-session appears as a tracker item and closes itself when the task
 completes (hook-driven, no polling; task ids are session-scoped, so
-cairn keys them per session). *Verified against Claude Code 2.1.223,
-2026-08-14.*
+cairn keys them per session). One flag caveat: Claude Code 2.1.233+
+ships the task tools default-off on newer models, so the mirror needs
+`CLAUDE_CODE_ENABLE_TODO_TOOLS=1` there — no tools, no tasks, nothing
+to mirror. *Verified against Claude Code 2.1.223, 2026-08-14; flag
+caveat added 2026-09-07.*
 
 **Auto Memory (Claude Code).** On by default since 2.1.59 — session
 continuity is now a platform freebie, and cairn doesn't compete with
