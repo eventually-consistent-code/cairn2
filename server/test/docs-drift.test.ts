@@ -94,6 +94,30 @@ describe("docsDriftReport", () => {
     ]);
   });
 
+  it("matches a hyphenated docs heading against a spaced phase name", () => {
+    // live miss: heading said "auto-docs", parsed phase name is "auto docs"
+    scaffoldPhase(dir, 9, "auto docs");
+    writeFileSync(join(dir, ".cairn/plans/phases/09-auto-docs/VERIFICATION.md"), "# ok\n");
+    writeFileSync(join(dir, "CHANGELOG.md"),
+      "# Changelog\n\n- Phase 1: core shipped\n\n## auto-docs\n\n- shipped the pipeline\n");
+    commitAt(dir, ["CHANGELOG.md"], "changelog", T2);
+    const r = docsDriftReport(dir);
+    expect(r.flagged).toEqual([]);
+    expect(r.ok).toEqual(["01-core", "09-auto-docs"]);
+  });
+
+  it("matches 'phase N' split across a markdown line wrap", () => {
+    // live miss: "phase\n9.5" -- the label straddled a soft line break
+    scaffoldPhase(dir, 9.5, "elicitation");
+    writeFileSync(join(dir, ".cairn/plans/phases/09.5-elicitation/VERIFICATION.md"), "# ok\n");
+    writeFileSync(join(dir, "CHANGELOG.md"),
+      "# Changelog\n\n- Phase 1: core shipped\n- a long entry that breaks right at phase\n  9.5 and keeps going\n");
+    commitAt(dir, ["CHANGELOG.md"], "changelog", T2);
+    const r = docsDriftReport(dir);
+    expect(r.flagged).toEqual([]);
+    expect(r.ok).toEqual(["01-core", "09.5-elicitation"]);
+  });
+
   it("ignores unverified phases entirely", () => {
     scaffoldPhase(dir, 2, "later"); // no VERIFICATION.md
     const r = docsDriftReport(dir);
