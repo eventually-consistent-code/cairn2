@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — rehearsal-guards (2026-09-07)
+
+The second half of the first headless batch run's cargo:
+
+- The native-task mirror's honest posture is settled: with the task
+  tools off (the default on newer models) it sleeps silently by design —
+  every place that promised automatic mirroring now carries the wake-up
+  flag, and a session advisory nudges it without guessing the model.
+- CI grew two fast guards: a sweep that fails on any test asserting a
+  wrong or stray tool total, and an install-free freshness check that
+  catches committed builds lagging their source — both proven against
+  seeded violations before landing.
+- The leak guard learned the one legitimate exception: server source may
+  reference the internal directories it manages, exempt from the path
+  pattern only — every other check still applies there, and full
+  strictness holds everywhere else.
+
 ## Unreleased — dress-rehearsal (2026-09-07)
 
 The first headless batch run's cargo — four friction fixes from the v5
