@@ -10,6 +10,21 @@ import { CairnError } from "../errors.js";
 import { attemptRe, buildMarker, findHeadings, findMarker, parseSections, } from "../research/sections.js";
 /** The writer's marker namespace -- <!-- docs: done|pending|failed ... -->. */
 export const DOCS_NAMESPACE = "docs";
+// Guards the live bug: callers passing meta as a bare date string
+// ({meta: '2026-09-01'}) instead of a SectionMeta object. Property access on
+// a string ('2026-09-01'.date) is undefined, so buildMarker silently dropped
+// EVERY meta field and rebuilt a bare '<!-- docs: done -->'. Accept the
+// date-string shorthand; any other string meta is a loud typo, never a
+// silent bare marker.
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const normalizeMeta = (meta) => {
+    if (typeof meta !== "string")
+        return meta;
+    const trimmed = meta.trim();
+    if (DATE_ONLY_RE.test(trimmed))
+        return { date: trimmed };
+    throw new CairnError("CONFIG_INVALID", `meta must be a { date, model, note } object or a bare YYYY-MM-DD date string, got '${meta}'`, "pass meta as an object, e.g. { date: '2026-09-01', model: 'sonnet' }");
+};
 // A replacement body must not restructure the document: a ##+ heading inside
 // it would split the marked region (breaking the next write), and a docs:
 // marker inside it would forge machine provenance. Fenced examples are fine.
@@ -71,7 +86,7 @@ export function writeSection(markdown, heading, body, opts) {
     const lines = markdown.split("\n");
     const region = findRegion(lines, heading);
     const marker = opts?.state !== undefined
-        ? buildMarker(DOCS_NAMESPACE, opts.state, opts.meta)
+        ? buildMarker(DOCS_NAMESPACE, opts.state, normalizeMeta(opts.meta))
         : lines[region.markerIndex];
     const out = [
         ...lines.slice(0, region.markerIndex),
@@ -102,7 +117,7 @@ export function createSection(markdown, heading, body, opts) {
     if (findHeadings(lines).some((h) => h.heading === heading)) {
         throw new CairnError("PRECONDITION_FAILED", `section '${heading}' already exists -- refusing to append a duplicate`, "use writeSection to update the existing section");
     }
-    const marker = buildMarker(DOCS_NAMESPACE, opts?.state ?? "done", opts?.meta);
+    const marker = buildMarker(DOCS_NAMESPACE, opts?.state ?? "done", normalizeMeta(opts?.meta));
     const base = markdown.replace(/\s+$/, "");
     const block = [
         `${"#".repeat(level)} ${heading.trim()}`,

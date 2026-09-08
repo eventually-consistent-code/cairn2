@@ -20,8 +20,9 @@ export interface WriteSectionOptions {
   /** Rebuild the marker with this state; omitted, the existing marker line
    *  is preserved byte-for-byte. */
   state?: SectionState;
-  /** Marker meta (date/model/note) -- applied only when state is given. */
-  meta?: SectionMeta;
+  /** Marker meta (date/model/note) -- applied only when state is given.
+   *  A bare 'YYYY-MM-DD' string is accepted as shorthand for { date }. */
+  meta?: SectionMeta | string;
 }
 
 export interface CreateSectionOptions {
@@ -29,8 +30,25 @@ export interface CreateSectionOptions {
   level?: number;
   /** Marker state stamped on the new section (default 'done'). */
   state?: SectionState;
-  meta?: SectionMeta;
+  /** Marker meta; a bare 'YYYY-MM-DD' string means { date }. */
+  meta?: SectionMeta | string;
 }
+
+// Guards the live bug: callers passing meta as a bare date string
+// ({meta: '2026-09-01'}) instead of a SectionMeta object. Property access on
+// a string ('2026-09-01'.date) is undefined, so buildMarker silently dropped
+// EVERY meta field and rebuilt a bare '<!-- docs: done -->'. Accept the
+// date-string shorthand; any other string meta is a loud typo, never a
+// silent bare marker.
+const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
+const normalizeMeta = (meta?: SectionMeta | string): SectionMeta | undefined => {
+  if (typeof meta !== "string") return meta;
+  const trimmed = meta.trim();
+  if (DATE_ONLY_RE.test(trimmed)) return { date: trimmed };
+  throw new CairnError("CONFIG_INVALID",
+    `meta must be a { date, model, note } object or a bare YYYY-MM-DD date string, got '${meta}'`,
+    "pass meta as an object, e.g. { date: '2026-09-01', model: 'sonnet' }");
+};
 
 // A replacement body must not restructure the document: a ##+ heading inside
 // it would split the marked region (breaking the next write), and a docs:
@@ -104,7 +122,7 @@ export function writeSection(markdown: string, heading: string, body: string,
   const lines = markdown.split("\n");
   const region = findRegion(lines, heading);
   const marker = opts?.state !== undefined
-    ? buildMarker(DOCS_NAMESPACE, opts.state, opts.meta)
+    ? buildMarker(DOCS_NAMESPACE, opts.state, normalizeMeta(opts.meta))
     : lines[region.markerIndex];
   const out = [
     ...lines.slice(0, region.markerIndex),
@@ -143,7 +161,7 @@ export function createSection(markdown: string, heading: string, body: string,
       `section '${heading}' already exists -- refusing to append a duplicate`,
       "use writeSection to update the existing section");
   }
-  const marker = buildMarker(DOCS_NAMESPACE, opts?.state ?? "done", opts?.meta);
+  const marker = buildMarker(DOCS_NAMESPACE, opts?.state ?? "done", normalizeMeta(opts?.meta));
   const base = markdown.replace(/\s+$/, "");
   const block = [
     `${"#".repeat(level)} ${heading.trim()}`,

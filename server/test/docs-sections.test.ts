@@ -287,6 +287,58 @@ describe("writeSectionFile — atomic file writer", () => {
     }
   });
 
+  // Regression: observed live (twice) -- {state: 'done', meta: '2026-09-01'}
+  // produced a bare '<!-- docs: done -->' on disk. String property access
+  // ('2026-09-01'.date) is undefined, so buildMarker silently dropped every
+  // meta field. The date-string shorthand must land IN the rebuilt marker.
+  it("regression: a bare date-string meta rebuilds the marker WITH the date", () => {
+    const path = setup();
+    const res = writeSectionFile(path, "Overview", "distilled body.", {
+      state: "done",
+      meta: "2026-09-01",
+    });
+    expect(res.changed).toBe(true);
+    const onDisk = readFileSync(path, "utf8");
+    expect(onDisk).toContain("<!-- docs: done 2026-09-01 -->");
+    // the exact observed failure mode: date silently dropped to a bare marker
+    expect(onDisk).not.toContain("<!-- docs: done -->");
+  });
+
+  it("meta survives a second identical write -- zero diff, date intact", () => {
+    const path = setup();
+    const opts = { state: "done" as const, meta: "2026-09-01" };
+    writeSectionFile(path, "Overview", "distilled body.", opts);
+    const after = readFileSync(path, "utf8");
+    const res = writeSectionFile(path, "Overview", "distilled body.", opts);
+    expect(res.changed).toBe(false);
+    expect(readFileSync(path, "utf8")).toBe(after);
+    expect(after).toContain("<!-- docs: done 2026-09-01 -->");
+  });
+
+  it("a no-opts rewrite still preserves the existing marker byte-for-byte", () => {
+    const path = setup();
+    const res = writeSectionFile(path, "Overview", "fresh body, no opts.");
+    expect(res.changed).toBe(true);
+    const onDisk = readFileSync(path, "utf8");
+    expect(onDisk).toContain("<!-- docs: done 2026-08-30 -->");
+    expect(onDisk).toContain("fresh body, no opts.");
+  });
+
+  it("a non-date string meta throws CONFIG_INVALID -- never a silent bare marker", () => {
+    const path = setup();
+    try {
+      writeSectionFile(path, "Overview", "body.", {
+        state: "done",
+        meta: "next tuesday",
+      });
+      expect.unreachable("should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(CairnError);
+      expect((e as CairnError).code).toBe("CONFIG_INVALID");
+    }
+    expect(readFileSync(path, "utf8")).toBe(DOC);
+  });
+
   it("missing file is typed NOT_FOUND", () => {
     try {
       writeSectionFile(join(tmpdir(), "cairn-docs-nope", "x.md"), "A", "b.");
