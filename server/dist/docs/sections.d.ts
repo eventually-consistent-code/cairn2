@@ -5,15 +5,17 @@ export interface WriteSectionOptions {
     /** Rebuild the marker with this state; omitted, the existing marker line
      *  is preserved byte-for-byte. */
     state?: SectionState;
-    /** Marker meta (date/model/note) -- applied only when state is given. */
-    meta?: SectionMeta;
+    /** Marker meta (date/model/note) -- applied only when state is given.
+     *  A bare 'YYYY-MM-DD' string is accepted as shorthand for { date }. */
+    meta?: SectionMeta | string;
 }
 export interface CreateSectionOptions {
     /** Heading level for the new section: 2..6, default 2 ('##'). */
     level?: number;
     /** Marker state stamped on the new section (default 'done'). */
     state?: SectionState;
-    meta?: SectionMeta;
+    /** Marker meta; a bare 'YYYY-MM-DD' string means { date }. */
+    meta?: SectionMeta | string;
 }
 /**
  * Return new markdown with the docs-marked region under `heading` replaced by
