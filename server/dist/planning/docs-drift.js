@@ -52,12 +52,20 @@ function gitTimestamp(projectDir, paths) {
         return undefined;
     }
 }
-// Lowercased contents of CHANGELOG.md plus every markdown file under docs/.
+// Match-normalization applied to BOTH sides of the stamp check: lowercase,
+// fold hyphens to spaces, collapse every whitespace run (newlines included)
+// to a single space. Two live misses drove this -- a heading's "auto-docs"
+// vs the parsed phase name "auto docs", and "phase\n9.5" split across a
+// markdown line wrap.
+function normalizeForMatch(text) {
+    return text.toLowerCase().replace(/-/g, " ").replace(/\s+/g, " ");
+}
+// Normalized contents of CHANGELOG.md plus every markdown file under docs/.
 function docsCorpus(projectDir) {
     const corpus = [];
     const changelog = join(projectDir, "CHANGELOG.md");
     if (existsSync(changelog))
-        corpus.push(readFileSync(changelog, "utf8").toLowerCase());
+        corpus.push(normalizeForMatch(readFileSync(changelog, "utf8")));
     const walk = (dir) => {
         for (const entry of readdirSync(dir)) {
             const path = join(dir, entry);
@@ -66,7 +74,7 @@ function docsCorpus(projectDir) {
                 continue;
             }
             if (DOC_EXT_RE.test(entry))
-                corpus.push(readFileSync(path, "utf8").toLowerCase());
+                corpus.push(normalizeForMatch(readFileSync(path, "utf8")));
         }
     };
     const docsDir = join(projectDir, "docs");
@@ -93,8 +101,12 @@ export function docsDriftReport(projectDir) {
         const reasons = [];
         // (a) stamp check -- the canonical "Phase N" label or the phase's plain
         // name (ledger headers, changelog entries, and milestone groupings all
-        // carry one of the two).
-        const needles = [`phase ${phase.number}`, phase.name.toLowerCase()];
+        // carry one of the two). Needles get the same normalization as the
+        // corpus so hyphen/whitespace spelling differences can't cause a miss.
+        const needles = [
+            normalizeForMatch(`phase ${phase.number}`),
+            normalizeForMatch(phase.name),
+        ];
         if (!corpus.some((text) => needles.some((n) => text.includes(n)))) {
             reasons.push("no CHANGELOG.md or docs/ entry mentions this phase");
         }
