@@ -26,6 +26,9 @@ export interface TokenEstimate {
         historyPhases: number;
         pointsTotal: number | null;
         issueCount: number;
+        /** How many real (phase total, issue count) pairs fed the per-issue
+         *  grain -- 0 means the range came from whole-phase totals or defaults. */
+        perIssuePairs: number;
     };
     confidence: "wide" | "calibrated";
     notes: string[];
