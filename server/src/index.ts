@@ -1343,16 +1343,21 @@ export function buildServer(deps: {
     "budget_check",
     {
       description:
-        "Spend ledger gate for headless batch runs — re-reads actual spend (latest metrics row per session, "
-        + "sessions since the run opened) and answers proceed/stop against the run's ceilings. "
+        "Spend ledger gate for headless batch runs — re-reads actual spend (latest metrics row per session; "
+        + "sessions since the run opened count in full, pre-existing sessions count as the delta past their "
+        + "run-open baseline) and answers proceed/stop against the run's ceilings. "
         + "'stop' means START no new phase/wave; in-flight work finishes (bounded overshoot ≤ one wave). "
         + "Pass phase to record an append-only boundary row; omit it for a read-only status poll. "
+        + "Wave subagents write no metrics rows — pass agentTokens (integer ≥ 0) at a boundary with the "
+        + "completed wave's reported agent token total; it accumulates as the ledger's agent-spend "
+        + "component (result exposes sessionTokens + agentTokens = spentTokens). "
         + "innerBudgetSuggestion is the inner in-run Workflow budget the executor passes down.",
       inputSchema: z.object({
         runId: z.string(),
         phase: z.union([z.number(), z.string()]).optional(),
         wave: z.union([z.number(), z.string()]).optional(),
         note: z.string().optional(),
+        agentTokens: z.number().int().min(0).optional(),
         ceilingTokens: z.number().positive().optional(),
         ceilingUsd: z.number().positive().optional(),
         startedAt: z.string().optional(),
@@ -1364,6 +1369,7 @@ export function buildServer(deps: {
         phase?: number | string;
         wave?: number | string;
         note?: string;
+        agentTokens?: number;
         ceilingTokens?: number;
         ceilingUsd?: number;
         startedAt?: string;
@@ -1379,6 +1385,7 @@ export function buildServer(deps: {
         if (a.phase !== undefined) {
           return recordBoundary(ledger, {
             phase: a.phase, wave: a.wave, note: a.note,
+            agentTokens: a.agentTokens,
           });
         }
         return checkBudget(refreshSpend(ledger));

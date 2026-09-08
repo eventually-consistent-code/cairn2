@@ -8,9 +8,16 @@
  *   bounded overshoot <= one wave.
  *
  *   Metrics rows are CUMULATIVE per session: correct totals take the LATEST
- *   row per session_id (never the sum of all rows), scoped to sessions that
- *   began after the run opened. Spend numbers are approximate list-price
- *   estimates, same caveat as cost-report.mjs.
+ *   row per session_id (never the sum of all rows). Sessions that began
+ *   after the run opened count in full; sessions that already existed at
+ *   run-open (the DRIVING session — its cumulative row predates the run)
+ *   count as the DELTA past a baseline snapshot taken at openRunLedger,
+ *   floored at 0 (#143 — before the baseline, the driver's spend read zero
+ *   all run). Wave subagents write no metrics rows at all, so the executor
+ *   reports each wave's agent token total through recordBoundary's
+ *   agentTokens — those accumulate as their own spend component. Spend
+ *   numbers are approximate list-price estimates, same caveat as
+ *   cost-report.mjs.
  *
  *   The Claude Code Workflow primitive exposes its own budget global in
  *   workflow scripts (budget.total / budget.spent() / budget.remaining();
@@ -65,11 +72,32 @@ const BudgetBoundarySchema = z.object({
     wave: z.union([z.number(), z.string()]).optional(),
     note: z.string().optional(),
     sessions: z.number(),
+    agent_tokens: z.number().int().min(0).optional(),
     spent_tokens: z.number(),
     spent_usd: z.number(),
     verdict: z.enum(["proceed", "stop"]),
 });
+const BudgetBaselineSchema = z.object({
+    tokens: z.number(),
+    usd: z.number(),
+});
 export const BudgetLedgerSchema = z.object({
+    version: z.literal(2),
+    run_id: z.string(),
+    project: z.string(),
+    opened: z.string(),
+    ceiling_tokens: z.number().optional(),
+    ceiling_usd: z.number().optional(),
+    baselines: z.record(z.string(), BudgetBaselineSchema),
+    session_tokens: z.number(),
+    agent_tokens: z.number(),
+    spent_tokens: z.number(),
+    spent_usd: z.number(),
+    boundaries: z.array(BudgetBoundarySchema),
+});
+/** The v1 shape (#131, pre-baselines) — still readable so an in-flight run
+ * staged before the upgrade keeps its ceilings and boundary history. */
+const BudgetLedgerV1Schema = z.object({
     version: z.literal(1),
     run_id: z.string(),
     project: z.string(),
@@ -80,9 +108,14 @@ export const BudgetLedgerSchema = z.object({
     spent_usd: z.number(),
     boundaries: z.array(BudgetBoundarySchema),
 });
+/** Note attached when a v1 file loads — surfaced through checkBudget. */
+const V1_MIGRATION_NOTE = "ledger migrated from v1 — no baselines were snapshotted at run-open, so "
+    + "pre-existing sessions stay excluded (v1 behavior) and agent tokens start at 0";
 // Internals
 const round4 = (n) => Number(n.toFixed(4));
-/** Reads and validates the ledger file at `path`; null when absent. */
+/** Reads and validates the ledger file at `path`; null when absent. A v1
+ * file loads through the fallback schema — empty baselines, zero agent
+ * tokens — with a migration note (backward compatible, never silent). */
 function readLedgerFile(path) {
     let raw;
     try {
@@ -99,11 +132,26 @@ function readLedgerFile(path) {
         throw new CairnError("BUDGET_INVALID", `budget ledger at ${path} is not valid JSON: ${e}`, "inspect or discard ~/.cairn/budget/…");
     }
     const result = BudgetLedgerSchema.safeParse(parsed);
-    if (!result.success) {
-        throw new CairnError("BUDGET_INVALID", `budget ledger at ${path} failed schema validation: ${result.error.issues
-            .map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`, "inspect or discard ~/.cairn/budget/…");
+    if (result.success)
+        return { state: result.data };
+    // v1 fallback — a run staged before the baseline upgrade keeps its
+    // ceilings and boundary history; the missing pieces default honestly.
+    const v1 = BudgetLedgerV1Schema.safeParse(parsed);
+    if (v1.success) {
+        const { version: _v, ...rest } = v1.data;
+        return {
+            state: {
+                ...rest,
+                version: 2,
+                baselines: {},
+                session_tokens: v1.data.spent_tokens,
+                agent_tokens: 0,
+            },
+            migrationNote: V1_MIGRATION_NOTE,
+        };
     }
-    return result.data;
+    throw new CairnError("BUDGET_INVALID", `budget ledger at ${path} failed schema validation: ${result.error.issues
+        .map((i) => `${i.path.join(".")}: ${i.message}`).join("; ")}`, "inspect or discard ~/.cairn/budget/…");
 }
 /** Atomic write — tmp then rename, same as continuity's handoff writer. */
 function writeLedgerFile(path, state) {
@@ -112,15 +160,10 @@ function writeLedgerFile(path, state) {
     writeFileSync(tmp, JSON.stringify(state, null, 2) + "\n");
     renameSync(tmp, path);
 }
-/**
- * Actual spend since the run opened: collapse the metrics jsonl to the
- * LATEST row per session_id (rows are cumulative — summing every row would
- * multiply-count), keeping only sessions whose FIRST row landed at or after
- * the run's `opened` ts. Deterministic given file content; a missing or
- * corrupt-lined file just contributes nothing.
- */
-function measureSpend(metricsPath, openedTs) {
-    const opened = new Date(openedTs).getTime();
+/** Collapses the metrics jsonl to the LATEST row per session_id plus each
+ * session's first-row ts. Missing file or corrupt lines contribute nothing,
+ * same posture as cost-report. */
+function collapseMetrics(metricsPath) {
     const firstTs = new Map();
     const latest = new Map();
     let raw;
@@ -128,7 +171,7 @@ function measureSpend(metricsPath, openedTs) {
         raw = readFileSync(metricsPath, "utf8");
     }
     catch {
-        return { tokens: 0, usd: 0, sessions: 0 };
+        return { firstTs, latest };
     }
     for (const line of raw.split("\n")) {
         if (!line.trim())
@@ -148,18 +191,67 @@ function measureSpend(metricsPath, openedTs) {
         }
         latest.set(sid, row); // later lines win — append order
     }
+    return { firstTs, latest };
+}
+/** One row's countable totals — every metered token field plus est cost. */
+function rowTotals(row) {
+    let tokens = 0;
+    for (const f of TOKEN_FIELDS)
+        tokens += Number(row[f] ?? 0) || 0;
+    return { tokens, usd: Number(row.est_cost_usd ?? 0) || 0 };
+}
+/** Baseline snapshot at run-open: the CURRENT latest-row totals per session
+ * already in the metrics file. Sessions here count as deltas from now on. */
+function snapshotBaselines(metricsPath) {
+    const { latest } = collapseMetrics(metricsPath);
+    const baselines = {};
+    for (const [sid, row] of latest) {
+        const t = rowTotals(row);
+        baselines[sid] = { tokens: t.tokens, usd: round4(t.usd) };
+    }
+    return baselines;
+}
+/**
+ * Actual session spend since the run opened: latest row per session_id
+ * (rows are cumulative — summing every row would multiply-count), where
+ * sessions whose FIRST row landed at or after `opened` count in full, and
+ * sessions captured in the run-open `baselines` snapshot count as the delta
+ * past their baseline, floored at 0 (#143 — this is how the DRIVING
+ * session's spend registers even though its cumulative row predates the
+ * run). Sessions that predate the run with no baseline stay excluded.
+ * Deterministic given file content.
+ */
+function measureSpend(metricsPath, openedTs, baselines) {
+    const opened = new Date(openedTs).getTime();
+    const { firstTs, latest } = collapseMetrics(metricsPath);
     let tokens = 0;
     let usd = 0;
     let sessions = 0;
     let latestTs;
     for (const [sid, row] of latest) {
         const began = firstTs.get(sid) ?? NaN;
-        if (!(began >= opened))
-            continue; // pre-run session — not this run's spend
+        const t = rowTotals(row);
+        let dTokens;
+        let dUsd;
+        if (began >= opened) {
+            // session began during the run — its whole total is this run's spend
+            dTokens = t.tokens;
+            dUsd = t.usd;
+        }
+        else if (baselines[sid]) {
+            // pre-existing session (the driver) — only spend past the baseline,
+            // floored: a truncated/rotated metrics file never goes negative
+            dTokens = Math.max(0, t.tokens - baselines[sid].tokens);
+            dUsd = Math.max(0, t.usd - baselines[sid].usd);
+            if (dTokens === 0 && dUsd === 0)
+                continue; // idle so far — not counted
+        }
+        else {
+            continue; // pre-run session with no baseline — not this run's spend
+        }
         sessions += 1;
-        for (const f of TOKEN_FIELDS)
-            tokens += Number(row[f] ?? 0) || 0;
-        usd += Number(row.est_cost_usd ?? 0) || 0;
+        tokens += dTokens;
+        usd += dUsd;
         const ts = String(row.ts ?? "");
         if (ts && (!latestTs || ts > latestTs))
             latestTs = ts;
@@ -185,15 +277,21 @@ export function openRunLedger(projectDir, opts) {
     const path = budgetLedgerPath(projectDir, opts.runId, baseDir);
     const metricsPath = budgetMetricsPath(projectDir, baseDir);
     const existing = readLedgerFile(path);
-    if (existing && existing.run_id !== opts.runId) {
+    if (existing && existing.state.run_id !== opts.runId) {
         // two distinct runIds collapsed to the same sanitized filename
-        throw new CairnError("BUDGET_INVALID", `ledger at ${path} belongs to run '${existing.run_id}', not '${opts.runId}'`, "pick a runId that differs in more than punctuation");
+        throw new CairnError("BUDGET_INVALID", `ledger at ${path} belongs to run '${existing.state.run_id}', not '${opts.runId}'`, "pick a runId that differs in more than punctuation");
     }
-    const state = existing ?? {
-        version: 1,
+    // First create snapshots baselines: the CURRENT latest-row totals of every
+    // session already in the metrics file (the driving session included) —
+    // their spend from here on counts as the delta past this snapshot (#143).
+    const state = existing?.state ?? {
+        version: 2,
         run_id: opts.runId,
         project: basename(resolve(projectDir)),
         opened: opts.startedAt ?? new Date().toISOString(),
+        baselines: snapshotBaselines(metricsPath),
+        session_tokens: 0,
+        agent_tokens: 0,
         spent_tokens: 0,
         spent_usd: 0,
         boundaries: [],
@@ -203,7 +301,10 @@ export function openRunLedger(projectDir, opts) {
     if (opts.ceilingUsd !== undefined)
         state.ceiling_usd = opts.ceilingUsd;
     writeLedgerFile(path, state);
-    return { path, metricsPath, state };
+    const ledger = { path, metricsPath, state };
+    if (existing?.migrationNote)
+        ledger.migrationNote = existing.migrationNote;
+    return ledger;
 }
 /**
  * Refreshes the ledger's spent totals from the metrics file, in memory only
@@ -211,8 +312,9 @@ export function openRunLedger(projectDir, opts) {
  * growing the history.
  */
 export function refreshSpend(ledger) {
-    const spend = measureSpend(ledger.metricsPath, ledger.state.opened);
-    ledger.state.spent_tokens = spend.tokens;
+    const spend = measureSpend(ledger.metricsPath, ledger.state.opened, ledger.state.baselines);
+    ledger.state.session_tokens = spend.tokens;
+    ledger.state.spent_tokens = spend.tokens + ledger.state.agent_tokens;
     ledger.state.spent_usd = spend.usd;
     return ledger;
 }
@@ -221,10 +323,20 @@ export function refreshSpend(ledger) {
  * boundary row (append-only — history is never rewritten), persist, and
  * return the verdict. This is THE decision point of a headless run: the
  * caller never starts new work on "stop".
+ *
+ * Wave subagents write no metrics rows (#143) — the executor reports each
+ * completed wave's agent token total via `agentTokens`; those accumulate as
+ * the ledger's own agent-spend component, summed into spent_tokens.
  */
 export function recordBoundary(ledger, b) {
-    const spend = measureSpend(ledger.metricsPath, ledger.state.opened);
-    ledger.state.spent_tokens = spend.tokens;
+    if (b.agentTokens !== undefined
+        && (!Number.isInteger(b.agentTokens) || b.agentTokens < 0)) {
+        throw new CairnError("BUDGET_INVALID", `agentTokens must be an integer >= 0, got ${b.agentTokens}`);
+    }
+    ledger.state.agent_tokens += b.agentTokens ?? 0;
+    const spend = measureSpend(ledger.metricsPath, ledger.state.opened, ledger.state.baselines);
+    ledger.state.session_tokens = spend.tokens;
+    ledger.state.spent_tokens = spend.tokens + ledger.state.agent_tokens;
     ledger.state.spent_usd = spend.usd;
     const check = checkBudget(ledger);
     const boundary = {
@@ -235,7 +347,8 @@ export function recordBoundary(ledger, b) {
         ...(b.wave !== undefined ? { wave: b.wave } : {}),
         ...(b.note !== undefined ? { note: b.note } : {}),
         sessions: spend.sessions,
-        spent_tokens: spend.tokens,
+        ...(b.agentTokens !== undefined ? { agent_tokens: b.agentTokens } : {}),
+        spent_tokens: ledger.state.spent_tokens,
         spent_usd: spend.usd,
         verdict: check.verdict,
     };
@@ -253,12 +366,17 @@ export function checkBudget(ledger) {
     const s = ledger.state;
     const out = {
         runId: s.run_id,
+        sessionTokens: s.session_tokens,
+        agentTokens: s.agent_tokens,
         spentTokens: s.spent_tokens,
         spentUsd: s.spent_usd,
         verdict: "proceed",
     };
+    if (ledger.migrationNote)
+        out.note = ledger.migrationNote;
     if (s.ceiling_tokens === undefined && s.ceiling_usd === undefined) {
-        out.note = "no ceiling set — budget check always proceeds";
+        const uncapped = "no ceiling set — budget check always proceeds";
+        out.note = out.note ? `${out.note}; ${uncapped}` : uncapped;
         return out;
     }
     const overshoot = {};
