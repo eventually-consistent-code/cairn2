@@ -30,6 +30,7 @@ import { distillManifest } from "./planning/distill-manifest.js";
 import { estimatePhaseTokens } from "./planning/token-estimate.js";
 import { snapshotNote, trackerDelta } from "./planning/tracker-delta.js";
 import { MemoryIndex, indexDbPath, } from "./memory/index-store.js";
+import { probeNativeBindings, } from "./memory/native.js";
 import { createCard, listCards, readCard, updateCardConfidence, } from "./memory/cards.js";
 import { checkCardStaleness } from "./memory/staleness.js";
 import { readHandoff, writeHandoff, clearHandoff } from "./core/continuity.js";
@@ -571,7 +572,7 @@ export function buildServer(deps) {
         const path = indexDbPath(d);
         let idx = memIndexes.get(path);
         if (!idx) {
-            idx = new MemoryIndex(path);
+            idx = new MemoryIndex(path, deps.loadSqlite);
             memIndexes.set(path, idx);
         }
         return idx;
@@ -1038,7 +1039,8 @@ export function buildServer(deps) {
             "ok / bad_host / bad_token / missing_scope / rate_limited / down. A probe failure IS " +
             "the result -- this tool never throws for a bad backend. Also reports installed " +
             "versions (#82): running server, plugin cache entry, repo version files, latest npm " +
-            "-- with plain-language drift lines when they disagree",
+            "-- with plain-language drift lines when they disagree. Also preflights the " +
+            "better-sqlite3 native binding (#108): ok, or broken with the rebuild command",
         inputSchema: z.object({}),
     }, wrap(async () => {
         const d = dir();
@@ -1063,6 +1065,11 @@ export function buildServer(deps) {
             projectDir: d,
             fetchLatest: deps.fetchLatestVersion,
         });
+        // Native-bindings preflight (#108) -- advisory line, never fails the
+        // probe: a fresh plugin cache under a newer node ABI ships no compiled
+        // better-sqlite3 binding, and this names the rebuild command before
+        // any memory index tool trips over it.
+        out.native = probeNativeBindings(deps.loadSqlite);
         return out;
     }));
     server.registerTool("issue_comment", {
