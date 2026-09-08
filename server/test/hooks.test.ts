@@ -453,6 +453,42 @@ describe("leak guard hook", () => {
     expect(Date.now() - t0).toBeLessThan(100);
   });
 
+  // #140 path-scoped exemption -- fixture strings are concatenated so this
+  // file's own diff never trips the live guard when committed.
+  it("server/src file naming a .cairn path is exempt from cairn-path (exit 0)", () => {
+    const proj = tmpProj(); gitInit(proj);
+    writeFileSync(join(proj, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
+    mkdirSync(join(proj, "server", "src", "planning"), { recursive: true });
+    stageFile(proj, "server/src/planning/ledger.ts",
+      'const dir = ".cairn' + '/plans/x";\n');
+    expect(runHookRaw(LEAKGUARD, proj, payload("git commit -m x")).status).toBe(0);
+  });
+
+  it("exemption is cairn-path ONLY: a tracker-id leak in server/src still blocks (exit 2)", () => {
+    const proj = tmpProj(); gitInit(proj);
+    writeFileSync(join(proj, "cairn.json"),
+      JSON.stringify({ tracker: { type: "jira", config: { projectKey: "DRILL" } } }));
+    mkdirSync(join(proj, "server", "src"), { recursive: true });
+    stageFile(proj, "server/src/x.ts", "// tracked as DRILL" + "-42\n");
+    const r = runHookRaw(LEAKGUARD, proj, payload("git commit -m x"));
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain("tracker-id");
+  });
+
+  it("exemption does not widen: a non-server source file with a .cairn path still blocks (exit 2)", () => {
+    // docs/ and *.md were already allowlisted wholesale pre-#140; the "still
+    // strict" surface is every non-markdown file outside server/src|dist.
+    const proj = tmpProj(); gitInit(proj);
+    writeFileSync(join(proj, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
+    mkdirSync(join(proj, "scripts"), { recursive: true });
+    stageFile(proj, "scripts/gen.sh", 'DIR=".cairn' + '/plans"\n');
+    const r = runHookRaw(LEAKGUARD, proj, payload("git commit -m x"));
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain("cairn-path");
+  });
+
   it("`git commit -am` widens the scan to catch a leak in an unstaged tracked file (exit 2)", () => {
     const proj = tmpProj(); gitInit(proj);
     writeFileSync(join(proj, "cairn.json"),

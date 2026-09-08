@@ -5,13 +5,20 @@
  *   whose STAGED diff would leak cairn-internal refs (.cairn/ paths, phase
  *   refs, cairn labels, tracker ids) into source files. Exit 2 blocks the
  *   tool call; ANY internal error exits 0 -- never block work by accident.
+ *
+ *   Path-scoped exemption (#140): staged files under server/src/ and
+ *   server/dist/ skip the `cairn-path` pattern only (via patternsForFile) --
+ *   the server manages the .cairn dirs, so its source legitimately names
+ *   them; the guard protects outbound text, not the implementation. All
+ *   other patterns still apply to those files, and every other path keeps
+ *   full strictness. See leak-patterns.mjs for the full rationale.
  * Author(s): John Reed
  */
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { buildPatterns, scanLines, isAllowedPath } from "./leak-patterns.mjs";
+import { buildPatterns, scanLines, isAllowedPath, patternsForFile } from "./leak-patterns.mjs";
 
 // Best-effort shell tokenizer -- splits on whitespace and chain operators
 // (&&, ||, ;, |, &) while keeping quoted strings intact. Only used to decide
@@ -92,11 +99,13 @@ try {
   const hits = [];
   let file = null;
   let skipped = true;
+  let activePatterns = patterns; // per-file view: path-scoped exemptions applied
   let lineNo = 0; // file line number of the NEXT added line (from hunk headers)
   for (const line of diff.split("\n")) {
     if (line.startsWith("+++ b/")) {
       file = line.slice(6);
       skipped = isAllowedPath(file, allow);
+      activePatterns = patternsForFile(file, patterns);
       continue;
     }
     // hunk header: `@@ -a,b +c,d @@` -- c is the file line of the first
@@ -107,7 +116,7 @@ try {
       continue;
     }
     if (skipped || !line.startsWith("+") || line.startsWith("+++")) continue;
-    for (const h of scanLines([line.slice(1)], patterns)) {
+    for (const h of scanLines([line.slice(1)], activePatterns)) {
       hits.push(`${file}:${lineNo}: [${h.name}] ${h.match}`);
     }
     lineNo++;
