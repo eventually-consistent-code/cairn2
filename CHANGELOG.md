@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased — dress-rehearsal (2026-09-07)
+
+The first headless batch run's cargo — four friction fixes from the v5
+retrospective, built and shipped unattended under a token ceiling:
+
+- The docs-staleness matcher now normalizes hyphens and line wraps on
+  both sides, ending the false "docs owe an entry" flags that twice bit
+  real runs (this very entry's heading is the regression test in the
+  wild).
+- The protected-section writer preserves marker dates on rewrite; a
+  malformed meta now fails loudly instead of silently erasing provenance.
+- Issue creation accepts the planning-side phase number everywhere — the
+  tracker's internal id no longer leaks into the planning workflow (and
+  the investigation surfaced a real contract gap around re-phasing
+  existing issues, filed on its own).
+- A missing native database binding — the fresh-install failure that
+  silently broke memory tools — now produces a typed error naming the
+  exact rebuild command, memory cards keep working through it, and the
+  health probe reports the binding state before it bites.
+
 ## Unreleased — native grain + proof, catch-up entries (phases 12–13, written 2026-09-07)
 
 Late entries: these two phases shipped 2026-08-14 without changelog
