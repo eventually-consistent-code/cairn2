@@ -1,5 +1,6 @@
 import type { Phase, Tracker } from "../tracker/types.js";
 export declare const canonicalPhaseName: (number: number, name: string) => string;
+export declare function resolvePhaseParam(tracker: Tracker, phase: string): Promise<string>;
 export declare function ensurePhase(tracker: Tracker, number: number, name: string): Promise<Phase>;
 export interface DriftItem {
     issueId: string;

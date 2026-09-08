@@ -55,7 +55,11 @@ import {
   PHASE_NUMBER_ERROR,
 } from "./planning/artifacts.js";
 import { projectStatus } from "./planning/status.js";
-import { driftReport, ensurePhase } from "./planning/mirror.js";
+import {
+  driftReport,
+  ensurePhase,
+  resolvePhaseParam,
+} from "./planning/mirror.js";
 import { unplannedReport } from "./planning/collab.js";
 import { importPhase } from "./planning/import.js";
 import {
@@ -413,7 +417,9 @@ export function buildServer(deps: {
     "issue_create",
     {
       description:
-        "Create an issue in the configured tracker. Estimates " +
+        "Create an issue in the configured tracker. `phase` accepts the " +
+        "tracker's phase id OR the cairn phase number ('14', '1.5' -- " +
+        "resolved via the 'Phase N: <name>' convention). Estimates " +
         "(story points / original minutes) land in the backend's native " +
         "fields where supported; elsewhere they're skipped and the result " +
         "says so via estimateSkipped",
@@ -440,11 +446,16 @@ export function buildServer(deps: {
         const wantsEstimate =
           estimatePoints !== undefined || estimateMinutes !== undefined;
         const tracker = await getTracker(d);
+        // phase accepts a tracker phase id OR a cairn phase number (#138)
+        const phase =
+          input.phase === undefined
+            ? undefined
+            : await resolvePhaseParam(tracker, input.phase);
         const estimate =
           wantsEstimate && tracker.capabilities.hasEstimates
             ? { points: estimatePoints, minutes: estimateMinutes }
             : undefined;
-        const result = await tracker.createIssue({ ...input, estimate });
+        const result = await tracker.createIssue({ ...input, phase, estimate });
         snapshotNote(d, result);
         // mirrors the worklogError note on issue_close -- a silently dropped
         // estimate reads as a bug, so say why it never reached the backend.
