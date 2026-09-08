@@ -298,6 +298,67 @@ describe("cairn MCP server", () => {
     expect(ensured.json.name).toBe("Phase 1.5: Gamma");
   });
 
+  it("issue_create resolves a cairn phase number to the tracker phase id (#138)", async () => {
+    const ensured = await call("plan_phase_ensure", {
+      number: 41,
+      name: "Auto Docs",
+    });
+    const made = await call("issue_create", {
+      title: "phase-number resolution",
+      phase: "41",
+    });
+    expect(made.isError).toBeFalsy();
+    expect(made.json.phase).toBe(ensured.json.id);
+  });
+
+  it("issue_create still accepts a raw tracker phase id (#138)", async () => {
+    const ensured = await call("plan_phase_ensure", {
+      number: 42,
+      name: "Raw Id",
+    });
+    const made = await call("issue_create", {
+      title: "raw-id passthrough",
+      phase: ensured.json.id,
+    });
+    expect(made.isError).toBeFalsy();
+    expect(made.json.phase).toBe(ensured.json.id);
+  });
+
+  it("issue_create resolves a decimal cairn phase number (41.5) (#138)", async () => {
+    const ensured = await call("plan_phase_ensure", {
+      number: 41.5,
+      name: "Decimal Insert",
+    });
+    const made = await call("issue_create", {
+      title: "decimal phase-number resolution",
+      phase: "41.5",
+    });
+    expect(made.isError).toBeFalsy();
+    expect(made.json.phase).toBe(ensured.json.id);
+  });
+
+  it("issue_create with an unmatched phase errors naming both interpretations tried (#138)", async () => {
+    const res = await call("issue_create", {
+      title: "no such phase",
+      phase: "99",
+    });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("NOT_FOUND");
+    expect(res.json.message).toContain("tracker phase id");
+    expect(res.json.message).toContain("Phase 99:");
+  });
+
+  it("issue_create with a non-numeric unmatched phase errors explaining the skipped number lookup (#138)", async () => {
+    const res = await call("issue_create", {
+      title: "bogus phase string",
+      phase: "not-a-phase",
+    });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("NOT_FOUND");
+    expect(res.json.message).toContain("tracker phase id");
+    expect(res.json.message).toContain("not a cairn phase number");
+  });
+
   it("plan_scaffold_phase rejects an over-precise decimal (1.55) as CONFIG_INVALID", async () => {
     const res = await call("plan_scaffold_phase", {
       number: 1.55,
