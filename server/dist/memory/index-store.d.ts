@@ -1,3 +1,4 @@
+import { type SqliteLoader } from "./native.js";
 export interface Chunk {
     content: string;
     source: string;
@@ -20,7 +21,7 @@ export interface IndexStats {
 export declare function indexDbPath(projectDir: string): string;
 export declare class MemoryIndex {
     private db;
-    constructor(dbPath: string);
+    constructor(dbPath: string, load?: SqliteLoader);
     index(chunk: Chunk): void;
     search(query: string, filter?: {
         phase?: number;

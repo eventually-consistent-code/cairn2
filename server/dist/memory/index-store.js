@@ -1,8 +1,8 @@
-import Database from "better-sqlite3";
 import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { mkdirSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
+import { bindingsError, isBindingsFailure, loadSqlite, } from "./native.js";
 export function indexDbPath(projectDir) {
     const abs = resolve(projectDir);
     const hash = createHash("sha256").update(abs).digest("hex").slice(0, 16);
@@ -10,9 +10,26 @@ export function indexDbPath(projectDir) {
 }
 export class MemoryIndex {
     db;
-    constructor(dbPath) {
-        mkdirSync(join(dbPath, ".."), { recursive: true });
-        this.db = new Database(dbPath);
+    constructor(dbPath, load = loadSqlite) {
+        // Lazy native load (#108): better-sqlite3 is required here, per
+        // construction, instead of at module import -- a missing compiled
+        // binding (fresh plugin cache + newer node ABI) surfaces as a typed
+        // NATIVE_MODULE_BROKEN with the rebuild command, only on the index
+        // tools that actually touch sqlite. Card tools never come through here.
+        // The catch below translates bindings-looking failures even when the
+        // loader itself didn't (defense in depth -- some ABI mismatches throw
+        // at construction rather than require).
+        let Sqlite;
+        try {
+            Sqlite = load();
+            mkdirSync(join(dbPath, ".."), { recursive: true });
+            this.db = new Sqlite(dbPath);
+        }
+        catch (e) {
+            if (isBindingsFailure(e))
+                throw bindingsError();
+            throw e;
+        }
         this.db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5(
       content, source UNINDEXED, phase UNINDEXED, issue_id UNINDEXED, created_at UNINDEXED
     )`);

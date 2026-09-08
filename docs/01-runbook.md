@@ -1657,6 +1657,7 @@ stack traces.
 | `HANDOFF_INVALID` | The continuity handoff file is malformed | Inspect or discard it; a fresh checkpoint rewrites it |
 | `HANDOFF_STALE` | The handoff is too old to trust | Inspect or discard — stale handoffs are never auto-resumed |
 | `UNSUPPORTED` | The operation isn't valid here — e.g. an invalid node/edge type in a map patch, or a capability the backend doesn't have | Use a supported type/path; capability differences are in section 4 |
+| `NATIVE_MODULE_BROKEN` | The better-sqlite3 compiled binding is missing or built for a different node ABI — memory *index* tools (`mem_index`/`mem_search`/`mem_stats`/`mem_timeline`) fail; card tools keep working | Run the command in the message: `cd <server dir> && npm rebuild better-sqlite3` — `config_probe` reports the same fix preemptively |
 | `PRECONDITION_FAILED` | The operation's gate isn't satisfied — unverified phases at summit, closing a session without its gate entry, starting a duplicate open session, a map patch with dangling edges, board writes without a workspace, a peer that isn't on PATH / is disabled / timed out | The message names the gate. Satisfy it and re-run — these operations are built to be safely re-runnable |
 
 ### Common failure scenarios
@@ -1691,6 +1692,15 @@ down.
 focus switch can repoint yours between calls. The discipline in section 3
 (confirm focus before every write; re-read the board after claiming) is the
 fix; a lost claim race means back off and pick different work.
+
+**Memory tools fail with `NATIVE_MODULE_BROKEN`.** Symptom: every
+`mem_index`/`mem_search`/`mem_stats`/`mem_timeline` call fails (card tools
+still work). Cause: a freshly installed plugin cache under a newer node ABI
+ships no compiled better-sqlite3 binding — nothing you did wrong. Fix: run
+the exact command in the error message —
+`cd <server dir> && npm rebuild better-sqlite3` — once, then retry.
+`config_probe` reports the same thing up front as an advisory `native` line
+(ok / broken + fix), so a preflight catches it before any memory call does.
 
 **Planning directory looks wrong.** `/cairn:medic` for the diagnosis,
 `medic --repair` for the mechanical subset, `medic forensics <phase>` when

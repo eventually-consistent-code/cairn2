@@ -687,6 +687,11 @@ describe("cairn MCP server", () => {
     expect(res.json.versions.drift).toContain(
       `installed v${serverVersion}, available v9.9.9 -- update the plugin (or npm install) to adopt`,
     );
+    // Native-bindings preflight (#108): real binding is healthy here.
+    expect(res.json.native).toEqual({
+      module: "better-sqlite3",
+      status: "ok",
+    });
   });
 
   it("CairnError surfaces as isError with code + nextAction", async () => {
@@ -1847,6 +1852,70 @@ describe("docs tools over an injected fake connector", () => {
       // #82: a rejecting npm lookup fails SOFT -- "unknown", probe stays green.
       expect(json.versions.npmLatest).toBe("unknown");
       expect(json.versions.drift).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("broken native binding (#108): probe advises, index tools fail typed, card tools keep working", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cairn-native-probe-"));
+    writeFileSync(
+      join(dir, "cairn.json"),
+      JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }),
+    );
+    try {
+      const server = buildServer({
+        projectDir: dir,
+        tracker: new FakeTracker(),
+        fetchLatestVersion: async () => "9.9.9",
+        // Simulated missing compiled binding -- the real one stays intact.
+        loadSqlite: () => {
+          throw new Error(
+            "Could not locate the bindings file. Tried:\n → .../better_sqlite3.node",
+          );
+        },
+      });
+      const [ct, st] = InMemoryTransport.createLinkedPair();
+      const c = new Client({ name: "native-probe-test", version: "0.0.0" });
+      await Promise.all([server.connect(st), c.connect(ct)]);
+      const callC = async (name: string, args: Record<string, unknown> = {}) => {
+        const res = await c.callTool({ name, arguments: args });
+        const text = (res.content as Array<{ text: string }>)[0].text;
+        return { ...res, json: JSON.parse(text) };
+      };
+
+      // Preflight: advisory broken line with the fix command -- probe itself
+      // still succeeds.
+      const probe = await callC("config_probe", {});
+      expect(probe.isError).toBeFalsy();
+      expect(probe.json.native.status).toBe("broken");
+      expect(probe.json.native.module).toBe("better-sqlite3");
+      expect(probe.json.native.fix).toMatch(
+        /^cd .+ && npm rebuild better-sqlite3$/,
+      );
+
+      // Tier-1 index tools degrade to the typed error, never the raw stack
+      // -- the loader throws the raw loader message here, and MemoryIndex's
+      // own translation turns it into NATIVE_MODULE_BROKEN.
+      const search = await callC("mem_search", { query: "anything" });
+      expect(search.isError).toBe(true);
+      expect(search.json.code).toBe("NATIVE_MODULE_BROKEN");
+      expect(search.json.message).toContain(
+        `native module better-sqlite3 not built for this runtime (node ${process.version})`,
+      );
+      expect(search.json.message).toContain("npm rebuild better-sqlite3");
+      expect(search.json.message).not.toContain(
+        "Could not locate the bindings file",
+      );
+
+      // Card tools never touch sqlite -- they keep working.
+      const card = await callC("mem_card_create", {
+        type: "note",
+        body: "cards are file-backed, no native binding involved",
+      });
+      expect(card.isError).toBeFalsy();
+      const list = await callC("mem_card_list", {});
+      expect(list.isError).toBeFalsy();
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
