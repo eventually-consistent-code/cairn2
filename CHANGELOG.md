@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased — native grain + proof, catch-up entries (phases 12–13, written 2026-09-07)
+
+Late entries: these two phases shipped 2026-08-14 without changelog
+lines — the gap the new docs-staleness detector flagged on its first run.
+
+- Phase 12 (native grain): the server moved to the MCP v2 SDK (zod 4,
+  full behavior-diff sweep with regression pins), wave dispatch was
+  rebuilt on the platform's native Workflow pipeline with resumable
+  re-entry, native task tracking now mirrors into the tracker through a
+  durable offline-safe spool, all command shims migrated to the skills
+  frontmatter, and the first read-only MCP resources surface landed.
+- Phase 13 (proof not pitch): two public positioning artifacts — a dated
+  mechanism-level comparison page and the full product-council case study
+  (kills, degradations, a self-caught leak, and an owner override on the
+  record) — plus homepage/link repairs and a fresh-install distribution
+  check.
+
 ## Unreleased — headless-build (phase 15, 2026-09-04)
 
 - Building became budgetable: a token estimator turns any phase into an
@@ -78,6 +95,9 @@
   tags no longer fire spurious runs.
 
 ## v2.2.0 — the planning intelligence + the product council (2026-08-13)
+
+(Milestone v3's closing phases: phase 9 — peers product council; and
+phase 9.5 — council follow-ups.)
 
 - `/cairn:peers council [dimensions]`: external AI reviewers judge the
   PRODUCT — functionality, look-and-feel, market position, and code —
