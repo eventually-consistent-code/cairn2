@@ -144,9 +144,13 @@ batch-specific loop.
      ledger's word — pass `budget_check`'s `innerBudgetSuggestion` down
      as the Workflow run's budget (the inner ceiling; this ledger stays
      the outer authority). BETWEEN waves: `budget_check(runId, phase:
-     <N>, wave: <W>)` — same stop semantics: the in-flight wave
-     finishes, a `stop` verdict refuses the next wave, then the same
-     stopped-marking, comments, and wrap as the phase boundary.
+     <N>, wave: <W>, agentTokens: <the completed wave's reported agent
+     token total>)` — wave subagents write no metrics rows, so this is
+     how their spend reaches the ledger (it accumulates as the ledger's
+     agent-spend component, summed into spentTokens). Same stop
+     semantics: the in-flight wave finishes, a `stop` verdict refuses
+     the next wave, then the same stopped-marking, comments, and wrap
+     as the phase boundary.
    - **Verify.** The `verify` verb's steps; failure = auto's posture,
      unchanged: stop THIS phase, prepare the `trace_start` handoff
      (never start it), skip dependent phases, continue independent

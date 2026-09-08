@@ -8,9 +8,16 @@
  *   bounded overshoot <= one wave.
  *
  *   Metrics rows are CUMULATIVE per session: correct totals take the LATEST
- *   row per session_id (never the sum of all rows), scoped to sessions that
- *   began after the run opened. Spend numbers are approximate list-price
- *   estimates, same caveat as cost-report.mjs.
+ *   row per session_id (never the sum of all rows). Sessions that began
+ *   after the run opened count in full; sessions that already existed at
+ *   run-open (the DRIVING session — its cumulative row predates the run)
+ *   count as the DELTA past a baseline snapshot taken at openRunLedger,
+ *   floored at 0 (#143 — before the baseline, the driver's spend read zero
+ *   all run). Wave subagents write no metrics rows at all, so the executor
+ *   reports each wave's agent token total through recordBoundary's
+ *   agentTokens — those accumulate as their own spend component. Spend
+ *   numbers are approximate list-price estimates, same caveat as
+ *   cost-report.mjs.
  *
  *   The Claude Code Workflow primitive exposes its own budget global in
  *   workflow scripts (budget.total / budget.spent() / budget.remaining();
@@ -27,23 +34,35 @@ export declare function budgetLedgerPath(projectDir: string, runId: string, base
 /** The metrics jsonl the Stop hook writes — same path scheme as
  * hooks/scripts/lib.mjs's metricsPath, with the base dir injectable. */
 export declare function budgetMetricsPath(projectDir: string, baseDir?: string): string;
+/** Baseline snapshot of one pre-existing session's cumulative totals at
+ * run-open — that session's spend counts as the delta past this. */
+export interface BudgetBaseline {
+    tokens: number;
+    usd: number;
+}
 export interface BudgetBoundary {
     ts: string;
     phase: number | string;
     wave?: number | string;
     note?: string;
     sessions: number;
+    agent_tokens?: number;
     spent_tokens: number;
     spent_usd: number;
     verdict: "proceed" | "stop";
 }
 export interface BudgetLedgerState {
-    version: 1;
+    version: 2;
     run_id: string;
     project: string;
     opened: string;
     ceiling_tokens?: number;
     ceiling_usd?: number;
+    /** Latest-row totals per session that already existed at run-open, keyed
+     * by session_id — those sessions count as the delta past this snapshot. */
+    baselines: Record<string, BudgetBaseline>;
+    session_tokens: number;
+    agent_tokens: number;
     spent_tokens: number;
     spent_usd: number;
     boundaries: BudgetBoundary[];
@@ -54,9 +73,18 @@ export interface RunLedger {
     path: string;
     metricsPath: string;
     state: BudgetLedgerState;
+    /** Set when the file loaded through the v1 fallback — carried into
+     * checkBudget's note so the migration is visible, never silent. */
+    migrationNote?: string;
 }
 export interface BudgetCheck {
     runId: string;
+    /** Metrics-derived component: latest row per session, baseline deltas
+     * applied for sessions that predate the run. */
+    sessionTokens: number;
+    /** Accumulated wave-agent totals reported through recordBoundary. */
+    agentTokens: number;
+    /** sessionTokens + agentTokens — the number the ceilings judge. */
     spentTokens: number;
     spentUsd: number;
     ceilingTokens?: number;
@@ -106,11 +134,16 @@ export declare function refreshSpend(ledger: RunLedger): RunLedger;
  * boundary row (append-only — history is never rewritten), persist, and
  * return the verdict. This is THE decision point of a headless run: the
  * caller never starts new work on "stop".
+ *
+ * Wave subagents write no metrics rows (#143) — the executor reports each
+ * completed wave's agent token total via `agentTokens`; those accumulate as
+ * the ledger's own agent-spend component, summed into spent_tokens.
  */
 export declare function recordBoundary(ledger: RunLedger, b: {
     phase: number | string;
     wave?: number | string;
     note?: string;
+    agentTokens?: number;
 }): BudgetCheck;
 /**
  * The proceed/stop verdict against the run's ceilings. Pure over the ledger

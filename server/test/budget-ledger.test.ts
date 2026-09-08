@@ -16,6 +16,10 @@ import {
   refreshSpend,
 } from "../src/planning/budget-ledger.js";
 import type { BudgetLedgerState } from "../src/planning/budget-ledger.js";
+import {
+  createRunManifest,
+  setRunStatus,
+} from "../src/planning/run-manifest.js";
 import { CairnError } from "../src/errors.js";
 
 const dirs: string[] = [];
@@ -77,7 +81,7 @@ describe("openRunLedger", () => {
     expect(ledger.path).toBe(budgetLedgerPath(projectDir, "run-1", baseDir));
     expect(ledger.path.startsWith(join(baseDir, "budget"))).toBe(true);
     const onDisk = JSON.parse(readFileSync(ledger.path, "utf8"));
-    expect(onDisk.version).toBe(1);
+    expect(onDisk.version).toBe(2);
     expect(onDisk.run_id).toBe("run-1");
     expect(onDisk.opened).toBe(RUN_START);
     expect(onDisk.ceiling_tokens).toBe(1000);
@@ -249,6 +253,171 @@ describe("recordBoundary", () => {
     const a = checkBudget(refreshSpend(ledger));
     const b = checkBudget(refreshSpend(ledger));
     expect(a).toEqual(b);
+  });
+});
+
+describe("driving-session baseline delta (#143)", () => {
+  it("counts a pre-existing session as the delta past its run-open baseline", () => {
+    // driver's cumulative row predates run-open — v1 read this as ZERO all run
+    const { ledger, metrics } = setup({
+      ceilingTokens: 100_000,
+      metricsLines: [row("driver", "2026-08-31T22:00:00.000Z", 5_000, 50)],
+    });
+    expect(ledger.state.baselines).toEqual({
+      driver: { tokens: 5_000, usd: 50 },
+    });
+    // untouched since open — contributes nothing yet
+    expect(checkBudget(refreshSpend(ledger)).sessionTokens).toBe(0);
+
+    // the driver keeps working: its cumulative total grows past the baseline
+    appendFileSync(metrics, row("driver", "2026-09-01T01:00:00.000Z", 5_600, 56));
+    const check = checkBudget(refreshSpend(ledger));
+    expect(check.sessionTokens).toBe(600); // 5600 - 5000, never the full 5600
+    expect(check.spentTokens).toBe(600);
+    expect(check.spentUsd).toBeCloseTo(6, 4);
+  });
+
+  it("floors the delta at 0 when the latest row shrinks below the baseline", () => {
+    const { ledger, metrics } = setup({
+      ceilingTokens: 100_000,
+      metricsLines: [row("driver", "2026-08-31T22:00:00.000Z", 5_000, 50)],
+    });
+    // a truncated/rotated metrics file must never produce negative spend
+    appendFileSync(metrics, row("driver", "2026-09-01T01:00:00.000Z", 4_000, 40));
+    const check = checkBudget(refreshSpend(ledger));
+    expect(check.sessionTokens).toBe(0);
+    expect(check.spentUsd).toBe(0);
+  });
+
+  it("adds baseline deltas and full totals of run-started sessions", () => {
+    const { ledger, metrics } = setup({
+      ceilingTokens: 100_000,
+      metricsLines: [row("driver", "2026-08-31T22:00:00.000Z", 5_000, 50)],
+    });
+    appendFileSync(metrics, row("driver", "2026-09-01T01:00:00.000Z", 5_600, 56));
+    appendFileSync(metrics, row("s1", "2026-09-01T01:30:00.000Z", 300, 3));
+    const check = checkBudget(refreshSpend(ledger));
+    expect(check.sessionTokens).toBe(900); // 600 delta + 300 full
+    expect(check.spentUsd).toBeCloseTo(9, 4);
+  });
+
+  it("loads a v1 ledger with empty baselines, zero agent tokens, and a note", () => {
+    const { projectDir, baseDir, ledger, metrics } = setup({});
+    // hand-write the pre-#143 shape over the file
+    const v1 = {
+      version: 1,
+      run_id: "run-1",
+      project: "legacy",
+      opened: RUN_START,
+      ceiling_tokens: 1000,
+      spent_tokens: 0,
+      spent_usd: 0,
+      boundaries: [],
+    };
+    writeFileSync(ledger.path, JSON.stringify(v1, null, 2) + "\n");
+    appendFileSync(metrics, row("driver", "2026-08-31T22:00:00.000Z", 5_000, 50));
+
+    const reopened = openRunLedger(projectDir, { runId: "run-1", baseDir });
+    expect(reopened.state.version).toBe(2);
+    expect(reopened.state.baselines).toEqual({}); // never invented after the fact
+    expect(reopened.state.agent_tokens).toBe(0);
+    expect(reopened.state.opened).toBe(RUN_START);
+    expect(reopened.state.ceiling_tokens).toBe(1000);
+
+    const check = checkBudget(refreshSpend(reopened));
+    expect(check.note).toMatch(/migrated from v1/);
+    // no baseline for the pre-run driver — v1 behavior preserved: excluded
+    expect(check.sessionTokens).toBe(0);
+  });
+});
+
+describe("agent-token spend component (#143)", () => {
+  it("accumulates wave agentTokens into their own component, summed into spentTokens", () => {
+    const { ledger, baseDir, projectDir } = setup({
+      ceilingTokens: 10_000,
+      metricsLines: [row("s1", "2026-09-01T01:00:00.000Z", 300, 3)],
+    });
+    const first = recordBoundary(ledger, { phase: 15, wave: 1, agentTokens: 1_200 });
+    expect(first.sessionTokens).toBe(300);
+    expect(first.agentTokens).toBe(1_200);
+    expect(first.spentTokens).toBe(1_500); // sum of the two components
+
+    const second = recordBoundary(ledger, { phase: 15, wave: 2, agentTokens: 800 });
+    expect(second.agentTokens).toBe(2_000); // accumulates across boundaries
+    expect(second.spentTokens).toBe(2_300);
+
+    const onDisk = JSON.parse(readFileSync(ledger.path, "utf8")) as BudgetLedgerState;
+    expect(onDisk.boundaries[0]).toMatchObject({
+      wave: 1, agent_tokens: 1_200, spent_tokens: 1_500,
+    });
+    expect(onDisk.boundaries[1]).toMatchObject({
+      wave: 2, agent_tokens: 800, spent_tokens: 2_300,
+    });
+
+    // the component survives a reopen — a resumed run owes its agent spend
+    const reopened = openRunLedger(projectDir, { runId: "run-1", baseDir });
+    expect(checkBudget(refreshSpend(reopened)).agentTokens).toBe(2_000);
+  });
+
+  it("rejects a negative or fractional agentTokens with BUDGET_INVALID", () => {
+    const { ledger } = setup({ ceilingTokens: 10_000 });
+    for (const bad of [-1, 0.5, NaN]) {
+      expect(() => recordBoundary(ledger, { phase: 15, agentTokens: bad }))
+        .toThrowError(expect.objectContaining({ code: "BUDGET_INVALID" }));
+    }
+    // nothing leaked into the ledger from the refused boundaries
+    expect(checkBudget(refreshSpend(ledger)).agentTokens).toBe(0);
+  });
+});
+
+describe("live refusal — ceiling breach walks the full stop path (#143)", () => {
+  it("boundary with agentTokens past a tiny ceiling → verdict stop with honest overshoot, then running → stopped", () => {
+    const projectDir = tempDir("cairn-budget-proj-");
+    const baseDir = tempDir("cairn-budget-home-");
+
+    // staged manifest, advanced to running — the state a live run holds
+    createRunManifest(projectDir, {
+      runId: "run-live",
+      phases: [{
+        number: 15, name: "budget-honesty",
+        estimate: { low: 500, high: 2_000, estUsd: { low: 1, high: 4 } },
+      }],
+      ceiling: { tokens: 1_000 },
+      baseDir,
+    });
+    setRunStatus(projectDir, "run-live", "running", baseDir);
+
+    // driver session already alive at open — baseline captures it
+    const metrics = budgetMetricsPath(projectDir, baseDir);
+    mkdirSync(dirname(metrics), { recursive: true });
+    writeFileSync(metrics, row("driver", "2026-08-31T22:00:00.000Z", 2_000, 20));
+    const ledger = openRunLedger(projectDir, {
+      runId: "run-live", ceilingTokens: 1_000, startedAt: RUN_START, baseDir,
+    });
+
+    // the driver spends a little, and wave 1's agents report a big total
+    appendFileSync(metrics, row("driver", "2026-09-01T01:00:00.000Z", 2_100, 21));
+    const check = recordBoundary(ledger, {
+      phase: 15, wave: 1, agentTokens: 1_500, note: "wave 1 finished",
+    });
+
+    // the refusal: real batch spend seen, honestly over, no headroom offered
+    expect(check.sessionTokens).toBe(100);
+    expect(check.agentTokens).toBe(1_500);
+    expect(check.spentTokens).toBe(1_600);
+    expect(check.verdict).toBe("stop");
+    expect(check.overshoot).toEqual({ tokens: 600 });
+    expect(check.innerBudgetSuggestion).toBeUndefined();
+    const onDisk = JSON.parse(readFileSync(ledger.path, "utf8")) as BudgetLedgerState;
+    expect(onDisk.boundaries[0]).toMatchObject({
+      verdict: "stop", agent_tokens: 1_500, spent_tokens: 1_600,
+    });
+
+    // and the executor's next move works: running → stopped, terminal after
+    const stopped = setRunStatus(projectDir, "run-live", "stopped", baseDir);
+    expect(stopped.status).toBe("stopped");
+    expect(() => setRunStatus(projectDir, "run-live", "running", baseDir))
+      .toThrowError(expect.objectContaining({ code: "PRECONDITION_FAILED" }));
   });
 });
 
