@@ -14,6 +14,10 @@
 - **[Council case study](case-study-council.md)** — the 2026-08-12
   four-vendor product council: 58 findings, source-verified claims, and
   the dispositions — including the one the tool argued against and lost.
+- **[Batch run case study](case-study-batch-run.md)** — the 2026-09-07
+  first headless batch run: seven fixes shipped unattended in 22
+  minutes, and the instrumentation gap the run caught in its own budget
+  ceiling — fixed and refusal-tested one release later.
 
 Docs follow the spec → plan → build → review cycle: every phase/tier gets a
 design spec, then an implementation plan, then ships. Specs are decision
