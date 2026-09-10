@@ -9,6 +9,19 @@ pre-authorization and a real boundary-enforced ceiling, and the first
 live batch run shipped its own fixes — including the instrumentation
 gap it discovered in itself.
 
+### Release hardening (phase 17)
+
+- The batch ceiling became real: the spend ledger now charges the
+  driving session as a delta from run start and folds each wave's
+  reported agent totals into its boundary rows — proven by a live
+  refusal test that walks the full stop path. (This closes the
+  instrumentation gap the rehearsal discovered in itself.)
+- The estimator's per-issue history actually loads now — an
+  archived-phase path bug had silently discarded it, which is why early
+  estimate ranges were identically wide; ranges narrow up to 73% for
+  phases resembling ones already run, with a documented sample-gated
+  tightening curve.
+
 ### Rehearsal guards (phase 16.5)
 
 The second half of the first headless batch run's cargo:
