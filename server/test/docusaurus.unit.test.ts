@@ -154,6 +154,22 @@ describe("sourceName mirroring", () => {
     const found = await c.findPage("Quickstart", root.id);
     expect(found?.id).toBe(page.id);
   });
+
+  it("uppercase source files keep their exact-cased id on re-find (#149)", async () => {
+    // On a case-insensitive filesystem (macOS, Windows) an existsSync check
+    // for "architecture.md" matches ARCHITECTURE.md and hands back a
+    // wrong-cased id — which the post-publish orphan diff then flags as a
+    // stray. findPage must return the id as it exists on disk.
+    const site = tempSite();
+    const { c } = connectorAt(site);
+    const root = await c.ensureRoot("proj");
+    const page = await c.createPage({
+      title: "Architecture", markdown: "v1", parentId: root.id, sourceName: "ARCHITECTURE.md",
+    });
+    expect(page.id).toBe("proj/ARCHITECTURE.md");
+    const found = await c.findPage("Architecture", root.id);
+    expect(found?.id).toBe("proj/ARCHITECTURE.md");
+  });
 });
 
 describe("release stamp (#126)", () => {
@@ -225,6 +241,22 @@ describe("asset directories (#126)", () => {
     // writeImages created docs/proj/diagrams/ — it must not read as a page,
     // or every image folder would look like an orphan to the publisher
     expect(kids.map((k) => k.title)).toEqual(["Guide"]);
+  });
+
+  it("container pages land their images inside the container dir (#149)", async () => {
+    // The landing page is a container whose index.md resolves image refs from
+    // the container dir — the publish's root update carries the README's
+    // images, and dropping them breaks the Docusaurus build.
+    const site = tempSite();
+    const { c } = connectorAt(site);
+    const root = await c.ensureRoot("proj");
+    await c.updatePage(root.id, {
+      title: "proj", markdown: "![m](docs/diagrams/map.png)", container: true,
+      images: [{ ref: "docs/diagrams/map.png", filename: "map.png",
+        data: Buffer.from([137, 80, 78, 71]), mediaType: "image/png" }],
+    });
+    expect(existsSync(join(site, "docs", "proj", "docs", "diagrams", "map.png"))).toBe(true);
+    expect(existsSync(join(site, "docs", "proj", "index.md"))).toBe(true);
   });
 });
 

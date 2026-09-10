@@ -210,8 +210,14 @@ export class DocusaurusConnector implements DocsConnector {
     if (!existsSync(dirAbs)) return null;
     const slug = slugify(title);
     const idOf = (name: string) => (dirId === "" ? name : posix.join(dirId, name));
-    if (existsSync(join(dirAbs, `${slug}.md`))) return this.pageFor(idOf(`${slug}.md`));
-    if (existsSync(join(dirAbs, slug))) return this.pageFor(idOf(slug));
+    // Exact-name match via readdir, NOT existsSync — case-insensitive
+    // filesystems (macOS, Windows) would match ARCHITECTURE.md for
+    // "architecture.md" and hand back a wrong-cased id that the post-publish
+    // orphan diff then flags as a stray. The title fallback below finds the
+    // real-cased file instead (#149).
+    const entries = new Set(readdirSync(dirAbs));
+    if (entries.has(`${slug}.md`)) return this.pageFor(idOf(`${slug}.md`));
+    if (entries.has(slug)) return this.pageFor(idOf(slug));
     // rename fallback: slug no longer matches the filename — match stored titles
     for (const page of this.childPages(dirId)) {
       if (page.title === title) return page;
@@ -271,7 +277,6 @@ export class DocusaurusConnector implements DocsConnector {
     const dirId = this.parentDirId(spec.parentId);
     const dirAbs = dirId === "" ? this.docsAbs : this.abs(dirId);
     mkdirSync(dirAbs, { recursive: true });
-    this.writeImages(dirAbs, spec);
     const position = this.nextPosition(dirAbs);
     if (spec.container) {
       const name = spec.sourceName ?? slugify(spec.title);
@@ -283,6 +288,7 @@ export class DocusaurusConnector implements DocsConnector {
     // source filename wins so repo-relative links between docs keep resolving
     const fileName = spec.sourceName ?? `${slugify(spec.title)}.md`;
     const fileId = dirId === "" ? fileName : posix.join(dirId, fileName);
+    this.writeImages(dirAbs, spec);
     writeFileSync(join(dirAbs, fileName),
       frontMatter(spec.title, 1, position, spec.releaseVersion) + this.body(spec.markdown));
     return this.pageFor(fileId);
@@ -313,6 +319,10 @@ export class DocusaurusConnector implements DocsConnector {
    */
   private writeContainer(id: string, spec: PageSpec, position: number | undefined,
     version: number): void {
+    // Images live INSIDE the container dir — index.md resolves its refs from
+    // there. The old parent-dir/file-branch-only write dropped them, so a
+    // README with a diagram broke the site build (#149).
+    this.writeImages(this.abs(id), spec);
     const empty = spec.markdown.trim() === "";
     this.writeCategory(id, {
       label: spec.title,

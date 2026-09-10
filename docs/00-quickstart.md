@@ -134,6 +134,12 @@ to Confluence:
 (Same Atlassian site? Jira and Confluence share API tokens — point the env
 names at your Jira credentials and you're done.)
 
+No Confluence? The `docusaurus` connector is the credential-free default —
+`"docs": {"connector": "docusaurus", "config": {"sitePath": "../my-docs-site",
+"docsDir": "docs"}}` writes markdown straight into a local Docusaurus site
+checkout. No tokens, no env vars — the site's `docs/` folder is the store,
+and building/deploying the site stays with you.
+
 ## Step 4 — your first project
 
 ```
