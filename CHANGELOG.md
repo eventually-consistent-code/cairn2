@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased — rehearsal-guards (2026-09-07)
+## v2.4.0 — docs and build automation (2026-09-10)
+
+Milestone v5 plus the first headless batch run's cargo: documentation
+staleness became computed detection with generation wired into the
+lifecycle, building became budgetable and headless with staged push
+pre-authorization and a real boundary-enforced ceiling, and the first
+live batch run shipped its own fixes — including the instrumentation
+gap it discovered in itself.
+
+### Rehearsal guards (phase 16.5)
 
 The second half of the first headless batch run's cargo:
 
@@ -17,7 +26,7 @@ The second half of the first headless batch run's cargo:
   pattern only — every other check still applies there, and full
   strictness holds everywhere else.
 
-## Unreleased — dress-rehearsal (2026-09-07)
+### Dress rehearsal (phase 16)
 
 The first headless batch run's cargo — four friction fixes from the v5
 retrospective, built and shipped unattended under a token ceiling:
@@ -37,7 +46,7 @@ retrospective, built and shipped unattended under a token ceiling:
   exact rebuild command, memory cards keep working through it, and the
   health probe reports the binding state before it bites.
 
-## Unreleased — native grain + proof, catch-up entries (phases 12–13, written 2026-09-07)
+### Native grain + proof — catch-up entries (phases 12–13)
 
 Late entries: these two phases shipped 2026-08-14 without changelog
 lines — the gap the new docs-staleness detector flagged on its first run.
@@ -54,7 +63,7 @@ lines — the gap the new docs-staleness detector flagged on its first run.
   record) — plus homepage/link repairs and a fresh-install distribution
   check.
 
-## Unreleased — headless-build (phase 15, 2026-09-04)
+### Headless build (phase 15)
 
 - Building became budgetable: a token estimator turns any phase into an
   honest cost range calibrated from real recorded spend (never a point
@@ -82,7 +91,7 @@ lines — the gap the new docs-staleness detector flagged on its first run.
   accepts a list, works every phase's topics from one agent pool, and
   still leaves each phase individually resumable.
 
-## Unreleased — auto-docs (phase 14, 2026-09-01)
+### Auto-docs (phase 14)
 
 - Documentation staleness became computed math: a deterministic `docs_drift`
   report names every verified phase the changelog and docs haven't caught
