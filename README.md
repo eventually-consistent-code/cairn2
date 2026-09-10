@@ -3,8 +3,8 @@
 **Converged work management for AI coding agents** — one tool where deep
 planning, durable memory, tracker truth, and session continuity meet in a
 single deterministic engine. First-class as a Claude Code plugin; one-command
-installers wire the same server and verbs into seven other AI CLI harnesses
-(Grok Build, Copilot CLI, Codex, Gemini CLI, Cursor, OpenCode, Zed).
+installers wire the same server and verbs into <!-- auto:harness-count -->seven<!-- /auto:harness-count --> other AI CLI harnesses
+(<!-- auto:harness-list -->Grok Build, Copilot CLI, Codex, Gemini CLI, Cursor, OpenCode, Zed<!-- /auto:harness-list -->).
 
 What makes it different — mechanism, not vocabulary:
 
@@ -90,13 +90,14 @@ git PRs.
 generated from the routing table.
 The routing table is complete: the reserved verb set is now empty.
 
-**Server:** <!-- auto:tool-count -->84<!-- /auto:tool-count --> typed MCP tools, 1117 passing tests — counts move with each
+**Server:** <!-- auto:tool-count -->84<!-- /auto:tool-count --> typed MCP tools, <!-- auto:test-count -->1258<!-- /auto:test-count --> passing tests — counts move with each
 tier and are measured in CI (env-gated live-backend
-suites skip without creds) — four dependencies (`@modelcontextprotocol/client`,
-`@modelcontextprotocol/server`, `better-sqlite3`, `zod`). Fail loud, never
+suites skip without creds) — <!-- auto:deps -->four dependencies
+(`@modelcontextprotocol/client`, `@modelcontextprotocol/server`,
+`better-sqlite3`, `zod`)<!-- /auto:deps -->. Fail loud, never
 fake state.
 
-**Agents (2 live):** the plugin's first `agents/` dir — specialist roles
+**Agents (<!-- auto:agent-count -->2<!-- /auto:agent-count --> live):** the plugin's first `agents/` dir — specialist roles
 dispatched by existing verbs, zero new tools or verbs.
 
 | Agent | Role | Dispatched by |

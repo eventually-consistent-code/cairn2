@@ -9,17 +9,29 @@
 //
 //   <!-- auto:verbs -->…<!-- /auto:verbs -->                 verb count + list
 //   <!-- auto:tool-count -->…<!-- /auto:tool-count -->       typed MCP tool count
+//   <!-- auto:test-count -->…<!-- /auto:test-count -->       passing-test count (see below)
 //   <!-- auto:trackers -->…<!-- /auto:trackers -->           tracker backend blurb
 //   <!-- auto:tracker-count -->…<!-- /auto:tracker-count --> tracker adapter count word
 //   <!-- auto:docs-connectors -->…<!-- /auto:docs-connectors --> docs connector list
+//   <!-- auto:harness-count -->…<!-- /auto:harness-count --> non-Claude harness count word
+//   <!-- auto:harness-list -->…<!-- /auto:harness-list -->   non-Claude harness display list
+//   <!-- auto:agent-count -->…<!-- /auto:agent-count -->     agents/ *.md file count
+//   <!-- auto:deps -->…<!-- /auto:deps -->                   server runtime dependency blurb
 //
 // Default mode: print a unified diff to stdout and exit 1 if stale, exit 0 if
 // clean (CI-gateable). `--write` applies the refresh in place. The script
 // never rewrites silently by default — propose-as-diff is the human gate.
 //
-// Deliberately NOT automated: the "N passing tests" claim. Counting tests
-// needs a full vitest run — too slow for a claims script — so that number
-// stays hand-maintained next to the tool count.
+// The "N passing tests" claim (#147): counted with `npx vitest list --json`
+// in server/ — vitest's own enumeration, no suite run. The listing omits the
+// env-gated live-backend suites (without CAIRN_LIVE_TESTS creds each defines
+// only an it.skip placeholder, and `vitest list` doesn't list skipped tests),
+// so the number equals exactly the "N passed" of a credential-less
+// `vitest run` — the same run CI does. Cost: ~2-3s and it needs
+// server/node_modules (`npm ci` in server/ first); it runs in every mode,
+// because the default diff mode can't detect staleness without the real
+// number. If CI ever gates on this script, run it after the server test step
+// so node_modules already exists.
 
 import { readFileSync, writeFileSync, readdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -87,6 +99,44 @@ const docsSlugs = adapterSlugs("server/src/docs/adapters").sort();
 if (trackerSlugs.length === 0) failures.push("no tracker adapters found in server/src/tracker/adapters/");
 if (docsSlugs.length === 0) failures.push("no docs adapters found in server/src/docs/adapters/");
 
+// test count: vitest's own enumeration (see header) — equals the passed
+// count of a credential-less run because the live-suite skip stubs are
+// never listed.
+let testCount = 0;
+const listRun = spawnSync("npx", ["vitest", "list", "--json"],
+  { cwd: join(root, "server"), encoding: "utf8" });
+if (listRun.status !== 0 || listRun.error) {
+  failures.push("`npx vitest list` failed in server/ — run `npm ci` there first"
+    + (listRun.stderr ? ` (${listRun.stderr.trim().split("\n").at(-1)})` : ""));
+} else {
+  try { testCount = JSON.parse(listRun.stdout.trim()).length; }
+  catch { failures.push("vitest list --json output was not parseable JSON"); }
+  if (testCount === 0) failures.push("vitest list enumerated zero tests");
+}
+
+// other harnesses: the installer's own HARNESSES registry minus claude
+// (README speaks of "N *other* AI CLI harnesses"). Display names are a
+// presentation map; unknown newcomers fall back to Title-Cased slugs.
+const HARNESS_DISPLAY = {
+  grok: "Grok Build", copilot: "Copilot CLI", codex: "Codex",
+  gemini: "Gemini CLI", cursor: "Cursor", opencode: "OpenCode", zed: "Zed",
+};
+const setupSrc = readFileSync(join(root, "setup/cairn-setup.mjs"), "utf8");
+const hm = setupSrc.match(/const HARNESSES = \[([^\]]*)\]/);
+const otherHarnesses = (hm ? [...hm[1].matchAll(/"([a-z-]+)"/g)].map((m) => m[1]) : [])
+  .filter((h) => h !== "claude");
+if (otherHarnesses.length === 0) failures.push("no HARNESSES parsed from setup/cairn-setup.mjs");
+
+// agents: one .md per agent in the plugin's agents/ dir
+const agentCount = readdirSync(join(root, "agents"))
+  .filter((f) => f.endsWith(".md")).length;
+if (agentCount === 0) failures.push("no agent files found in agents/");
+
+// server runtime dependencies, straight from the manifest
+const deps = Object.keys(JSON.parse(
+  readFileSync(join(root, "server/package.json"), "utf8")).dependencies ?? {}).sort();
+if (deps.length === 0) failures.push("no dependencies found in server/package.json");
+
 // small counts read better as words ("eight adapters", not "8 adapters")
 const WORDS = ["zero", "one", "two", "three", "four", "five", "six", "seven",
   "eight", "nine", "ten", "eleven", "twelve"];
@@ -109,13 +159,30 @@ function wrapVerbs(verbs) {
   return lines.join("\n");
 }
 
+// space-separated tokens wrapped to the same ~78-column grain
+function wrapProse(text, width = 78) {
+  const lines = [""];
+  for (const tok of text.split(" ")) {
+    if (lines.at(-1) && lines.at(-1).length + 1 + tok.length > width) lines.push(tok);
+    else lines[lines.length - 1] = lines.at(-1) ? `${lines.at(-1)} ${tok}` : tok;
+  }
+  return lines.join("\n");
+}
+
 const spans = {
   "verbs": wrapVerbs(liveVerbs),
   "tool-count": String(registry.size),
+  "test-count": String(testCount),
   "trackers": `${capWord(trackerSlugs.length)} write-through backends `
     + `(${trackerSlugs.map(displayName).join(", ")})`,
   "tracker-count": word(trackerSlugs.length),
   "docs-connectors": prose(docsSlugs.map(displayName)),
+  "harness-count": word(otherHarnesses.length),
+  "harness-list": otherHarnesses
+    .map((h) => HARNESS_DISPLAY[h] ?? displayName(h)).join(", "),
+  "agent-count": String(agentCount),
+  "deps": `${word(deps.length)} dependencies\n`
+    + wrapProse(`(${deps.map((d) => `\`${d}\``).join(", ")})`),
 };
 
 // --- rewrite between markers -------------------------------------------------
@@ -141,7 +208,9 @@ if (failures.length) {
 // --- report / apply ----------------------------------------------------------
 
 const summary = `${liveVerbs.length} verbs, ${registry.size} tools, `
-  + `${trackerSlugs.length} tracker adapters, ${docsSlugs.length} docs connectors`;
+  + `${testCount} tests, ${trackerSlugs.length} tracker adapters, `
+  + `${docsSlugs.length} docs connectors, ${otherHarnesses.length} other harnesses, `
+  + `${agentCount} agents, ${deps.length} deps`;
 
 if (proposed === readme) {
   console.log(`refresh-readme: clean — ${summary}`);
