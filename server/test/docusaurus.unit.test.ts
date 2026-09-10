@@ -242,6 +242,22 @@ describe("asset directories (#126)", () => {
     // or every image folder would look like an orphan to the publisher
     expect(kids.map((k) => k.title)).toEqual(["Guide"]);
   });
+
+  it("container pages land their images inside the container dir (#149)", async () => {
+    // The landing page is a container whose index.md resolves image refs from
+    // the container dir — the publish's root update carries the README's
+    // images, and dropping them breaks the Docusaurus build.
+    const site = tempSite();
+    const { c } = connectorAt(site);
+    const root = await c.ensureRoot("proj");
+    await c.updatePage(root.id, {
+      title: "proj", markdown: "![m](docs/diagrams/map.png)", container: true,
+      images: [{ ref: "docs/diagrams/map.png", filename: "map.png",
+        data: Buffer.from([137, 80, 78, 71]), mediaType: "image/png" }],
+    });
+    expect(existsSync(join(site, "docs", "proj", "docs", "diagrams", "map.png"))).toBe(true);
+    expect(existsSync(join(site, "docs", "proj", "index.md"))).toBe(true);
+  });
 });
 
 function gitSite(): string {

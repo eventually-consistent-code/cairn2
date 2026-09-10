@@ -242,7 +242,6 @@ export class DocusaurusConnector {
         const dirId = this.parentDirId(spec.parentId);
         const dirAbs = dirId === "" ? this.docsAbs : this.abs(dirId);
         mkdirSync(dirAbs, { recursive: true });
-        this.writeImages(dirAbs, spec);
         const position = this.nextPosition(dirAbs);
         if (spec.container) {
             const name = spec.sourceName ?? slugify(spec.title);
@@ -254,6 +253,7 @@ export class DocusaurusConnector {
         // source filename wins so repo-relative links between docs keep resolving
         const fileName = spec.sourceName ?? `${slugify(spec.title)}.md`;
         const fileId = dirId === "" ? fileName : posix.join(dirId, fileName);
+        this.writeImages(dirAbs, spec);
         writeFileSync(join(dirAbs, fileName), frontMatter(spec.title, 1, position, spec.releaseVersion) + this.body(spec.markdown));
         return this.pageFor(fileId);
     }
@@ -279,6 +279,10 @@ export class DocusaurusConnector {
      * index); empty markdown → a generated-index _category_.json and no index.md.
      */
     writeContainer(id, spec, position, version) {
+        // Images live INSIDE the container dir — index.md resolves its refs from
+        // there. The old parent-dir/file-branch-only write dropped them, so a
+        // README with a diagram broke the site build (#149).
+        this.writeImages(this.abs(id), spec);
         const empty = spec.markdown.trim() === "";
         this.writeCategory(id, {
             label: spec.title,
