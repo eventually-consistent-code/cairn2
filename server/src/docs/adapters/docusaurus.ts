@@ -210,8 +210,14 @@ export class DocusaurusConnector implements DocsConnector {
     if (!existsSync(dirAbs)) return null;
     const slug = slugify(title);
     const idOf = (name: string) => (dirId === "" ? name : posix.join(dirId, name));
-    if (existsSync(join(dirAbs, `${slug}.md`))) return this.pageFor(idOf(`${slug}.md`));
-    if (existsSync(join(dirAbs, slug))) return this.pageFor(idOf(slug));
+    // Exact-name match via readdir, NOT existsSync — case-insensitive
+    // filesystems (macOS, Windows) would match ARCHITECTURE.md for
+    // "architecture.md" and hand back a wrong-cased id that the post-publish
+    // orphan diff then flags as a stray. The title fallback below finds the
+    // real-cased file instead (#149).
+    const entries = new Set(readdirSync(dirAbs));
+    if (entries.has(`${slug}.md`)) return this.pageFor(idOf(`${slug}.md`));
+    if (entries.has(slug)) return this.pageFor(idOf(slug));
     // rename fallback: slug no longer matches the filename — match stored titles
     for (const page of this.childPages(dirId)) {
       if (page.title === title) return page;

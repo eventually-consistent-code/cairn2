@@ -154,6 +154,22 @@ describe("sourceName mirroring", () => {
     const found = await c.findPage("Quickstart", root.id);
     expect(found?.id).toBe(page.id);
   });
+
+  it("uppercase source files keep their exact-cased id on re-find (#149)", async () => {
+    // On a case-insensitive filesystem (macOS, Windows) an existsSync check
+    // for "architecture.md" matches ARCHITECTURE.md and hands back a
+    // wrong-cased id — which the post-publish orphan diff then flags as a
+    // stray. findPage must return the id as it exists on disk.
+    const site = tempSite();
+    const { c } = connectorAt(site);
+    const root = await c.ensureRoot("proj");
+    const page = await c.createPage({
+      title: "Architecture", markdown: "v1", parentId: root.id, sourceName: "ARCHITECTURE.md",
+    });
+    expect(page.id).toBe("proj/ARCHITECTURE.md");
+    const found = await c.findPage("Architecture", root.id);
+    expect(found?.id).toBe("proj/ARCHITECTURE.md");
+  });
 });
 
 describe("release stamp (#126)", () => {
