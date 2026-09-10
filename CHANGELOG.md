@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased — positioning-truth (phase 18, 2026-09-10)
+
+Milestone v6's closing phase, built by the second headless batch run:
+
+- Every countable public claim now maintains itself: test totals (via a
+  two-second deterministic enumeration), harness and agent counts, and
+  the dependency list joined the auto-refresh markers, and the
+  comparison page's cairn column regenerates from the live registry —
+  no released number can silently rot again.
+- Every competitor row on the comparison page was re-verified against
+  live public sources and re-dated; the one claim that couldn't be
+  re-confirmed is qualified on the page rather than silently kept.
+- Cairn publishes its own docs through its own connector: seventy-eight
+  pages into a Docusaurus site, release-stamped and idempotent — and the
+  first self-publish immediately caught two real adapter bugs
+  (false orphan warnings on case-insensitive filesystems; container
+  pages dropping their images), both fixed with regression tests.
+- The first headless batch run is now a public case study, blind ceiling
+  and all — the second proof-of-rigor artifact beside the council piece.
+
 ## v2.4.0 — docs and build automation (2026-09-10)
 
 Milestone v5 plus the first headless batch run's cargo: documentation
