@@ -200,13 +200,27 @@ describe("release.mjs", () => {
     expect(readFileSync(join(repo, "CHANGELOG.md"), "utf8")).toBe(CHANGELOG);
   });
 
-  it("refuses when the changelog already has an entry for the target", () => {
+  it("uses a pre-written changelog entry for the target — cut-first workflow (#146)", () => {
+    const repo = makeRepo();
+    const prewritten =
+      "# Changelog\n\n## v2.3.0 — already here (2026-08-10)\n\n- old.\n" + CHANGELOG.slice("# Changelog\n\n".length);
+    writeFileSync(join(repo, "CHANGELOG.md"), prewritten);
+    const res = run(repo, "2.3.0");
+    expect(res.status).toBe(0);
+    expect(res.stdout).toContain("changelog entry present — using it");
+    expect(versionsIn(repo)).toEqual(["2.3.0", "2.3.0", "2.3.0"]);
+    // the pre-written entry is used verbatim — no scaffold prepended
+    expect(readFileSync(join(repo, "CHANGELOG.md"), "utf8")).toBe(prewritten);
+  });
+
+  it("refuses a pre-written entry that still carries scaffold placeholders (#146)", () => {
     const repo = makeRepo();
     writeFileSync(join(repo, "CHANGELOG.md"),
-      "# Changelog\n\n## v2.3.0 — already here (2026-08-10)\n\n- old.\n" + CHANGELOG.slice("# Changelog\n\n".length));
+      "# Changelog\n\n## v2.3.0 — <headline> (2026-08-10)\n\n- <what shipped — fill in before tagging>\n\n" +
+      CHANGELOG.slice("# Changelog\n\n".length));
     const res = run(repo, "2.3.0");
     expect(res.status).toBe(1);
-    expect(res.stderr).toContain("already has a v2.3.0 entry");
+    expect(res.stderr).toContain("placeholder text");
     expect(versionsIn(repo)).toEqual(["2.2.0", "2.2.0", "2.2.0"]);
   });
 
