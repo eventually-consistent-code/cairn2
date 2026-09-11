@@ -52,6 +52,26 @@ const row = (
     models: ["claude-fable-5"],
   }) + "\n";
 
+/** A cumulative row with every metered field explicit — for the token-unit
+ * tests (#152), where cache traffic must NOT count as tokens. */
+const fullRow = (
+  sessionId: string, ts: string,
+  t: { input: number; output: number; cacheWrite: number; cacheRead: number },
+  usd: number,
+): string =>
+  JSON.stringify({
+    ts,
+    session_id: sessionId,
+    phase: 15,
+    kind: "issue",
+    input_tokens: t.input,
+    output_tokens: t.output,
+    cache_write_tokens: t.cacheWrite,
+    cache_read_tokens: t.cacheRead,
+    est_cost_usd: usd,
+    models: ["claude-fable-5"],
+  }) + "\n";
+
 /** Opens a ledger against a fresh injectable base dir and writes the given
  * metrics lines under it. Returns { projectDir, baseDir, ledger }. */
 function setup(opts: {
@@ -146,6 +166,53 @@ describe("cumulative-row collapse", () => {
     const check = checkBudget(refreshSpend(ledger));
     expect(check.spentTokens).toBe(300);
     expect(check.spentUsd).toBeCloseTo(3, 4);
+  });
+});
+
+describe("token unit (#152) — input+output only, the estimator's unit", () => {
+  it("charges only input+output tokens on a cache-heavy session; USD reflects everything", () => {
+    // the live incident shape: 40.4M metered tokens, nearly all cache reads,
+    // against a sane $13 — the old sum-of-four unit blew a 400k ceiling
+    // instantly while the USD axis stayed calm
+    const { ledger } = setup({
+      ceilingTokens: 500_000,
+      metricsLines: [
+        fullRow("driver-heavy", "2026-09-01T01:00:00.000Z", {
+          input: 300_000, output: 100_000,
+          cacheWrite: 900_000, cacheRead: 39_100_000,
+        }, 13),
+      ],
+    });
+    const check = checkBudget(refreshSpend(ledger));
+    expect(check.spentTokens).toBe(400_000); // input + output ONLY
+    expect(check.spentUsd).toBeCloseTo(13, 4); // cache still priced in USD
+    expect(check.verdict).toBe("proceed"); // old unit: instant stop at 40.4M
+    expect(check.remainingTokens).toBe(100_000);
+  });
+
+  it("computes baselines and deltas on the same input+output unit", () => {
+    const projectDir = tempDir("cairn-budget-proj-");
+    const baseDir = tempDir("cairn-budget-home-");
+    const metrics = budgetMetricsPath(projectDir, baseDir);
+    mkdirSync(dirname(metrics), { recursive: true });
+    // driving session pre-exists at run-open with cache traffic already piled up
+    writeFileSync(metrics, fullRow("driver", "2026-08-31T20:00:00.000Z", {
+      input: 50_000, output: 10_000, cacheWrite: 200_000, cacheRead: 5_000_000,
+    }, 5));
+    const ledger = openRunLedger(projectDir, {
+      runId: "run-1", ceilingTokens: 500_000, startedAt: RUN_START, baseDir,
+    });
+    // baseline snapshotted in the new unit: 60k, not 5.26M
+    expect(ledger.state.baselines.driver.tokens).toBe(60_000);
+
+    // mid-run the driver grows modest input+output and a mountain of cache reads
+    appendFileSync(metrics, fullRow("driver", "2026-09-01T02:00:00.000Z", {
+      input: 70_000, output: 20_000, cacheWrite: 250_000, cacheRead: 35_000_000,
+    }, 13));
+    const check = checkBudget(refreshSpend(ledger));
+    expect(check.spentTokens).toBe(30_000); // (70k+20k) - 60k baseline
+    expect(check.spentUsd).toBeCloseTo(8, 4); // 13 - 5 — cache cost stays in USD
+    expect(check.verdict).toBe("proceed");
   });
 });
 

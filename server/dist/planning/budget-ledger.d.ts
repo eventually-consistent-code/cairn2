@@ -19,6 +19,15 @@
  *   numbers are approximate list-price estimates, same caveat as
  *   cost-report.mjs.
  *
+ *   TOKEN UNIT (#152): the token component counts input + output tokens
+ *   ONLY — the exact unit token-estimate.ts publishes, so a ceiling staged
+ *   from an estimate range is judged in the same currency it was quoted in.
+ *   Cache write/read traffic is EXCLUDED from the token count and lives in
+ *   the USD component instead (est_cost_usd already prices it), because a
+ *   cache-heavy driving session meters tens of millions of cache-read
+ *   tokens against pennies of real cost. Baselines and deltas are computed
+ *   on this same unit.
+ *
  *   The Claude Code Workflow primitive exposes its own budget global in
  *   workflow scripts (budget.total / budget.spent() / budget.remaining();
  *   over-budget agent() calls THROW). That is the INNER, in-run ceiling —
