@@ -76,9 +76,13 @@ describe("bindingsError", () => {
     expect(e.code).toBe("NATIVE_MODULE_BROKEN");
     expect(e.message).toBe(
       "native module better-sqlite3 not built for this runtime (node v26.0.0); " +
-        "run: cd /plugin/cache/server && npm rebuild better-sqlite3",
+        "run: cd /plugin/cache/server && npm rebuild better-sqlite3, " +
+        "then reload plugins (or restart the session) so the server picks up the new binding",
     );
-    expect(e.nextAction).toContain("rebuild once, then retry");
+    expect(e.nextAction).toContain(
+      "rebuild once, then reload plugins (or restart the session)",
+    );
+    expect(e.nextAction).toContain("then retry");
   });
 });
 
@@ -131,7 +135,10 @@ describe("probeNativeBindings", () => {
     expect(report.status).toBe("broken");
     expect(report.module).toBe("better-sqlite3");
     expect(report.message).toContain("not built for this runtime");
-    expect(report.fix).toBe(rebuildFix());
+    expect(report.fix).toBe(
+      `${rebuildFix()}, then reload plugins (or restart the session) ` +
+        "so the server picks up the new binding",
+    );
   });
 });
 

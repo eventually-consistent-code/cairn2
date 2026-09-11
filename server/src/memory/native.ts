@@ -63,6 +63,11 @@ export function rebuildFix(dir: string = serverDir()): string {
   return `cd ${dir} && npm rebuild better-sqlite3`;
 }
 
+// The second step, observed live (#156): the rebuild alone is not enough --
+// the running server keeps its cached failed load until plugins reload.
+const RELOAD_STEP =
+  "then reload plugins (or restart the session) so the server picks up the new binding";
+
 /** The typed, human-first error a bindings failure translates into. */
 export function bindingsError(
   nodeVersion: string = process.version,
@@ -71,9 +76,10 @@ export function bindingsError(
   return new CairnError(
     "NATIVE_MODULE_BROKEN",
     `native module better-sqlite3 not built for this runtime (node ${nodeVersion}); ` +
-      `run: ${rebuildFix(dir)}`,
+      `run: ${rebuildFix(dir)}, ${RELOAD_STEP}`,
     "a fresh plugin-cache install under a newer node ABI ships no compiled " +
-      "binding -- rebuild once, then retry; card tools keep working meanwhile",
+      `binding -- rebuild once, ${RELOAD_STEP}, then retry; ` +
+      "card tools keep working meanwhile",
   );
 }
 
@@ -116,7 +122,7 @@ export function probeNativeBindings(
       module: "better-sqlite3",
       status: "broken",
       message: e instanceof Error ? e.message : String(e),
-      fix: rebuildFix(),
+      fix: `${rebuildFix()}, ${RELOAD_STEP}`,
     };
   }
 }
