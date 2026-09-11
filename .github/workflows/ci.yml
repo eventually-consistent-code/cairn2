@@ -33,6 +33,12 @@ jobs:
       # known sites when they disagree with the live registry (issue #139).
       - name: tool-count pins
         run: node scripts/check-pins.mjs
+      # Diagram labels carry counted claims ("84 typed MCP tools") that
+      # drifted from the registry three times — the PNGs review fine no
+      # matter what the numbers say. Detection only: the renderer lives
+      # outside the repo (issue #154).
+      - name: diagram-label counts
+        run: node scripts/check-diagrams.mjs
       # Install-free dist staleness triage from git shape alone — names the
       # src files that moved after the last dist commit. The rebuild-and-diff
       # step below stays the authoritative gate (issue #139).
