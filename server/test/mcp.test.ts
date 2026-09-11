@@ -1952,7 +1952,7 @@ describe("docs tools over an injected fake connector", () => {
       expect(probe.json.native.status).toBe("broken");
       expect(probe.json.native.module).toBe("better-sqlite3");
       expect(probe.json.native.fix).toMatch(
-        /^cd .+ && npm rebuild better-sqlite3$/,
+        /^cd .+ && npm rebuild better-sqlite3, then reload plugins/,
       );
 
       // Tier-1 index tools degrade to the typed error, never the raw stack
