@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased — hygiene-batch (phase 18.7, 2026-09-11)
+
+Milestone v7's opener, built by the third headless batch run — which
+field-accepted one of its own fixes at its own budget boundary:
+
+- The spend ledger and the cost estimator finally agree on what a token
+  is: real input and output only, with cached-context traffic priced in
+  dollars — the accounting artifact that produced a forty-million-token
+  false stop now reads as the sane number it always was, proven by this
+  very run's boundary.
+- Issues can move between phases after creation: the update contract
+  carries the phase field through all eight tracker backends (each
+  mapped exactly as at creation, with one honest documented degradation),
+  and phase numbers now work everywhere an internal id once leaked.
+- The release script embraces the cut-first workflow: a pre-written
+  changelog entry is used as-is, and a half-filled scaffold is still
+  refused outright.
+- The public site's apex-domain fix is staged (with registrar and
+  settings instructions), the architecture diagrams joined the CI count
+  guards, and the native-binding safeguard now names both halves of its
+  own cure — rebuild, then reload.
+
 ## Unreleased — positioning-truth (phase 18, 2026-09-10)
 
 Milestone v6's closing phase, built by the second headless batch run:
