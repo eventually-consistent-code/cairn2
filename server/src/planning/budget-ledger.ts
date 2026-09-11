@@ -19,6 +19,15 @@
  *   numbers are approximate list-price estimates, same caveat as
  *   cost-report.mjs.
  *
+ *   TOKEN UNIT (#152): the token component counts input + output tokens
+ *   ONLY — the exact unit token-estimate.ts publishes, so a ceiling staged
+ *   from an estimate range is judged in the same currency it was quoted in.
+ *   Cache write/read traffic is EXCLUDED from the token count and lives in
+ *   the USD component instead (est_cost_usd already prices it), because a
+ *   cache-heavy driving session meters tens of millions of cache-read
+ *   tokens against pennies of real cost. Baselines and deltas are computed
+ *   on this same unit.
+ *
  *   The Claude Code Workflow primitive exposes its own budget global in
  *   workflow scripts (budget.total / budget.spent() / budget.remaining();
  *   over-budget agent() calls THROW). That is the INNER, in-run ceiling —
@@ -40,12 +49,13 @@ import { CairnError } from "../errors.js";
 
 // Constants
 
-/** Tokens in a metrics row that count toward the token ceiling — everything
- * the API meters (cache reads are cheap but they are still tokens; the USD
- * ceiling is the one that prices tiers honestly). */
-const TOKEN_FIELDS = [
-  "input_tokens", "output_tokens", "cache_write_tokens", "cache_read_tokens",
-] as const;
+/** Tokens in a metrics row that count toward the token ceiling — input +
+ * output ONLY, the same unit token-estimate.ts uses, so ceilings staged from
+ * estimate ranges hold. Cache traffic is deliberately excluded from the
+ * token unit (a cache-heavy driver would otherwise blow a sane ceiling in
+ * minutes, #152) — it still costs money, and the USD component prices it
+ * honestly through est_cost_usd. */
+const TOKEN_FIELDS = ["input_tokens", "output_tokens"] as const;
 
 // Paths
 
@@ -298,7 +308,8 @@ function collapseMetrics(metricsPath: string): {
   return { firstTs, latest };
 }
 
-/** One row's countable totals — every metered token field plus est cost. */
+/** One row's countable totals — input+output tokens (the estimator's unit;
+ * cache traffic counts only through est_cost_usd) plus est cost. */
 function rowTotals(row: Record<string, unknown>): { tokens: number; usd: number } {
   let tokens = 0;
   for (const f of TOKEN_FIELDS) tokens += Number(row[f] ?? 0) || 0;

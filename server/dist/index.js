@@ -855,6 +855,8 @@ export function buildServer(deps) {
             + "Wave subagents write no metrics rows — pass agentTokens (integer ≥ 0) at a boundary with the "
             + "completed wave's reported agent token total; it accumulates as the ledger's agent-spend "
             + "component (result exposes sessionTokens + agentTokens = spentTokens). "
+            + "Token unit: input+output tokens only, matching token_estimate's ranges — cache read/write "
+            + "traffic is excluded from the token count and priced through the USD component instead. "
             + "innerBudgetSuggestion is the inner in-run Workflow budget the executor passes down.",
         inputSchema: z.object({
             runId: z.string(),
