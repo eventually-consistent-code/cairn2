@@ -342,3 +342,30 @@ describe("GitLabTracker probe (CRN-48)", () => {
     await expect(t.probe!()).resolves.toMatchObject({ verdict: "rate_limited" });
   });
 });
+
+describe("GitLabTracker re-phase (#142)", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("updateIssue(phase) PUTs milestone_id — same mapping as createIssue", async () => {
+    vi.stubEnv("GITLAB_TOKEN", "tok");
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: glIssue({ milestone: { id: 3 } }) },
+    ]);
+    const t = new GitLabTracker(baseCfg, f);
+    const issue = await t.updateIssue("7", { phase: "3" });
+    expect(calls[0].method).toBe("PUT");
+    expect(calls[0].body).toMatchObject({ milestone_id: 3 });
+    expect(issue.phase).toBe("3");
+  });
+
+  it("updateIssue rejects a non-numeric phase before any HTTP call", async () => {
+    vi.stubEnv("GITLAB_TOKEN", "tok");
+    const { f, calls } = fixtureFetch([]);
+    const t = new GitLabTracker(baseCfg, f);
+    await expect(t.updateIssue("7", { phase: "not-a-number" }))
+      .rejects.toMatchObject({ code: "CONFIG_INVALID" });
+    expect(calls.length).toBe(0);
+  });
+});

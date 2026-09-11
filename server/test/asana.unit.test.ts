@@ -280,3 +280,26 @@ describe("AsanaTracker probe (CRN-48)", () => {
     await expect(t.probe!()).resolves.toMatchObject({ verdict: "missing_scope" });
   });
 });
+
+describe("AsanaTracker re-phase (#142)", () => {
+  it("updateIssue(phase) PUTs the task then addTask's it to the section — same mapping as createIssue", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: asanaTask({ gid: "1207" }) }, // PUT /tasks/1207
+      { status: 200, body: { data: {} } }, // POST /sections/5001/addTask
+    ]);
+    const t = new AsanaTracker({ projectGid: "999", tokenEnv: "ASANA_TOKEN" }, f, () => "tok");
+    const issue = await t.updateIssue("1207", { phase: "5001" });
+    expect(calls[1].url).toBe("https://app.asana.com/api/1.0/sections/5001/addTask");
+    expect(calls[1].method).toBe("POST");
+    expect(calls[1].body).toMatchObject({ data: { task: "1207" } });
+    expect(issue.phase).toBe("5001");
+  });
+
+  it("updateIssue rejects a non-numeric phase before any HTTP call", async () => {
+    const { f, calls } = fixtureFetch([]);
+    const t = new AsanaTracker({ projectGid: "999", tokenEnv: "ASANA_TOKEN" }, f, () => "tok");
+    await expect(t.updateIssue("1207", { phase: "not-a-gid" }))
+      .rejects.toMatchObject({ code: "CONFIG_INVALID" });
+    expect(calls.length).toBe(0);
+  });
+});

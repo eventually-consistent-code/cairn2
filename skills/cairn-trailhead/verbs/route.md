@@ -14,7 +14,8 @@ Roadmap surgery. Never renumbers existing phases — decimal insertion only
 - **remove `<N>`** — show what dies first: the phase's open issues
   (`issue_list` by phase) and artifacts. One batched AskUserQuestion:
   confirm removal + per open issue close-or-reassign. Then: close/reassign
-  issues (`issue_update`/`issue_close`), close the tracker phase object if
+  issues (`issue_close` / `issue_update(id, phase: <target>)` — phaseSkipped
+  in the result means the backend can't re-parent), close the tracker phase object if
   the backend supports it (`hasPhaseClose` — else annotate its name via the
   backend's usual update path and say so), move the phase dir to
   `.cairn/plans/milestones/removed/`, strike the roadmap row

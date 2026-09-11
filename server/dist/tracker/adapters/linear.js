@@ -26,7 +26,7 @@ export class LinearTracker {
     fetchImpl;
     keyProvider;
     capabilities = {
-        hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
+        hasInProgress: true, hasPhases: true, hasPhaseReassign: true, hasDependencies: true, hasLabels: true,
         hasMilestones: false, hasPhaseClose: true, hasComments: true, hasWorklog: false,
         hasEstimates: false,
         hasIssueAttachments: false,
@@ -140,6 +140,9 @@ export class LinearTracker {
             input.stateId = await this.stateId(patch.state);
         if (patch.labels !== undefined)
             input.labelIds = await this.labelIds(patch.labels);
+        // Re-phase: same mapping as createIssue — projectId.
+        if (patch.phase)
+            input.projectId = patch.phase;
         const data = await this.gql(`${ISSUE_FIELDS} mutation IssueUpdate($id: String!, $input: IssueUpdateInput!) { issueUpdate(id: $id, input: $input) { issue { ...IssueFields } } }`, { id, input }, "issue_update");
         return this.normalize(data.issueUpdate.issue);
     }

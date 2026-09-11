@@ -7,7 +7,7 @@ import { matchesState } from "./types.js";
 
 export class FakeTracker implements Tracker {
   readonly capabilities: Capability = {
-    hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
+    hasInProgress: true, hasPhases: true, hasPhaseReassign: true, hasDependencies: true, hasLabels: true,
     hasMilestones: true, hasPhaseClose: true, hasComments: true, hasWorklog: false,
     hasEstimates: true,
     hasIssueAttachments: true,
@@ -60,6 +60,7 @@ export class FakeTracker implements Tracker {
       labels: patch.labels ?? i.labels,
       assignee: patch.assignee ?? i.assignee,
       estimate: patch.estimate ?? i.estimate,
+      phase: patch.phase ?? i.phase,
       updatedAt: new Date().toISOString(),
     };
     this.issues.set(id, next);

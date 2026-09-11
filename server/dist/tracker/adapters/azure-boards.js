@@ -35,6 +35,7 @@ export class AzureBoardsTracker {
     capabilities = {
         hasInProgress: true,
         hasPhases: true,
+        hasPhaseReassign: true,
         hasDependencies: true,
         hasLabels: true,
         hasMilestones: true,
@@ -271,6 +272,15 @@ export class AzureBoardsTracker {
                 path: "/fields/System.AssignedTo",
                 value: patch.assignee,
             });
+        // Re-phase: same mapping as createIssue — iteration path from the phase id.
+        if (patch.phase) {
+            const path = await this.resolvePhasePath(patch.phase);
+            ops.push({
+                op: "add",
+                path: "/fields/System.IterationPath",
+                value: path,
+            });
+        }
         if (patch.state) {
             const stateValue = this.cfg.states[patch.state];
             if (!stateValue) {
