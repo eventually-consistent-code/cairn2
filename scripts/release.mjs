@@ -8,7 +8,11 @@
 // the release tag (`"ref": "vX.Y.Z"`), so installs get a released tree, not
 // a mutable clone of main. The bump rewrites that pin too.
 // Also prepends a scaffold entry to CHANGELOG.md (heading + date + a
-// fill-me-in bullet — content stays human-written).
+// fill-me-in bullet — content stays human-written). If CHANGELOG.md already
+// carries a real `## v<next>` entry (the natural workflow: write the entry
+// first, then bump), that entry is used as-is and the scaffold is skipped —
+// unless it still contains the scaffold's placeholder text, which is a
+// half-done entry and a hard stop (never tag a placeholder).
 //   node scripts/release.mjs 2.3.0     explicit target version
 //   node scripts/release.mjs patch     2.2.0 -> 2.2.1
 //   node scripts/release.mjs minor     2.2.0 -> 2.3.0
@@ -144,8 +148,14 @@ if (marketplace.raw.indexOf(pinNeedle) === -1) {
 }
 marketplace.next = marketplace.raw.replace(pinNeedle, `"ref": "v${next}"`);
 
-// changelog: prepend a scaffold entry above the newest `## v...` heading,
-// matching the house style (## vX.Y.Z — headline (YYYY-MM-DD) + bullets).
+// changelog: the natural workflow writes the real entry BEFORE running this
+// script (seen live cutting 2.4.0) — so a pre-existing `## v<next>` entry is
+// READY, not an error. Use it as-is and skip the scaffold. But an entry that
+// still carries the scaffold's placeholder text is half-done: die, never tag
+// a placeholder. When no entry exists, prepend a scaffold above the newest
+// `## v...` heading, matching the house style
+// (## vX.Y.Z — headline (YYYY-MM-DD) + bullets).
+const PLACEHOLDERS = ["<headline>", "<what shipped — fill in before tagging>"];
 const changelogPath = join(root, CHANGELOG);
 let changelog;
 try {
@@ -153,23 +163,37 @@ try {
 } catch {
   die(`cannot read ${CHANGELOG}`);
 }
-if (changelog.includes(`## v${next} `) || changelog.includes(`## v${next}—`)) {
-  die(`${CHANGELOG} already has a v${next} entry`);
+const headIdx = (() => {
+  for (const h of [`## v${next} `, `## v${next}—`]) {
+    const i = changelog.indexOf(h);
+    if (i !== -1) return i;
+  }
+  return -1;
+})();
+let nextChangelog = null;
+if (headIdx !== -1) {
+  // Entry already written — check it honestly before trusting it.
+  const endIdx = changelog.indexOf("\n## v", headIdx + 1);
+  const entry = endIdx === -1 ? changelog.slice(headIdx) : changelog.slice(headIdx, endIdx);
+  if (PLACEHOLDERS.some((p) => entry.includes(p))) {
+    die(`${CHANGELOG} has a v${next} entry but it still contains scaffold placeholder text — fill it in first`);
+  }
+} else {
+  const entryIdx = changelog.indexOf("\n## v");
+  if (entryIdx === -1) {
+    die(`${CHANGELOG} has no '## v...' entry to scaffold above`);
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  const scaffold = [
+    `## v${next} — <headline> (${today})`,
+    "",
+    "- <what shipped — fill in before tagging>",
+    "",
+    "",
+  ].join("\n");
+  nextChangelog =
+    changelog.slice(0, entryIdx + 1) + scaffold + changelog.slice(entryIdx + 1);
 }
-const entryIdx = changelog.indexOf("\n## v");
-if (entryIdx === -1) {
-  die(`${CHANGELOG} has no '## v...' entry to scaffold above`);
-}
-const today = new Date().toISOString().slice(0, 10);
-const scaffold = [
-  `## v${next} — <headline> (${today})`,
-  "",
-  "- <what shipped — fill in before tagging>",
-  "",
-  "",
-].join("\n");
-const nextChangelog =
-  changelog.slice(0, entryIdx + 1) + scaffold + changelog.slice(entryIdx + 1);
 
 // --- write everything, roll back if anything lands partway --------------------
 
@@ -181,12 +205,21 @@ try {
     written.push(s);
     console.log(`  ${s.rel.padEnd(28)} ${current} -> ${next}`);
   }
-  writeFileSync(changelogPath, nextChangelog);
-  console.log(`  ${CHANGELOG.padEnd(28)} scaffold entry prepended`);
+  if (nextChangelog !== null) {
+    writeFileSync(changelogPath, nextChangelog);
+    console.log(`  ${CHANGELOG.padEnd(28)} scaffold entry prepended`);
+  } else {
+    console.log(`  ${CHANGELOG.padEnd(28)} changelog entry present — using it`);
+  }
 } catch (err) {
   for (const s of written) writeFileSync(s.path, s.raw);
   die(`write failed (${err.message}) — version files rolled back`);
 }
 
-console.log(`release surfaces bumped — v${next} across ${VERSION_FILES.length + 1} files + changelog scaffold.`);
-console.log(`next: fill in the CHANGELOG bullets, commit, tag v${next}.`);
+if (nextChangelog !== null) {
+  console.log(`release surfaces bumped — v${next} across ${VERSION_FILES.length + 1} files + changelog scaffold.`);
+  console.log(`next: fill in the CHANGELOG bullets, commit, tag v${next}.`);
+} else {
+  console.log(`release surfaces bumped — v${next} across ${VERSION_FILES.length + 1} files, changelog already written.`);
+  console.log(`next: commit, tag v${next}.`);
+}
