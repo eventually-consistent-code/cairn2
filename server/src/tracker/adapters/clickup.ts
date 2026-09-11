@@ -88,6 +88,12 @@ export class ClickUpTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true,
     hasPhases: true,
+    // A task's list is its creation-time parent: ClickUp API v2 has no
+    // move-between-lists primitive (only the feature-gated multi-list
+    // ClickApp), so updateIssue cannot re-phase. The tool layer drops
+    // patch.phase here and reports phaseSkipped — same degradation
+    // pattern as estimates on no-hasEstimates backends.
+    hasPhaseReassign: false,
     hasDependencies: true,
     hasLabels: true,
     hasMilestones: false,
@@ -254,6 +260,7 @@ export class ClickUpTracker implements Tracker {
     const body: Record<string, unknown> = {};
     if (patch.title !== undefined) body.name = patch.title;
     if (patch.body !== undefined) body.description = patch.body;
+    // patch.phase deliberately ignored — hasPhaseReassign: false (see capabilities)
     // assignee writes need numeric user-id resolution — deferred until assignee semantics are speced
     if (patch.state !== undefined) {
       const native = this.cfg.statuses[patch.state];

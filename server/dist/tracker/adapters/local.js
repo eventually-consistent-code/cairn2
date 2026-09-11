@@ -93,6 +93,7 @@ export class LocalTracker {
     capabilities = {
         hasInProgress: true,
         hasPhases: true,
+        hasPhaseReassign: true,
         hasDependencies: true,
         hasLabels: true,
         hasMilestones: true,
@@ -226,6 +227,7 @@ export class LocalTracker {
             labels: patched.labels,
             priority: patched.priority,
             assignee: patch.assignee ?? f.assignee,
+            phase: patch.phase ?? f.phase,
             points: patch.estimate ? patch.estimate.points : f.points,
             minutes: patch.estimate ? patch.estimate.minutes : f.minutes,
         });

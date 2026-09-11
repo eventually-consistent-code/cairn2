@@ -257,3 +257,29 @@ describe("GitHubTracker custom states", () => {
       .rejects.toMatchObject({ code: "CONFIG_INVALID" });
   });
 });
+
+describe("GitHubTracker re-phase (#142)", () => {
+  it("updateIssue(phase) PATCHes milestone — same mapping as createIssue", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: ghIssue({ milestone: { number: 5 } }) },
+    ]);
+    const t = new GitHubTracker({ repo: "o/r" }, f, () => "tok");
+    const issue = await t.updateIssue("7", { phase: "5" });
+    expect(calls[0].method).toBe("PATCH");
+    expect(calls[0].body).toMatchObject({ milestone: 5 });
+    expect(issue.phase).toBe("5");
+  });
+
+  it("updateIssue rejects a non-numeric phase before any HTTP call", async () => {
+    const { f, calls } = fixtureFetch([]);
+    const t = new GitHubTracker({ repo: "o/r" }, f, () => "tok");
+    await expect(t.updateIssue("7", { phase: "not-a-number" }))
+      .rejects.toMatchObject({ code: "CONFIG_INVALID" });
+    expect(calls.length).toBe(0);
+  });
+
+  it("declares hasPhaseReassign", () => {
+    const t = new GitHubTracker({ repo: "o/r" }, async () => new Response("{}", { status: 200 }), () => "tok");
+    expect(t.capabilities.hasPhaseReassign).toBe(true);
+  });
+});

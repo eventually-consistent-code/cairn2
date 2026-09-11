@@ -490,7 +490,11 @@ export function buildServer(deps: {
     "issue_update",
     {
       description:
-        "Update an issue (title/body/state/labels/assignee/estimate)",
+        "Update an issue (title/body/state/labels/assignee/estimate/phase). " +
+        "`phase` re-parents the issue and accepts the tracker's phase id OR " +
+        "the cairn phase number ('14', '1.5' -- resolved via the " +
+        "'Phase N: <name>' convention); backends that can't re-parent skip " +
+        "it and the result says so via phaseSkipped",
       inputSchema: z.object({
         id: z.string(),
         title: z.string().optional(),
@@ -498,6 +502,7 @@ export function buildServer(deps: {
         state: StateEnum.optional(),
         labels: z.array(z.string()).optional(),
         assignee: z.string().optional(),
+        phase: z.string().optional(),
         estimatePoints: z.number().positive().optional(),
         estimateMinutes: z.number().int().positive().optional(),
       }),
@@ -510,21 +515,30 @@ export function buildServer(deps: {
         state?: IssueState;
         labels?: string[];
         assignee?: string;
+        phase?: string;
         estimatePoints?: number;
         estimateMinutes?: number;
       }) => {
         const d = dir();
-        const { id, estimatePoints, estimateMinutes, ...rest } = a;
+        const { id, phase: phaseParam, estimatePoints, estimateMinutes, ...rest } = a;
         const wantsEstimate =
           estimatePoints !== undefined || estimateMinutes !== undefined;
         const tracker = await getTracker(d);
-        const patch: IssuePatch =
-          wantsEstimate && tracker.capabilities.hasEstimates
-            ? {
-                ...rest,
-                estimate: { points: estimatePoints, minutes: estimateMinutes },
-              }
-            : rest;
+        const canRephase = tracker.capabilities.hasPhaseReassign;
+        // phase accepts a tracker phase id OR a cairn phase number (#138) —
+        // resolved only where the backend can actually re-parent; elsewhere
+        // it's dropped with a note (mirrors the estimate degradation).
+        const phase =
+          phaseParam === undefined || !canRephase
+            ? undefined
+            : await resolvePhaseParam(tracker, phaseParam);
+        const patch: IssuePatch = {
+          ...rest,
+          ...(phase !== undefined ? { phase } : {}),
+          ...(wantsEstimate && tracker.capabilities.hasEstimates
+            ? { estimate: { points: estimatePoints, minutes: estimateMinutes } }
+            : {}),
+        };
         let autoAssigned = false;
         if (patch.state === "in_progress" && patch.assignee === undefined) {
           // best-effort claim attribution — identity failures never block the claim
@@ -551,10 +565,17 @@ export function buildServer(deps: {
           wantsEstimate && !tracker.capabilities.hasEstimates
             ? "backend has no estimate support; fold points/minutes into the issue body"
             : undefined;
+        // same pattern for a phase the backend can't re-parent to -- a
+        // silently ignored re-phase bit two live sessions before #142.
+        const phaseSkipped =
+          phaseParam !== undefined && !canRephase
+            ? "backend can't move an existing issue between phases; recreate the issue in the target phase"
+            : undefined;
         return {
           ...result,
           ...(autoAssigned ? { autoAssigned: true } : {}),
           ...(estimateSkipped ? { estimateSkipped } : {}),
+          ...(phaseSkipped ? { phaseSkipped } : {}),
         };
       },
     ),
@@ -777,15 +798,23 @@ export function buildServer(deps: {
     "issue_list",
     {
       description:
-        "List issues, optionally by phase/state (state matches the semantic category — open/in_progress/closed — or an exact state name)",
+        "List issues, optionally by phase/state (phase accepts the tracker's " +
+        "phase id OR the cairn phase number; state matches the semantic " +
+        "category — open/in_progress/closed — or an exact state name)",
       inputSchema: z.object({
         phase: z.string().optional(),
         state: StateEnum.optional(),
       }),
     },
-    wrap(async (a: { phase?: string; state?: IssueState }) =>
-      (await getTracker()).listIssues(a),
-    ),
+    wrap(async (a: { phase?: string; state?: IssueState }) => {
+      const tracker = await getTracker();
+      // phase accepts a tracker phase id OR a cairn phase number (#138/#142)
+      const phase =
+        a.phase === undefined
+          ? undefined
+          : await resolvePhaseParam(tracker, a.phase);
+      return tracker.listIssues({ ...a, phase });
+    }),
   );
 
   server.registerTool(

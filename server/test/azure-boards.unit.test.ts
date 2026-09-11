@@ -456,3 +456,32 @@ describe("AzureBoardsTracker probe (CRN-48)", () => {
     await expect(t.probe!()).resolves.toMatchObject({ verdict: "missing_scope" });
   });
 });
+
+describe("AzureBoardsTracker re-phase (#142)", () => {
+  it("updateIssue(phase) resolves the iteration path and PATCHes System.IterationPath — same mapping as createIssue", async () => {
+    const { f, calls } = fixtureFetch([
+      // resolvePhasePath refresh: GET classificationnodes/iterations
+      { status: 200, body: { value: [{ identifier: "guid-1", name: "Sprint 1", path: "\\Proj\\Iteration\\Sprint 1" }] } },
+      // PATCH work item
+      { status: 200, body: wi({ fields: { "System.IterationPath": "Proj\\Sprint 1" } }) },
+    ]);
+    const t = makeAzure(f);
+    const issue = await t.updateIssue("7", { phase: "guid-1" });
+    expect(calls[1].method).toBe("PATCH");
+    expect(calls[1].body).toEqual(
+      expect.arrayContaining([
+        { op: "add", path: "/fields/System.IterationPath", value: "Proj\\Sprint 1" },
+      ]),
+    );
+    expect(issue.phase).toBe("guid-1");
+  });
+
+  it("updateIssue with an unknown phase id is NOT_FOUND", async () => {
+    const { f } = fixtureFetch([
+      { status: 200, body: { value: [] } }, // listPhases refresh finds nothing
+    ]);
+    const t = makeAzure(f);
+    await expect(t.updateIssue("7", { phase: "no-such-guid" }))
+      .rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+});

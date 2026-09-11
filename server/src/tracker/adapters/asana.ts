@@ -33,7 +33,7 @@ interface AsanaSection {
 
 export class AsanaTracker implements Tracker {
   readonly capabilities: Capability = {
-    hasInProgress: false, hasPhases: true, hasDependencies: true, hasLabels: false,
+    hasInProgress: false, hasPhases: true, hasPhaseReassign: true, hasDependencies: true, hasLabels: false,
     hasMilestones: false, hasPhaseClose: false, hasComments: true, hasWorklog: false,
     hasEstimates: false,
     hasIssueAttachments: false,
@@ -118,6 +118,11 @@ export class AsanaTracker implements Tracker {
 
   async updateIssue(id: string, patch: IssuePatch): Promise<Issue> {
     this.assertId(id);
+    if (patch.phase && !/^\d+$/.test(patch.phase)) {
+      throw new CairnError("CONFIG_INVALID",
+        `invalid phase: ${patch.phase}`,
+        "phase must be a numeric section gid");
+    }
     const body: Record<string, unknown> = {};
     if (patch.title !== undefined) body.name = patch.title;
     if (patch.body !== undefined) body.notes = patch.body;
@@ -126,8 +131,15 @@ export class AsanaTracker implements Tracker {
     // to completed:false. Never write completed:true except for an explicit close.
     if (patch.state === "closed") body.completed = true;
     if (patch.state === "open" || patch.state === "in_progress") body.completed = false;
-    const raw = await this.api("PUT", `/tasks/${id}`, { data: body }, "issue_update");
-    return this.normalize(raw as AsanaTask);
+    const raw = (await this.api("PUT", `/tasks/${id}`, { data: body }, "issue_update")) as AsanaTask;
+    // Re-phase: same mapping as createIssue — a section addTask moves the
+    // task within the project (Asana tasks live in exactly one section here).
+    if (patch.phase) {
+      await this.api("POST", `/sections/${patch.phase}/addTask`,
+        { data: { task: id } }, "issue_assign_phase");
+    }
+    return this.normalize({ ...raw, memberships: patch.phase
+      ? [{ section: { gid: patch.phase } }] : raw.memberships });
   }
 
   async closeIssue(id: string): Promise<Issue> {

@@ -19,7 +19,7 @@ export class AsanaTracker {
     fetchImpl;
     tokenProvider;
     capabilities = {
-        hasInProgress: false, hasPhases: true, hasDependencies: true, hasLabels: false,
+        hasInProgress: false, hasPhases: true, hasPhaseReassign: true, hasDependencies: true, hasLabels: false,
         hasMilestones: false, hasPhaseClose: false, hasComments: true, hasWorklog: false,
         hasEstimates: false,
         hasIssueAttachments: false,
@@ -90,6 +90,9 @@ export class AsanaTracker {
     }
     async updateIssue(id, patch) {
         this.assertId(id);
+        if (patch.phase && !/^\d+$/.test(patch.phase)) {
+            throw new CairnError("CONFIG_INVALID", `invalid phase: ${patch.phase}`, "phase must be a numeric section gid");
+        }
         const body = {};
         if (patch.title !== undefined)
             body.name = patch.title;
@@ -102,8 +105,14 @@ export class AsanaTracker {
             body.completed = true;
         if (patch.state === "open" || patch.state === "in_progress")
             body.completed = false;
-        const raw = await this.api("PUT", `/tasks/${id}`, { data: body }, "issue_update");
-        return this.normalize(raw);
+        const raw = (await this.api("PUT", `/tasks/${id}`, { data: body }, "issue_update"));
+        // Re-phase: same mapping as createIssue — a section addTask moves the
+        // task within the project (Asana tasks live in exactly one section here).
+        if (patch.phase) {
+            await this.api("POST", `/sections/${patch.phase}/addTask`, { data: { task: id } }, "issue_assign_phase");
+        }
+        return this.normalize({ ...raw, memberships: patch.phase
+                ? [{ section: { gid: patch.phase } }] : raw.memberships });
     }
     async closeIssue(id) {
         return this.updateIssue(id, { state: "closed" });

@@ -348,3 +348,22 @@ describe("ClickUpTracker probe (CRN-48)", () => {
     await expect(t.probe!()).resolves.toMatchObject({ verdict: "bad_token" });
   });
 });
+
+describe("ClickUpTracker re-phase degradation (#142)", () => {
+  it("declares hasPhaseReassign: false — a task's list is a creation-time parent", () => {
+    const { f } = fixtureFetch([]);
+    const t = new ClickUpTracker(cfg, f, () => "tok");
+    expect(t.capabilities.hasPhaseReassign).toBe(false);
+  });
+
+  it("updateIssue ignores patch.phase — no PUT body field, no list-move call", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 200, body: cuTask() }, // PUT carries only the title
+    ]);
+    const t = new ClickUpTracker(cfg, f, () => "tok");
+    const issue = await t.updateIssue("abc123", { title: "t2", phase: "901" });
+    expect(calls.length).toBe(1);
+    expect(calls[0].body).toEqual({ name: "t2" });
+    expect(issue.phase).toBe("900"); // unchanged: still the fixture's list
+  });
+});

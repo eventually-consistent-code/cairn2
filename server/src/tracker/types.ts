@@ -56,6 +56,11 @@ export interface Phase {
 export interface Capability {
   hasInProgress: boolean;
   hasPhases: boolean;
+  /** Can updateIssue move an existing issue into a different phase?
+   *  False where the backend's phase is a creation-time parent with no
+   *  move primitive (clickup lists) — the tool layer drops the patch
+   *  field there and says so via phaseSkipped, mirroring hasEstimates. */
+  hasPhaseReassign: boolean;
   hasDependencies: boolean;
   hasLabels: boolean;
   hasMilestones: boolean;
@@ -88,6 +93,11 @@ export interface IssuePatch {
   labels?: string[];
   assignee?: string;
   estimate?: IssueEstimate;
+  /** Tracker phase id — same backend mapping as IssueCreate.phase
+   *  (milestone/epic/section/iteration/project). Honored only on
+   *  adapters with hasPhaseReassign; the tool layer drops it elsewhere
+   *  and reports phaseSkipped. */
+  phase?: string;
 }
 
 export interface IssueComment { at?: string; author?: string; text: string }

@@ -9,7 +9,7 @@ export class GitLabTracker {
     cfg;
     fetchImpl;
     capabilities = {
-        hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
+        hasInProgress: true, hasPhases: true, hasPhaseReassign: true, hasDependencies: true, hasLabels: true,
         hasMilestones: false, hasPhaseClose: true, hasComments: true, hasWorklog: false,
         hasEstimates: false,
         hasIssueAttachments: false,
@@ -78,6 +78,12 @@ export class GitLabTracker {
             body.title = patch.title;
         if (patch.body !== undefined)
             body.description = patch.body;
+        // Re-phase: same mapping as createIssue — milestone_id.
+        if (patch.phase && !/^\d+$/.test(patch.phase)) {
+            throw new CairnError("CONFIG_INVALID", `invalid phase: ${patch.phase}`, "phase must be a numeric string");
+        }
+        if (patch.phase)
+            body.milestone_id = Number(patch.phase);
         if (patch.labels !== undefined) {
             body.labels = patch.labels.filter((l) => l !== WIP).join(",");
         }

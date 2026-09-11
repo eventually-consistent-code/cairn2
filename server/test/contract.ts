@@ -94,6 +94,31 @@ export function trackerContract(name: string, factory: () => Promise<Tracker>): 
       expect((await t.listPhases()).map((p) => p.id)).toContain(ph.id);
     }, 30_000);
 
+    it("update re-phases when hasPhaseReassign; degrades to no-op otherwise (#142)", async () => {
+      if (!t.capabilities.hasPhases) return;
+      const a = await t.createPhase(`contract-rephase-a-${Date.now()}`);
+      const b = await t.createPhase(`contract-rephase-b-${Date.now()}`);
+      const made = await t.createIssue({ title: "contract: rephase", phase: a.id });
+      await t.updateIssue(made.id, { phase: b.id });
+      await eventually(async () => {
+        const got = await t.getIssue(made.id);
+        if (t.capabilities.hasPhaseReassign) expect(got.phase).toBe(b.id);
+        // degraded: the original parent survives — never clobbered, never thrown;
+        // the tool layer is what surfaces the phaseSkipped note.
+        else expect(got.phase).toBe(a.id);
+      });
+    }, 30_000);
+
+    it("update without phase never clears an existing phase (#142)", async () => {
+      if (!t.capabilities.hasPhases) return;
+      const ph = await t.createPhase(`contract-keep-phase-${Date.now()}`);
+      const made = await t.createIssue({ title: "contract: keep phase", phase: ph.id });
+      await t.updateIssue(made.id, { title: "contract: keep phase renamed" });
+      await eventually(async () => {
+        expect((await t.getIssue(made.id)).phase).toBe(ph.id);
+      });
+    }, 30_000);
+
     it("updatedAt is ISO-8601 parseable", async () => {
       const made = await t.createIssue({ title: "contract: ts" });
       expect(Number.isNaN(Date.parse(made.updatedAt))).toBe(false);

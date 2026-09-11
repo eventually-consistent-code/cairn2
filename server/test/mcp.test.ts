@@ -359,6 +359,82 @@ describe("cairn MCP server", () => {
     expect(res.json.message).toContain("not a cairn phase number");
   });
 
+  it("issue_update resolves a cairn phase number and re-phases the issue (#142)", async () => {
+    const from = await call("plan_phase_ensure", { number: 43, name: "From" });
+    const to = await call("plan_phase_ensure", { number: 44, name: "To" });
+    const made = await call("issue_create", {
+      title: "re-phase by number",
+      phase: from.json.id,
+    });
+    const updated = await call("issue_update", {
+      id: made.json.id,
+      phase: "44",
+    });
+    expect(updated.isError).toBeFalsy();
+    expect(updated.json.phase).toBe(to.json.id);
+    expect(updated.json.phaseSkipped).toBeUndefined();
+  });
+
+  it("issue_update still accepts a raw tracker phase id (#142)", async () => {
+    const ensured = await call("plan_phase_ensure", {
+      number: 45,
+      name: "Raw Update",
+    });
+    const made = await call("issue_create", { title: "re-phase by raw id" });
+    const updated = await call("issue_update", {
+      id: made.json.id,
+      phase: ensured.json.id,
+    });
+    expect(updated.isError).toBeFalsy();
+    expect(updated.json.phase).toBe(ensured.json.id);
+  });
+
+  it("issue_update with an unmatched phase errors naming both interpretations tried (#142)", async () => {
+    const made = await call("issue_create", { title: "bad re-phase target" });
+    const res = await call("issue_update", { id: made.json.id, phase: "99" });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("NOT_FOUND");
+    expect(res.json.message).toContain("tracker phase id");
+    expect(res.json.message).toContain("Phase 99:");
+  });
+
+  it("issue_list resolves a cairn phase number in the phase filter (#142)", async () => {
+    const ensured = await call("plan_phase_ensure", {
+      number: 46,
+      name: "List Filter",
+    });
+    const inPhase = await call("issue_create", {
+      title: "listed by phase number",
+      phase: ensured.json.id,
+    });
+    const outOfPhase = await call("issue_create", { title: "not in phase 46" });
+    const listed = await call("issue_list", { phase: "46" });
+    const ids = listed.json.map((i: { id: string }) => i.id);
+    expect(ids).toContain(inPhase.json.id);
+    expect(ids).not.toContain(outOfPhase.json.id);
+  });
+
+  it("issue_list still accepts a raw tracker phase id (#142)", async () => {
+    const ensured = await call("plan_phase_ensure", {
+      number: 47,
+      name: "Raw List",
+    });
+    const inPhase = await call("issue_create", {
+      title: "listed by raw id",
+      phase: ensured.json.id,
+    });
+    const listed = await call("issue_list", { phase: ensured.json.id });
+    const ids = listed.json.map((i: { id: string }) => i.id);
+    expect(ids).toContain(inPhase.json.id);
+  });
+
+  it("issue_list with an unmatched phase filter is NOT_FOUND naming both interpretations (#142)", async () => {
+    const res = await call("issue_list", { phase: "98" });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("NOT_FOUND");
+    expect(res.json.message).toContain("Phase 98:");
+  });
+
   it("plan_scaffold_phase rejects an over-precise decimal (1.55) as CONFIG_INVALID", async () => {
     const res = await call("plan_scaffold_phase", {
       number: 1.55,
@@ -691,6 +767,70 @@ describe("cairn MCP server", () => {
       });
       expect(updated.json.estimate).toBeUndefined();
       expect(updated.json.estimateSkipped).toBeUndefined();
+    });
+  });
+
+  describe("re-phase capability gate (no-hasPhaseReassign backend) (#142)", () => {
+    // Same posture as the estimates gate above: FakeTracker stands in for
+    // clickup, where a task's list is a creation-time parent with no move
+    // primitive — issue_update must drop the phase and say so, never
+    // silently ignore it (that silence bit two live sessions).
+    class NoRephaseFake extends FakeTracker {
+      override readonly capabilities = {
+        ...new FakeTracker().capabilities,
+        hasPhaseReassign: false,
+      };
+    }
+
+    let nrClient: Client;
+    const nrCall = async (name: string, args: Record<string, unknown> = {}) => {
+      const res = await nrClient.callTool({ name, arguments: args });
+      const text = (res.content as Array<{ type: string; text: string }>)[0]
+        .text;
+      return { ...res, json: JSON.parse(text) };
+    };
+
+    beforeAll(async () => {
+      const dir = mkdtempSync(join(tmpdir(), "cairn-mcp-no-rephase-"));
+      const server = buildServer({
+        projectDir: dir,
+        tracker: new NoRephaseFake(),
+      });
+      const [ct, st] = InMemoryTransport.createLinkedPair();
+      nrClient = new Client({ name: "test-no-rephase", version: "0.0.0" });
+      await Promise.all([server.connect(st), nrClient.connect(ct)]);
+    });
+
+    it("issue_update drops the phase and reports phaseSkipped", async () => {
+      const made = await nrCall("issue_create", { title: "unmovable" });
+      const updated = await nrCall("issue_update", {
+        id: made.json.id,
+        phase: "1",
+      });
+      expect(updated.isError).toBeFalsy();
+      expect(updated.json.phase).toBeUndefined();
+      expect(updated.json.phaseSkipped).toBe(
+        "backend can't move an existing issue between phases; recreate the issue in the target phase",
+      );
+    });
+
+    it("issue_update with no phase requested carries no skip note", async () => {
+      const made = await nrCall("issue_create", { title: "stationary" });
+      const updated = await nrCall("issue_update", {
+        id: made.json.id,
+        title: "renamed in place",
+      });
+      expect(updated.json.phaseSkipped).toBeUndefined();
+    });
+
+    it("issue_create with a phase still works — the gate is re-parenting only", async () => {
+      const ph = await nrCall("phase_create", { name: "creation-time parent" });
+      const made = await nrCall("issue_create", {
+        title: "born in phase",
+        phase: ph.json.id,
+      });
+      expect(made.json.phase).toBe(ph.json.id);
+      expect(made.json.phaseSkipped).toBeUndefined();
     });
   });
 

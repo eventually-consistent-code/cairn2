@@ -430,3 +430,19 @@ describe("LinearTracker probe (CRN-48)", () => {
     await expect(t(f).probe!()).resolves.toMatchObject({ verdict: "bad_token" });
   });
 });
+
+describe("LinearTracker re-phase (#142)", () => {
+  it("updateIssue(phase) sends projectId — same mapping as createIssue", async () => {
+    const { f, calls } = gqlFetch([
+      { data: { issueUpdate: { issue: node({ project: { id: "proj-1" } }) } } },
+    ]);
+    const issue = await t(f).updateIssue("ENG-1", { phase: "proj-1" });
+    expect(calls[0].variables.input).toMatchObject({ projectId: "proj-1" });
+    expect(issue.phase).toBe("proj-1");
+  });
+
+  it("declares hasPhaseReassign", () => {
+    const { f } = gqlFetch([]);
+    expect(t(f).capabilities.hasPhaseReassign).toBe(true);
+  });
+});

@@ -45,7 +45,7 @@ interface LinearProjectNode { id: string; name: string; state: string }
 
 export class LinearTracker implements Tracker {
   readonly capabilities: Capability = {
-    hasInProgress: true, hasPhases: true, hasDependencies: true, hasLabels: true,
+    hasInProgress: true, hasPhases: true, hasPhaseReassign: true, hasDependencies: true, hasLabels: true,
     hasMilestones: false, hasPhaseClose: true, hasComments: true, hasWorklog: false,
     hasEstimates: false,
     hasIssueAttachments: false,
@@ -181,6 +181,8 @@ export class LinearTracker implements Tracker {
     if (patch.body !== undefined) input.description = patch.body;
     if (patch.state !== undefined) input.stateId = await this.stateId(patch.state);
     if (patch.labels !== undefined) input.labelIds = await this.labelIds(patch.labels);
+    // Re-phase: same mapping as createIssue — projectId.
+    if (patch.phase) input.projectId = patch.phase;
     const data = await this.gql<{ issueUpdate: { issue: LinearIssueNode } }>(
       `${ISSUE_FIELDS} mutation IssueUpdate($id: String!, $input: IssueUpdateInput!) { issueUpdate(id: $id, input: $input) { issue { ...IssueFields } } }`,
       { id, input }, "issue_update");

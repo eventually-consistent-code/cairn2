@@ -32,7 +32,7 @@ export class GitHubTracker {
     tokenProvider;
     capabilities = {
         hasInProgress: true, // via label convention
-        hasPhases: true, hasDependencies: false, hasLabels: true,
+        hasPhases: true, hasPhaseReassign: true, hasDependencies: false, hasLabels: true,
         hasMilestones: false, hasPhaseClose: true, hasComments: true, hasWorklog: false,
         hasEstimates: false,
         hasIssueAttachments: false,
@@ -110,6 +110,12 @@ export class GitHubTracker {
         const body = {};
         if (patch.title !== undefined)
             body.title = patch.title;
+        // Re-phase: same mapping as createIssue — milestone number.
+        if (patch.phase && !/^\d+$/.test(patch.phase)) {
+            throw new CairnError("CONFIG_INVALID", `invalid phase: ${patch.phase}`, "phase must be a numeric string");
+        }
+        if (patch.phase)
+            body.milestone = Number(patch.phase);
         assertCanonicalState(patch.state, "github");
         if (patch.body !== undefined)
             body.body = patch.body;

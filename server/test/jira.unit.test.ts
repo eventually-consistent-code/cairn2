@@ -891,3 +891,24 @@ describe("JiraTracker scoped-token gateway", () => {
     expect(calls[0].url).toBe(`${GW_BASE}/rest/api/3/issue/CHN-101?fields=${FIELDS}`);
   });
 });
+
+describe("JiraTracker re-phase (#142)", () => {
+  it("updateIssue(phase) PUTs a parent Epic key — same mapping as createIssue", async () => {
+    const { f, calls } = fixtureFetch([
+      { status: 204, body: undefined }, // PUT issue fields
+      { status: 200, body: jiraIssue({ parent: { key: "CHN-9" } }) }, // getIssue readback
+    ]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    const issue = await t.updateIssue("CHN-101", { phase: "CHN-9" });
+    expect(calls[0].method).toBe("PUT");
+    expect(calls[0].url).toBe(`${BASE}/rest/api/3/issue/CHN-101`);
+    expect(calls[0].body).toMatchObject({ fields: { parent: { key: "CHN-9" } } });
+    expect(issue.phase).toBe("CHN-9");
+  });
+
+  it("declares hasPhaseReassign", () => {
+    const { f } = fixtureFetch([]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    expect(t.capabilities.hasPhaseReassign).toBe(true);
+  });
+});

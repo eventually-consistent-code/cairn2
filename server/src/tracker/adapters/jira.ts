@@ -144,6 +144,7 @@ export class JiraTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true,
     hasPhases: true,
+    hasPhaseReassign: true,
     hasDependencies: true,
     hasLabels: true,
     hasMilestones: true,
@@ -529,6 +530,8 @@ export class JiraTracker implements Tracker {
     if (patch.assignee !== undefined) {
       fields.assignee = { accountId: await this.toAccountId(patch.assignee) };
     }
+    // Re-phase: same mapping as createIssue — parent Epic key.
+    if (patch.phase) fields.parent = { key: patch.phase };
     if (patch.estimate)
       Object.assign(fields, await this.estimateFields(patch.estimate));
     if (Object.keys(fields).length > 0) {
