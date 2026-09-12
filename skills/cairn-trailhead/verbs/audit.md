@@ -56,6 +56,18 @@ active phase from `plan_status` and audit that.
 
 ## Closing discipline — every mode, no exceptions
 
+**Dedup first — before severity ranking, before any `issue_create`.**
+When a viewpoint-shaped mode ran with more than one seat's eye on the
+same target, collapse the combined finding list through the dedup engine
+(`dedupFindings` in `server/src/seats/dedup.ts` — run it via `node`
+against dist; pure library, no tool call). Same file, within ±2 lines,
+same claim by normalized-token overlap → one finding crediting every
+raising seat, keeping the highest severity and each seat's score.
+Distinct claims at the same location stay separate. Each tracker-bound
+finding then names its crediting seats in plain language in the body —
+"raised by the security and correctness seats" — and N seats over one
+bug NEVER means N issues: the tracker sees the deduplicated set only.
+
 1. `audit_record(scope, verdict, findings)` — `scope` names the mode and
    target (e.g. `"uat-12"`, `"milestone-3"`), `verdict` is `pass` or
    `findings`, and `findings` is the full list even when most of them
