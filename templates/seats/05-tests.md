@@ -3,7 +3,7 @@ name: tests
 lens: claims the diff makes that nothing verifies — new behavior with no test, a test that can't actually fail
 categories: [coverage, failability]
 dose: standard
-signals: [code, tests]
+signals: [touches-server, touches-tests, touches-scripts]
 anchor_ten: every behavioral claim in the diff has a test that fails when that behavior breaks
 anchor_five: the main path is tested, but an edge the diff introduces is unverified — or a test passes for the wrong reason
 anchor_zero: new behavior ships with nothing verifying it, or a test exists that cannot fail

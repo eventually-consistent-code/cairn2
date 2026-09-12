@@ -76,6 +76,10 @@ export declare const ConfigSchema: z.ZodObject<{
     seats: z.ZodOptional<z.ZodObject<{
         enabled: z.ZodOptional<z.ZodArray<z.ZodString>>;
         disabled: z.ZodOptional<z.ZodArray<z.ZodString>>;
+        dispatch: z.ZodOptional<z.ZodEnum<{
+            auto: "auto";
+            off: "off";
+        }>>;
     }, z.core.$strict>>;
 }, z.core.$strip>;
 export type CairnConfig = z.infer<typeof ConfigSchema>;

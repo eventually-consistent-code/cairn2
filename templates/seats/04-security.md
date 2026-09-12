@@ -3,7 +3,7 @@ name: security
 lens: injection, auth gaps, secrets in the diff, trust boundaries crossed without a check
 categories: [injection, auth, secrets, trust-boundaries]
 dose: full
-signals: [code, config, deps]
+signals: [touches-auth, touches-server, touches-config, touches-ci, touches-scripts]
 anchor_ten: every input crossing a trust boundary is validated, no secret touches the diff, and auth is checked where the resource is actually served
 anchor_five: nothing exploitable found, but a boundary crossing rests on an unstated assumption about the caller
 anchor_zero: an exploitable injection, auth gap, or committed secret is in the diff

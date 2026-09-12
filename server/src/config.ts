@@ -101,6 +101,11 @@ export const ConfigSchema = z.object({
     .strictObject({
       enabled: z.array(z.string()).optional(),
       disabled: z.array(z.string()).optional(),
+      // Project-level dispatch dial (phase 19): what a verb's `inherit`
+      // dial resolves to. "auto" = signal/yield selection picks the
+      // seats that fire; "off" (and absent — the default) = the full
+      // roster fires, today's behavior.
+      dispatch: z.enum(["auto", "off"]).optional(),
     })
     .optional(),
 });

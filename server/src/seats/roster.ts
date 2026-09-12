@@ -48,6 +48,9 @@ export interface Roster {
   seats: RosterSeat[];
   /** Roster-level advisories (e.g. an enabled name that matched nothing). */
   notes: string[];
+  /** cairn.json seats.dispatch, when set — what a verb's `inherit` dial
+   * resolves to (absent = off, the full-roster default). */
+  dispatch?: "auto" | "off";
 }
 
 
@@ -173,5 +176,9 @@ export function loadRoster(
     seats = seats.filter((e) => !(e.valid && disabled.has(e.name)));
   }
 
-  return { seats, notes };
+  return {
+    seats,
+    notes,
+    ...(config?.dispatch !== undefined ? { dispatch: config.dispatch } : {}),
+  };
 }
