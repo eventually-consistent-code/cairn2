@@ -47,6 +47,28 @@ roster puts it, same rules as every default. A seat disabled in
 likewise gets its roster note echoed as one line. Never silently shrink
 the panel — the record shows every seat, seated or not.
 
+**Dispatch — which seats fire this pass.** The dial defaults to `off`:
+the full panel fires, exactly as above. On `auto`, derive scope signals
+from the resolved diff per the standard vocabulary (`touches-auth`,
+`touches-server`, `touches-docs`, `touches-tests`, `touches-config`,
+`touches-ci`, `touches-scripts` from paths; `diff-small` under 50
+changed lines, `diff-large` over 500 — the tested rules live in
+`server/src/seats/signals.ts`) and seat only the seats whose declared
+`signals` intersect the derived set. A seat declaring NO signals always
+fires — declaring signals is how a seat opts into gating. Auto also
+consults the per-seat yield store (`~/.cairn/yield/`, written after each
+pass: per seat +1 dispatched plus its raised/surviving finding counts):
+a seat with ten or more dispatches and fewer than one surviving finding
+per ten gets gated on that evidence — never the security seat, never a
+dose-`full` seat. `inherit` follows cairn.json `seats.dispatch`
+(`seat_roster` returns it; absent means off). Every gated seat lands in
+the record in ONE report line, never silently:
+"seats gated this pass: X (no matching signals), Y (low yield)".
+Custom signal names a project seat declares beyond the standard
+vocabulary never fire this iteration — nothing derives them yet, so on
+`auto` such a seat needs at least one standard signal (or none at all)
+to keep its chair.
+
 Walk the resolved diff against each seat's lens. A clean seat is still
 worth a line in the record ("no findings") — silence isn't the same as
 checked.
