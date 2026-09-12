@@ -2444,7 +2444,9 @@ export function buildServer(deps: {
         "(.cairn/roles/*.md, matched by name; a read path — the server never writes there), then " +
         "filtered/ordered by cairn.json's optional `seats` block (absent = all defaults enabled). " +
         "Per-seat {name, lens, categories, dose, signals, source: default|project, valid, note?}; a " +
-        "seat file that fails validation is skipped with a note, never the roster. Internal seats are " +
+        "seat file that fails validation is skipped with a note, never the roster. Also carries " +
+        "`dispatch` (cairn.json seats.dispatch, when set) — what a verb's inherit dial resolves to " +
+        "for signal→seat selection (absent = off, full roster fires). Internal seats are " +
         "framing lenses — cheap, same-model; peers remain the genuinely adversarial external council",
       inputSchema: z.object({}),
     },
@@ -2461,6 +2463,7 @@ export function buildServer(deps: {
           valid: s.valid,
           note: s.note,
         })),
+        ...(roster.dispatch !== undefined ? { dispatch: roster.dispatch } : {}),
         ...(roster.notes.length > 0 ? { notes: roster.notes } : {}),
       };
     }),

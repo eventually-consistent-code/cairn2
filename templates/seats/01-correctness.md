@@ -3,7 +3,7 @@ name: correctness
 lens: logic errors, wrong edge-case handling, off-by-ones, state that can drift out of sync
 categories: [logic, edge-cases, off-by-ones, state-drift]
 dose: standard
-signals: [code]
+signals: [touches-server, touches-scripts, diff-large]
 anchor_ten: every changed logic path traced and sound — edge cases handled, boundaries exact, no state left able to drift out of sync
 anchor_five: the happy path is sound, but at least one edge case, boundary, or state transition went unexamined
 anchor_zero: a reachable logic error, off-by-one, or drifting-state bug is present in the diff

@@ -10,6 +10,20 @@ import { loadConfig } from "../src/config.js";
 import { parseSeatDoc } from "../src/seats/schema.js";
 import { loadRoster } from "../src/seats/roster.js";
 import { composeBrief } from "../src/seats/brief.js";
+import {
+  deriveSignals,
+  selectSeats,
+  resolveSeatModel,
+} from "../src/seats/signals.js";
+import {
+  loadYield,
+  recordYield,
+  yieldRate,
+  yieldStatePath,
+  YIELD_MIN_DISPATCHES,
+  YIELD_GATE_RATE,
+  type YieldCounters,
+} from "../src/seats/yield.js";
 
 // Builds a valid seat doc, with per-test frontmatter overrides. An override
 // value of undefined DROPS the line entirely (the missing-field cases).
@@ -409,6 +423,365 @@ describe("wave-brief composition (composeBrief)", () => {
       expect((e as CairnError).nextAction).toContain(
         join("templates", "wave-brief.md"),
       );
+    }
+  });
+});
+
+describe("signal derivation (deriveSignals)", () => {
+  // Path-derived table — one representative diff per standard signal.
+  const mid = { insertions: 100, deletions: 100 }; // neither small nor large
+  const cases: Array<[string, string[], string[]]> = [
+    ["server code", ["server/src/index.ts"], ["touches-server"]],
+    ["docs by extension", ["README.md"], ["touches-docs"]],
+    ["docs by segment", ["docs/guide.md"], ["touches-docs"]],
+    ["tests", ["server/test/mcp.test.ts"], ["touches-server", "touches-tests"]],
+    ["config", ["cairn.json"], ["touches-config"]],
+    ["ci workflow", [".github/workflows/ci.yml"], ["touches-ci", "touches-config"]],
+    ["scripts", ["scripts/deploy.sh"], ["touches-scripts"]],
+    ["auth-shaped path", ["server/src/auth/login.ts"], ["touches-auth", "touches-server"]],
+  ];
+  for (const [label, files, expected] of cases) {
+    it(`derives ${label} → [${expected.join(", ")}]`, () => {
+      expect(deriveSignals({ files, ...mid })).toEqual(expected);
+    });
+  }
+
+  it("size signals: strict bounds, mid-size diffs emit neither", () => {
+    expect(deriveSignals({ files: ["a.txt"], insertions: 10, deletions: 5 }))
+      .toEqual(["diff-small"]);
+    expect(deriveSignals({ files: ["a.txt"], insertions: 600, deletions: 0 }))
+      .toEqual(["diff-large"]);
+    expect(deriveSignals({ files: ["a.txt"], insertions: 250, deletions: 250 }))
+      .toEqual([]);
+    // exactly at the bounds: 50 is not small, 500 is not large
+    expect(deriveSignals({ files: ["a.txt"], insertions: 50, deletions: 0 }))
+      .toEqual([]);
+    expect(deriveSignals({ files: ["a.txt"], insertions: 500, deletions: 0 }))
+      .toEqual([]);
+  });
+
+  it("output is deduped and sorted; garbage line counts clamp to 0", () => {
+    const s = deriveSignals({
+      files: ["docs/a.md", "docs/b.md", "server/x.ts"],
+      insertions: -5,
+      deletions: -5,
+    });
+    expect(s).toEqual([...new Set(s)].sort());
+    expect(s).toContain("diff-small"); // clamped total 0 < 50
+    expect(s.filter((x) => x === "touches-docs")).toHaveLength(1);
+  });
+
+  it("emits only the standard vocabulary — custom seat signals never derive", () => {
+    const s = deriveSignals({
+      files: ["server/a.ts", "docs/b.md", "cairn.json", "scripts/c.sh"],
+      insertions: 600,
+      deletions: 600,
+    });
+    for (const sig of s) {
+      expect(sig).toMatch(
+        /^(touches-(auth|server|docs|tests|config|ci|scripts)|diff-(small|large))$/,
+      );
+    }
+  });
+});
+
+describe("seat selection (selectSeats)", () => {
+  it("dial off (the default): the full roster fires, nothing gated", () => {
+    const roster = loadRoster(makeProject());
+    const sel = selectSeats(roster, [], { dial: "off" });
+    expect(sel.effectiveDial).toBe("off");
+    expect(sel.fired.map((s) => s.name)).toEqual(DEFAULT_NAMES);
+    expect(sel.gated).toEqual([]);
+  });
+
+  it("auto: docs-only diff seats clarity, gates the rest with notes", () => {
+    const roster = loadRoster(makeProject());
+    const signals = deriveSignals({
+      files: ["docs/guide.md"], insertions: 10, deletions: 0,
+    });
+    const sel = selectSeats(roster, signals, { dial: "auto" });
+    expect(sel.effectiveDial).toBe("auto");
+    expect(sel.fired.map((s) => s.name)).toEqual(["clarity"]);
+    expect(sel.gated.map((g) => g.name)).toEqual([
+      "correctness", "architecture", "security", "tests",
+    ]);
+    for (const g of sel.gated) {
+      expect(g.reason).toBe("no-matching-signals");
+      expect(g.note).toContain("no matching signals");
+    }
+  });
+
+  it("auto: a server-code diff fires all five defaults", () => {
+    const roster = loadRoster(makeProject());
+    const signals = deriveSignals({
+      files: ["server/src/a.ts"], insertions: 100, deletions: 100,
+    });
+    const sel = selectSeats(roster, signals, { dial: "auto" });
+    expect(sel.fired.map((s) => s.name)).toEqual(DEFAULT_NAMES);
+    expect(sel.gated).toEqual([]);
+  });
+
+  it("a seat declaring NO signals always fires — gating is opt-in", () => {
+    const roster = loadRoster(makeProject({
+      roles: { "10-vibes.md": seatDoc({ name: "vibes", signals: "[]" }) },
+    }));
+    const sel = selectSeats(roster, [], { dial: "auto" });
+    expect(sel.fired.map((s) => s.name)).toEqual(["vibes"]);
+    expect(sel.gated).toHaveLength(DEFAULT_NAMES.length);
+  });
+
+  it("inherit follows cairn.json seats.dispatch; absent resolves to off", () => {
+    const auto = loadRoster(makeProject({ seats: { dispatch: "auto" } }));
+    expect(auto.dispatch).toBe("auto");
+    expect(selectSeats(auto, [], { dial: "inherit" }).effectiveDial).toBe("auto");
+
+    const unset = loadRoster(makeProject());
+    expect(unset.dispatch).toBeUndefined();
+    const sel = selectSeats(unset, [], { dial: "inherit" });
+    expect(sel.effectiveDial).toBe("off");
+    expect(sel.fired.map((s) => s.name)).toEqual(DEFAULT_NAMES);
+  });
+
+  it("auto: low-yield seat gates on evidence, with the explicit note", () => {
+    const roster = loadRoster(makeProject());
+    const signals = ["touches-server"];
+    const yields: Record<string, YieldCounters> = {
+      correctness: { dispatched: 10, findingsRaised: 3, findingsSurvived: 0 },
+    };
+    const sel = selectSeats(roster, signals, { dial: "auto", yields });
+    expect(sel.fired.map((s) => s.name)).toEqual([
+      "clarity", "architecture", "security", "tests",
+    ]);
+    expect(sel.gated).toEqual([
+      expect.objectContaining({ name: "correctness", reason: "low-yield" }),
+    ]);
+    expect(sel.gated[0].note).toContain("low yield");
+  });
+
+  it("yield floor: security and dose-full seats are never yield-gated", () => {
+    const roster = loadRoster(makeProject({
+      roles: {
+        "10-style.md": seatDoc({
+          name: "style", dose: "full", signals: "[touches-server]",
+        }),
+      },
+    }));
+    const dead: YieldCounters = {
+      dispatched: 50, findingsRaised: 0, findingsSurvived: 0,
+    };
+    const sel = selectSeats(roster, ["touches-server"], {
+      dial: "auto",
+      yields: { security: dead, style: dead },
+    });
+    expect(sel.fired.map((s) => s.name)).toContain("security");
+    expect(sel.fired.map((s) => s.name)).toContain("style");
+    expect(sel.gated).toEqual([]);
+  });
+
+  it("yield gate needs history and a strictly-low rate", () => {
+    const roster = loadRoster(makeProject());
+    const fired = (yields: Record<string, YieldCounters>) =>
+      selectSeats(roster, ["touches-server"], { dial: "auto", yields })
+        .fired.map((s) => s.name);
+    // one under YIELD_MIN_DISPATCHES — sample too small to prune on
+    expect(fired({
+      correctness: {
+        dispatched: YIELD_MIN_DISPATCHES - 1,
+        findingsRaised: 0,
+        findingsSurvived: 0,
+      },
+    })).toContain("correctness");
+    // rate exactly AT the gate line does not gate (strict <)
+    expect(fired({
+      correctness: { dispatched: 10, findingsRaised: 1, findingsSurvived: 1 },
+    })).toContain("correctness");
+  });
+
+  it("yield stats are consulted ONLY in auto — off ignores them", () => {
+    const roster = loadRoster(makeProject());
+    const sel = selectSeats(roster, [], {
+      dial: "off",
+      yields: {
+        correctness: { dispatched: 99, findingsRaised: 0, findingsSurvived: 0 },
+      },
+    });
+    expect(sel.fired.map((s) => s.name)).toEqual(DEFAULT_NAMES);
+    expect(sel.gated).toEqual([]);
+  });
+
+  it("pins the documented thresholds", () => {
+    expect(YIELD_MIN_DISPATCHES).toBe(10);
+    expect(YIELD_GATE_RATE).toBe(0.1);
+  });
+});
+
+describe("yield store (loadYield / recordYield)", () => {
+  it("round-trips and accumulates deltas per project file", () => {
+    const base = mkdtempSync(join(tmpdir(), "cairn-yield-"));
+    const project = makeProject();
+    recordYield(project, [
+      { seat: "correctness", dispatched: 1, findingsRaised: 2, findingsSurvived: 1 },
+    ], base);
+    recordYield(project, [
+      { seat: "correctness", dispatched: 1 },
+      { seat: "security", dispatched: 1, findingsRaised: 1 },
+    ], base);
+    const { state, note } = loadYield(project, base);
+    expect(note).toBeUndefined();
+    expect(state.version).toBe(1);
+    expect(state.seats.correctness).toEqual({
+      dispatched: 2, findingsRaised: 2, findingsSurvived: 1,
+    });
+    expect(state.seats.security).toEqual({
+      dispatched: 1, findingsRaised: 1, findingsSurvived: 0,
+    });
+  });
+
+  it("isolates projects — same base dir, separate files and counters", () => {
+    const base = mkdtempSync(join(tmpdir(), "cairn-yield-"));
+    const a = makeProject();
+    const b = makeProject();
+    expect(yieldStatePath(a, base)).not.toBe(yieldStatePath(b, base));
+    recordYield(a, [{ seat: "correctness", dispatched: 3 }], base);
+    expect(loadYield(b, base).state.seats).toEqual({});
+    expect(loadYield(a, base).state.seats.correctness.dispatched).toBe(3);
+  });
+
+  it("a corrupt store loads fresh with a note — advisory evidence never throws", () => {
+    const base = mkdtempSync(join(tmpdir(), "cairn-yield-"));
+    const project = makeProject();
+    const path = yieldStatePath(project, base);
+    mkdirSync(join(base, "yield"), { recursive: true });
+    writeFileSync(path, "not json{");
+    const { state, note } = loadYield(project, base);
+    expect(state.seats).toEqual({});
+    expect(note).toContain("starting fresh");
+    // recordYield over the corpse persists a valid fresh state
+    const rec = recordYield(project, [{ seat: "tests", dispatched: 1 }], base);
+    expect(rec.note).toContain("starting fresh");
+    expect(loadYield(project, base).state.seats.tests.dispatched).toBe(1);
+  });
+
+  it("rejects malformed deltas with CONFIG_INVALID", () => {
+    const base = mkdtempSync(join(tmpdir(), "cairn-yield-"));
+    const project = makeProject();
+    for (const bad of [
+      [{ seat: "", dispatched: 1 }],
+      [{ seat: "x", dispatched: -1 }],
+      [{ seat: "x", findingsRaised: 1.5 }],
+    ]) {
+      try {
+        recordYield(project, bad, base);
+        expect.unreachable("should have thrown");
+      } catch (e) {
+        expect(e).toBeInstanceOf(CairnError);
+        expect((e as CairnError).code).toBe("CONFIG_INVALID");
+      }
+    }
+  });
+
+  it("yieldRate: survived per dispatch; null without evidence", () => {
+    expect(yieldRate({ dispatched: 0, findingsRaised: 0, findingsSurvived: 0 }))
+      .toBeNull();
+    expect(yieldRate({ dispatched: 10, findingsRaised: 4, findingsSurvived: 2 }))
+      .toBe(0.2);
+  });
+});
+
+describe("blast-radius model resolution (resolveSeatModel)", () => {
+  const seatWith = (model?: string) =>
+    parseSeatDoc(seatDoc({ model }), "/x/s.md").seat;
+
+  it("gate work routes to the strongest tier REGARDLESS of seat preference", () => {
+    const r = resolveSeatModel(seatWith("haiku"), "gate");
+    expect(r.model).toBe("opus");
+    expect(r.overrode).toBe(true);
+    expect(r.reason).toContain("gates a lifecycle transition");
+    expect(r.reason).toContain("blast-radius");
+  });
+
+  it("gate work with no preference still routes up, without an override flag", () => {
+    const r = resolveSeatModel(seatWith(), "gate");
+    expect(r.model).toBe("opus");
+    expect(r.overrode).toBe(false);
+  });
+
+  it("downgrade only mechanical work: a haiku preference on synthesis bumps up", () => {
+    const r = resolveSeatModel(seatWith("haiku"), "synthesis");
+    expect(r.model).toBe("sonnet");
+    expect(r.overrode).toBe(true);
+  });
+
+  it("a preference at or above the class floor is honored", () => {
+    expect(resolveSeatModel(seatWith("opus"), "synthesis").model).toBe("opus");
+    expect(resolveSeatModel(seatWith("haiku"), "mechanical").model).toBe("haiku");
+    expect(resolveSeatModel(seatWith("sonnet"), "mechanical").model).toBe("sonnet");
+  });
+
+  it("no preference: the rubric default per work class", () => {
+    expect(resolveSeatModel(seatWith(), "mechanical").model).toBe("haiku");
+    expect(resolveSeatModel(seatWith(), "synthesis").model).toBe("sonnet");
+  });
+});
+
+describe("seats dispatch config", () => {
+  it("seats.dispatch accepts auto|off and rejects anything else", () => {
+    expect(loadConfig(makeProject({ seats: { dispatch: "auto" } }))
+      .seats?.dispatch).toBe("auto");
+    expect(loadConfig(makeProject({ seats: { dispatch: "off" } }))
+      .seats?.dispatch).toBe("off");
+    try {
+      loadConfig(makeProject({ seats: { dispatch: "always" } }));
+      expect.unreachable("should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(CairnError);
+      expect((e as CairnError).code).toBe("CONFIG_INVALID");
+    }
+  });
+
+  it("seat_roster carries dispatch over MCP when set, omits it otherwise", async () => {
+    const server = buildServer({
+      projectDir: makeProject({ seats: { dispatch: "auto" } }),
+      tracker: new FakeTracker(),
+      fetchLatestVersion: async () => "9.9.9",
+    });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "test", version: "0.0.0" });
+    await Promise.all([server.connect(st), client.connect(ct)]);
+    const res = await client.callTool({ name: "seat_roster", arguments: {} });
+    const roster = JSON.parse((res.content as Array<{ text: string }>)[0].text);
+    expect(roster.dispatch).toBe("auto");
+    await client.close();
+
+    const server2 = buildServer({
+      projectDir: makeProject(),
+      tracker: new FakeTracker(),
+      fetchLatestVersion: async () => "9.9.9",
+    });
+    const [ct2, st2] = InMemoryTransport.createLinkedPair();
+    const client2 = new Client({ name: "test", version: "0.0.0" });
+    await Promise.all([server2.connect(st2), client2.connect(ct2)]);
+    const res2 = await client2.callTool({ name: "seat_roster", arguments: {} });
+    const roster2 = JSON.parse(
+      (res2.content as Array<{ text: string }>)[0].text,
+    );
+    expect(roster2.dispatch).toBeUndefined();
+    await client2.close();
+  });
+
+  it("shipped default signals are drawn from the standard vocabulary", () => {
+    // The dispatch story only works if the defaults can actually fire —
+    // every declared default signal must be derivable.
+    const roster = loadRoster(makeProject());
+    const STANDARD = new Set([
+      "touches-auth", "touches-server", "touches-docs", "touches-tests",
+      "touches-config", "touches-ci", "touches-scripts",
+      "diff-small", "diff-large",
+    ]);
+    for (const entry of roster.seats) {
+      for (const sig of entry.seat?.signals ?? []) {
+        expect(STANDARD.has(sig), `${entry.name} declares '${sig}'`).toBe(true);
+      }
     }
   });
 });
