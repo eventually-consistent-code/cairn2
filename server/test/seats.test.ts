@@ -9,6 +9,7 @@ import { CairnError } from "../src/errors.js";
 import { loadConfig } from "../src/config.js";
 import { parseSeatDoc } from "../src/seats/schema.js";
 import { loadRoster } from "../src/seats/roster.js";
+import { composeBrief } from "../src/seats/brief.js";
 
 // Builds a valid seat doc, with per-test frontmatter overrides. An override
 // value of undefined DROPS the line entirely (the missing-field cases).
@@ -314,5 +315,100 @@ describe("seat_roster tool", () => {
     ]);
     expect(byName.tests).toEqual(["coverage", "failability"]);
     await client.close();
+  });
+});
+
+describe("wave-brief composition (composeBrief)", () => {
+  // A validated seat + body straight through the real parser, so the
+  // brief tests exercise the same shape the roster hands out.
+  function makeSeat(over: Record<string, string | undefined> = {}) {
+    return parseSeatDoc(seatDoc(over), "test-seat.md");
+  }
+
+  const BASE = {
+    issue: "#160 — wave-brief templates\nBriefs compose from seat templates.",
+    planExcerpt: "Wave 2 task: briefs = seat template + issue + PLAN.",
+    rules: "Expected base: abc1234. Run `npm ci` in server/ first.",
+  };
+
+  // Section headings, in order — the structural fingerprint of a brief.
+  function headings(text: string): string[] {
+    return text.split("\n").filter((l) => l.startsWith("## "));
+  }
+
+  it("seatless: generic brief with every standing section, no leftovers", () => {
+    const brief = composeBrief(BASE);
+    expect(headings(brief)).toEqual([
+      "## Task",
+      "## Plan excerpt",
+      "## Standing rules",
+      "## Report",
+    ]);
+    expect(brief).toContain(BASE.issue);
+    expect(brief).toContain(BASE.planExcerpt);
+    expect(brief).toContain(BASE.rules);
+    expect(brief).toContain("git merge --ff-only main");
+    expect(brief).toContain("Leak-guard discipline");
+    expect(brief).not.toContain("## Seat:");
+    expect(brief).not.toContain("{{");
+    expect(brief).not.toContain("\n\n\n");
+  });
+
+  it("with a seat: framing section leads, same structure otherwise", () => {
+    const { seat, body } = makeSeat();
+    const brief = composeBrief({ ...BASE, seat, seatBody: body });
+    const [first, ...rest] = headings(brief);
+    expect(first).toBe("## Seat: correctness");
+    expect(rest).toEqual(headings(composeBrief(BASE)));
+    // Standard dose: lens + categories + honesty line, quoted verbatim.
+    expect(brief).toContain("Lens: logic errors and drifting state");
+    expect(brief).toContain("Categories: logic, edge-cases");
+    expect(brief).toContain("Honesty: unscored beats invented");
+    expect(brief).not.toContain("Anchors:");
+    expect(brief).not.toContain("The lens prose body.");
+  });
+
+  it("minimal dose: lens only", () => {
+    const { seat, body } = makeSeat({ dose: "minimal" });
+    const brief = composeBrief({ ...BASE, seat, seatBody: body });
+    expect(brief).toContain("Lens: logic errors and drifting state");
+    expect(brief).not.toContain("Categories:");
+    expect(brief).not.toContain("Honesty:");
+    expect(brief).not.toContain("Anchors:");
+  });
+
+  it("full dose: anchors and the lens prose body ride along", () => {
+    const { seat, body } = makeSeat({ dose: "full" });
+    const brief = composeBrief({ ...BASE, seat, seatBody: body });
+    expect(brief).toContain("Categories: logic, edge-cases");
+    expect(brief).toContain(
+      "Anchors: 10 — every path traced and sound; " +
+        "5 — happy path sound, an edge unexamined; " +
+        "0 — a reachable logic error is present",
+    );
+    expect(brief).toContain("The lens prose body.");
+  });
+
+  it("rules omitted: slot renders empty, never a dangling marker", () => {
+    const brief = composeBrief({
+      issue: BASE.issue,
+      planExcerpt: BASE.planExcerpt,
+    });
+    expect(brief).not.toContain("{{rules}}");
+    expect(brief).not.toContain("\n\n\n");
+  });
+
+  it("missing template: typed NOT_FOUND naming the expected path", () => {
+    const d = mkdtempSync(join(tmpdir(), "cairn-brief-"));
+    try {
+      composeBrief({ ...BASE, rootDir: d });
+      expect.unreachable("should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(CairnError);
+      expect((e as CairnError).code).toBe("NOT_FOUND");
+      expect((e as CairnError).nextAction).toContain(
+        join("templates", "wave-brief.md"),
+      );
+    }
   });
 });
