@@ -15,6 +15,8 @@
 //       that let route.md document decimal phase inserts for ~12 days while the
 //       server rejected them). Gap: this catches ONLY the int-vs-decimal drift
 //       class -- other doc/behavior drift shapes are explicitly out of scope.
+//   (i) the seat roster rendered into harness/AGENTS-cairn.md matches a fresh
+//       parse of templates/seats/*.md frontmatter (gen-agents --check-seats)
 // Exit 0 clean, exit 1 with one line per failure.
 
 import { readFileSync, readdirSync } from "node:fs";
@@ -152,6 +154,22 @@ import { spawnSync } from "node:child_process";
   }
 }
 
+// --- (i) seat-roster freshness ------------------------------------------------
+//
+// Same shape as (g): the spine's seat section must match a fresh parse of
+// templates/seats/*.md frontmatter. gen-agents --check-seats does the parse
+// and the compare; a stale roster fails with the regenerate command.
+let seatCount = 0;
+{
+  seatCount = readdirSync(join(root, "templates", "seats"))
+    .filter((f) => f.endsWith(".md")).length;
+  const r = spawnSync(process.execPath, [join(root, "scripts", "gen-agents.mjs"), "--check-seats"],
+    { encoding: "utf8" });
+  if (r.status !== 0) {
+    failures.push("(i) harness/AGENTS-cairn.md seat roster stale vs templates/seats/ (run scripts/gen-agents.mjs)");
+  }
+}
+
 // --- (h) decimal-claim vs int-schema drift -----------------------------------
 //
 // Same regex-over-source technique as the registry build above: no dist
@@ -228,4 +246,4 @@ if (failures.length) {
   process.exit(1);
 }
 console.log(
-  `check-surface: clean — ${liveRows.length} live, ${reservedRows.length} reserved, ${registry.size} server tools`);
+  `check-surface: clean — ${liveRows.length} live, ${reservedRows.length} reserved, ${registry.size} server tools, ${seatCount} seats fresh`);

@@ -5,10 +5,12 @@
 // skills/cairn-trailhead/SKILL.md and writes harness/AGENTS-cairn.md — the
 // cairn fragment cairn-setup appends into a project's AGENTS.md so any
 // MCP-capable harness (Grok Build, Codex, Cursor, OpenCode, ...) can drive
-// the same verbs the Claude Code plugin ships. Regenerate, never hand-edit;
-// check-surface runs `--check` so the fragment can't drift from the registry.
+// the same verbs the Claude Code plugin ships. Also renders the default seat
+// roster (templates/seats/ frontmatter) into the spine — single source,
+// rendered per host. Regenerate, never hand-edit; check-surface runs
+// `--check` / `--check-seats` so the fragment can't drift from its sources.
 
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -34,6 +36,53 @@ if (rows.length === 0) {
   console.error("gen-agents: no live verbs parsed from the routing table");
   process.exit(1);
 }
+
+// --- seat roster: templates/seats/*.md frontmatter ---------------------------
+//
+// The DEFAULT roster only: shipped seat definitions under templates/seats/.
+// Project seats live under a project's .cairn/roles/ and never render into
+// the repo spine. Per-host note: every harness spine carries the SAME roster
+// content this iteration — the studied system's per-host knobs (per-harness
+// seat tuning/enablement) are future maturity, not built here.
+const seatsDir = join(root, "templates", "seats");
+const seats = [];
+for (const f of readdirSync(seatsDir).filter((n) => n.endsWith(".md")).sort()) {
+  const doc = readFileSync(join(seatsDir, f), "utf8");
+  const fm = doc.match(/^---\n([\s\S]*?)\n---/);
+  if (!fm) {
+    console.error(`gen-agents: templates/seats/${f} missing frontmatter`);
+    process.exit(1);
+  }
+  const field = (key) => fm[1].match(new RegExp(`^${key}:\\s*(.+)$`, "m"))?.[1].trim();
+  const seat = { name: field("name"), lens: field("lens"), dose: field("dose") };
+  const cats = field("categories");
+  seat.categories = cats ? cats.replace(/^\[|\]$/g, "").split(",").map((c) => c.trim()) : [];
+  for (const key of ["name", "lens", "dose"]) {
+    if (!seat[key]) {
+      console.error(`gen-agents: templates/seats/${f} frontmatter missing '${key}'`);
+      process.exit(1);
+    }
+  }
+  seats.push(seat);
+}
+if (seats.length === 0) {
+  console.error("gen-agents: no seat definitions parsed from templates/seats/");
+  process.exit(1);
+}
+
+const seatSection = `<!-- cairn:seats:begin -->
+## Seat roster
+
+Internal seats are framing lenses — cheap, same-model viewpoints folded
+into review and audit; peers remain the genuinely adversarial external
+council. This table is the shipped DEFAULT roster (\`templates/seats/\`);
+a project can add or override seats under \`.cairn/roles/\` — project
+seats are per-project and never appear in this spine.
+
+| seat | lens | categories | dose |
+|---|---|---|---|
+${seats.map((s) => `| ${s.name} | ${s.lens} | ${s.categories.join(", ")} | ${s.dose} |`).join("\n")}
+<!-- cairn:seats:end -->`;
 
 // --- shared rules section, verbatim ------------------------------------------
 const sharedIdx = skillMd.indexOf("## Shared rules");
@@ -68,6 +117,8 @@ executing that verb.
 |---|---|---|
 ${rows.map((r) => `| ${r.verb} | ${r.purpose} | ${r.args} |`).join("\n")}
 
+${seatSection}
+
 ${sharedRules}
 <!-- cairn:end -->
 `;
@@ -85,7 +136,23 @@ if (checkMode) {
   process.exit(0);
 }
 
+// --check-seats: only the seat-roster section vs a fresh parse of
+// templates/seats/ (check-surface rule (i) -- same shape as the verb-registry
+// freshness rule, scoped so a stale roster names its actual source of truth).
+if (process.argv.includes("--check-seats")) {
+  let existing = "";
+  try {
+    existing = readFileSync(OUT, "utf8");
+  } catch { /* missing counts as drift */ }
+  const m = existing.match(/<!-- cairn:seats:begin -->[\s\S]*?<!-- cairn:seats:end -->/);
+  if (!m || m[0] !== seatSection) {
+    console.error("gen-agents: seat roster in harness/AGENTS-cairn.md is stale vs templates/seats/ — run node scripts/gen-agents.mjs");
+    process.exit(1);
+  }
+  process.exit(0);
+}
+
 console.log("generating AGENTS spine...");
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, fragment);
-console.log(`harness/AGENTS-cairn.md written — ${rows.length} live verbs.`);
+console.log(`harness/AGENTS-cairn.md written — ${rows.length} live verbs, ${seats.length} seats.`);
