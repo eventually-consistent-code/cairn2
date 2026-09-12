@@ -20,12 +20,19 @@ for anything that matters.
 No target means the working diff, full stop — don't go hunting for a
 "more interesting" target when the caller didn't name one.
 
-## The five axes
+## The panel — the axes come from the roster
 
-Walk the resolved diff against each axis. A clean axis is still worth a
-line in the record ("no findings") — silence isn't the same as checked.
+Call `seat_roster` once at dispatch: the valid seats, in roster order,
+ARE the review panel — the axes are not hardcoded in this file. One
+framing line to keep straight: internal seats are framing lenses —
+cheap, same-model; `peers` remains the genuinely adversarial external
+council. There is exactly one review path, and this is it.
 
-| axis | what it's looking for |
+With no project seats and no `seats` config block, the roster is exactly
+the five shipped defaults, in this order — today's review, byte for
+byte:
+
+| seat | what it's looking for |
 |---|---|
 | correctness | logic errors, wrong edge-case handling, off-by-ones, state that can drift out of sync |
 | clarity | code a future reader (or agent) will misread — misleading names, buried intent, comments that lie |
@@ -33,11 +40,35 @@ line in the record ("no findings") — silence isn't the same as checked.
 | security | injection, auth gaps, secrets in the diff, trust boundaries crossed without a check |
 | tests | claims the diff makes that nothing verifies — new behavior with no test, a test that can't actually fail |
 
-Every finding gets ranked **critical**, **important**, or **minor**, and
-every finding names a `file:line` and a concrete failure scenario — not
-"this could be a problem" but the actual input or sequence that breaks it.
-A finding without a scenario is a hunch, not a finding; downgrade it or cut
-it before it goes in the record.
+A project-added seat (`.cairn/roles/*.md`) joins the panel where the
+roster puts it, same rules as every default. A seat disabled in
+`cairn.json` sits out with exactly one line in the record
+("`<name>`: disabled by config — sat out"); an invalid seat file
+likewise gets its roster note echoed as one line. Never silently shrink
+the panel — the record shows every seat, seated or not.
+
+Walk the resolved diff against each seat's lens. A clean seat is still
+worth a line in the record ("no findings") — silence isn't the same as
+checked.
+
+**Anchored score, beside the verdict — never a gate.** Each seat also
+reports a 0-10 score on its own scale. At dispatch, quote the seat's
+anchors (`anchor_ten` / `anchor_five` / `anchor_zero`) and its honesty
+line verbatim from the definition file — defaults under
+`templates/seats/`, project seats under `.cairn/roles/` (`seat_roster`
+names each seat's source). The score lands beside that seat's findings
+and the overall verdict in the record, and that's all it does: no
+threshold hangs off it, no pass/fail derives from it, no finding gets
+upgraded or downgraded because of it. When the seat's honesty line
+applies — the evidence wasn't actually read — report `unscored`; an
+invented number is worse than none.
+
+Findings keep today's shape exactly. Every finding gets ranked
+**critical**, **important**, or **minor**, and every finding names a
+`file:line` and a concrete failure scenario — not "this could be a
+problem" but the actual input or sequence that breaks it. A finding
+without a scenario is a hunch, not a finding; downgrade it or cut it
+before it goes in the record.
 
 ## Closing discipline — every review, no exceptions
 

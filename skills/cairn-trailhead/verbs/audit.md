@@ -34,6 +34,18 @@ phase's own stated criteria (PLAN.md, SPEC docs — whatever that phase
 committed to), check delivered state against it, don't substitute a
 generic checklist for the phase's actual bar.
 
+These four modes are viewpoint-shaped, so the seat roster can sharpen
+them: when `seat_roster` holds a valid seat matching the mode (a project
+security seat for `audit security`, and so on), that seat's lens MAY
+supply the eye the walk is done with. The mode's discipline stays the
+boss — scope is still the phase's own criteria, never the seat's generic
+concerns, and the closing rules don't change. No matching seat means
+exactly today's behavior. The other modes (`uat`, `milestone`, `tests`,
+`plans`, `docs`) aren't viewpoint-shaped and never consult the roster.
+Framing, same as everywhere seats appear: internal seats are framing
+lenses — cheap, same-model; `peers` remains the genuinely adversarial
+external council.
+
 **Milestone mode resolution:** resolve `n` via `milestone_list` first (handles
 both current and archived milestones). No `n` means audit the current milestone.
 If `n` is archived, read artifacts from `milestones/v<n>/` instead of live
