@@ -73,6 +73,10 @@ export declare const ConfigSchema: z.ZodObject<{
     peerFanout: z.ZodOptional<z.ZodObject<{
         maxConcurrent: z.ZodNumber;
     }, z.core.$strip>>;
+    seats: z.ZodOptional<z.ZodObject<{
+        enabled: z.ZodOptional<z.ZodArray<z.ZodString>>;
+        disabled: z.ZodOptional<z.ZodArray<z.ZodString>>;
+    }, z.core.$strict>>;
 }, z.core.$strip>;
 export type CairnConfig = z.infer<typeof ConfigSchema>;
 export declare function loadConfig(projectDir: string): CairnConfig;

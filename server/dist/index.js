@@ -48,6 +48,7 @@ import { mapGet, mapQuery, mapSet, } from "./map/store.js";
 import { findWorkspace, resolveProjectDir, setFocus, } from "./workspace/context.js";
 import { boardGet, boardUpdate } from "./workspace/board.js";
 import { PROVIDERS, peerList, peerRun } from "./peers/run.js";
+import { loadRoster } from "./seats/roster.js";
 import { VERDICTS, runStart, runAbandon, runStatus, runClose, recordPeerOutput, recordFindings, recordVerdict, } from "./peers/state.js";
 import { parseSections, flipSection, } from "./research/sections.js";
 // Widened (CRN-26): canonical three or a backend-defined custom state name.
@@ -1560,6 +1561,30 @@ export function buildServer(deps) {
             case "abandon":
                 return runAbandon(d, a.slug);
         }
+    }));
+    server.registerTool("seat_roster", {
+        description: "Merged seat roster — shipped default seats (templates/seats/) overridden by project seats " +
+            "(.cairn/roles/*.md, matched by name; a read path — the server never writes there), then " +
+            "filtered/ordered by cairn.json's optional `seats` block (absent = all defaults enabled). " +
+            "Per-seat {name, lens, categories, dose, signals, source: default|project, valid, note?}; a " +
+            "seat file that fails validation is skipped with a note, never the roster. Internal seats are " +
+            "framing lenses — cheap, same-model; peers remain the genuinely adversarial external council",
+        inputSchema: z.object({}),
+    }, wrap(() => {
+        const roster = loadRoster(dir());
+        return {
+            seats: roster.seats.map((s) => ({
+                name: s.name,
+                lens: s.seat?.lens,
+                categories: s.seat?.categories,
+                dose: s.seat?.dose,
+                signals: s.seat?.signals,
+                source: s.source,
+                valid: s.valid,
+                note: s.note,
+            })),
+            ...(roster.notes.length > 0 ? { notes: roster.notes } : {}),
+        };
     }));
     server.registerTool("research_sections", {
         description: "Parse a research artifact's ##+ section markers " +
