@@ -72,9 +72,9 @@ seats are per-project and never appear in this spine.
 
 | seat | lens | categories | dose |
 |---|---|---|---|
-| architecture | the wrong layer doing the work, coupling that will bite the next change, reuse that got skipped | layering, coupling, reuse | standard |
-| clarity | code a future reader (or agent) will misread — misleading names, buried intent, comments that lie | naming, intent, comments | minimal |
 | correctness | logic errors, wrong edge-case handling, off-by-ones, state that can drift out of sync | logic, edge-cases, off-by-ones, state-drift | standard |
+| clarity | code a future reader (or agent) will misread — misleading names, buried intent, comments that lie | naming, intent, comments | minimal |
+| architecture | the wrong layer doing the work, coupling that will bite the next change, reuse that got skipped | layering, coupling, reuse | standard |
 | security | injection, auth gaps, secrets in the diff, trust boundaries crossed without a check | injection, auth, secrets, trust-boundaries | full |
 | tests | claims the diff makes that nothing verifies — new behavior with no test, a test that can't actually fail | coverage, failability | standard |
 <!-- cairn:seats:end -->
