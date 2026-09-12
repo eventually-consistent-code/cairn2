@@ -658,7 +658,10 @@ sweep; dispatched to the `cairn-uat` agent), `milestone` (goals vs delivered,
 phase by phase), `security`/`ui`/`eval`/`validation` (re-check the phase's
 OWN stated criteria — never a generic checklist substituted for the phase's
 actual bar; `ui` adds the fidelity contract against the draft session's
-decided direction and tokens.json), `tests` (find untested requirements and
+decided direction and tokens.json — and when the seat roster holds a
+matching seat, its lens may sharpen the mode's eye, though the phase's own
+criteria stay the boss and no seat means exactly today's behavior),
+`tests` (find untested requirements and
 WRITE the missing tests, not just flag them), `plans` (the plan-quality scan
 for contract drift and unanchored thresholds, translated to plain language),
 `docs` (sweep README/docs claims — tool counts, verb lists, paths, commands
@@ -682,9 +685,13 @@ the code as it stands (that's the difference from `audit`). Target
 resolution: none = the working diff plus staged, full stop — no hunting for
 a "more interesting" target; a branch name = that branch against `main`; a
 phase number = the phase's ledgered commit ranges (read from the ledger, not
-guessed). The five axes: correctness, clarity, architecture, security,
-tests — a clean axis still gets a "no findings" line; silence isn't the same
-as checked. Every finding is ranked critical/important/minor and names a
+guessed). The panel comes from the seat roster — with no project seats
+that's exactly the five default axes (correctness, clarity, architecture,
+security, tests), a project seat joins in roster order, and every seat
+reports an anchored 0-10 score beside the verdict that never gates
+anything; internal seats are framing lenses, `peers` stays the genuinely
+adversarial external council. A clean axis still gets a "no findings"
+line; silence isn't the same as checked. Every finding is ranked critical/important/minor and names a
 `file:line` plus a concrete failure scenario — a finding without a scenario
 is a hunch; it gets downgraded or cut. Closing: critical/important →
 `cairn:review` issues (severity first line, plain language — the scenario,

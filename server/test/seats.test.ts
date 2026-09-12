@@ -54,10 +54,12 @@ function makeProject(opts: {
   return d;
 }
 
+// Shipped-default roster order == review's axis order (the 01-..05- filename
+// prefixes in templates/seats/ enforce it) — the byte-identical promise.
 const DEFAULT_NAMES = [
-  "architecture",
-  "clarity",
   "correctness",
+  "clarity",
+  "architecture",
   "security",
   "tests",
 ];
@@ -164,8 +166,8 @@ describe("seat roster (loadRoster)", () => {
     const d = makeProject({ seats: { disabled: ["security", "clarity"] } });
     const roster = loadRoster(d);
     expect(roster.seats.map((s) => s.name)).toEqual([
-      "architecture",
       "correctness",
+      "architecture",
       "tests",
     ]);
   });
@@ -250,6 +252,67 @@ describe("seat_roster tool", () => {
     );
     expect(broken.valid).toBe(false);
     expect(broken.note).toContain("lens");
+    await client.close();
+  });
+
+  // Regression pin — the fold-never-stack promise, machine-checked: with no
+  // project seats and no seats config block, the roster consumed over MCP IS
+  // review's five axes, in review's order, with review's category coverage.
+  // If this test moves, review's default behavior moved with it.
+  it("no-config roster is exactly review's five axes, in order (byte-identical pin)", async () => {
+    const server = buildServer({
+      projectDir: makeProject(),
+      tracker: new FakeTracker(),
+      fetchLatestVersion: async () => "9.9.9",
+    });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "test", version: "0.0.0" });
+    await Promise.all([server.connect(st), client.connect(ct)]);
+    const res = await client.callTool({ name: "seat_roster", arguments: {} });
+    const roster = JSON.parse(
+      (res.content as Array<{ text: string }>)[0].text,
+    ) as {
+      seats: Array<{
+        name: string;
+        categories: string[];
+        source: string;
+        valid: boolean;
+      }>;
+      notes?: string[];
+    };
+
+    // Today's five review axes, today's order — the panel, exactly.
+    expect(roster.seats.map((s) => s.name)).toEqual([
+      "correctness",
+      "clarity",
+      "architecture",
+      "security",
+      "tests",
+    ]);
+    expect(
+      roster.seats.every((s) => s.valid && s.source === "default"),
+    ).toBe(true);
+    expect(roster.notes).toBeUndefined();
+
+    // Today's category coverage per axis — the rubric didn't drift either.
+    const byName = Object.fromEntries(
+      roster.seats.map((s) => [s.name, s.categories]),
+    );
+    expect(byName.correctness).toEqual([
+      "logic",
+      "edge-cases",
+      "off-by-ones",
+      "state-drift",
+    ]);
+    expect(byName.clarity).toEqual(["naming", "intent", "comments"]);
+    expect(byName.architecture).toEqual(["layering", "coupling", "reuse"]);
+    expect(byName.security).toEqual([
+      "injection",
+      "auth",
+      "secrets",
+      "trust-boundaries",
+    ]);
+    expect(byName.tests).toEqual(["coverage", "failability"]);
     await client.close();
   });
 });
