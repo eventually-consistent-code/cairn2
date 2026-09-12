@@ -1,0 +1,139 @@
+/**
+ * Purpose: seat roster resolution — shipped defaults (templates/seats/ in
+ * the plugin) merged with project seats (.cairn/roles/, a read path only:
+ * the server never writes there), then filtered/ordered by cairn.json's
+ * optional `seats` block. Per-file tolerance is the design center: one bad
+ * seat file skips that seat with a note, never the roster.
+ * Author(s): John Reed
+ */
+// Imports
+import { readdirSync, readFileSync } from "node:fs";
+import { basename, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { CairnError } from "../errors.js";
+import { loadConfig } from "../config.js";
+import { parseSeatDoc } from "./schema.js";
+// Constants
+// Shipped defaults live in the plugin's templates tree, not server/ —
+// resolved relative to this module, which sits three levels below the
+// repo/plugin root from both src/seats/ and dist/seats/ (same trick as
+// peers/findings.ts).
+const DEFAULT_ROOT_DIR = fileURLToPath(new URL("../../..", import.meta.url));
+const SHIPPED_SUBDIR = join("templates", "seats");
+const PROJECT_SUBDIR = join(".cairn", "roles");
+// Loading
+/**
+ * Reads every *.md seat definition under one directory, in filename order.
+ * A file that fails validation becomes a valid:false entry carrying the
+ * error message — the rest of the directory still loads.
+ *
+ * :param dirPath: directory to scan (missing/unreadable = empty, not fatal)
+ * :param source: provenance stamped on every entry
+ * :returns: one entry per file, valid or not
+ */
+function readSeatDir(dirPath, source) {
+    let files;
+    try {
+        files = readdirSync(dirPath)
+            .filter((f) => f.endsWith(".md"))
+            .sort();
+    }
+    catch {
+        return [];
+    }
+    const out = [];
+    for (const f of files) {
+        const path = join(dirPath, f);
+        try {
+            const { seat, body } = parseSeatDoc(readFileSync(path, "utf8"), path);
+            out.push({ name: seat.name, source, valid: true, seat, body, path });
+        }
+        catch (e) {
+            out.push({
+                name: basename(f, ".md"),
+                source,
+                valid: false,
+                note: e instanceof CairnError ? e.message : String(e),
+                path,
+            });
+        }
+    }
+    return out;
+}
+/**
+ * Resolves the merged seat roster for a project.
+ *
+ * Resolution rules:
+ * - shipped defaults load from templates/seats/ (filename order), project
+ *   seats from .cairn/roles/ — a project seat whose NAME matches a default
+ *   replaces it in place (source flips to "project"); a new name appends
+ * - a duplicate name within the same source keeps the first file; the later
+ *   one lands as valid:false with a note
+ * - an invalid file never shadows anything — the seat it would have defined
+ *   is skipped with a note, the roster still loads
+ * - cairn.json's optional `seats` block then filters/orders: `enabled`
+ *   picks the roster (in its order; unknown names become roster notes),
+ *   `disabled` removes names; absent block = every default enabled, i.e.
+ *   today's behavior
+ *
+ * :param projectDir: project root (must hold cairn.json)
+ * :param rootDir: plugin root override — test seam for the shipped dir
+ * :returns: the resolved roster, invalid entries included for visibility
+ */
+export function loadRoster(projectDir, rootDir = DEFAULT_ROOT_DIR) {
+    const config = loadConfig(projectDir).seats;
+    const notes = [];
+    // Merge defaults + project by name, project winning in place.
+    const merged = [];
+    const indexByName = new Map();
+    const entries = [
+        ...readSeatDir(join(rootDir, SHIPPED_SUBDIR), "default"),
+        ...readSeatDir(join(projectDir, PROJECT_SUBDIR), "project"),
+    ];
+    for (const entry of entries) {
+        if (!entry.valid) {
+            merged.push(entry);
+            continue;
+        }
+        const existing = indexByName.get(entry.name);
+        if (existing === undefined) {
+            indexByName.set(entry.name, merged.length);
+            merged.push(entry);
+        }
+        else if (merged[existing].source === entry.source) {
+            // Same-source duplicate: first file wins, later one skipped with a note.
+            merged.push({
+                ...entry,
+                valid: false,
+                seat: undefined,
+                body: undefined,
+                note: `duplicate seat name '${entry.name}' — already defined by ${merged[existing].path}; this file is ignored`,
+            });
+        }
+        else {
+            // Project over default, position kept.
+            merged[existing] = entry;
+        }
+    }
+    // Enablement filtering — valid entries only; invalid ones stay visible.
+    let seats = merged;
+    if (config?.enabled) {
+        const chosen = [];
+        for (const name of config.enabled) {
+            const idx = indexByName.get(name);
+            const match = idx === undefined ? undefined : merged[idx];
+            if (match?.valid) {
+                chosen.push(match);
+            }
+            else {
+                notes.push(`enabled seat '${name}' matched no valid definition in templates/seats/ or .cairn/roles/ — skipped`);
+            }
+        }
+        seats = [...chosen, ...merged.filter((e) => !e.valid)];
+    }
+    if (config?.disabled?.length) {
+        const disabled = new Set(config.disabled);
+        seats = seats.filter((e) => !(e.valid && disabled.has(e.name)));
+    }
+    return { seats, notes };
+}

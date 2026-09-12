@@ -90,7 +90,7 @@ git PRs.
 generated from the routing table.
 The routing table is complete: the reserved verb set is now empty.
 
-**Server:** <!-- auto:tool-count -->84<!-- /auto:tool-count --> typed MCP tools, <!-- auto:test-count -->1293<!-- /auto:test-count --> passing tests — counts move with each
+**Server:** <!-- auto:tool-count -->85<!-- /auto:tool-count --> typed MCP tools, <!-- auto:test-count -->1309<!-- /auto:test-count --> passing tests — counts move with each
 tier and are measured in CI (env-gated live-backend
 suites skip without creds) — <!-- auto:deps -->four dependencies
 (`@modelcontextprotocol/client`, `@modelcontextprotocol/server`,
@@ -125,12 +125,12 @@ Installs are stamped (`.cairn-manifest.json`: source version + date), and
 surface against this clone's version — read-only, per-surface table,
 non-zero exit when anything lags, so it can gate.
 
-Every install gets the full <!-- auto:tool-count -->84<!-- /auto:tool-count -->-tool surface, the generated `AGENTS.md` verb
+Every install gets the full <!-- auto:tool-count -->85<!-- /auto:tool-count -->-tool surface, the generated `AGENTS.md` verb
 registry (from `scripts/gen-agents.mjs`, drift-checked in CI), and the verb
 subroutines copied to `.cairn/harness/` so any harness can execute them by
 name ("run cairn status"). Honest capability table:
 
-| Harness | Tools (<!-- auto:tool-count -->84<!-- /auto:tool-count -->) | Verbs | Slash commands | Continuity/cost/observe hooks |
+| Harness | Tools (<!-- auto:tool-count -->85<!-- /auto:tool-count -->) | Verbs | Slash commands | Continuity/cost/observe hooks |
 |---|---|---|---|---|
 | Claude Code (plugin) | ✅ | ✅ | ✅ `/cairn:*` | ✅ |
 | Grok Build | ✅ | ✅ by name | via its Claude-compat layer | untested — claims hook compat |

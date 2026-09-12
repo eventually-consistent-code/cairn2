@@ -87,6 +87,18 @@ export const ConfigSchema = z.object({
     peerFanout: z
         .object({ maxConcurrent: z.number().int().positive() })
         .optional(),
+    // Seat roster control (phase 19) — peers-shaped: optional, absent block =
+    // every shipped default seat enabled (today's behavior), unknown keys
+    // rejected by strictObject. This block only picks and orders seats; the
+    // definitions themselves are files (.cairn/roles/ over templates/seats/),
+    // never config. Internal seats are framing lenses — cheap, same-model;
+    // peers (above) remain the genuinely adversarial external council.
+    seats: z
+        .strictObject({
+        enabled: z.array(z.string()).optional(),
+        disabled: z.array(z.string()).optional(),
+    })
+        .optional(),
 });
 export function loadConfig(projectDir) {
     let raw;
