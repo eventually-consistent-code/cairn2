@@ -45,7 +45,26 @@ pairing overlay applies:
    the lifecycle never does. Wave N+1 starts only when every wave-N
    issue is closed and merged. A failed issue: let the wave's others
    finish, then STOP before the next wave and report — never build on
-   possibly-broken foundations. Two dispatch paths, checked in order:
+   possibly-broken foundations.
+
+   **Brief composition (both dispatch paths):** every worker's prompt
+   composes from `templates/wave-brief.md` — read the template, fill its
+   `{{issue}}` (id + title + body), `{{plan_excerpt}}` (this issue's
+   PLAN.md task text plus any locked CONTEXT.md decisions that bind it),
+   and `{{rules}}` (wave specifics: expected base sha, setup commands,
+   this session's commit trailer block) slots; the standing rules
+   (worktree/commit/leak-guard/report shape) already live in the
+   template — never retype them. When the issue's PLAN.md task line
+   carries a `` `seat: <name>` `` annotation (grammar in `plan.md`),
+   pull that seat from `seat_roster` and fill `{{seat_framing}}` at the
+   seat's declared dose — minimal: lens only; standard: + categories +
+   honesty line; full: + anchors + the lens body. A name matching no
+   valid roster seat: note it in the wave report and dispatch seatless.
+   No annotation → fill the slot empty: today's freehand brief, just
+   templated. Internal seats are framing lenses — cheap, same-model;
+   the `peers` council stays the genuinely adversarial external check.
+   Seat framing changes the brief ONLY — the worker structured-output
+   contract below is untouched. Two dispatch paths, checked in order:
 
    **Primary — the harness has the `Workflow` tool** (probe #86 validated
    every leg of this path): dispatch the wave as ONE `Workflow` run.
