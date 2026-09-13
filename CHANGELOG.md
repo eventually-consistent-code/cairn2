@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased — the seats (phase 19, 2026-09-11)
+
+Milestone v7's persona core: named, reusable review viewpoints as data,
+not prose clones:
+
+- The seat: one validated schema — a one-line lens, rubric categories,
+  an anchored 0-10 scale with a fabrication-refusal line, a required
+  injection dose, scope signals, and an advisory model preference —
+  with five shipped defaults that reproduce review's classic five axes
+  byte-for-byte (regression-pinned) until a project adds or edits a
+  seat in its roles directory. A missing or invalid dose is refused at
+  load with an error naming the file and the field.
+- Review and audit convene the roster instead of hardcoded prose:
+  anchored scores land beside pass/fail verdicts, never replacing
+  gates, and the roster renders into every harness spine under a CI
+  drift rule that caught a real stale spine during its own build.
+- Wave briefs compose from seat templates: a role defined once survives
+  across waves at its declared dose, named by a single annotation on
+  the task line.
+- Dispatch prunes itself with evidence: diff-derived scope signals pick
+  which seats fire (opt-in per seat, full panel by default), a
+  persisted per-seat yield statistic retires seats whose findings
+  rarely survive — never the security seat or any full-dose seat — and
+  gate-class work always routes to the strongest model tier regardless
+  of a seat's preference.
+- Many seats never means many issues: findings from multiple seats
+  collapse into one deduplicated set — merged by location and claim,
+  crediting every raising seat, keeping the highest severity — before
+  anything reaches the tracker.
+
 ## Unreleased — hygiene-batch (phase 18.7, 2026-09-11)
 
 Milestone v7's opener, built by the third headless batch run — which

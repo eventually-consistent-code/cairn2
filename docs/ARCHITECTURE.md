@@ -39,6 +39,9 @@ for work items; git owns prose.
 - `map/` — the project knowledge graph (build, query, diff).
 - `peers/` — external-CLI peer review and council runs (roster,
   throttled fan-out, resumable state).
+- `seats/` — the review roster: seat schema and roster resolution,
+  dose-tiered brief composition, signal dispatch with the yield store,
+  and finding dedup (see the Seats subsystem section below).
 - `workspace/` — multi-project workspaces and the dispatch board.
 - `core/` — continuity, active context, project registry, outlook
   emission.
@@ -104,3 +107,35 @@ against every connector: the in-memory fake (which enforces the space-wide
 unique-title rule so unit tests hit production constraints), and — behind
 an environment gate — a live Confluence space. Publisher and converter are
 pure and unit-tested without HTTP.
+
+## Seats subsystem (v7)
+<!-- docs: done -->
+
+Named, reusable review viewpoints as data (v7). One Zod schema — name,
+one-line lens, rubric categories, anchored 0-10 scale with an honesty
+line, a REQUIRED injection dose (minimal | standard | full,
+server-validated at load, ADR 0009), scope signals, advisory model
+preference — with five shipped defaults that reproduce review's classic
+five axes byte-identically until a project overrides them (ADR 0010).
+
+- **Schema + roster** (`server/src/seats/schema.ts`, `roster.ts`) —
+  flat-frontmatter seat files; project overrides by name from the
+  project roles directory; shipped defaults from the plugin's
+  templates; strict config block for enablement and the dispatch dial.
+  Invalid files are skipped with a note and never shadow a default.
+- **Brief composition** (`server/src/seats/brief.ts`) — wave-brief
+  assembly at the seat's declared dose: lens only at minimal,
+  categories and honesty line at standard, full anchors at full.
+- **Dispatch** (`server/src/seats/signals.ts`, `yield.ts`) —
+  diff-derived scope signals select firing seats (opt-in per seat,
+  full-panel off dial is the default); a persisted per-seat yield
+  store retires low-evidence seats, floored so security and full-dose
+  seats are never gated; the blast-radius routing rule always beats a
+  seat's model preference (ADR 0011).
+- **Dedup** (`server/src/seats/dedup.ts`) — location-and-claim merge
+  producing one deterministic finding set crediting every raising
+  seat, run before anything reaches the tracker (ADR 0012).
+- **Surface** — one `seat_roster` MCP tool (validate + list + dispatch
+  dial); the roster also renders into every generated harness spine
+  under a CI drift rule. Internal seats are framing lenses; the
+  external peers council remains the adversarial mechanism.
