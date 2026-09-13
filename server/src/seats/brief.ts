@@ -1,7 +1,8 @@
 /**
  * Purpose: wave-brief composition — `work`'s per-issue dispatch briefs,
  * composed from templates/wave-brief.md plus an optional roster seat
- * instead of freehand retyping. Same {{slot}} mechanism as the peers
+ * (and that seat's role-scoped memory cards) instead of freehand
+ * retyping. Same {{slot}} mechanism as the peers
  * templates: every occurrence of a provided slot is replaced, and the
  * seat framing rides at the seat's declared dose. No tool surface — the
  * work verb reads the template + seat_roster directly; this module is
@@ -29,11 +30,28 @@ const TEMPLATE_PATH = join("templates", "wave-brief.md");
 
 // Types
 
+export interface RoleCard {
+  /** The card body — the remembered fact itself. */
+  body: string;
+  /** The card's confidence grade, when it carries one. */
+  confidence?: "high" | "medium" | "low";
+  /** Card creation date (YYYY-MM-DD, from the card frontmatter). */
+  created: string;
+  /** Provenance-checked staleness — true marks the line as possibly rotten. */
+  stale: boolean;
+}
+
 export interface BriefInput {
   /** Validated roster seat — absent means a generic (seatless) brief. */
   seat?: Seat;
   /** The seat's lens prose body — rides into the brief only at dose "full". */
   seatBody?: string;
+  /**
+   * Role-scoped memory cards (scopeRole = seat name) — rendered as a short
+   * "what this seat remembers" section. Absent or empty skips the section
+   * entirely: output stays byte-identical to a roleCards-less compose.
+   */
+  roleCards?: RoleCard[];
   /** Tracker issue content: id, title, body — lands verbatim under Task. */
   issue: string;
   /** This issue's PLAN.md task text (+ any locked decisions that bind it). */
@@ -76,6 +94,25 @@ function seatFraming(seat: Seat, body?: string): string {
 }
 
 /**
+ * Renders the "what this seat remembers" section — one line per
+ * role-scoped card, newest-first order left to the caller. A stale card
+ * (provenance rotted) is marked inline so the reader weighs it lightly.
+ *
+ * :param cards: role-scoped card summaries, already staleness-checked
+ * :returns: the markdown memory section
+ */
+function roleMemory(cards: RoleCard[]): string {
+  const lines = ["What this seat remembers:"];
+  for (const c of cards) {
+    const meta = [c.created];
+    if (c.confidence) meta.push(`confidence ${c.confidence}`);
+    if (c.stale) meta.push("STALE — verify before leaning on it");
+    lines.push(`- (${meta.join("; ")}) ${c.body.trim().replace(/\s*\n\s*/g, " ")}`);
+  }
+  return lines.join("\n");
+}
+
+/**
  * Composes one wave dispatch brief from templates/wave-brief.md.
  *
  * Seatless composition fills the framing slot empty — the generic brief,
@@ -107,8 +144,15 @@ export function composeBrief(input: BriefInput): string {
   // it mentions don't get filled as if they were live slots.
   text = text.replace(/^<!--[\s\S]*?-->\s*/, "");
 
+  // The framing slot stacks the seat section and the seat's memory —
+  // either part absent just drops out (no roleCards means the slot value
+  // is exactly what it was before roleCards existed).
+  const framingParts: string[] = [];
+  if (input.seat) framingParts.push(seatFraming(input.seat, input.seatBody));
+  if (input.roleCards?.length) framingParts.push(roleMemory(input.roleCards));
+
   const slots: Record<string, string> = {
-    seat_framing: input.seat ? seatFraming(input.seat, input.seatBody) : "",
+    seat_framing: framingParts.join("\n\n"),
     issue: input.issue,
     plan_excerpt: input.planExcerpt,
     rules: input.rules ?? "",

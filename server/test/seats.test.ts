@@ -530,6 +530,71 @@ describe("wave-brief composition (composeBrief)", () => {
     expect(brief).toContain("The lens prose body.");
   });
 
+  it("roleCards: 'what this seat remembers' rides under the framing", () => {
+    const { seat, body } = makeSeat();
+    const brief = composeBrief({
+      ...BASE,
+      seat,
+      seatBody: body,
+      roleCards: [
+        {
+          body: "prefer typed errors over\nraw throws here",
+          confidence: "high",
+          created: "2026-09-01",
+          stale: false,
+        },
+        { body: "the auth layer moved once already", created: "2026-08-15", stale: false },
+      ],
+    });
+    expect(brief).toContain("What this seat remembers:");
+    // memory sits inside the framing slot: after the seat, before Task
+    expect(brief.indexOf("What this seat remembers:")).toBeGreaterThan(
+      brief.indexOf("## Seat: correctness"),
+    );
+    expect(brief.indexOf("What this seat remembers:")).toBeLessThan(
+      brief.indexOf("## Task"),
+    );
+    // one line per card: created + optional confidence, body flattened
+    expect(brief).toContain(
+      "- (2026-09-01; confidence high) prefer typed errors over raw throws here",
+    );
+    expect(brief).toContain("- (2026-08-15) the auth layer moved once already");
+    expect(brief).not.toContain("STALE");
+    expect(brief).not.toContain("\n\n\n");
+  });
+
+  it("a stale roleCard is marked as such in its rendered line", () => {
+    const { seat, body } = makeSeat();
+    const brief = composeBrief({
+      ...BASE,
+      seat,
+      seatBody: body,
+      roleCards: [
+        {
+          body: "helper lives in utils/",
+          confidence: "low",
+          created: "2026-07-01",
+          stale: true,
+        },
+      ],
+    });
+    expect(brief).toContain(
+      "- (2026-07-01; confidence low; STALE — verify before leaning on it) " +
+        "helper lives in utils/",
+    );
+  });
+
+  it("roleCards absent or empty: byte-identical to today's output (pin)", () => {
+    const { seat, body } = makeSeat();
+    const withSeat = composeBrief({ ...BASE, seat, seatBody: body });
+    // empty array === field absent === pre-roleCards output, byte for byte
+    expect(composeBrief({ ...BASE, seat, seatBody: body, roleCards: [] }))
+      .toBe(withSeat);
+    expect(composeBrief({ ...BASE, roleCards: [] })).toBe(composeBrief(BASE));
+    expect(withSeat).not.toContain("What this seat remembers:");
+    expect(composeBrief(BASE)).not.toContain("What this seat remembers:");
+  });
+
   it("rules omitted: slot renders empty, never a dangling marker", () => {
     const brief = composeBrief({
       issue: BASE.issue,

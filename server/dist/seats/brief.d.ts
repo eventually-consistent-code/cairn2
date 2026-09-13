@@ -1,7 +1,8 @@
 /**
  * Purpose: wave-brief composition — `work`'s per-issue dispatch briefs,
  * composed from templates/wave-brief.md plus an optional roster seat
- * instead of freehand retyping. Same {{slot}} mechanism as the peers
+ * (and that seat's role-scoped memory cards) instead of freehand
+ * retyping. Same {{slot}} mechanism as the peers
  * templates: every occurrence of a provided slot is replaced, and the
  * seat framing rides at the seat's declared dose. No tool surface — the
  * work verb reads the template + seat_roster directly; this module is
@@ -9,11 +10,27 @@
  * Author(s): John Reed
  */
 import type { Seat } from "./schema.js";
+export interface RoleCard {
+    /** The card body — the remembered fact itself. */
+    body: string;
+    /** The card's confidence grade, when it carries one. */
+    confidence?: "high" | "medium" | "low";
+    /** Card creation date (YYYY-MM-DD, from the card frontmatter). */
+    created: string;
+    /** Provenance-checked staleness — true marks the line as possibly rotten. */
+    stale: boolean;
+}
 export interface BriefInput {
     /** Validated roster seat — absent means a generic (seatless) brief. */
     seat?: Seat;
     /** The seat's lens prose body — rides into the brief only at dose "full". */
     seatBody?: string;
+    /**
+     * Role-scoped memory cards (scopeRole = seat name) — rendered as a short
+     * "what this seat remembers" section. Absent or empty skips the section
+     * entirely: output stays byte-identical to a roleCards-less compose.
+     */
+    roleCards?: RoleCard[];
     /** Tracker issue content: id, title, body — lands verbatim under Task. */
     issue: string;
     /** This issue's PLAN.md task text (+ any locked decisions that bind it). */

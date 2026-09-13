@@ -1,6 +1,6 @@
 ---
 verb: review
-args: "[target] | --fix"
+args: "[target] | --seat <name> [target] | --fix"
 status: live
 ---
 
@@ -94,6 +94,55 @@ Findings keep today's shape exactly. Every finding gets ranked
 problem" but the actual input or sequence that breaks it. A finding
 without a scenario is a hunch, not a finding; downgrade it or cut it
 before it goes in the record.
+
+## `--seat <name> [target]` — consult one seat
+
+A single-seat advisory pass — "ask the security seat about the auth
+change" — not a smaller panel. Same framing line as the panel: internal
+seats are framing lenses — cheap, same-model; `peers` remains the
+genuinely adversarial external council.
+
+**Resolve the seat.** Call `seat_roster` and match `<name>` against the
+valid seats at ANY stage — consultation ignores the stage filter on
+purpose (you can ask the plan-stage interrogation seat about a diff; a
+question is not a panel). An unknown name is a human-first error: one
+plain line naming what was asked for, then the roster's valid seat
+names so the caller can re-aim — never a raw payload.
+
+**Warm the seat up.** Compose the seat's framing at its declared dose
+(same composition as the panel and the wave briefs —
+`composeBrief` in `server/src/seats/brief.ts` is the tested reference).
+The brief's roleCards come from the seat's own memory:
+`mem_card_recall(scopeRole: "<seat name>")` — the staleness-checked
+form of `mem_card_list` — so the "what this seat remembers" section
+renders each card with its date and confidence, and a card whose
+provenance has rotted arrives marked STALE rather than trusted.
+
+**Run the pass over the target.** Consultation takes a wider target
+set than the panel: a diff (the panel's table above applies), a file
+path, a plan doc, or a freeform question with no artifact at all.
+Resolve whatever was given and read it through the seat's lens —
+categories, anchors, honesty line, all at the declared dose.
+
+**Answer conversationally.** The output is a conversation, not a
+record: what the seat sees, what it would push on, in plain prose. No
+per-seat table, no verdict block. The anchored score is optional here —
+quote it only if it sharpens the answer.
+
+**Findings still ride the one path.** A finding that clears the
+severity bar (critical or important, with a `file:line` and a concrete
+failure scenario) goes through the EXISTING closing discipline below —
+dedup first, then `issue_create` with the same label, severity line,
+and mirror rules as any panel finding. Consultation never grows a
+parallel tracker path. Below-bar observations stay in the conversation;
+that's what the conversation is for.
+
+**Write the seat's memory back.** A notable outcome — a real
+recommendation the caller acted on, a risk the seat caught — becomes
+ONE card via `mem_card_create` with `scopeRole` = the seat's name, so
+the seat arrives warmer next time. One card, not a transcript: distill
+the takeaway. A consultation that surfaced nothing durable writes
+nothing.
 
 ## Closing discipline — every review, no exceptions
 

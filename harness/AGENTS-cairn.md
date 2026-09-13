@@ -48,7 +48,7 @@ executing that verb.
 | tune | Configure cairn.json — models, continuity, leak guard | [key] [value] |
 | trace | Persistent debugging session — evidence→hypothesis→test, tracker-mirrored | ["<bug>" \| <id> \| close <id>] |
 | audit | Cross-phase quality audits — uat/milestone/security[--surface]/ui/eval/validation/tests/plans/docs | <mode> [target] \| --fix |
-| review | Five-axis code review of a diff, branch, or phase | [target] \| --fix |
+| review | Five-axis code review of a diff, branch, or phase | [target] \| --seat <name> [target] \| --fix |
 | triage | Open-issue sweep against project conventions — report by default, --apply for the safe subset | [--stale-days N] \| --apply |
 | map | Project knowledge graph — build, query, diff, status | build \| "<question>" \| diff \| status |
 | thread | Persistent context threads that survive /clear | "<name>" \| (none = list open) \| --wrap |
