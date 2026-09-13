@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createCard, readCard, listCards, cardsDir, updateCardConfidence } from "../src/memory/cards.js";
+import { createCard, readCard, listCards, cardsDir, updateCard, updateCardConfidence } from "../src/memory/cards.js";
 
 const dir = () => mkdtempSync(join(tmpdir(), "cairn-cards-"));
 
@@ -37,6 +37,40 @@ describe("createCard / readCard", () => {
     expect(() => readCard(dir(), "decision-deadbeef")).toThrowError(
       expect.objectContaining({ code: "NOT_FOUND" }));
   });
+
+  it("persists flat provenanceFiles/provenanceCommits exactly as passed and round-trips them (#164)", () => {
+    const d = dir();
+    const card = createCard(d, {
+      type: "decision",
+      body: "provenance survives the flat-array shape now",
+      provenanceFiles: ["server/src/a.ts", "server/src/b.ts"],
+      provenanceCommits: ["aaa1111", "bbb2222"],
+    });
+    expect(card.frontmatter.provenanceFiles).toEqual(["server/src/a.ts", "server/src/b.ts"]);
+    expect(card.frontmatter.provenanceCommits).toEqual(["aaa1111", "bbb2222"]);
+
+    const reread = readCard(d, card.id);
+    expect(reread.frontmatter.provenanceFiles).toEqual(["server/src/a.ts", "server/src/b.ts"]);
+    expect(reread.frontmatter.provenanceCommits).toEqual(["aaa1111", "bbb2222"]);
+  });
+
+  it("rejects mismatched flat provenance array lengths as CONFIG_INVALID", () => {
+    expect(() => createCard(dir(), {
+      type: "note",
+      body: "files without commits",
+      provenanceFiles: ["a.ts", "b.ts"],
+      provenanceCommits: ["aaa1111"],
+    })).toThrowError(expect.objectContaining({ code: "CONFIG_INVALID" }));
+  });
+
+  it("persists scopeRole and leaves it absent when not passed", () => {
+    const d = dir();
+    const scoped = createCard(d, { type: "note", body: "role scoped", scopeRole: "security" });
+    expect(readCard(d, scoped.id).frontmatter.scopeRole).toBe("security");
+
+    const plain = createCard(d, { type: "note", body: "no role here" });
+    expect(readCard(d, plain.id).frontmatter.scopeRole).toBeUndefined();
+  });
 });
 
 describe("updateCardConfidence", () => {
@@ -57,6 +91,52 @@ describe("updateCardConfidence", () => {
   });
 });
 
+describe("updateCard (partial patches, #164)", () => {
+  it("patches provenance alone without demanding confidence", () => {
+    const d = dir();
+    const card = createCard(d, { type: "gotcha", body: "provenance arrives later" });
+    const updated = updateCard(d, card.id, {
+      provenanceFiles: ["server/src/x.ts"],
+      provenanceCommits: ["cafef00d"],
+    });
+    expect(updated.frontmatter.provenanceFiles).toEqual(["server/src/x.ts"]);
+    expect(updated.frontmatter.provenanceCommits).toEqual(["cafef00d"]);
+    expect(updated.frontmatter.confidence).toBeUndefined();
+
+    const reread = readCard(d, card.id);
+    expect(reread.frontmatter.provenanceFiles).toEqual(["server/src/x.ts"]);
+    expect(reread.frontmatter.provenanceCommits).toEqual(["cafef00d"]);
+  });
+
+  it("patches scopeRole alone and preserves everything else", () => {
+    const d = dir();
+    const card = createCard(d, { type: "decision", body: "role added later", confidence: "medium" });
+    const updated = updateCard(d, card.id, { scopeRole: "performance" });
+    expect(updated.frontmatter.scopeRole).toBe("performance");
+    expect(updated.frontmatter.confidence).toBe("medium");
+    expect(updated.body).toBe(card.body);
+  });
+
+  it("rejects an empty patch as CONFIG_INVALID", () => {
+    const d = dir();
+    const card = createCard(d, { type: "note", body: "nothing to patch" });
+    expect(() => updateCard(d, card.id, {}))
+      .toThrowError(expect.objectContaining({ code: "CONFIG_INVALID" }));
+  });
+
+  it("rejects a patch that breaks provenance pairing as CONFIG_INVALID", () => {
+    const d = dir();
+    const card = createCard(d, {
+      type: "note",
+      body: "paired provenance",
+      provenanceFiles: ["a.ts"],
+      provenanceCommits: ["aaa1111"],
+    });
+    expect(() => updateCard(d, card.id, { provenanceFiles: ["a.ts", "b.ts"] }))
+      .toThrowError(expect.objectContaining({ code: "CONFIG_INVALID" }));
+  });
+});
+
 describe("listCards", () => {
   it("empty when the cards dir doesn't exist yet", () => {
     expect(listCards(dir())).toEqual([]);
@@ -69,6 +149,18 @@ describe("listCards", () => {
     createCard(d, { type: "decision", body: "issue scoped", scopeIssue: "X-9" });
     expect(listCards(d, { scopePhase: 1 }).length).toBe(1);
     expect(listCards(d, { scopeIssue: "X-9" }).length).toBe(1);
+    expect(listCards(d).length).toBe(3);
+  });
+
+  it("filters by scopeRole; roleless cards list identically to before (#165)", () => {
+    const d = dir();
+    createCard(d, { type: "decision", body: "security seat lesson", scopeRole: "security" });
+    createCard(d, { type: "decision", body: "interrogation seat lesson", scopeRole: "interrogation" });
+    createCard(d, { type: "decision", body: "no role at all" });
+    expect(listCards(d, { scopeRole: "security" }).length).toBe(1);
+    expect(listCards(d, { scopeRole: "security" })[0].body).toContain("security seat");
+    expect(listCards(d, { scopeRole: "nonexistent" }).length).toBe(0);
+    // absent filter: all three, exactly today's behavior
     expect(listCards(d).length).toBe(3);
   });
 

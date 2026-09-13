@@ -1207,6 +1207,113 @@ describe("cairn MCP server", () => {
     expect(recall.json.code).toBe("CONFIG_INVALID");
   });
 
+  it("mem_card_create round-trips flat provenanceFiles/provenanceCommits (#164)", async () => {
+    const card = await call("mem_card_create", {
+      type: "gotcha",
+      body: "flat provenance arrays used to vanish silently",
+      provenanceFiles: ["server/src/memory/cards.ts", "server/src/index.ts"],
+      provenanceCommits: ["abc1234", "def5678"],
+    });
+    expect(card.isError).toBeFalsy();
+    expect(card.json.frontmatter.provenanceFiles).toEqual([
+      "server/src/memory/cards.ts",
+      "server/src/index.ts",
+    ]);
+    expect(card.json.frontmatter.provenanceCommits).toEqual([
+      "abc1234",
+      "def5678",
+    ]);
+    // and the persisted card carries them, not just the create echo
+    const list = await call("mem_card_list", {});
+    const found = list.json.find((c: { id: string }) => c.id === card.json.id);
+    expect(found.frontmatter.provenanceFiles).toEqual([
+      "server/src/memory/cards.ts",
+      "server/src/index.ts",
+    ]);
+    expect(found.frontmatter.provenanceCommits).toEqual([
+      "abc1234",
+      "def5678",
+    ]);
+  });
+
+  it("mem_card_update accepts a provenance-only patch without confidence (#164)", async () => {
+    const card = await call("mem_card_create", {
+      type: "note",
+      body: "provenance patched in after the fact",
+    });
+    const updated = await call("mem_card_update", {
+      id: card.json.id,
+      provenanceFiles: ["server/src/memory/staleness.ts"],
+      provenanceCommits: ["0badf00d"],
+    });
+    expect(updated.isError).toBeFalsy();
+    expect(updated.json.frontmatter.provenanceFiles).toEqual([
+      "server/src/memory/staleness.ts",
+    ]);
+    expect(updated.json.frontmatter.provenanceCommits).toEqual(["0badf00d"]);
+    expect(updated.json.frontmatter.confidence).toBeUndefined();
+  });
+
+  it("mem_card_update rejects an empty patch as CONFIG_INVALID (#164)", async () => {
+    const card = await call("mem_card_create", {
+      type: "note",
+      body: "empty patch target",
+    });
+    const res = await call("mem_card_update", { id: card.json.id });
+    expect(res.isError).toBe(true);
+    expect(res.json.code).toBe("CONFIG_INVALID");
+  });
+
+  it("scopeRole scopes cards through create/list/recall/update (#165)", async () => {
+    const scoped = await call("mem_card_create", {
+      type: "decision",
+      body: "the security seat prefers allowlists",
+      scopeRole: "security",
+    });
+    await call("mem_card_create", {
+      type: "decision",
+      body: "roleless card for the scopeRole filter test",
+    });
+
+    const list = await call("mem_card_list", { scopeRole: "security" });
+    expect(list.json.length).toBe(1);
+    expect(list.json[0].id).toBe(scoped.json.id);
+    expect(list.json[0].frontmatter.scopeRole).toBe("security");
+
+    const recall = await call("mem_card_recall", { scopeRole: "security" });
+    expect(recall.json.length).toBe(1);
+    expect(recall.json[0].id).toBe(scoped.json.id);
+    expect(recall.json[0].stale).toBe(false);
+
+    const retagged = await call("mem_card_update", {
+      id: scoped.json.id,
+      scopeRole: "appsec",
+    });
+    expect(retagged.json.frontmatter.scopeRole).toBe("appsec");
+    const after = await call("mem_card_list", { scopeRole: "security" });
+    expect(after.json.length).toBe(0);
+  });
+
+  it("mem_index/mem_search carry and filter by role (#165)", async () => {
+    await call("mem_index", {
+      content: "role-tagged research on tls pinning",
+      source: "research",
+      role: "security",
+    });
+    await call("mem_index", {
+      content: "roleless research on tls pinning",
+      source: "research",
+    });
+    const scoped = await call("mem_search", {
+      query: "tls pinning",
+      role: "security",
+    });
+    expect(scoped.json.length).toBe(1);
+    expect(scoped.json[0].role).toBe("security");
+    const all = await call("mem_search", { query: "tls pinning" });
+    expect(all.json.length).toBe(2);
+  });
+
   it("mem_search rejects a negative limit at the schema boundary", async () => {
     // Zod's positive() check runs at the MCP input-validation layer, before our
     // handler ever sees it -- so this surfaces as a protocol-level rejection

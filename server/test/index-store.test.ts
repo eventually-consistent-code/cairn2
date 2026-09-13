@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { indexDbPath, MemoryIndex } from "../src/memory/index-store.js";
+import { loadSqlite } from "../src/memory/native.js";
 
 describe("indexDbPath", () => {
   it("derives a stable path under the home dir, outside the project", () => {
@@ -44,6 +45,41 @@ describe("MemoryIndex", () => {
     expect(idx.search("shared term", { phase: 1 }).length).toBe(1);
     expect(idx.search("shared term", { issueId: "B-2" }).length).toBe(1);
     expect(idx.search("shared term").length).toBe(2);
+    idx.close();
+  });
+
+  it("carries and filters by role, and roleless chunks come back role null (#165)", () => {
+    const idx = new MemoryIndex(freshDbPath());
+    idx.index({ content: "role term security note", source: "s", phase: 1, issueId: null, role: "security", createdAt: "2026-09-13T00:00:00Z" });
+    idx.index({ content: "role term plain note", source: "s", phase: 1, issueId: null, createdAt: "2026-09-13T00:00:01Z" });
+    const scoped = idx.search("role term", { role: "security" });
+    expect(scoped.length).toBe(1);
+    expect(scoped[0].role).toBe("security");
+    const all = idx.search("role term");
+    expect(all.length).toBe(2);
+    expect(all.find((r) => r.content.includes("plain"))?.role).toBeNull();
+    idx.close();
+  });
+
+  it("migrates a pre-role database in place, keeping its chunks (#165)", () => {
+    const path = freshDbPath();
+    // hand-build yesterday's schema (no role column) with one chunk in it
+    const Sqlite = loadSqlite();
+    const raw = new Sqlite(path);
+    raw.exec(`CREATE VIRTUAL TABLE chunks USING fts5(
+      content, source UNINDEXED, phase UNINDEXED, issue_id UNINDEXED, created_at UNINDEXED
+    )`);
+    raw.prepare("INSERT INTO chunks (content, source, phase, issue_id, created_at) VALUES (?, ?, ?, ?, ?)")
+      .run("legacy chunk survives migration", "s", 1, null, "2026-09-01T00:00:00Z");
+    raw.close();
+
+    const idx = new MemoryIndex(path);
+    const found = idx.search("legacy chunk");
+    expect(found.length).toBe(1);
+    expect(found[0].role).toBeNull();
+    // and the migrated table accepts role-tagged inserts
+    idx.index({ content: "legacy chunk gets company", source: "s", phase: 1, issueId: null, role: "security", createdAt: "2026-09-13T00:00:00Z" });
+    expect(idx.search("legacy chunk", { role: "security" }).length).toBe(1);
     idx.close();
   });
 

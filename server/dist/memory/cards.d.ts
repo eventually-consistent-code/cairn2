@@ -9,6 +9,7 @@ export declare const CardFrontmatterSchema: z.ZodObject<{
     }>;
     scopePhase: z.ZodOptional<z.ZodString>;
     scopeIssue: z.ZodOptional<z.ZodString>;
+    scopeRole: z.ZodOptional<z.ZodString>;
     confidence: z.ZodOptional<z.ZodEnum<{
         high: "high";
         medium: "medium";
@@ -29,15 +30,26 @@ export declare function createCard(projectDir: string, input: {
     body: string;
     scopePhase?: number;
     scopeIssue?: string;
+    scopeRole?: string;
     confidence?: "high" | "medium" | "low";
     provenance?: Array<{
         file: string;
         commit: string;
     }>;
+    provenanceFiles?: string[];
+    provenanceCommits?: string[];
 }): Card;
 export declare function readCard(projectDir: string, id: string): Card;
+export interface CardPatch {
+    confidence?: "high" | "medium" | "low";
+    scopeRole?: string;
+    provenanceFiles?: string[];
+    provenanceCommits?: string[];
+}
+export declare function updateCard(projectDir: string, id: string, patch: CardPatch): Card;
 export declare function updateCardConfidence(projectDir: string, id: string, confidence: "high" | "medium" | "low"): Card;
 export declare function listCards(projectDir: string, filter?: {
     scopePhase?: number;
     scopeIssue?: string;
+    scopeRole?: string;
 }): Card[];

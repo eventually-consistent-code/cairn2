@@ -31,11 +31,27 @@ export class MemoryIndex {
             throw e;
         }
         this.db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5(
-      content, source UNINDEXED, phase UNINDEXED, issue_id UNINDEXED, created_at UNINDEXED
+      content, source UNINDEXED, phase UNINDEXED, issue_id UNINDEXED, role UNINDEXED, created_at UNINDEXED
     )`);
+        // Pre-scopeRole databases (#165): FTS5 has no ALTER ... ADD COLUMN, so an
+        // existing table without `role` gets rebuilt in place -- rename, recreate
+        // with the column, copy rows across with role NULL, drop the old table.
+        const cols = this.db.prepare("PRAGMA table_info(chunks)")
+            .all();
+        if (!cols.some((c) => c.name === "role")) {
+            this.db.exec(`
+        ALTER TABLE chunks RENAME TO chunks_pre_role;
+        CREATE VIRTUAL TABLE chunks USING fts5(
+          content, source UNINDEXED, phase UNINDEXED, issue_id UNINDEXED, role UNINDEXED, created_at UNINDEXED
+        );
+        INSERT INTO chunks (content, source, phase, issue_id, role, created_at)
+          SELECT content, source, phase, issue_id, NULL, created_at FROM chunks_pre_role;
+        DROP TABLE chunks_pre_role;
+      `);
+        }
     }
     index(chunk) {
-        this.db.prepare("INSERT INTO chunks (content, source, phase, issue_id, created_at) VALUES (?, ?, ?, ?, ?)").run(chunk.content, chunk.source, chunk.phase, chunk.issueId, chunk.createdAt);
+        this.db.prepare("INSERT INTO chunks (content, source, phase, issue_id, role, created_at) VALUES (?, ?, ?, ?, ?, ?)").run(chunk.content, chunk.source, chunk.phase, chunk.issueId, chunk.role ?? null, chunk.createdAt);
     }
     search(query, filter = {}, limit = 10) {
         // FTS5 has its own query grammar (apostrophes, leading hyphens, unbalanced
@@ -53,8 +69,12 @@ export class MemoryIndex {
             conditions.push("issue_id = ?");
             params.push(filter.issueId);
         }
+        if (filter.role !== undefined) {
+            conditions.push("role = ?");
+            params.push(filter.role);
+        }
         params.push(limit);
-        return this.db.prepare(`SELECT content, source, phase, issue_id as issueId, created_at as createdAt
+        return this.db.prepare(`SELECT content, source, phase, issue_id as issueId, role, created_at as createdAt
        FROM chunks WHERE ${conditions.join(" AND ")} ORDER BY rank LIMIT ?`).all(...params);
     }
     /** createdAt of the earliest-indexed chunk for `source`, or undefined if none exists. */
@@ -71,9 +91,9 @@ export class MemoryIndex {
      * list).
      */
     timeline(anchorCreatedAt, before, after) {
-        const beforeRows = before > 0 ? this.db.prepare(`SELECT content, source, phase, issue_id as issueId, created_at as createdAt
+        const beforeRows = before > 0 ? this.db.prepare(`SELECT content, source, phase, issue_id as issueId, role, created_at as createdAt
        FROM chunks WHERE created_at < ? ORDER BY created_at DESC, source DESC LIMIT ?`).all(anchorCreatedAt, before) : [];
-        const afterRows = after > 0 ? this.db.prepare(`SELECT content, source, phase, issue_id as issueId, created_at as createdAt
+        const afterRows = after > 0 ? this.db.prepare(`SELECT content, source, phase, issue_id as issueId, role, created_at as createdAt
        FROM chunks WHERE created_at > ? ORDER BY created_at ASC, source ASC LIMIT ?`).all(anchorCreatedAt, after) : [];
         return [...beforeRows.reverse(), ...afterRows];
     }
