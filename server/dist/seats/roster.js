@@ -141,3 +141,22 @@ export function loadRoster(projectDir, rootDir = DEFAULT_ROOT_DIR) {
         ...(config?.dispatch !== undefined ? { dispatch: config.dispatch } : {}),
     };
 }
+// Stage filtering
+/**
+ * Picks the roster seats that convene at one stage, roster order kept.
+ * Review's diff panel is exactly seatsForStage(roster, "review"): stage
+ * `review` (the default) or `any`. Plan-stage seats never join the diff
+ * panel — they convene at plan time via seatsForStage(roster, "plan").
+ * Valid seats only; invalid entries stay on the roster itself for the
+ * caller's visibility reporting.
+ *
+ * :param roster: resolved roster (loadRoster)
+ * :param stage: the convening stage — review or plan (never "any": that
+ *   value belongs to seat definitions, meaning "both stages")
+ * :returns: the seats seated at that stage, in roster order
+ */
+export function seatsForStage(roster, stage) {
+    return roster.seats.filter((s) => s.valid &&
+        s.seat !== undefined &&
+        (s.seat.stage === stage || s.seat.stage === "any"));
+}

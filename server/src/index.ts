@@ -2475,7 +2475,9 @@ export function buildServer(deps: {
         "Merged seat roster — shipped default seats (templates/seats/) overridden by project seats " +
         "(.cairn/roles/*.md, matched by name; a read path — the server never writes there), then " +
         "filtered/ordered by cairn.json's optional `seats` block (absent = all defaults enabled). " +
-        "Per-seat {name, lens, categories, dose, signals, source: default|project, valid, note?}; a " +
+        "Per-seat {name, lens, categories, dose, stage: review|plan|any (when the seat convenes — " +
+        "review's diff panel seats stage review|any; plan-stage seats convene at plan time only), " +
+        "signals, source: default|project, valid, note?}; a " +
         "seat file that fails validation is skipped with a note, never the roster. Also carries " +
         "`dispatch` (cairn.json seats.dispatch, when set) — what a verb's inherit dial resolves to " +
         "for signal→seat selection (absent = off, full roster fires). Internal seats are " +
@@ -2490,6 +2492,7 @@ export function buildServer(deps: {
           lens: s.seat?.lens,
           categories: s.seat?.categories,
           dose: s.seat?.dose,
+          stage: s.seat?.stage,
           signals: s.seat?.signals,
           source: s.source,
           valid: s.valid,

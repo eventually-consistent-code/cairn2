@@ -6,7 +6,7 @@
  * seat file skips that seat with a note, never the roster.
  * Author(s): John Reed
  */
-import { type Seat } from "./schema.js";
+import { type Seat, type Stage } from "./schema.js";
 export interface RosterSeat {
     /** Seat name (frontmatter `name` when valid, file stem when not). */
     name: string;
@@ -50,3 +50,17 @@ export interface Roster {
  * :returns: the resolved roster, invalid entries included for visibility
  */
 export declare function loadRoster(projectDir: string, rootDir?: string): Roster;
+/**
+ * Picks the roster seats that convene at one stage, roster order kept.
+ * Review's diff panel is exactly seatsForStage(roster, "review"): stage
+ * `review` (the default) or `any`. Plan-stage seats never join the diff
+ * panel — they convene at plan time via seatsForStage(roster, "plan").
+ * Valid seats only; invalid entries stay on the roster itself for the
+ * caller's visibility reporting.
+ *
+ * :param roster: resolved roster (loadRoster)
+ * :param stage: the convening stage — review or plan (never "any": that
+ *   value belongs to seat definitions, meaning "both stages")
+ * :returns: the seats seated at that stage, in roster order
+ */
+export declare function seatsForStage(roster: Roster, stage: Exclude<Stage, "any">): RosterSeat[];

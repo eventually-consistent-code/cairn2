@@ -8,7 +8,7 @@ import { FakeTracker } from "../src/tracker/fake.js";
 import { CairnError } from "../src/errors.js";
 import { loadConfig } from "../src/config.js";
 import { parseSeatDoc } from "../src/seats/schema.js";
-import { loadRoster } from "../src/seats/roster.js";
+import { loadRoster, seatsForStage, type Roster } from "../src/seats/roster.js";
 import { composeBrief } from "../src/seats/brief.js";
 import {
   deriveSignals,
@@ -69,15 +69,25 @@ function makeProject(opts: {
   return d;
 }
 
-// Shipped-default roster order == review's axis order (the 01-..05- filename
-// prefixes in templates/seats/ enforce it) — the byte-identical promise.
-const DEFAULT_NAMES = [
+// Shipped-default roster order == filename order (the 01-..06- prefixes in
+// templates/seats/ enforce it). The first five are review's axes in review's
+// order — the byte-identical promise; the sixth (interrogation) is the
+// plan-stage seat and never joins the diff panel.
+const REVIEW_PANEL_NAMES = [
   "correctness",
   "clarity",
   "architecture",
   "security",
   "tests",
 ];
+const DEFAULT_NAMES = [...REVIEW_PANEL_NAMES, "interrogation"];
+
+// Review's flow: stage-filter the roster FIRST, then dispatch — the panel
+// selectSeats sees is exactly the review-stage seats.
+const reviewPanel = (r: Roster): Roster => ({
+  ...r,
+  seats: seatsForStage(r, "review"),
+});
 
 describe("seat schema (parseSeatDoc)", () => {
   it("accepts a full valid definition and composes the nested scale", () => {
@@ -132,16 +142,64 @@ describe("seat schema (parseSeatDoc)", () => {
       parseSeatDoc(seatDoc({ model: "gpt" }), "/x/s.md"),
     ).toThrowError(/model/);
   });
+
+  it("stage defaults to review when the frontmatter omits it", () => {
+    const { seat } = parseSeatDoc(seatDoc(), "/x/s.md");
+    expect(seat.stage).toBe("review");
+  });
+
+  it("stage accepts review | plan | any", () => {
+    for (const stage of ["review", "plan", "any"] as const) {
+      const { seat } = parseSeatDoc(seatDoc({ stage }), "/x/s.md");
+      expect(seat.stage).toBe(stage);
+    }
+  });
+
+  it("a bad stage value is CONFIG_INVALID naming the file and the field", () => {
+    try {
+      parseSeatDoc(seatDoc({ stage: "shipping" }), "/proj/.cairn/roles/s.md");
+      expect.unreachable("should have thrown");
+    } catch (e) {
+      expect(e).toBeInstanceOf(CairnError);
+      const err = e as CairnError;
+      expect(err.code).toBe("CONFIG_INVALID");
+      expect(err.message).toContain("/proj/.cairn/roles/s.md");
+      expect(err.message).toContain("stage");
+    }
+  });
 });
 
 describe("seat roster (loadRoster)", () => {
-  it("no project seats, no seats block: the five shipped defaults", () => {
+  it("no project seats, no seats block: the six shipped defaults", () => {
     const roster = loadRoster(makeProject());
     expect(roster.seats.map((s) => s.name)).toEqual(DEFAULT_NAMES);
     expect(roster.seats.every((s) => s.valid && s.source === "default")).toBe(
       true,
     );
     expect(roster.notes).toEqual([]);
+  });
+
+  it("interrogation ships as the sixth default: stage plan, dose full, no signals", () => {
+    const roster = loadRoster(makeProject());
+    const seat = roster.seats.find((s) => s.name === "interrogation")?.seat;
+    expect(seat).toBeDefined();
+    expect(seat?.stage).toBe("plan");
+    expect(seat?.dose).toBe("full");
+    expect(seat?.signals).toEqual([]); // plan-stage seats always convene at their stage
+    expect(seat?.model).toBeUndefined(); // no model preference
+    expect(seat?.categories).toEqual([
+      "audience",
+      "failure-modes",
+      "why-now",
+      "scope-honesty",
+    ]);
+    // the five review defaults stay stage review — implicitly, via the default
+    for (const name of REVIEW_PANEL_NAMES) {
+      expect(
+        roster.seats.find((s) => s.name === name)?.seat?.stage,
+        `${name} stage`,
+      ).toBe("review");
+    }
   });
 
   it("a project seat overrides the default by name, in place", () => {
@@ -184,6 +242,7 @@ describe("seat roster (loadRoster)", () => {
       "correctness",
       "architecture",
       "tests",
+      "interrogation",
     ]);
   });
 
@@ -219,6 +278,56 @@ describe("seat roster (loadRoster)", () => {
   });
 });
 
+describe("stage filtering (seatsForStage)", () => {
+  it("review stage seats the five defaults; plan stage seats interrogation", () => {
+    const roster = loadRoster(makeProject());
+    expect(seatsForStage(roster, "review").map((s) => s.name)).toEqual(
+      REVIEW_PANEL_NAMES,
+    );
+    expect(seatsForStage(roster, "plan").map((s) => s.name)).toEqual([
+      "interrogation",
+    ]);
+  });
+
+  it("a plan-stage project seat is excluded from the review panel, included at plan", () => {
+    const roster = loadRoster(makeProject({
+      roles: {
+        "10-ambition.md": seatDoc({
+          name: "ambition", stage: "plan", signals: "[]",
+        }),
+      },
+    }));
+    expect(seatsForStage(roster, "review").map((s) => s.name)).toEqual(
+      REVIEW_PANEL_NAMES,
+    );
+    expect(seatsForStage(roster, "plan").map((s) => s.name)).toEqual([
+      "interrogation",
+      "ambition",
+    ]);
+  });
+
+  it("an any-stage seat convenes at both stages", () => {
+    const roster = loadRoster(makeProject({
+      roles: { "10-everywhere.md": seatDoc({ name: "everywhere", stage: "any" }) },
+    }));
+    expect(seatsForStage(roster, "review").map((s) => s.name)).toContain(
+      "everywhere",
+    );
+    expect(seatsForStage(roster, "plan").map((s) => s.name)).toContain(
+      "everywhere",
+    );
+  });
+
+  it("invalid roster entries never seat at any stage", () => {
+    const roster = loadRoster(makeProject({
+      roles: { "bad.md": seatDoc({ name: "bad-seat", dose: undefined }) },
+    }));
+    for (const stage of ["review", "plan"] as const) {
+      expect(seatsForStage(roster, stage).every((s) => s.valid)).toBe(true);
+    }
+  });
+});
+
 describe("seats config block", () => {
   it("unknown keys in the seats block are rejected", () => {
     const d = makeProject({ seats: { enabled: ["tests"], order: ["x"] } });
@@ -250,7 +359,7 @@ describe("seat_roster tool", () => {
     const roster = JSON.parse(
       (res.content as Array<{ text: string }>)[0].text,
     );
-    expect(roster.seats).toHaveLength(6);
+    expect(roster.seats).toHaveLength(7);
     const correctness = roster.seats.find(
       (s: { name: string }) => s.name === "correctness",
     );
@@ -258,6 +367,16 @@ describe("seat_roster tool", () => {
       source: "default",
       valid: true,
       dose: "standard",
+      stage: "review",
+    });
+    const interrogation = roster.seats.find(
+      (s: { name: string }) => s.name === "interrogation",
+    );
+    expect(interrogation).toMatchObject({
+      source: "default",
+      valid: true,
+      dose: "full",
+      stage: "plan",
     });
     expect(correctness.lens).toContain("logic errors");
     expect(Array.isArray(correctness.categories)).toBe(true);
@@ -271,10 +390,12 @@ describe("seat_roster tool", () => {
   });
 
   // Regression pin — the fold-never-stack promise, machine-checked: with no
-  // project seats and no seats config block, the roster consumed over MCP IS
-  // review's five axes, in review's order, with review's category coverage.
-  // If this test moves, review's default behavior moved with it.
-  it("no-config roster is exactly review's five axes, in order (byte-identical pin)", async () => {
+  // project seats and no seats config block, the REVIEW-STAGE roster consumed
+  // over MCP (stage review|any — review's panel filter) IS review's five
+  // axes, in review's order, with review's category coverage. The plan-stage
+  // interrogation seat rides the roster but never this panel. If this test
+  // moves, review's default behavior moved with it.
+  it("no-config review panel is exactly review's five axes, in order (byte-identical pin)", async () => {
     const server = buildServer({
       projectDir: makeProject(),
       tracker: new FakeTracker(),
@@ -292,12 +413,18 @@ describe("seat_roster tool", () => {
         categories: string[];
         source: string;
         valid: boolean;
+        stage: string;
       }>;
       notes?: string[];
     };
 
+    // Review's panel filter over the wire shape: stage review or any.
+    const panel = roster.seats.filter(
+      (s) => s.valid && (s.stage === "review" || s.stage === "any"),
+    );
+
     // Today's five review axes, today's order — the panel, exactly.
-    expect(roster.seats.map((s) => s.name)).toEqual([
+    expect(panel.map((s) => s.name)).toEqual([
       "correctness",
       "clarity",
       "architecture",
@@ -311,7 +438,7 @@ describe("seat_roster tool", () => {
 
     // Today's category coverage per axis — the rubric didn't drift either.
     const byName = Object.fromEntries(
-      roster.seats.map((s) => [s.name, s.categories]),
+      panel.map((s) => [s.name, s.categories]),
     );
     expect(byName.correctness).toEqual([
       "logic",
@@ -495,7 +622,7 @@ describe("seat selection (selectSeats)", () => {
   });
 
   it("auto: docs-only diff seats clarity, gates the rest with notes", () => {
-    const roster = loadRoster(makeProject());
+    const roster = reviewPanel(loadRoster(makeProject()));
     const signals = deriveSignals({
       files: ["docs/guide.md"], insertions: 10, deletions: 0,
     });
@@ -511,23 +638,23 @@ describe("seat selection (selectSeats)", () => {
     }
   });
 
-  it("auto: a server-code diff fires all five defaults", () => {
-    const roster = loadRoster(makeProject());
+  it("auto: a server-code diff fires the whole review panel", () => {
+    const roster = reviewPanel(loadRoster(makeProject()));
     const signals = deriveSignals({
       files: ["server/src/a.ts"], insertions: 100, deletions: 100,
     });
     const sel = selectSeats(roster, signals, { dial: "auto" });
-    expect(sel.fired.map((s) => s.name)).toEqual(DEFAULT_NAMES);
+    expect(sel.fired.map((s) => s.name)).toEqual(REVIEW_PANEL_NAMES);
     expect(sel.gated).toEqual([]);
   });
 
   it("a seat declaring NO signals always fires — gating is opt-in", () => {
-    const roster = loadRoster(makeProject({
+    const roster = reviewPanel(loadRoster(makeProject({
       roles: { "10-vibes.md": seatDoc({ name: "vibes", signals: "[]" }) },
-    }));
+    })));
     const sel = selectSeats(roster, [], { dial: "auto" });
     expect(sel.fired.map((s) => s.name)).toEqual(["vibes"]);
-    expect(sel.gated).toHaveLength(DEFAULT_NAMES.length);
+    expect(sel.gated).toHaveLength(REVIEW_PANEL_NAMES.length);
   });
 
   it("inherit follows cairn.json seats.dispatch; absent resolves to off", () => {
@@ -543,7 +670,7 @@ describe("seat selection (selectSeats)", () => {
   });
 
   it("auto: low-yield seat gates on evidence, with the explicit note", () => {
-    const roster = loadRoster(makeProject());
+    const roster = reviewPanel(loadRoster(makeProject()));
     const signals = ["touches-server"];
     const yields: Record<string, YieldCounters> = {
       correctness: { dispatched: 10, findingsRaised: 3, findingsSurvived: 0 },

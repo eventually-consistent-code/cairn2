@@ -114,9 +114,13 @@ pure and unit-tested without HTTP.
 Named, reusable review viewpoints as data (v7). One Zod schema — name,
 one-line lens, rubric categories, anchored 0-10 scale with an honesty
 line, a REQUIRED injection dose (minimal | standard | full,
-server-validated at load, ADR 0009), scope signals, advisory model
-preference — with five shipped defaults that reproduce review's classic
-five axes byte-identically until a project overrides them (ADR 0010).
+server-validated at load, ADR 0009), a convening stage (review | plan |
+any, default review — review's diff panel seats stage review|any;
+plan-stage seats convene at plan time), scope signals, advisory model
+preference — with six shipped defaults: five review-stage seats that
+reproduce review's classic five axes byte-identically until a project
+overrides them (ADR 0010), plus the plan-stage interrogation seat that
+never joins the diff panel.
 
 - **Schema + roster** (`server/src/seats/schema.ts`, `roster.ts`) —
   flat-frontmatter seat files; project overrides by name from the

@@ -1,7 +1,8 @@
 /**
  * Purpose: the seat definition schema — one parameterized shape (name, lens,
- * rubric categories, anchored 0-10 scale, injection dose, scope signals,
- * advisory model) with N definitions, replacing prose-clone role files.
+ * rubric categories, anchored 0-10 scale, injection dose, convening stage,
+ * scope signals, advisory model) with N definitions, replacing prose-clone
+ * role files.
  * Seat files carry flat frontmatter (the plugin's agents/*.md shape); this
  * module owns the flat→nested mapping and the human-first validation errors
  * that name the file and the field.
@@ -10,6 +11,8 @@
 import { z } from "zod";
 export declare const DOSES: readonly ["minimal", "standard", "full"];
 export type Dose = (typeof DOSES)[number];
+export declare const STAGES: readonly ["review", "plan", "any"];
+export type Stage = (typeof STAGES)[number];
 /**
  * One seat definition — a named, reusable viewpoint as DATA, not prose.
  * `signals` stays a free vocabulary this phase (wave 3's dispatch consumes
@@ -33,6 +36,11 @@ export declare const SeatSchema: z.ZodObject<{
         minimal: "minimal";
         full: "full";
     }>;
+    stage: z.ZodDefault<z.ZodEnum<{
+        any: "any";
+        plan: "plan";
+        review: "review";
+    }>>;
     signals: z.ZodArray<z.ZodString>;
     model: z.ZodOptional<z.ZodEnum<{
         haiku: "haiku";

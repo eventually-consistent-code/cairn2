@@ -26,11 +26,14 @@ Call `seat_roster` once at dispatch: the valid seats, in roster order,
 ARE the review panel — the axes are not hardcoded in this file. One
 framing line to keep straight: internal seats are framing lenses —
 cheap, same-model; `peers` remains the genuinely adversarial external
-council. There is exactly one review path, and this is it.
+council. There is exactly one review path, and this is it. The panel
+convenes the roster's review-stage seats (`stage` review or `any`);
+plan-stage seats convene at plan time instead (wired next wave) and
+never join the diff panel.
 
-With no project seats and no `seats` config block, the roster is exactly
-the five shipped defaults, in this order — today's review, byte for
-byte:
+With no project seats and no `seats` config block, the review-stage
+roster is exactly the five shipped defaults, in this order — today's
+review, byte for byte:
 
 | seat | what it's looking for |
 |---|---|
