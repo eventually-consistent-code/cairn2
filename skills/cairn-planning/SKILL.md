@@ -38,8 +38,14 @@ default > `standard`.
 | | quick | standard | deep |
 |---|---|---|---|
 | research | none | 1 research subagent | parallel fan-out, multi-angle |
-| plan | draft tasks directly | PLAN.md + CONTEXT.md | + plan-checker agent pass |
+| plan | draft tasks directly | PLAN.md + CONTEXT.md | + plan-checker agent pass + seat challenge round |
 | verify | tests pass | + tracker cross-check (`plan_drift`) | + adversarial verification, VERIFICATION.md rigor |
+
+At deep depth the plan column's challenge round joins the plan-checker
+pass automatically: the roster's plan-stage seats convene over the draft
+PLAN.md + CONTEXT.md and their challenges land as proposed amendments in
+one batched question — advisory, never a gate. `plan <N> --challenge`
+runs the same round at any depth; steps live in `verbs/plan.md`.
 
 ## MVP shaping (`plan --mvp`)
 
