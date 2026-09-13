@@ -1,7 +1,8 @@
 /**
  * Purpose: the seat definition schema — one parameterized shape (name, lens,
- * rubric categories, anchored 0-10 scale, injection dose, scope signals,
- * advisory model) with N definitions, replacing prose-clone role files.
+ * rubric categories, anchored 0-10 scale, injection dose, convening stage,
+ * scope signals, advisory model) with N definitions, replacing prose-clone
+ * role files.
  * Seat files carry flat frontmatter (the plugin's agents/*.md shape); this
  * module owns the flat→nested mapping and the human-first validation errors
  * that name the file and the field.
@@ -18,6 +19,9 @@ import { parseFrontmatter } from "../planning/frontmatter.js";
 
 export const DOSES = ["minimal", "standard", "full"] as const;
 export type Dose = (typeof DOSES)[number];
+
+export const STAGES = ["review", "plan", "any"] as const;
+export type Stage = (typeof STAGES)[number];
 
 const KEBAB_RE = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/;
 
@@ -68,6 +72,10 @@ export const SeatSchema = z.object({
   dose: z
     .enum(DOSES)
     .describe("server-validated injection tier — how much of the definition rides into a brief"),
+  stage: z
+    .enum(STAGES)
+    .default("review")
+    .describe("when this seat convenes — review (the diff panel, the default), plan (plan time only, never the diff panel), or any (both)"),
   signals: z
     .array(z.string().min(1))
     .describe("scope-signal names (free vocabulary this phase) — dispatch picks seats by these"),
@@ -121,6 +129,7 @@ export function parseSeatDoc(
       honesty: data.honesty,
     },
     dose: data.dose,
+    stage: data.stage,
     signals: data.signals,
     model: data.model,
   };

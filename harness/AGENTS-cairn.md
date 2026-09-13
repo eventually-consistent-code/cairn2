@@ -68,15 +68,18 @@ Internal seats are framing lenses — cheap, same-model viewpoints folded
 into review and audit; peers remain the genuinely adversarial external
 council. This table is the shipped DEFAULT roster (`templates/seats/`);
 a project can add or override seats under `.cairn/roles/` — project
-seats are per-project and never appear in this spine.
+seats are per-project and never appear in this spine. Stage says when a
+seat convenes: review-stage seats (stage review or any) form the diff
+panel; plan-stage seats convene at plan time and never join it.
 
-| seat | lens | categories | dose |
-|---|---|---|---|
-| correctness | logic errors, wrong edge-case handling, off-by-ones, state that can drift out of sync | logic, edge-cases, off-by-ones, state-drift | standard |
-| clarity | code a future reader (or agent) will misread — misleading names, buried intent, comments that lie | naming, intent, comments | minimal |
-| architecture | the wrong layer doing the work, coupling that will bite the next change, reuse that got skipped | layering, coupling, reuse | standard |
-| security | injection, auth gaps, secrets in the diff, trust boundaries crossed without a check | injection, auth, secrets, trust-boundaries | full |
-| tests | claims the diff makes that nothing verifies — new behavior with no test, a test that can't actually fail | coverage, failability | standard |
+| seat | lens | categories | dose | stage |
+|---|---|---|---|---|
+| correctness | logic errors, wrong edge-case handling, off-by-ones, state that can drift out of sync | logic, edge-cases, off-by-ones, state-drift | standard | review |
+| clarity | code a future reader (or agent) will misread — misleading names, buried intent, comments that lie | naming, intent, comments | minimal | review |
+| architecture | the wrong layer doing the work, coupling that will bite the next change, reuse that got skipped | layering, coupling, reuse | standard | review |
+| security | injection, auth gaps, secrets in the diff, trust boundaries crossed without a check | injection, auth, secrets, trust-boundaries | full | review |
+| tests | claims the diff makes that nothing verifies — new behavior with no test, a test that can't actually fail | coverage, failability | standard | review |
+| interrogation | the product case a plan stands on — who it serves, how it fails them, why now, and whether the scope is honest | audience, failure-modes, why-now, scope-honesty | full | plan |
 <!-- cairn:seats:end -->
 
 ## Shared rules (inherited by every subroutine)

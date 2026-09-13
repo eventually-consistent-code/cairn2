@@ -13,7 +13,7 @@ import { basename, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { CairnError } from "../errors.js";
 import { loadConfig } from "../config.js";
-import { parseSeatDoc, type Seat } from "./schema.js";
+import { parseSeatDoc, type Seat, type Stage } from "./schema.js";
 
 
 // Constants
@@ -181,4 +181,32 @@ export function loadRoster(
     notes,
     ...(config?.dispatch !== undefined ? { dispatch: config.dispatch } : {}),
   };
+}
+
+
+// Stage filtering
+
+/**
+ * Picks the roster seats that convene at one stage, roster order kept.
+ * Review's diff panel is exactly seatsForStage(roster, "review"): stage
+ * `review` (the default) or `any`. Plan-stage seats never join the diff
+ * panel — they convene at plan time via seatsForStage(roster, "plan").
+ * Valid seats only; invalid entries stay on the roster itself for the
+ * caller's visibility reporting.
+ *
+ * :param roster: resolved roster (loadRoster)
+ * :param stage: the convening stage — review or plan (never "any": that
+ *   value belongs to seat definitions, meaning "both stages")
+ * :returns: the seats seated at that stage, in roster order
+ */
+export function seatsForStage(
+  roster: Roster,
+  stage: Exclude<Stage, "any">,
+): RosterSeat[] {
+  return roster.seats.filter(
+    (s): s is RosterSeat & { seat: Seat } =>
+      s.valid &&
+      s.seat !== undefined &&
+      (s.seat.stage === stage || s.seat.stage === "any"),
+  );
 }

@@ -54,7 +54,14 @@ for (const f of readdirSync(seatsDir).filter((n) => n.endsWith(".md")).sort()) {
     process.exit(1);
   }
   const field = (key) => fm[1].match(new RegExp(`^${key}:\\s*(.+)$`, "m"))?.[1].trim();
-  const seat = { name: field("name"), lens: field("lens"), dose: field("dose") };
+  // stage is optional frontmatter — absent means review, same default the
+  // server schema applies (SeatSchema stage: review | plan | any).
+  const seat = {
+    name: field("name"),
+    lens: field("lens"),
+    dose: field("dose"),
+    stage: field("stage") ?? "review",
+  };
   const cats = field("categories");
   seat.categories = cats ? cats.replace(/^\[|\]$/g, "").split(",").map((c) => c.trim()) : [];
   for (const key of ["name", "lens", "dose"]) {
@@ -77,11 +84,13 @@ Internal seats are framing lenses — cheap, same-model viewpoints folded
 into review and audit; peers remain the genuinely adversarial external
 council. This table is the shipped DEFAULT roster (\`templates/seats/\`);
 a project can add or override seats under \`.cairn/roles/\` — project
-seats are per-project and never appear in this spine.
+seats are per-project and never appear in this spine. Stage says when a
+seat convenes: review-stage seats (stage review or any) form the diff
+panel; plan-stage seats convene at plan time and never join it.
 
-| seat | lens | categories | dose |
-|---|---|---|---|
-${seats.map((s) => `| ${s.name} | ${s.lens} | ${s.categories.join(", ")} | ${s.dose} |`).join("\n")}
+| seat | lens | categories | dose | stage |
+|---|---|---|---|---|
+${seats.map((s) => `| ${s.name} | ${s.lens} | ${s.categories.join(", ")} | ${s.dose} | ${s.stage} |`).join("\n")}
 <!-- cairn:seats:end -->`;
 
 // --- shared rules section, verbatim ------------------------------------------
