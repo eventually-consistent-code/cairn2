@@ -9,6 +9,7 @@ export const CardFrontmatterSchema = z.object({
   type: z.enum(["decision", "constraint", "gotcha", "reference", "note"]),
   scopePhase: z.string().optional(),
   scopeIssue: z.string().optional(),
+  scopeRole: z.string().optional(),
   confidence: z.enum(["high", "medium", "low"]).optional(),
   provenanceFiles: z.array(z.string()).default([]),
   provenanceCommits: z.array(z.string()).default([]),
@@ -46,11 +47,22 @@ export function createCard(projectDir: string, input: {
   body: string;
   scopePhase?: number;
   scopeIssue?: string;
+  scopeRole?: string;
   confidence?: "high" | "medium" | "low";
   provenance?: Array<{ file: string; commit: string }>;
+  provenanceFiles?: string[];
+  provenanceCommits?: string[];
 }): Card {
-  const provenanceFiles = (input.provenance ?? []).map((p) => p.file);
-  const provenanceCommits = (input.provenance ?? []).map((p) => p.commit);
+  // Both provenance shapes persist (#164): the paired form and the flat
+  // arrays callers were already passing (which used to vanish silently).
+  const provenanceFiles = [
+    ...(input.provenance ?? []).map((p) => p.file),
+    ...(input.provenanceFiles ?? []),
+  ];
+  const provenanceCommits = [
+    ...(input.provenance ?? []).map((p) => p.commit),
+    ...(input.provenanceCommits ?? []),
+  ];
   const data: Record<string, string | string[]> = {
     type: input.type,
     provenanceFiles,
@@ -59,6 +71,7 @@ export function createCard(projectDir: string, input: {
   };
   if (input.scopePhase !== undefined) data.scopePhase = String(input.scopePhase);
   if (input.scopeIssue !== undefined) data.scopeIssue = input.scopeIssue;
+  if (input.scopeRole !== undefined) data.scopeRole = input.scopeRole;
   if (input.confidence !== undefined) data.confidence = input.confidence;
 
   const frontmatter = validateFrontmatter(data, "card validation");
@@ -78,21 +91,43 @@ export function readCard(projectDir: string, id: string): Card {
   return { id, frontmatter: validateFrontmatter(data, `card '${id}' frontmatter`), body };
 }
 
-export function updateCardConfidence(projectDir: string, id: string,
-  confidence: "high" | "medium" | "low"): Card {
+export interface CardPatch {
+  confidence?: "high" | "medium" | "low";
+  scopeRole?: string;
+  provenanceFiles?: string[];
+  provenanceCommits?: string[];
+}
+
+export function updateCard(projectDir: string, id: string, patch: CardPatch): Card {
+  // Partial patches (#164): every field optional, at least one required --
+  // a provenance-only patch must never demand an unrelated confidence.
+  if (patch.confidence === undefined && patch.scopeRole === undefined
+    && patch.provenanceFiles === undefined && patch.provenanceCommits === undefined) {
+    throw new CairnError("CONFIG_INVALID",
+      "empty patch: pass at least one of confidence, scopeRole, provenanceFiles, provenanceCommits");
+  }
   const path = join(cardsDir(projectDir), `${id}.md`);
   if (!existsSync(path)) {
     throw new CairnError("NOT_FOUND", `no card '${id}'`,
       "list ids with mem_card_list");
   }
   const { data, body } = parseFrontmatter(readFileSync(path, "utf8"));
-  data.confidence = confidence;
+  if (patch.confidence !== undefined) data.confidence = patch.confidence;
+  if (patch.scopeRole !== undefined) data.scopeRole = patch.scopeRole;
+  if (patch.provenanceFiles !== undefined) data.provenanceFiles = patch.provenanceFiles;
+  if (patch.provenanceCommits !== undefined) data.provenanceCommits = patch.provenanceCommits;
   const frontmatter = validateFrontmatter(data, `card '${id}' frontmatter`);
   writeFileSync(path, serializeFrontmatter(data, body));
   return { id, frontmatter, body };
 }
 
-export function listCards(projectDir: string, filter: { scopePhase?: number; scopeIssue?: string } = {}): Card[] {
+export function updateCardConfidence(projectDir: string, id: string,
+  confidence: "high" | "medium" | "low"): Card {
+  return updateCard(projectDir, id, { confidence });
+}
+
+export function listCards(projectDir: string,
+  filter: { scopePhase?: number; scopeIssue?: string; scopeRole?: string } = {}): Card[] {
   const dir = cardsDir(projectDir);
   if (!existsSync(dir)) return [];
   const cards: Card[] = [];
@@ -106,6 +141,7 @@ export function listCards(projectDir: string, filter: { scopePhase?: number; sco
     }
     if (filter.scopePhase !== undefined && card.frontmatter.scopePhase !== String(filter.scopePhase)) continue;
     if (filter.scopeIssue !== undefined && card.frontmatter.scopeIssue !== filter.scopeIssue) continue;
+    if (filter.scopeRole !== undefined && card.frontmatter.scopeRole !== filter.scopeRole) continue;
     cards.push(card);
   }
   return cards;

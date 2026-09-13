@@ -86,7 +86,7 @@ import {
   createCard,
   listCards,
   readCard,
-  updateCardConfidence,
+  updateCard,
 } from "./memory/cards.js";
 import { checkCardStaleness } from "./memory/staleness.js";
 import { readHandoff, writeHandoff, clearHandoff } from "./core/continuity.js";
@@ -967,6 +967,7 @@ export function buildServer(deps: {
         // structured CONFIG_INVALID envelope.
         phase: z.number().optional(),
         issueId: z.string().optional(),
+        role: z.string().optional(),
       }),
     },
     wrap(
@@ -975,6 +976,7 @@ export function buildServer(deps: {
         source: string;
         phase?: number;
         issueId?: string;
+        role?: string;
       }) => {
         assertValidPhase(a.phase);
         getMemIndex().index({
@@ -982,6 +984,7 @@ export function buildServer(deps: {
           source: a.source,
           phase: a.phase ?? null,
           issueId: a.issueId ?? null,
+          role: a.role ?? null,
           createdAt: new Date().toISOString(),
         });
         return { ok: true };
@@ -998,6 +1001,7 @@ export function buildServer(deps: {
         query: z.string(),
         phase: z.number().optional(), // CRN-40: widened from .int()
         issueId: z.string().optional(),
+        role: z.string().optional(),
         limit: z.number().int().positive().optional(),
       }),
     },
@@ -1006,12 +1010,13 @@ export function buildServer(deps: {
         query: string;
         phase?: number;
         issueId?: string;
+        role?: string;
         limit?: number;
       }) => {
         assertValidPhase(a.phase);
         return getMemIndex().search(
           a.query,
-          { phase: a.phase, issueId: a.issueId },
+          { phase: a.phase, issueId: a.issueId, role: a.role },
           a.limit ?? 10,
         );
       },
@@ -1042,10 +1047,15 @@ export function buildServer(deps: {
         body: z.string(),
         scopePhase: z.number().optional(), // CRN-40: widened from .int()
         scopeIssue: z.string().optional(),
+        scopeRole: z.string().optional(),
         confidence: z.enum(["high", "medium", "low"]).optional(),
         provenance: z
           .array(z.object({ file: z.string(), commit: z.string() }))
           .optional(),
+        // #164: flat arrays were silently stripped before -- now a first-class
+        // input shape alongside the paired form.
+        provenanceFiles: z.array(z.string()).optional(),
+        provenanceCommits: z.array(z.string()).optional(),
       }),
     },
     wrap(
@@ -1054,8 +1064,11 @@ export function buildServer(deps: {
         body: string;
         scopePhase?: number;
         scopeIssue?: string;
+        scopeRole?: string;
         confidence?: "high" | "medium" | "low";
         provenance?: Array<{ file: string; commit: string }>;
+        provenanceFiles?: string[];
+        provenanceCommits?: string[];
       }) => {
         assertValidPhase(a.scopePhase);
         const d = dir();
@@ -1079,13 +1092,14 @@ export function buildServer(deps: {
     "mem_card_list",
     {
       description:
-        "List memory cards, optionally filtered by phase/issue scope",
+        "List memory cards, optionally filtered by phase/issue/role scope",
       inputSchema: z.object({
         scopePhase: z.number().optional(),
         scopeIssue: z.string().optional(),
+        scopeRole: z.string().optional(),
       }),
     }, // CRN-40: widened from .int()
-    wrap((a: { scopePhase?: number; scopeIssue?: string }) => {
+    wrap((a: { scopePhase?: number; scopeIssue?: string; scopeRole?: string }) => {
       assertValidPhase(a.scopePhase);
       return listCards(dir(), a);
     }),
@@ -1099,9 +1113,10 @@ export function buildServer(deps: {
       inputSchema: z.object({
         scopePhase: z.number().optional(),
         scopeIssue: z.string().optional(),
+        scopeRole: z.string().optional(),
       }),
     }, // CRN-40: widened from .int()
-    wrap((a: { scopePhase?: number; scopeIssue?: string }) => {
+    wrap((a: { scopePhase?: number; scopeIssue?: string; scopeRole?: string }) => {
       assertValidPhase(a.scopePhase);
       const d = dir();
       return listCards(d, a).map((card) => {
@@ -1119,15 +1134,32 @@ export function buildServer(deps: {
     "mem_card_update",
     {
       description:
-        "Adjust a memory card's confidence (frontmatter-only; body and id are immutable)",
+        "Patch a memory card's frontmatter -- confidence, scopeRole, and/or provenance " +
+        "(all optional, at least one required; body and id are immutable)",
       inputSchema: z.object({
         id: z.string(),
-        confidence: z.enum(["high", "medium", "low"]),
+        confidence: z.enum(["high", "medium", "low"]).optional(),
+        scopeRole: z.string().optional(),
+        provenanceFiles: z.array(z.string()).optional(),
+        provenanceCommits: z.array(z.string()).optional(),
       }),
     },
-    wrap((a: { id: string; confidence: "high" | "medium" | "low" }) => {
+    // #164: partial patches -- the empty-patch guard lives in updateCard so
+    // it surfaces as a structured CONFIG_INVALID, not a raw SDK -32602.
+    wrap((a: {
+      id: string;
+      confidence?: "high" | "medium" | "low";
+      scopeRole?: string;
+      provenanceFiles?: string[];
+      provenanceCommits?: string[];
+    }) => {
       const d = dir();
-      const card = updateCardConfidence(d, a.id, a.confidence);
+      const card = updateCard(d, a.id, {
+        confidence: a.confidence,
+        scopeRole: a.scopeRole,
+        provenanceFiles: a.provenanceFiles,
+        provenanceCommits: a.provenanceCommits,
+      });
       writeBanner(d);
       return card;
     }),

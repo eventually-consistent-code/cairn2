@@ -4,6 +4,7 @@ export interface Chunk {
     source: string;
     phase: number | null;
     issueId: string | null;
+    role?: string | null;
     createdAt: string;
 }
 export interface SearchResult {
@@ -11,6 +12,7 @@ export interface SearchResult {
     source: string;
     phase: number | null;
     issueId: string | null;
+    role: string | null;
     createdAt: string;
 }
 export interface IndexStats {
@@ -26,6 +28,7 @@ export declare class MemoryIndex {
     search(query: string, filter?: {
         phase?: number;
         issueId?: string;
+        role?: string;
     }, limit?: number): SearchResult[];
     /** createdAt of the earliest-indexed chunk for `source`, or undefined if none exists. */
     sourceCreatedAt(source: string): string | undefined;

@@ -16,6 +16,7 @@ export interface Chunk {
   source: string;
   phase: number | null;
   issueId: string | null;
+  role?: string | null;
   createdAt: string;
 }
 
@@ -24,6 +25,7 @@ export interface SearchResult {
   source: string;
   phase: number | null;
   issueId: string | null;
+  role: string | null;
   createdAt: string;
 }
 
@@ -61,17 +63,33 @@ export class MemoryIndex {
       throw e;
     }
     this.db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5(
-      content, source UNINDEXED, phase UNINDEXED, issue_id UNINDEXED, created_at UNINDEXED
+      content, source UNINDEXED, phase UNINDEXED, issue_id UNINDEXED, role UNINDEXED, created_at UNINDEXED
     )`);
+    // Pre-scopeRole databases (#165): FTS5 has no ALTER ... ADD COLUMN, so an
+    // existing table without `role` gets rebuilt in place -- rename, recreate
+    // with the column, copy rows across with role NULL, drop the old table.
+    const cols = this.db.prepare("PRAGMA table_info(chunks)")
+      .all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === "role")) {
+      this.db.exec(`
+        ALTER TABLE chunks RENAME TO chunks_pre_role;
+        CREATE VIRTUAL TABLE chunks USING fts5(
+          content, source UNINDEXED, phase UNINDEXED, issue_id UNINDEXED, role UNINDEXED, created_at UNINDEXED
+        );
+        INSERT INTO chunks (content, source, phase, issue_id, role, created_at)
+          SELECT content, source, phase, issue_id, NULL, created_at FROM chunks_pre_role;
+        DROP TABLE chunks_pre_role;
+      `);
+    }
   }
 
   index(chunk: Chunk): void {
     this.db.prepare(
-      "INSERT INTO chunks (content, source, phase, issue_id, created_at) VALUES (?, ?, ?, ?, ?)",
-    ).run(chunk.content, chunk.source, chunk.phase, chunk.issueId, chunk.createdAt);
+      "INSERT INTO chunks (content, source, phase, issue_id, role, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+    ).run(chunk.content, chunk.source, chunk.phase, chunk.issueId, chunk.role ?? null, chunk.createdAt);
   }
 
-  search(query: string, filter: { phase?: number; issueId?: string } = {}, limit = 10): SearchResult[] {
+  search(query: string, filter: { phase?: number; issueId?: string; role?: string } = {}, limit = 10): SearchResult[] {
     // FTS5 has its own query grammar (apostrophes, leading hyphens, unbalanced
     // quotes/parens all mean something special). Wrap the raw agent-supplied
     // query as a quoted phrase so it's treated as literal text instead of
@@ -81,9 +99,10 @@ export class MemoryIndex {
     const params: unknown[] = [safeQuery];
     if (filter.phase !== undefined) { conditions.push("phase = ?"); params.push(filter.phase); }
     if (filter.issueId !== undefined) { conditions.push("issue_id = ?"); params.push(filter.issueId); }
+    if (filter.role !== undefined) { conditions.push("role = ?"); params.push(filter.role); }
     params.push(limit);
     return this.db.prepare(
-      `SELECT content, source, phase, issue_id as issueId, created_at as createdAt
+      `SELECT content, source, phase, issue_id as issueId, role, created_at as createdAt
        FROM chunks WHERE ${conditions.join(" AND ")} ORDER BY rank LIMIT ?`,
     ).all(...params) as SearchResult[];
   }
@@ -106,11 +125,11 @@ export class MemoryIndex {
    */
   timeline(anchorCreatedAt: string, before: number, after: number): SearchResult[] {
     const beforeRows = before > 0 ? this.db.prepare(
-      `SELECT content, source, phase, issue_id as issueId, created_at as createdAt
+      `SELECT content, source, phase, issue_id as issueId, role, created_at as createdAt
        FROM chunks WHERE created_at < ? ORDER BY created_at DESC, source DESC LIMIT ?`,
     ).all(anchorCreatedAt, before) as SearchResult[] : [];
     const afterRows = after > 0 ? this.db.prepare(
-      `SELECT content, source, phase, issue_id as issueId, created_at as createdAt
+      `SELECT content, source, phase, issue_id as issueId, role, created_at as createdAt
        FROM chunks WHERE created_at > ? ORDER BY created_at ASC, source ASC LIMIT ?`,
     ).all(anchorCreatedAt, after) as SearchResult[] : [];
     return [...beforeRows.reverse(), ...afterRows];
