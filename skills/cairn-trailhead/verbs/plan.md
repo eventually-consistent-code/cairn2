@@ -1,6 +1,6 @@
 ---
 verb: plan
-args: "<N> [--quick|--deep] [--model <auto|haiku|sonnet|opus>] [--tdd] [--mvp] [--prd <file>] [--ingest <glob>] [--gaps]"
+args: "<N> [--quick|--deep] [--challenge] [--model <auto|haiku|sonnet|opus>] [--tdd] [--mvp] [--prd <file>] [--ingest <glob>] [--gaps]"
 status: live
 ---
 
@@ -16,7 +16,8 @@ Plan the given phase per the `cairn-planning` skill's depth dial.
    - quick: no research; draft PLAN.md tasks directly.
    - standard: one research subagent for unknowns; write RESEARCH.md if material.
    - deep: parallel research fan-out per the skill's model-routing rubric, then a
-     plan-checker pass over the draft.
+     plan-checker pass over the draft (deep also convenes the challenge
+     round — step 4 — alongside that pass).
    - When a map exists, research also consults `map_query` for the phase
      slice (`node: <phase-N id>` or a `label` match on the phase name,
      `depth: 2`) — dependencies and owners the graph already knows beat
@@ -25,7 +26,7 @@ Plan the given phase per the `cairn-planning` skill's depth dial.
    CONTEXT.md (precedence per shared rules — the tracker gets updated, not
    followed).
    - Estimate every issue this verb creates (`issue_create` here and in
-     steps 4–5): `estimatePoints` from task complexity (quick/mechanical
+     steps 5–6): `estimatePoints` from task complexity (quick/mechanical
      1–2, standard 3–5, deep/cross-cutting 8), `estimateMinutes` as an
      honest wall-clock guess. Backends without estimate fields ignore them
      silently — always pass both. Worklog on close records the actual;
@@ -38,7 +39,34 @@ Plan the given phase per the `cairn-planning` skill's depth dial.
      seat is noted and the brief goes out seatless. No annotation = the
      plain templated brief — annotate only when a seat's lens genuinely
      fits the task, never by default.
-4. Flags (combinable; all task-list changes still flow through `plan_issues_set`
+4. Challenge round — runs ONLY when `--challenge` was passed OR the
+   resolved depth is deep (where it joins the plan-checker pass);
+   otherwise skip this step entirely — with no flag at standard depth,
+   plan behaves byte-for-byte as today. Advisory, never a gate: the
+   user's plan always wins.
+   - `seat_roster` once — the valid plan-stage seats (`stage` plan or
+     `any`, the `seatsForStage(roster, "plan")` filter) are the
+     challenge panel, in roster order; with the shipped defaults that
+     is exactly the interrogation seat. Internal seats are framing
+     lenses — cheap, same-model; `peers` remains the genuinely
+     adversarial external council. No plan-stage seats on the roster →
+     say so in one line and move on.
+   - Convene each seat over the draft PLAN.md + CONTEXT.md, framed at
+     its declared dose via the wave-brief composition
+     (`templates/wave-brief.md`: seat framing per dose in the seat
+     slot, the challenge charge as the task, the draft artifacts as
+     the plan excerpt) — composed agent-side from `seat_roster` and
+     the template, exactly like `work`'s briefs: zero new tools, zero
+     server changes.
+   - Collect the seats' challenges as PROPOSED AMENDMENTS — each names
+     the PLAN.md/CONTEXT.md line it targets and the question that line
+     cannot answer — and put them to the user in ONE batched
+     AskUserQuestion, never one-per-amendment.
+   - Accepted amendments edit PLAN.md/CONTEXT.md; where task lists
+     change, the edits flow through `plan_issues_set` / `plan_meta_set`,
+     never hand-edits. Rejected amendments are recorded in CONTEXT.md
+     with a one-line reason each — a written why, not a silent drop.
+5. Flags (combinable; all task-list changes still flow through `plan_issues_set`
    / `plan_meta_set`, never hand-edits):
    - `--mvp`: shape tasks per the cairn-planning skill's vertical-slice-first
      policy before writing PLAN.md.
@@ -60,13 +88,13 @@ Plan the given phase per the `cairn-planning` skill's depth dial.
      propose waves and write them with `plan_meta_set(phaseDir,
      waves: [[ids…], …])`. Waves must partition cleanly — an issue in two
      waves is a tool error.
-5. Reconcile: `plan_drift()` — resolve anything flagged for this phase
+6. Reconcile: `plan_drift()` — resolve anything flagged for this phase
    (recreate missing issues via `issue_create` + `plan_issues_set`; question
    closed-unverified ones with the user).
-6. Adopt: `plan_unplanned()` — for any unplanned issue that belongs to this
+7. Adopt: `plan_unplanned()` — for any unplanned issue that belongs to this
    phase, add its id via `plan_issues_set` and re-phase it in the tracker
    with `issue_update(id, phase: <N>)` — phase takes the cairn phase number
    or the tracker's phase id (#142). A backend that can't re-parent says so
    via `phaseSkipped` in the result; relay that instead of assuming the
    move happened. Ask before adopting.
-7. Report the plan summary and next step `/cairn:work <N>`.
+8. Report the plan summary and next step `/cairn:work <N>`.

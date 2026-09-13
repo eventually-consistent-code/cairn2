@@ -16,7 +16,7 @@ enforces both.
 | verb | purpose | args | subroutine | status |
 |---|---|---|---|---|
 | `new` | Start here — new project: interview, plan artifacts, tracker mirror, issues | `[project name]` | verbs/new.md | live |
-| `plan` | Plan a phase — research per depth, write PLAN.md, reconcile tracker | `<N> [--quick\|--deep] [--model <auto\|haiku\|sonnet\|opus>] [--tdd] [--mvp] [--prd <file>] [--ingest <glob>] [--gaps]` | verbs/plan.md | live |
+| `plan` | Plan a phase — research per depth, write PLAN.md, reconcile tracker | `<N> [--quick\|--deep] [--challenge] [--model <auto\|haiku\|sonnet\|opus>] [--tdd] [--mvp] [--prd <file>] [--ingest <glob>] [--gaps]` | verbs/plan.md | live |
 | `work` | Execute a phase — claim issues, do the work, close on verified done | `<N> [--wave [N]]` | verbs/work.md | live |
 | `verify` | Goal-backward phase check, drift clean, write VERIFICATION.md | `<N>` | verbs/verify.md | live |
 | `ship` | Gate on drift-clean + no open issues in verified phases, then push | | verbs/ship.md | live |

@@ -22,7 +22,7 @@ executing that verb.
 | verb | purpose | args |
 |---|---|---|
 | new | Start here — new project: interview, plan artifacts, tracker mirror, issues | [project name] |
-| plan | Plan a phase — research per depth, write PLAN.md, reconcile tracker | <N> [--quick\|--deep] [--model <auto\|haiku\|sonnet\|opus>] [--tdd] [--mvp] [--prd <file>] [--ingest <glob>] [--gaps] |
+| plan | Plan a phase — research per depth, write PLAN.md, reconcile tracker | <N> [--quick\|--deep] [--challenge] [--model <auto\|haiku\|sonnet\|opus>] [--tdd] [--mvp] [--prd <file>] [--ingest <glob>] [--gaps] |
 | work | Execute a phase — claim issues, do the work, close on verified done | <N> [--wave [N]] |
 | verify | Goal-backward phase check, drift clean, write VERIFICATION.md | <N> |
 | ship | Gate on drift-clean + no open issues in verified phases, then push |  |

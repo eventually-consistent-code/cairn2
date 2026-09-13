@@ -28,8 +28,8 @@ framing line to keep straight: internal seats are framing lenses —
 cheap, same-model; `peers` remains the genuinely adversarial external
 council. There is exactly one review path, and this is it. The panel
 convenes the roster's review-stage seats (`stage` review or `any`);
-plan-stage seats convene at plan time instead (wired next wave) and
-never join the diff panel.
+plan-stage seats convene at plan time instead (`plan`'s challenge
+round) and never join the diff panel.
 
 With no project seats and no `seats` config block, the review-stage
 roster is exactly the five shipped defaults, in this order — today's
