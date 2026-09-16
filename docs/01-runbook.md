@@ -703,7 +703,12 @@ credit their raising seats' yield. Closing: critical/important →
 `cairn:review` issues (severity first line, plain language — the scenario,
 not the stack trace); minors stay in the record; the record is written every
 time, clean or not, under a slugged scope. `--fix` follows audit's exact
-two-shapes contract. Audience split worth knowing: `file:line` and the
+two-shapes contract — and since phase 21 a mechanical code fix is STAGED,
+not applied: generated in a detached scratch worktree, written as a patch
+file mirrored to the issue, judged by one independent verifier stating
+three claims (targeted / no new issue / behavior unchanged) that the
+record turns into an apply-eligibility bit, and applied to the working
+tree only when the user says so. Audience split worth knowing: `file:line` and the
 verification detail live in the record (for engineers re-deriving the fix);
 the issue body is for a manager triaging by severity.
 

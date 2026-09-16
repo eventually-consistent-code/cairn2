@@ -2021,7 +2021,9 @@ export function buildServer(deps: {
         "Critical/important findings carry a refutation `panel` (>=1 vote, >=2 on a security scope); " +
         "the quorum is computed here: REFUTED strict majority kills the finding (stays in the record, " +
         "never filed — `results[].survived` false), CONFIRMED > REFUTED confirms, else plausible. " +
-        "Survivors credit their raising `seats` in the yield store",
+        "Survivors credit their raising `seats` in the yield store. A staged `patch` (path + one " +
+        "verifier's three claims) is apply-eligible only when the finding survived and all three claims " +
+        "are true — `results[].applyEligible` decides, the verb only offers",
       inputSchema: z.object({
         scope: z.string(),
         verdict: z.enum(["pass", "findings"]),
@@ -2043,6 +2045,21 @@ export function buildServer(deps: {
                 )
                 .optional(),
               seats: z.array(z.string().min(1)).optional(),
+              patch: z
+                .object({
+                  path: z.string().min(1),
+                  verifier: z.object({
+                    seat: z.string().min(1),
+                    claims: z.object({
+                      targeted: z.boolean(),
+                      no_new_issue: z.boolean(),
+                      behavior_unchanged: z.boolean(),
+                    }),
+                    evidence: z.string().min(1),
+                    testsRun: z.string().min(1),
+                  }),
+                })
+                .optional(),
             }),
           )
           .default([]),

@@ -214,16 +214,21 @@ Only after the record exists and the critical/important issues are filed.
 Same contract as `audit` — two shapes, and only two:
 
 - **Mechanical** (the fix is obvious and small — a missing null check, a
-  wrong comparison, a test that should've existed): fix it directly, one
-  commit per finding, then `issue_comment` with a plain-language "what was
-  wrong / what changed" note, then `issue_close`.
+  wrong comparison, a test that should've existed): STAGED, never applied
+  on the verb's own say-so — follow `audit`'s staged-patch discipline
+  verbatim (dirty tree refused; detached scratch worktree; one patch
+  file per finding mirrored to its issue; one independent verifier
+  stating `targeted` / `no_new_issue` / `behavior_unchanged`; the
+  record's `results[].applyEligible` decides what may be offered; apply
+  only on the user's choice, one commit per finding, `issue_comment` +
+  `issue_close`; worktree torn down after).
 - **Investigation-shaped** (the fix isn't obvious, or touches more than
   the finding itself): open `trace_start` instead and hand it off — don't
   guess at a fix under review's roof.
 
 Never an improvised inline fix for anything in between. Not clearly
 mechanical means investigation-shaped by default — that's the safe side
-to be wrong on.
+to be wrong on. No `--fix` flag → nothing here runs.
 
 ## Mirror rules
 

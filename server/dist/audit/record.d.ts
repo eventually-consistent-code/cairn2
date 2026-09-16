@@ -21,6 +21,27 @@ export interface PanelVote {
 }
 /** How the quorum landed for one finding. */
 export type FindingOutcome = "confirmed" | "plausible" | "refuted" | "unpanelled";
+/** The three claims a staged patch's independent verifier must state (#197). */
+export interface PatchClaims {
+    /** The patch changes only what the finding names. */
+    targeted: boolean;
+    /** The patch introduces no new finding of its own. */
+    no_new_issue: boolean;
+    /** Behavior outside the finding is unchanged (tests say so). */
+    behavior_unchanged: boolean;
+}
+/** A staged fix for one finding — a patch FILE, never a working-tree edit. */
+export interface StagedPatch {
+    /** Where the patch file lives (under the project's scratch fix dir). */
+    path: string;
+    verifier: {
+        seat: string;
+        claims: PatchClaims;
+        evidence: string;
+        /** What was run to back the claims — suite names + counts, or "none". */
+        testsRun: string;
+    };
+}
 export interface AuditFinding {
     severity: AuditSeverity;
     title: string;
@@ -40,6 +61,8 @@ export interface AuditFinding {
     panel?: PanelVote[];
     /** Seats that raised the finding (dedup's credit list) — yield attribution. */
     seats?: string[];
+    /** Staged fix (#197) — present only when `--fix` produced a patch. */
+    patch?: StagedPatch;
 }
 export interface FindingResult {
     title: string;
@@ -47,6 +70,12 @@ export interface FindingResult {
     outcome: FindingOutcome;
     /** False only when the panel refuted it — the verb must not file it. */
     survived: boolean;
+    /**
+     * Present when a patch is staged: true only when the finding survived
+     * AND the verifier stated all three claims true. The model asserts the
+     * evidence; this bit decides whether the verb may offer "apply".
+     */
+    applyEligible?: boolean;
 }
 export interface AuditRecordResult {
     path: string;
@@ -76,6 +105,8 @@ export declare function requiredVotes(scope: string, severity: AuditSeverity): n
  * :returns: the outcome
  */
 export declare function judgePanel(panel: PanelVote[] | undefined): FindingOutcome;
+/** All three claims stated true — the only shape that may be applied. */
+export declare function patchClaimsHold(c: PatchClaims): boolean;
 /**
  * Validates, judges, and writes the record; credits yield for survivors.
  *

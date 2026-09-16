@@ -151,6 +151,38 @@ describe("writeAuditRecord", () => {
         [finding({ panel: [{ seat: "a", verdict: "CONFIRMED", evidence: " " }] })])).toThrow(/evidence/);
     });
 
+    it("staged patch (#197): apply-eligible only when survived AND all three claims are true", () => {
+      const dir = fresh();
+      const verifier = (over: Partial<{ targeted: boolean; no_new_issue: boolean; behavior_unchanged: boolean }> = {}) => ({
+        seat: "correctness", evidence: "read the patch against the finding", testsRun: "server suite 1399 passed",
+        claims: { targeted: true, no_new_issue: true, behavior_unchanged: true, ...over },
+      });
+      const out = writeAuditRecord(dir, "review-working", "findings", [
+        finding({ title: "clean", panel: [vote("v", "CONFIRMED")], patch: { path: "fix/r1/194.patch", verifier: verifier() } }),
+        finding({ title: "not targeted", panel: [vote("v", "CONFIRMED")], patch: { path: "fix/r1/195.patch", verifier: verifier({ targeted: false }) } }),
+        finding({ title: "behavior moved", panel: [vote("v", "CONFIRMED")], patch: { path: "fix/r1/196.patch", verifier: verifier({ behavior_unchanged: false }) } }),
+        finding({ title: "refuted with a patch", panel: [vote("v", "REFUTED")], patch: { path: "fix/r1/197.patch", verifier: verifier() } }),
+        finding({ title: "no patch", panel: [vote("v", "CONFIRMED")] }),
+      ]);
+      expect(out.results.map((r) => [r.title, r.applyEligible])).toEqual([
+        ["clean", true],
+        ["not targeted", false],
+        ["behavior moved", false],
+        ["refuted with a patch", false],
+        ["no patch", undefined],
+      ]);
+      const raw = readFileSync(out.path, "utf8");
+      expect(raw).toContain("patch: fix/r1/194.patch");
+      expect(raw).toContain("apply: eligible — on the user's choice");
+      expect(raw).toContain("apply: blocked — claims not all true");
+      expect(raw).toContain("patch verifier: correctness — targeted=false");
+      // A patch without its verifier's claims is a shape error.
+      expect(() => writeAuditRecord(dir, "review-working", "findings", [
+        finding({ panel: [vote("v", "CONFIRMED")],
+          patch: { path: "fix/r1/x.patch", verifier: { seat: "c", evidence: "e", testsRun: "t" } } as never }),
+      ])).toThrow(/three boolean claims/);
+    });
+
     it("credits raising seats' findingsSurvived only for panelled survivors", () => {
       const dir = fresh();
       const yieldBase = fresh();

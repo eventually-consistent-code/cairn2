@@ -51,6 +51,10 @@ export function judgePanel(panel) {
         return "confirmed";
     return "plausible";
 }
+/** All three claims stated true — the only shape that may be applied. */
+export function patchClaimsHold(c) {
+    return c.targeted === true && c.no_new_issue === true && c.behavior_unchanged === true;
+}
 // Writer
 /**
  * Validates, judges, and writes the record; credits yield for survivors.
@@ -86,6 +90,14 @@ export function writeAuditRecord(projectDir, scope, verdict, findings, opts = {}
                 throw new CairnError("UNSUPPORTED", `finding '${f.title}': every panel vote needs a seat, a verdict (CONFIRMED|PLAUSIBLE|REFUTED), and evidence`, "");
             }
         }
+        if (f.patch) {
+            const v = f.patch.verifier;
+            const c = v?.claims;
+            if (!f.patch.path?.trim() || !v?.seat?.trim() || !v.evidence?.trim() || !v.testsRun?.trim()
+                || !c || [c.targeted, c.no_new_issue, c.behavior_unchanged].some((b) => typeof b !== "boolean")) {
+                throw new CairnError("UNSUPPORTED", `finding '${f.title}': a staged patch needs a path and a verifier with seat, evidence, testsRun, and the three boolean claims (targeted, no_new_issue, behavior_unchanged)`, "");
+            }
+        }
         // Verify-before-tracker: the panel is not optional where it matters.
         const need = requiredVotes(scope, f.severity);
         const have = f.panel?.length ?? 0;
@@ -97,7 +109,14 @@ export function writeAuditRecord(projectDir, scope, verdict, findings, opts = {}
     // Judge every finding — in code, once, here.
     const results = findings.map((f) => {
         const outcome = judgePanel(f.panel);
-        return { title: f.title, severity: f.severity, outcome, survived: outcome !== "refuted" };
+        const survived = outcome !== "refuted";
+        const r = { title: f.title, severity: f.severity, outcome, survived };
+        // Apply-eligibility is decided here, in code: a refuted finding has no
+        // fix to apply, and a verifier who couldn't state all three claims
+        // true leaves the patch staged — never applied.
+        if (f.patch)
+            r.applyEligible = survived && patchClaimsHold(f.patch.verifier.claims);
+        return r;
     });
     const body = [`# Audit: ${scope}`, ""];
     findings.forEach((f, i) => {
@@ -111,6 +130,13 @@ export function writeAuditRecord(projectDir, scope, verdict, findings, opts = {}
                 body.push(`vote: ${v.seat} ${v.verdict} — ${v.evidence.trim()}`);
             if (!results[i].survived)
                 body.push("refuted: true — not filed to the tracker");
+        }
+        if (f.patch) {
+            const { seat, claims, evidence, testsRun } = f.patch.verifier;
+            body.push(`patch: ${f.patch.path.trim()}`);
+            body.push(`patch verifier: ${seat} — targeted=${claims.targeted} no_new_issue=${claims.no_new_issue} ` +
+                `behavior_unchanged=${claims.behavior_unchanged}; tests: ${testsRun.trim()}; ${evidence.trim()}`);
+            body.push(`apply: ${results[i].applyEligible ? "eligible — on the user's choice" : "blocked — claims not all true"}`);
         }
         if (f.issue)
             body.push(`issue: ${f.issue}`);
