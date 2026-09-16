@@ -23,7 +23,7 @@ for work items; git owns prose.
   budget ledger enforcing the ceiling at phase/wave boundaries (ADR
   0008).
 - `memory/` — disposable FTS index + git-committed memory cards with
-  provenance and staleness checking.
+  provenance, staleness checking, and phase/issue/role scopes.
 - `docs/` — documentation connectors (below) plus the marked-section
   writer: generated doc content lands only inside explicitly marked
   sections, never over hand-written prose (ADR 0006).
@@ -115,21 +115,23 @@ Named, reusable review viewpoints as data (v7). One Zod schema — name,
 one-line lens, rubric categories, anchored 0-10 scale with an honesty
 line, a REQUIRED injection dose (minimal | standard | full,
 server-validated at load, ADR 0009), a convening stage (review | plan |
-any, default review — review's diff panel seats stage review|any;
-plan-stage seats convene at plan time), scope signals, advisory model
-preference — with six shipped defaults: five review-stage seats that
-reproduce review's classic five axes byte-identically until a project
-overrides them (ADR 0010), plus the plan-stage interrogation seat that
-never joins the diff panel.
+any, default review, validated the same way, ADR 0013), scope signals,
+advisory model preference — with six shipped defaults: five reproduce
+review's classic axes byte-identically until a project overrides them
+(ADR 0010), and the interrogation seat convenes at plan time.
 
 - **Schema + roster** (`server/src/seats/schema.ts`, `roster.ts`) —
   flat-frontmatter seat files; project overrides by name from the
   project roles directory; shipped defaults from the plugin's
-  templates; strict config block for enablement and the dispatch dial.
-  Invalid files are skipped with a note and never shadow a default.
+  templates; strict config block for enablement and the dispatch dial;
+  `seatsForStage` filters convening by stage. Invalid files are
+  skipped with a note and never shadow a default.
 - **Brief composition** (`server/src/seats/brief.ts`) — wave-brief
   assembly at the seat's declared dose: lens only at minimal,
-  categories and honesty line at standard, full anchors at full.
+  categories and honesty line at standard, full anchors at full; an
+  optional role-memory section ("what this seat remembers", stale
+  cards marked) renders when the seat has role-scoped cards
+  (ADR 0014) and is byte-absent otherwise.
 - **Dispatch** (`server/src/seats/signals.ts`, `yield.ts`) —
   diff-derived scope signals select firing seats (opt-in per seat,
   full-panel off dial is the default); a persisted per-seat yield
@@ -139,7 +141,13 @@ never joins the diff panel.
 - **Dedup** (`server/src/seats/dedup.ts`) — location-and-claim merge
   producing one deterministic finding set crediting every raising
   seat, run before anything reaches the tracker (ADR 0012).
+- **Consultation + challenge** — flags on existing verbs, zero new
+  surface (ADR 0015): review consults one seat at its dose over a
+  diff, file, plan, or question; plan's challenge round convenes
+  plan-stage seats over a draft as proposed amendments, advisory
+  never a gate.
 - **Surface** — one `seat_roster` MCP tool (validate + list + dispatch
   dial); the roster also renders into every generated harness spine
-  under a CI drift rule. Internal seats are framing lenses; the
-  external peers council remains the adversarial mechanism.
+  with a stage column under a CI drift rule. Internal seats are
+  framing lenses; the external peers council remains the adversarial
+  mechanism.

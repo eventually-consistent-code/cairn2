@@ -1,5 +1,34 @@
 # Changelog
 
+## Unreleased — standing-viewpoints (phase 20, 2026-09-13)
+
+The second half of the persona arc: seats become parties — consultable
+on demand, convened over plans before code exists, and warm with
+memory:
+
+- Seats declare WHERE they convene: a stage field (review | plan |
+  any, default review, server-validated like dose) filters the review
+  panel to review-stage seats — the five classic defaults and the
+  byte-identical promise hold untouched — while plan-stage seats
+  convene only at planning time. The sixth shipped default arrives:
+  the interrogation seat, a plan-stage product interrogation (who is
+  this for, what breaks, why now, scope honesty) at full dose.
+- Plans can be challenged before code exists: a --challenge flag (deep
+  planning includes it automatically) convenes the plan-stage seats
+  over the draft, and their challenges land as proposed amendments in
+  one batched question — accepted ones edit the plan, rejected ones
+  are recorded with a reason. Advisory by design, never a gate.
+- Any seat is now consultable: a single-seat advisory pass at the
+  seat's declared dose over a diff, file, plan, or freeform question —
+  and the seat arrives warm, with its role-scoped memory rendered into
+  the brief (stale cards explicitly marked) and notable outcomes
+  written back. Findings ride the existing closing discipline and
+  dedup; consultation never grows a parallel tracker path.
+- Memory cards gained the role scope beside phase and issue scopes,
+  with the search index migrated in place — and the card tools got
+  honest: provenance arrays now round-trip exactly as passed, and
+  updates accept partial patches without demanding unrelated fields.
+
 ## Unreleased — the seats (phase 19, 2026-09-11)
 
 Milestone v7's persona core: named, reusable review viewpoints as data,
