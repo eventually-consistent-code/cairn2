@@ -22,6 +22,7 @@ same way: a record, then tracker issues for anything that matters.
 | `tests [phase]` | find untested requirements | walk the phase's requirements against what's actually covered, and where a requirement has no test, WRITE it — don't just flag the gap — then `ledger_append` the evidence |
 | `plans [phase]` | plan-quality scan | `plan_check(phase)` for contract drift and unanchored thresholds, findings translated into plain language before they go anywhere near a human |
 | `docs [scope]` | sweep README/docs claims against the codebase | read every claim a README or `docs/**` file makes about what's shipped (tool counts, verb lists, table shapes, file paths, commands) and check each one against the real codebase — `check-surface.mjs`'s numbers, `server/src/index.ts`'s registry, the actual files on disk. A claim that's drifted from what's actually there is a finding, same severity scale as every other mode. No `scope` means sweep every README + `docs/**` file; a `scope` narrows to one file or directory. |
+| `simplify [phase]` | quality-only sweep over what recently changed | refine, never rewrite: the target is the files touched in the phase's ledgered commit ranges (no phase → the most recently active one); the clarity and architecture seats supply the eye — nesting that hides the happy path, redundant abstraction, misleading names, work in the wrong layer — and every finding names the exact behavior that must NOT change as its `failure_scenario` ("after the change, X still does Y"). Clarity over brevity; fewer lines is never the goal. Quality findings are `minor` unless the complexity demonstrably hides a defect (then it's a normal finding at its real severity). A BUG found mid-sweep is filed as a finding, never fixed in-band — `review` stays the bug hunt. `--fix` runs the staged-patch discipline over EVERY finding of the sweep (minors included — the sweep IS the apply), one patch per finding, `behavior_unchanged` the claim the verifier must actually run the tests to state |
 
 **Visual evidence:** when the tracker declares `hasIssueAttachments`
 (jira, local), `issue_attach` the walk's screenshots and renders to the
@@ -40,8 +41,13 @@ security seat for `audit security`, and so on), that seat's lens MAY
 supply the eye the walk is done with. The mode's discipline stays the
 boss — scope is still the phase's own criteria, never the seat's generic
 concerns, and the closing rules don't change. No matching seat means
-exactly today's behavior. The other modes (`uat`, `milestone`, `tests`,
-`plans`, `docs`) aren't viewpoint-shaped and never consult the roster.
+exactly today's behavior. `simplify` is viewpoint-shaped the other way
+round: its eye IS the roster — the `clarity` and `architecture` seats
+(project overrides by name, as everywhere), convened at their declared
+dose over the recently-changed files; no other seat walks a simplify
+sweep, and a roster with neither seat valid says so in one line and
+stops. The other modes (`uat`, `milestone`, `tests`, `plans`, `docs`)
+aren't viewpoint-shaped and never consult the roster.
 Framing, same as everywhere seats appear: internal seats are framing
 lenses — cheap, same-model; `peers` remains the genuinely adversarial
 external council.
