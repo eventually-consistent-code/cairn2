@@ -1,6 +1,15 @@
 # Changelog
 
-## Unreleased — standing-viewpoints (phase 20, 2026-09-13)
+## v2.5.0 — the seats (2026-09-16)
+
+Milestones v6's close and all of v7: every public claim became
+self-maintaining, the batch runner's accounting turned honest, and the
+persona arc landed whole — review viewpoints as validated data,
+dispatched by evidence, deduplicated to one finding set, consultable
+on demand, convened over plans before code exists, and warm with
+role-scoped memory.
+
+### standing-viewpoints (phase 20)
 
 The second half of the persona arc: seats become parties — consultable
 on demand, convened over plans before code exists, and warm with
@@ -29,7 +38,7 @@ memory:
   honest: provenance arrays now round-trip exactly as passed, and
   updates accept partial patches without demanding unrelated fields.
 
-## Unreleased — the seats (phase 19, 2026-09-11)
+### the seats (phase 19)
 
 Milestone v7's persona core: named, reusable review viewpoints as data,
 not prose clones:
@@ -59,7 +68,7 @@ not prose clones:
   crediting every raising seat, keeping the highest severity — before
   anything reaches the tracker.
 
-## Unreleased — hygiene-batch (phase 18.7, 2026-09-11)
+### hygiene-batch (phase 18.7)
 
 Milestone v7's opener, built by the third headless batch run — which
 field-accepted one of its own fixes at its own budget boundary:
@@ -81,7 +90,7 @@ field-accepted one of its own fixes at its own budget boundary:
   guards, and the native-binding safeguard now names both halves of its
   own cure — rebuild, then reload.
 
-## Unreleased — positioning-truth (phase 18, 2026-09-10)
+### positioning-truth (phase 18)
 
 Milestone v6's closing phase, built by the second headless batch run:
 
