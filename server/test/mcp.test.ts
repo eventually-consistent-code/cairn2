@@ -250,15 +250,24 @@ describe("cairn MCP server", () => {
     const out = await call("audit_record", {
       scope: "drill-scope",
       verdict: "findings",
-      findings: [{ severity: "important", title: "t" }],
+      findings: [{ severity: "important", title: "t", failure_scenario: "x → y" }],
     });
     expect(out.json.findings).toBe(1);
     const bad = await call("audit_record", {
       scope: "drill-scope",
       verdict: "pass",
-      findings: [{ severity: "critical", title: "boom" }],
+      findings: [{ severity: "critical", title: "boom", failure_scenario: "x → y" }],
     });
     expect(bad.isError).toBe(true);
+    // Phase 21: the schema itself refuses a finding with no failure_scenario
+    // (input validation, so the body is the SDK's text, not cairn JSON).
+    const hunch = await client.callTool({ name: "audit_record", arguments: {
+      scope: "drill-scope",
+      verdict: "findings",
+      findings: [{ severity: "critical", title: "boom" }],
+    } });
+    expect(hunch.isError).toBe(true);
+    expect((hunch.content as Array<{ text: string }>)[0].text).toMatch(/failure_scenario/);
   });
 
   it("plan lifecycle through tools: scaffold → ensure → issues_set → status → drift", async () => {

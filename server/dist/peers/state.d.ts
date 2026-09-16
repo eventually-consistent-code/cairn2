@@ -59,6 +59,8 @@ export interface CloseSummary {
     findings: Array<{
         severity: Finding["severity"];
         title: string;
+        /** The peer's evidence, carried as the typed failure scenario audit_record requires. */
+        failure_scenario: string;
         detail: string;
     }>;
     peers: string[];

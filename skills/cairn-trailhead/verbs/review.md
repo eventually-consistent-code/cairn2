@@ -93,7 +93,12 @@ Findings keep today's shape exactly. Every finding gets ranked
 `file:line` and a concrete failure scenario — not "this could be a
 problem" but the actual input or sequence that breaks it. A finding
 without a scenario is a hunch, not a finding; downgrade it or cut it
-before it goes in the record.
+before it goes in the record. The scenario is a typed field, not a
+prose nicety: every finding handed to the dedup engine carries
+`failure_scenario`, and `audit_record` REFUSES a finding without one
+(`PRECONDITION_FAILED`) — the record enforces the bar, the seat states
+the scenario. Two seats whose claims differ but whose scenarios match
+dedup as one finding (same failure, different headline).
 
 ## `--seat <name> [target]` — consult one seat
 

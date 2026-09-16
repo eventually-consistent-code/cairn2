@@ -2015,7 +2015,8 @@ export function buildServer(deps: {
     {
       description:
         "Write the audit record file (.cairn/audit/<scope>-<date>.md) — single writer; " +
-        "same scope+date supersedes, prior dates immutable",
+        "same scope+date supersedes, prior dates immutable. Every finding carries a typed " +
+        "failure_scenario (concrete inputs/state → wrong output/crash) — the write refuses one without it",
       inputSchema: z.object({
         scope: z.string(),
         verdict: z.enum(["pass", "findings"]),
@@ -2024,6 +2025,7 @@ export function buildServer(deps: {
             z.object({
               severity: z.enum(["critical", "important", "minor"]),
               title: z.string().min(1),
+              failure_scenario: z.string().min(1),
               detail: z.string().optional(),
               issue: z.string().optional(),
             }),

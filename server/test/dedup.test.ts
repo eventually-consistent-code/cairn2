@@ -178,4 +178,45 @@ describe("seats/dedup", () => {
       expect(dedupFindings(shuffled(findings, seed))).toEqual(baseline);
     }
   });
+
+  describe("failure_scenario (phase 21)", () => {
+    const scenario = "lookup(undefined) returns null → caller dereferences → TypeError";
+
+    it("merges distinct claims whose scenarios match, and the winner's scenario survives", () => {
+      const out = dedupFindings([
+        f({ seat: "correctness", severity: "important",
+          claim: "unchecked null return from lookup", failure_scenario: scenario }),
+        f({ seat: "security", severity: "critical", line: 43,
+          claim: "attacker-controlled key crashes the handler",
+          failure_scenario: "lookup(undefined) returns null; caller dereferences; TypeError" }),
+      ]);
+      expect(out).toHaveLength(1);
+      expect(out[0].severity).toBe("critical");
+      expect(out[0].claim).toBe("attacker-controlled key crashes the handler");
+      expect(out[0].failure_scenario)
+        .toBe("lookup(undefined) returns null; caller dereferences; TypeError");
+      expect(out[0].seats.map((s) => s.seat)).toEqual(["correctness", "security"]);
+    });
+
+    it("never merges on scenario when either side lacks one — byte-identical to before", () => {
+      const out = dedupFindings([
+        f({ seat: "correctness", claim: "unchecked null return from lookup" }),
+        f({ seat: "security", line: 43, claim: "attacker-controlled key crashes the handler",
+          failure_scenario: scenario }),
+      ]);
+      expect(out).toHaveLength(2);
+      expect(out[0]).not.toHaveProperty("failure_scenario");
+      expect(out[1].failure_scenario).toBe(scenario);
+    });
+
+    it("a winner without a scenario borrows the first merged member's", () => {
+      const out = dedupFindings([
+        f({ seat: "tests", severity: "minor", failure_scenario: scenario }),
+        f({ seat: "security", severity: "critical" }),
+      ]);
+      expect(out).toHaveLength(1);
+      expect(out[0].claim).toBe("unchecked null return from lookup");
+      expect(out[0].failure_scenario).toBe(scenario);
+    });
+  });
 });

@@ -23,6 +23,13 @@ export interface SeatFinding {
     line: number;
     /** The claim — what's wrong, in the seat's words. */
     claim: string;
+    /**
+     * The concrete failure ("inputs/state → wrong output/crash"). Optional
+     * here so the pure library stays backward compatible; when two seats
+     * both give one, matching scenarios are a second merge path (same
+     * failure under different headlines). audit_record requires it.
+     */
+    failure_scenario?: string;
     severity: Severity;
     /** The seat's anchored 0-10 score for its walk, when it gave one. */
     score?: number;
@@ -39,6 +46,12 @@ export interface DedupedFinding {
     line: number;
     /** Canonical claim — from the highest-severity raising finding. */
     claim: string;
+    /**
+     * Canonical failure scenario — the winner's (highest-severity raising
+     * finding) when it gave one, else the first merged member that did.
+     * Absent only when no raising seat supplied one.
+     */
+    failure_scenario?: string;
     /** Highest severity any raising seat assigned. */
     severity: Severity;
     /** Every raising seat, sorted by name, each with its own score. */
@@ -51,8 +64,10 @@ export interface DedupedFinding {
  * findings merge when they name the SAME file, sit within LINE_WINDOW
  * (±2) lines of the cluster's anchor — its lowest-line member — and
  * their claims match: exact normalized text, or normalized-token Jaccard
- * overlap at or above CLAIM_SIMILARITY_THRESHOLD (0.5). Distinct claims
- * at the same location stay separate findings.
+ * overlap at or above CLAIM_SIMILARITY_THRESHOLD (0.5) — OR, when both
+ * supplied a failure_scenario, their scenarios match by the same rule
+ * (same failure, different headline). Distinct claims with distinct (or
+ * absent) scenarios at the same location stay separate findings.
  *
  * A merged finding credits every raising seat (`seats`, sorted by name,
  * one entry per seat with that seat's own score attributed), keeps the

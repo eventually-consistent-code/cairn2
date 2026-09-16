@@ -329,6 +329,7 @@ export function runClose(projectDir, slug, opts) {
         findings: state.findings.map((f) => ({
             severity: f.finding.severity,
             title: f.finding.claim,
+            failure_scenario: f.finding.evidence,
             detail: `raised by ${f.peer} round ${f.round}; verdict ${f.verdict}`
                 + (f.note ? ` -- ${f.note}` : ""),
         })),

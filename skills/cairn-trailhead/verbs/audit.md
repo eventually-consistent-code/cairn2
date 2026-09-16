@@ -71,7 +71,11 @@ bug NEVER means N issues: the tracker sees the deduplicated set only.
 1. `audit_record(scope, verdict, findings)` — `scope` names the mode and
    target (e.g. `"uat-12"`, `"milestone-3"`), `verdict` is `pass` or
    `findings`, and `findings` is the full list even when most of them
-   never make it to the tracker. This file is the source of truth; the
+   never make it to the tracker. Every finding carries a typed
+   `failure_scenario` — the concrete inputs/state → wrong output/crash —
+   and the tool refuses one without it (`PRECONDITION_FAILED`): a
+   finding without a scenario is a hunch, so state it or downgrade the
+   finding out of the record. This file is the source of truth; the
    tracker is the summary.
 2. For each finding rated **critical** or **important**: `issue_create`
    with label `cairn:audit`, a plain-language title a non-engineer could

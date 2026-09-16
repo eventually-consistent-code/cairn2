@@ -86,6 +86,8 @@ export interface CloseSummary {
   findings: Array<{
     severity: Finding["severity"];
     title: string;
+    /** The peer's evidence, carried as the typed failure scenario audit_record requires. */
+    failure_scenario: string;
     detail: string;
   }>;
   peers: string[];
@@ -492,6 +494,7 @@ export function runClose(projectDir: string, slug: string,
     findings: state.findings.map((f) => ({
       severity: f.finding.severity,
       title: f.finding.claim,
+      failure_scenario: f.finding.evidence,
       detail: `raised by ${f.peer} round ${f.round}; verdict ${f.verdict}`
         + (f.note ? ` -- ${f.note}` : ""),
     })),

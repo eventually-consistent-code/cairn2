@@ -268,6 +268,8 @@ describe("runClose", () => {
     expect(summary.findings).toHaveLength(2);
     expect(summary.findings[0].title).toBe(GOOD.claim);
     expect(summary.findings[0].severity).toBe("important");
+    // Phase 21: the peer's evidence rides as audit_record's typed failure_scenario.
+    expect(summary.findings[0].failure_scenario).toBe(GOOD.evidence);
     expect(summary.findings[0].detail).toBe("raised by codex round 1; verdict verified");
     expect(summary.findings[1].detail)
       .toBe("raised by grok round 2; verdict dead -- code already guards this");

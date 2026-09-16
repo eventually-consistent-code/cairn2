@@ -16,10 +16,17 @@ export function writeAuditRecord(projectDir, scope, verdict, findings) {
         if (!SEVERITIES.includes(f.severity) || f.title.trim().length === 0) {
             throw new CairnError("UNSUPPORTED", "finding needs a severity (critical|important|minor) and a title", "");
         }
+        // Typed failure_scenario — the structural form of "a finding without a
+        // scenario is a hunch". Same PRECONDITION_FAILED shape as the
+        // verdict/findings mismatch: the record refuses, the caller decides.
+        if (typeof f.failure_scenario !== "string" || f.failure_scenario.trim().length === 0) {
+            throw new CairnError("PRECONDITION_FAILED", `finding '${f.title}' has no failure_scenario — a finding without one is a hunch`, "state the concrete inputs/state → wrong output/crash, or downgrade the finding out of the record");
+        }
     }
     const body = [`# Audit: ${scope}`, ""];
     for (const f of findings) {
         body.push(`## finding — ${f.severity}`, f.title);
+        body.push(`scenario: ${f.failure_scenario.trim()}`);
         if (f.issue)
             body.push(`issue: ${f.issue}`);
         if (f.detail)

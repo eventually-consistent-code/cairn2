@@ -45,6 +45,13 @@ export interface SeatFinding {
   line: number;
   /** The claim — what's wrong, in the seat's words. */
   claim: string;
+  /**
+   * The concrete failure ("inputs/state → wrong output/crash"). Optional
+   * here so the pure library stays backward compatible; when two seats
+   * both give one, matching scenarios are a second merge path (same
+   * failure under different headlines). audit_record requires it.
+   */
+  failure_scenario?: string;
   severity: Severity;
   /** The seat's anchored 0-10 score for its walk, when it gave one. */
   score?: number;
@@ -63,6 +70,12 @@ export interface DedupedFinding {
   line: number;
   /** Canonical claim — from the highest-severity raising finding. */
   claim: string;
+  /**
+   * Canonical failure scenario — the winner's (highest-severity raising
+   * finding) when it gave one, else the first merged member that did.
+   * Absent only when no raising seat supplied one.
+   */
+  failure_scenario?: string;
   /** Highest severity any raising seat assigned. */
   severity: Severity;
   /** Every raising seat, sorted by name, each with its own score. */
@@ -119,6 +132,9 @@ interface Member {
   finding: SeatFinding;
   norm: string;
   tokens: Set<string>;
+  /** Normalized failure_scenario + its token set — undefined when absent. */
+  scenarioNorm?: string;
+  scenarioTokens?: Set<string>;
 }
 
 interface Cluster {
@@ -127,7 +143,27 @@ interface Cluster {
   anchorLine: number;
   anchorNorm: string;
   anchorTokens: Set<string>;
+  anchorScenarioNorm?: string;
+  anchorScenarioTokens?: Set<string>;
   members: Member[];
+}
+
+/**
+ * Second merge path (phase 21): two findings whose CLAIMS differ but whose
+ * failure scenarios match describe the same failure under different
+ * headlines. Only fires when both sides supplied a scenario — absent on
+ * either side, the claim path alone decides, exactly as before.
+ *
+ * :param a: cluster anchor's scenario form
+ * :param b: candidate member's scenario form
+ * :returns: true when both scenarios exist and match
+ */
+function scenariosMatch(
+  a: { norm?: string; tokens?: Set<string> },
+  b: { norm?: string; tokens?: Set<string> },
+): boolean {
+  if (a.norm === undefined || b.norm === undefined) return false;
+  return claimsMatch(a.norm, a.tokens!, b.norm, b.tokens!);
 }
 
 /**
@@ -150,8 +186,10 @@ function severityRank(s: Severity): number {
  * findings merge when they name the SAME file, sit within LINE_WINDOW
  * (±2) lines of the cluster's anchor — its lowest-line member — and
  * their claims match: exact normalized text, or normalized-token Jaccard
- * overlap at or above CLAIM_SIMILARITY_THRESHOLD (0.5). Distinct claims
- * at the same location stay separate findings.
+ * overlap at or above CLAIM_SIMILARITY_THRESHOLD (0.5) — OR, when both
+ * supplied a failure_scenario, their scenarios match by the same rule
+ * (same failure, different headline). Distinct claims with distinct (or
+ * absent) scenarios at the same location stay separate findings.
  *
  * A merged finding credits every raising seat (`seats`, sorted by name,
  * one entry per seat with that seat's own score attributed), keeps the
@@ -186,11 +224,19 @@ export function dedupFindings(findings: SeatFinding[]): DedupedFinding[] {
     const norm = normalizeClaim(finding.claim);
     const tokens = new Set(norm.split(" ").filter(Boolean));
     const member: Member = { finding, norm, tokens };
+    if (finding.failure_scenario !== undefined && finding.failure_scenario.trim() !== "") {
+      member.scenarioNorm = normalizeClaim(finding.failure_scenario);
+      member.scenarioTokens = new Set(member.scenarioNorm.split(" ").filter(Boolean));
+    }
 
     const home = clusters.find((c) =>
       c.file === finding.file &&
       Math.abs(finding.line - c.anchorLine) <= LINE_WINDOW &&
-      claimsMatch(c.anchorNorm, c.anchorTokens, norm, tokens),
+      (claimsMatch(c.anchorNorm, c.anchorTokens, norm, tokens) ||
+        scenariosMatch(
+          { norm: c.anchorScenarioNorm, tokens: c.anchorScenarioTokens },
+          { norm: member.scenarioNorm, tokens: member.scenarioTokens },
+        )),
     );
 
     if (home) {
@@ -201,6 +247,8 @@ export function dedupFindings(findings: SeatFinding[]): DedupedFinding[] {
         anchorLine: finding.line,
         anchorNorm: norm,
         anchorTokens: tokens,
+        anchorScenarioNorm: member.scenarioNorm,
+        anchorScenarioTokens: member.scenarioTokens,
         members: [member],
       });
     }
@@ -231,10 +279,17 @@ export function dedupFindings(findings: SeatFinding[]): DedupedFinding[] {
       }
     }
 
+    // The winner's scenario survives the merge; a winner without one
+    // borrows the first member's that has one (sorted order, so stable).
+    const scenario = canonical.scenarioNorm !== undefined
+      ? canonical.finding.failure_scenario
+      : cluster.members.find((m) => m.scenarioNorm !== undefined)?.finding.failure_scenario;
+
     return {
       file: cluster.file,
       line: cluster.anchorLine,
       claim: canonical.finding.claim,
+      ...(scenario !== undefined ? { failure_scenario: scenario } : {}),
       severity: SEVERITIES[bestRank],
       seats: [...credits.values()].sort((a, b) => a.seat.localeCompare(b.seat)),
     };
