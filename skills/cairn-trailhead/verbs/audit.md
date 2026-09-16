@@ -68,6 +68,18 @@ finding then names its crediting seats in plain language in the body —
 "raised by the security and correctness seats" — and N seats over one
 bug NEVER means N issues: the tracker sees the deduplicated set only.
 
+**Refutation panel — verify before the tracker.** Same rule as
+`review`: for each deduped finding rated **critical** or **important**,
+dispatch a bounded read-only verifier — one lens normally, two or three
+for `security` mode (correctness plus security, plus the raising seat
+when it's neither); effort scales what the verifier may read, never how
+many verifiers there are. The brief is the finding as recorded and one
+charge: reproduce the `failure_scenario` against the delivered state
+and vote — default **REFUTED**, moved only by evidence: `CONFIRMED` /
+`PLAUSIBLE` / `REFUTED`, each vote `{seat, verdict, evidence}`. Minors
+skip the panel; no critical/important findings means this step does
+nothing.
+
 1. `audit_record(scope, verdict, findings)` — `scope` names the mode and
    target (e.g. `"uat-12"`, `"milestone-3"`), `verdict` is `pass` or
    `findings`, and `findings` is the full list even when most of them
@@ -75,12 +87,20 @@ bug NEVER means N issues: the tracker sees the deduplicated set only.
    `failure_scenario` — the concrete inputs/state → wrong output/crash —
    and the tool refuses one without it (`PRECONDITION_FAILED`): a
    finding without a scenario is a hunch, so state it or downgrade the
-   finding out of the record. This file is the source of truth; the
-   tracker is the summary.
-2. For each finding rated **critical** or **important**: `issue_create`
-   with label `cairn:audit`, a plain-language title a non-engineer could
-   read cold, and the severity as the literal first line of the body
-   (`Critical: …` / `Important: …`) — no burying it in paragraph three.
+   finding out of the record. Critical/important findings also carry
+   their `panel` votes and `seats` (the raising seats); the server
+   computes the quorum — a REFUTED strict majority kills the finding
+   (it stays in the record, never reaches the tracker), ties survive as
+   plausible — and refuses a critical/important finding with no panel
+   (two votes minimum in `security` mode). `results[].survived` is the
+   filing list. This file is the source of truth; the tracker is the
+   summary.
+2. For each SURVIVING finding rated **critical** or **important**:
+   `issue_create` with label `cairn:audit`, a plain-language title a
+   non-engineer could read cold, and the severity as the literal first
+   line of the body (`Critical: …` / `Important: …`) — no burying it in
+   paragraph three. Refuted findings are never filed; the report says
+   "panel: N confirmed, N plausible, N refuted (not filed)".
 3. **Minor** findings stay in the audit record only. Not every rough edge
    earns a tracker issue; the record already has them, and a tracker full
    of minors is a tracker nobody reads.

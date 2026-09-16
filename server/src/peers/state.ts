@@ -89,6 +89,13 @@ export interface CloseSummary {
     /** The peer's evidence, carried as the typed failure scenario audit_record requires. */
     failure_scenario: string;
     detail: string;
+    /**
+     * The peer's own verdict as a panel vote, so the close summary feeds
+     * audit_record's quorum unchanged: verified → CONFIRMED, dead →
+     * REFUTED (the record keeps it, the tracker never sees it),
+     * open-disagreement → PLAUSIBLE.
+     */
+    panel: Array<{ seat: string; verdict: "CONFIRMED" | "PLAUSIBLE" | "REFUTED"; evidence: string }>;
   }>;
   peers: string[];
   roundsRun: number;
@@ -497,6 +504,12 @@ export function runClose(projectDir: string, slug: string,
       failure_scenario: f.finding.evidence,
       detail: `raised by ${f.peer} round ${f.round}; verdict ${f.verdict}`
         + (f.note ? ` -- ${f.note}` : ""),
+      panel: [{
+        seat: f.peer,
+        verdict: f.verdict === "verified" ? "CONFIRMED"
+          : f.verdict === "dead" ? "REFUTED" : "PLAUSIBLE",
+        evidence: f.note ? `${f.finding.evidence} -- ${f.note}` : f.finding.evidence,
+      }],
     })),
     peers: state.meta.peers,
     roundsRun: state.outputs.reduce((max, o) => Math.max(max, o.round), 0),

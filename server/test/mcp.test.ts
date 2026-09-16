@@ -250,9 +250,20 @@ describe("cairn MCP server", () => {
     const out = await call("audit_record", {
       scope: "drill-scope",
       verdict: "findings",
-      findings: [{ severity: "important", title: "t", failure_scenario: "x → y" }],
+      findings: [{ severity: "important", title: "t", failure_scenario: "x → y",
+        panel: [{ seat: "correctness", verdict: "CONFIRMED", evidence: "reproduced at x" }] }],
     });
     expect(out.json.findings).toBe(1);
+    expect(out.json.survived).toBe(1);
+    expect(out.json.results[0]).toMatchObject({ outcome: "confirmed", survived: true });
+    // Phase 21: a critical finding with no panel never reaches the record.
+    const unpanelled = await call("audit_record", {
+      scope: "drill-scope",
+      verdict: "findings",
+      findings: [{ severity: "critical", title: "t", failure_scenario: "x → y" }],
+    });
+    expect(unpanelled.isError).toBe(true);
+    expect(unpanelled.json.code).toBe("PRECONDITION_FAILED");
     const bad = await call("audit_record", {
       scope: "drill-scope",
       verdict: "pass",

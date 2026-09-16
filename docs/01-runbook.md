@@ -694,7 +694,12 @@ adversarial external council. A clean axis still gets a "no findings"
 line; silence isn't the same as checked. Every finding is ranked critical/important/minor and names a
 `file:line` plus a concrete failure scenario — a finding without a scenario
 is a hunch; it gets downgraded or cut, and since phase 21 the audit record
-itself refuses a finding whose typed `failure_scenario` is missing. Closing: critical/important →
+itself refuses a finding whose typed `failure_scenario` is missing. Also
+since phase 21, critical/important findings pass a refutation panel BEFORE
+the tracker: a bounded verifier tries to reproduce the scenario and votes
+(default REFUTED), the server computes the quorum inside `audit_record`,
+a refuted finding stays in the record but is never filed, and survivors
+credit their raising seats' yield. Closing: critical/important →
 `cairn:review` issues (severity first line, plain language — the scenario,
 not the stack trace); minors stay in the record; the record is written every
 time, clean or not, under a slugged scope. `--fix` follows audit's exact

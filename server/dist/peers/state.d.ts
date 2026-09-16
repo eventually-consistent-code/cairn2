@@ -62,6 +62,17 @@ export interface CloseSummary {
         /** The peer's evidence, carried as the typed failure scenario audit_record requires. */
         failure_scenario: string;
         detail: string;
+        /**
+         * The peer's own verdict as a panel vote, so the close summary feeds
+         * audit_record's quorum unchanged: verified → CONFIRMED, dead →
+         * REFUTED (the record keeps it, the tracker never sees it),
+         * open-disagreement → PLAUSIBLE.
+         */
+        panel: Array<{
+            seat: string;
+            verdict: "CONFIRMED" | "PLAUSIBLE" | "REFUTED";
+            evidence: string;
+        }>;
     }>;
     peers: string[];
     roundsRun: number;

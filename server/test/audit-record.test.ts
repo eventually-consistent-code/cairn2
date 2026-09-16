@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { listAuditRecords, writeAuditRecord } from "../src/audit/record.js";
+import { loadYield } from "../src/seats/yield.js";
 
 const fresh = () => mkdtempSync(join(tmpdir(), "cairn-audit-"));
 const today = new Date().toISOString().slice(0, 10);
@@ -24,7 +25,8 @@ describe("writeAuditRecord", () => {
     const dir = fresh();
     const out = writeAuditRecord(dir, "uat-phase-1", "findings", [
       { severity: "critical", title: "checkout flow 500s on empty cart", issue: "GH-9",
-        failure_scenario: "POST /checkout with cart=[] → 500 instead of 400" },
+        failure_scenario: "POST /checkout with cart=[] → 500 instead of 400",
+        panel: [{ seat: "correctness", verdict: "CONFIRMED", evidence: "reproduced with an empty cart" }] },
       { severity: "minor", title: "settings copy stale",
         failure_scenario: "open /settings → footer still says 2025" },
     ]);
@@ -35,6 +37,8 @@ describe("writeAuditRecord", () => {
     expect(raw).toContain("verdict: findings");
     expect(raw).toContain("## finding — critical");
     expect(raw).toContain("scenario: POST /checkout with cart=[] → 500 instead of 400");
+    expect(raw).toContain("outcome: confirmed");
+    expect(raw).toContain("vote: correctness CONFIRMED — reproduced with an empty cart");
     expect(raw).toContain("issue: GH-9");
     expect(raw).toContain("## finding — minor");
   });
@@ -57,7 +61,8 @@ describe("writeAuditRecord", () => {
     writeAuditRecord(dir, "uat-phase-1", "pass", []);
     writeFileSync(old, "immutable history\n");
     writeAuditRecord(dir, "uat-phase-1", "findings",
-      [{ severity: "important", title: "second run", failure_scenario: "rerun → new finding" }]);
+      [{ severity: "important", title: "second run", failure_scenario: "rerun → new finding",
+        panel: [{ seat: "tests", verdict: "PLAUSIBLE", evidence: "could not reproduce either way" }] }]);
     expect(readFileSync(old, "utf8")).toBe("immutable history\n");
     const rerun = readFileSync(join(dir, ".cairn", "audit", `uat-phase-1-${today}.md`), "utf8");
     expect(rerun).toContain("second run");
@@ -92,6 +97,74 @@ describe("writeAuditRecord", () => {
     const plain = writeAuditRecord(fresh(), "review-x", "pass", []);
     expect(plain).not.toHaveProperty("commit");
     expect(readFileSync(plain.path, "utf8")).not.toContain("commit:");
+  });
+
+  describe("refutation panel (#196)", () => {
+    const vote = (seat: string, verdict: "CONFIRMED" | "PLAUSIBLE" | "REFUTED") =>
+      ({ seat, verdict, evidence: `${seat} checked it` });
+    const finding = (over: Partial<import("../src/audit/record.js").AuditFinding> = {}) => ({
+      severity: "important" as const, title: "lookup dereferences null",
+      failure_scenario: "lookup(undefined) → null → TypeError", ...over,
+    });
+
+    it("quorum table: majority REFUTED dies; ties and lone PLAUSIBLE survive as plausible; more CONFIRMED confirms", () => {
+      const dir = fresh();
+      const out = writeAuditRecord(dir, "review-working", "findings", [
+        finding({ title: "dies", panel: [vote("a", "REFUTED"), vote("b", "REFUTED"), vote("c", "CONFIRMED")] }),
+        finding({ title: "tie", panel: [vote("a", "REFUTED"), vote("b", "CONFIRMED")] }),
+        finding({ title: "lone plausible", panel: [vote("a", "PLAUSIBLE")] }),
+        finding({ title: "confirmed", panel: [vote("a", "CONFIRMED"), vote("b", "CONFIRMED"), vote("c", "REFUTED")] }),
+        finding({ title: "one refuted of one", panel: [vote("a", "REFUTED")] }),
+      ]);
+      expect(out.results.map((r) => [r.title, r.outcome, r.survived])).toEqual([
+        ["dies", "refuted", false],
+        ["tie", "plausible", true],
+        ["lone plausible", "plausible", true],
+        ["confirmed", "confirmed", true],
+        ["one refuted of one", "refuted", false],
+      ]);
+      expect(out.findings).toBe(5);
+      expect(out.survived).toBe(3);
+      expect(out.refuted).toBe(2);
+      const raw = readFileSync(out.path, "utf8");
+      // Refuted findings stay IN the record, marked — the tracker never sees them.
+      expect(raw).toContain("dies\nscenario:");
+      expect(raw).toContain("refuted: true — not filed to the tracker");
+      expect(raw).toContain("outcome: plausible");
+    });
+
+    it("critical/important need a panel (two votes on a security scope); minors don't", () => {
+      const dir = fresh();
+      expect(() => writeAuditRecord(dir, "review-working", "findings", [finding()]))
+        .toThrow(/has 0 panel votes; scope 'review-working' needs 1/);
+      expect(() => writeAuditRecord(dir, "security-21", "findings",
+        [finding({ severity: "critical", panel: [vote("a", "CONFIRMED")] })]))
+        .toThrow(/needs 2/);
+      const ok = writeAuditRecord(dir, "security-21", "findings", [
+        finding({ severity: "critical", panel: [vote("a", "CONFIRMED"), vote("b", "PLAUSIBLE")] }),
+        finding({ severity: "minor", title: "nit" }),
+      ]);
+      expect(ok.results.map((r) => r.outcome)).toEqual(["confirmed", "unpanelled"]);
+      expect(ok.survived).toBe(2);
+      // A vote missing its evidence is a shape error, not a judgment.
+      expect(() => writeAuditRecord(dir, "review-working", "findings",
+        [finding({ panel: [{ seat: "a", verdict: "CONFIRMED", evidence: " " }] })])).toThrow(/evidence/);
+    });
+
+    it("credits raising seats' findingsSurvived only for panelled survivors", () => {
+      const dir = fresh();
+      const yieldBase = fresh();
+      const out = writeAuditRecord(dir, "review-working", "findings", [
+        finding({ title: "lives", seats: ["correctness", "security"], panel: [vote("v", "CONFIRMED")] }),
+        finding({ title: "dies", seats: ["correctness"], panel: [vote("v", "REFUTED")] }),
+        finding({ title: "minor unpanelled", severity: "minor", seats: ["clarity"] }),
+      ], { yieldBaseDir: yieldBase });
+      expect(out.note).toBeUndefined();
+      const { state } = loadYield(dir, yieldBase);
+      expect(state.seats.correctness).toEqual({ dispatched: 0, findingsRaised: 0, findingsSurvived: 1 });
+      expect(state.seats.security).toEqual({ dispatched: 0, findingsRaised: 0, findingsSurvived: 1 });
+      expect(state.seats.clarity).toBeUndefined();
+    });
   });
 
   it("listAuditRecords returns scope/date/verdict sorted by path", () => {

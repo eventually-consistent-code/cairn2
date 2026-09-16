@@ -60,7 +60,9 @@ changed lines, `diff-large` over 500 — the tested rules live in
 `signals` intersect the derived set. A seat declaring NO signals always
 fires — declaring signals is how a seat opts into gating. Auto also
 consults the per-seat yield store (`~/.cairn/yield/`, written after each
-pass: per seat +1 dispatched plus its raised/surviving finding counts):
+pass: per seat +1 dispatched plus its raised finding count — the
+SURVIVING count is credited by the server when `audit_record` judges
+the panel, never by the pass itself):
 a seat with ten or more dispatches and fewer than one surviving finding
 per ten gets gated on that evidence — never the security seat, never a
 dose-`full` seat. `inherit` follows cairn.json `seats.dispatch`
@@ -163,19 +165,46 @@ its crediting seats in plain language in the body — "raised by the
 security and correctness seats" — and N seats over one bug NEVER means
 N issues: the tracker sees the deduplicated set only.
 
-1. For each finding rated **critical** or **important**: `issue_create`
-   with label `cairn:review`, the severity as the literal first line of
-   the body (`Critical: …` / `Important: …`), plain language a
-   non-engineer could read cold — the scenario, not the stack trace.
-2. **Minor** findings stay in the review record only. The record already
+**Refutation panel — verify before the tracker.** A finding reaches the
+tracker only after someone tried to disprove it. For each deduped
+finding rated **critical** or **important**, dispatch a bounded
+read-only verifier: one lens normally; two or three (correctness plus
+security, plus the raising seat when it's neither) when the scope is
+`security-*`. Effort scales how much the verifier may read, never how
+many verifiers there are — the panel never thins. The verifier's brief
+is the finding as recorded (file:line, claim, `failure_scenario`) and
+one charge: reproduce the scenario against the code as it stands, and
+vote. Default vote is **REFUTED** — evidence moves it, absence of
+counter-evidence does not: `CONFIRMED` (the scenario reproduces, here's
+where), `PLAUSIBLE` (couldn't prove or disprove — say what's missing),
+`REFUTED` (the scenario cannot happen — here's the guard/path that
+prevents it). Each vote is `{seat, verdict, evidence}`. Minor findings
+skip the panel. With no critical/important findings this step does
+nothing and the flow is exactly today's.
+
+1. `audit_record(scope: "review-<target>", verdict, findings)` — every
+   review ends here, clean or not, and it comes BEFORE any
+   `issue_create`: each finding carries its `failure_scenario`, its
+   `seats` (dedup's credit list), and — critical/important — its
+   `panel` votes; the server computes the quorum (a REFUTED strict
+   majority kills the finding; ties survive as plausible) and refuses a
+   critical/important finding with no panel. The result's
+   `results[].survived` is the filing list. `<target>` is whatever
+   resolved above (`working`, the branch name, or `<phase>`). Before
+   using it in the scope, slug the target — lowercase it and collapse
+   every run of characters outside `[a-z0-9]` to a single hyphen (e.g.,
+   `feature/ABC-123` becomes `feature-abc-123`, `HEAD~3` becomes
+   `head-3`). A clean pass is still a finding worth recording — it's the
+   proof the review ran.
+2. For each SURVIVING finding rated **critical** or **important**:
+   `issue_create` with label `cairn:review`, the severity as the literal
+   first line of the body (`Critical: …` / `Important: …`), plain
+   language a non-engineer could read cold — the scenario, not the
+   stack trace. A refuted finding is never filed — it stays in the
+   record with its votes, and the report says so in one line: "panel:
+   N confirmed, N plausible, N refuted (not filed)".
+3. **Minor** findings stay in the review record only. The record already
    has them; a tracker full of minors is a tracker nobody reads.
-3. `audit_record(scope: "review-<target>", verdict, findings)` — every
-   review ends here, clean or not. `<target>` is whatever resolved above
-   (`working`, the branch name, or `<phase>`). Before using it in the scope,
-   slug the target — lowercase it and collapse every run of characters
-   outside `[a-z0-9]` to a single hyphen (e.g., `feature/ABC-123` becomes
-   `feature-abc-123`, `HEAD~3` becomes `head-3`). A clean pass is still a
-   finding worth recording — it's the proof the review ran.
 
 Skipping the record because the diff looked fine is still skipping it.
 

@@ -332,6 +332,12 @@ export function runClose(projectDir, slug, opts) {
             failure_scenario: f.finding.evidence,
             detail: `raised by ${f.peer} round ${f.round}; verdict ${f.verdict}`
                 + (f.note ? ` -- ${f.note}` : ""),
+            panel: [{
+                    seat: f.peer,
+                    verdict: f.verdict === "verified" ? "CONFIRMED"
+                        : f.verdict === "dead" ? "REFUTED" : "PLAUSIBLE",
+                    evidence: f.note ? `${f.finding.evidence} -- ${f.note}` : f.finding.evidence,
+                }],
         })),
         peers: state.meta.peers,
         roundsRun: state.outputs.reduce((max, o) => Math.max(max, o.round), 0),

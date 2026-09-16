@@ -270,6 +270,12 @@ describe("runClose", () => {
     expect(summary.findings[0].severity).toBe("important");
     // Phase 21: the peer's evidence rides as audit_record's typed failure_scenario.
     expect(summary.findings[0].failure_scenario).toBe(GOOD.evidence);
+    // ...and the peer's verdict rides as the record's panel vote (#196):
+    // verified → CONFIRMED, dead → REFUTED.
+    expect(summary.findings[0].panel).toEqual([
+      { seat: "codex", verdict: "CONFIRMED", evidence: GOOD.evidence },
+    ]);
+    expect(summary.findings[1].panel[0].verdict).toBe("REFUTED");
     expect(summary.findings[0].detail).toBe("raised by codex round 1; verdict verified");
     expect(summary.findings[1].detail)
       .toBe("raised by grok round 2; verdict dead -- code already guards this");

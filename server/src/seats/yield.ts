@@ -46,7 +46,12 @@ export interface YieldCounters {
   dispatched: number;
   /** Findings the seat raised, any severity. */
   findingsRaised: number;
-  /** Findings that survived dedup/triage into the record or tracker. */
+  /**
+   * Findings that survived VERIFICATION — went through a refutation
+   * panel in audit_record and were not refuted. Credited by the server
+   * as a side effect of the record write (phase 21), never asserted by
+   * the pass; dispatched/findingsRaised stay the pass's own deltas.
+   */
   findingsSurvived: number;
 }
 

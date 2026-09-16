@@ -1319,7 +1319,11 @@ export function buildServer(deps) {
     server.registerTool("audit_record", {
         description: "Write the audit record file (.cairn/audit/<scope>-<date>.md) — single writer; " +
             "same scope+date supersedes, prior dates immutable. Every finding carries a typed " +
-            "failure_scenario (concrete inputs/state → wrong output/crash) — the write refuses one without it",
+            "failure_scenario (concrete inputs/state → wrong output/crash) — the write refuses one without it. " +
+            "Critical/important findings carry a refutation `panel` (>=1 vote, >=2 on a security scope); " +
+            "the quorum is computed here: REFUTED strict majority kills the finding (stays in the record, " +
+            "never filed — `results[].survived` false), CONFIRMED > REFUTED confirms, else plausible. " +
+            "Survivors credit their raising `seats` in the yield store",
         inputSchema: z.object({
             scope: z.string(),
             verdict: z.enum(["pass", "findings"]),
@@ -1330,6 +1334,14 @@ export function buildServer(deps) {
                 failure_scenario: z.string().min(1),
                 detail: z.string().optional(),
                 issue: z.string().optional(),
+                panel: z
+                    .array(z.object({
+                    seat: z.string().min(1),
+                    verdict: z.enum(["CONFIRMED", "PLAUSIBLE", "REFUTED"]),
+                    evidence: z.string().min(1),
+                }))
+                    .optional(),
+                seats: z.array(z.string().min(1)).optional(),
             }))
                 .default([]),
         }),
