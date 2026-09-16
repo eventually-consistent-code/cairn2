@@ -7,6 +7,10 @@ status: live
 Pre-ship gate, then ship:
 
 1. `plan_drift()` — anything flagged: **stop** and report; do not push.
+   A `stale-audit` flag means the latest security audit no longer
+   describes HEAD (written over a dirty tree, or code commits landed
+   since its stamp): lead with its `detail` line — "re-run
+   `/cairn:audit security`" — the code and commit second.
 2. `plan_status()` — every phase with VERIFICATION.md must show all its issues
    closed (`issue_get` spot-check); report any still open and stop.
 3. Engineer mode only (`user.mode: engineer` in cairn.json): no

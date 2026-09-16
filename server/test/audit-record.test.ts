@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,6 +7,17 @@ import { listAuditRecords, writeAuditRecord } from "../src/audit/record.js";
 
 const fresh = () => mkdtempSync(join(tmpdir(), "cairn-audit-"));
 const today = new Date().toISOString().slice(0, 10);
+const git = (dir: string, ...args: string[]) =>
+  execFileSync("git", args, { cwd: dir, encoding: "utf8" }).trim();
+/** A temp dir that is a git repo with one commit. */
+function freshRepo(): string {
+  const dir = fresh();
+  git(dir, "init", "-q");
+  git(dir, "config", "user.email", "t@t"); git(dir, "config", "user.name", "t");
+  writeFileSync(join(dir, "a.txt"), "one\n");
+  git(dir, "add", "a.txt"); git(dir, "commit", "-q", "-m", "seed", "--no-gpg-sign");
+  return dir;
+}
 
 describe("writeAuditRecord", () => {
   it("writes scope-date file with frontmatter and finding blocks", () => {
@@ -57,6 +69,29 @@ describe("writeAuditRecord", () => {
     expect(() => writeAuditRecord(dir, "", "pass", [])).toThrow(/scope/);
     expect(() => writeAuditRecord(dir, "x", "pass",
       [{ severity: "critical", title: "boom", failure_scenario: "s" }])).toThrow(/verdict/);
+  });
+
+  it("stamps commit + dirty from git at write time; no stamp outside a repo", () => {
+    const repo = freshRepo();
+    const head = git(repo, "rev-parse", "HEAD");
+    const clean = writeAuditRecord(repo, "security", "pass", []);
+    expect(clean.commit).toBe(head);
+    expect(clean.dirty).toBe(false);
+    const raw = readFileSync(clean.path, "utf8");
+    expect(raw).toContain(`commit: ${head}`);
+    expect(raw).toContain("dirty: false");
+    expect(listAuditRecords(repo)[0]).toMatchObject({ scope: "security", commit: head, dirty: false });
+
+    // An uncommitted change to a tracked file flips the flag; untracked noise does not.
+    writeFileSync(join(repo, "a.txt"), "two\n");
+    writeFileSync(join(repo, "scratch.txt"), "ignored\n");
+    expect(writeAuditRecord(repo, "security-21", "pass", []).dirty).toBe(true);
+    expect(listAuditRecords(repo).find((r) => r.scope === "security-21")?.dirty).toBe(true);
+
+    // No git → no stamp, and the record still writes (pre-phase-21 shape).
+    const plain = writeAuditRecord(fresh(), "review-x", "pass", []);
+    expect(plain).not.toHaveProperty("commit");
+    expect(readFileSync(plain.path, "utf8")).not.toContain("commit:");
   });
 
   it("listAuditRecords returns scope/date/verdict sorted by path", () => {

@@ -15,9 +15,13 @@ export declare function writeAuditRecord(projectDir: string, scope: string, verd
     path: string;
     findings: number;
 };
-export declare function listAuditRecords(projectDir: string): Array<{
+export interface AuditRecordSummary {
     scope: string;
     date: string;
     verdict: string;
     path: string;
-}>;
+    /** Revision stamp — undefined on records written before phase 21 or outside git. */
+    commit?: string;
+    dirty?: boolean;
+}
+export declare function listAuditRecords(projectDir: string): AuditRecordSummary[];

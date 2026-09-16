@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { join } from "node:path";
 import { CairnError } from "../errors.js";
 import { parseFrontmatter, serializeFrontmatter } from "../planning/frontmatter.js";
+import { revisionStamp } from "../planning/resync.js";
 
 export type AuditSeverity = "critical" | "important" | "minor";
 export interface AuditFinding {
@@ -55,22 +56,37 @@ export function writeAuditRecord(projectDir: string, scope: string,
   }
   mkdirSync(auditDir(projectDir), { recursive: true });
   const path = join(auditDir(projectDir), `${scope}-${today()}.md`);
-  writeFileSync(path, serializeFrontmatter(
-    { scope, verdict, created: today() }, `${body.join("\n").trimEnd()}\n`));
-  return { path, findings: findings.length };
+  // Revision stamp (#195): which tree this record judged, captured by the
+  // server at write time. Absent outside git — never invented.
+  const stamp = revisionStamp(projectDir);
+  const frontmatter: Record<string, string> = { scope, verdict, created: today() };
+  if (stamp) { frontmatter.commit = stamp.commit; frontmatter.dirty = String(stamp.dirty); }
+  writeFileSync(path, serializeFrontmatter(frontmatter, `${body.join("\n").trimEnd()}\n`));
+  return { path, findings: findings.length, ...(stamp ? { commit: stamp.commit, dirty: stamp.dirty } : {}) };
 }
 
-export function listAuditRecords(projectDir: string):
-  Array<{ scope: string; date: string; verdict: string; path: string }> {
+export interface AuditRecordSummary {
+  scope: string; date: string; verdict: string; path: string;
+  /** Revision stamp — undefined on records written before phase 21 or outside git. */
+  commit?: string; dirty?: boolean;
+}
+
+export function listAuditRecords(projectDir: string): AuditRecordSummary[] {
   const dir = auditDir(projectDir);
   if (!existsSync(dir)) return [];
-  const out = [];
+  const out: AuditRecordSummary[] = [];
   for (const entry of readdirSync(dir).sort()) {
     if (!entry.endsWith(".md")) continue;
     try {
       const { data } = parseFrontmatter(readFileSync(join(dir, entry), "utf8"));
-      out.push({ scope: String(data.scope ?? ""), date: String(data.created ?? ""),
-        verdict: String(data.verdict ?? ""), path: join(dir, entry) });
+      const rec: AuditRecordSummary = { scope: String(data.scope ?? ""),
+        date: String(data.created ?? ""), verdict: String(data.verdict ?? ""),
+        path: join(dir, entry) };
+      if (typeof data.commit === "string" && data.commit) {
+        rec.commit = data.commit;
+        rec.dirty = data.dirty === "true";
+      }
+      out.push(rec);
     } catch { /* malformed record: skip, list must not brick (cards precedent) */ }
   }
   return out;

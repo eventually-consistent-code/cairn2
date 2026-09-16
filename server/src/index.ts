@@ -887,7 +887,8 @@ export function buildServer(deps: {
     "plan_drift",
     {
       description:
-        "Flag plan-referenced issues that are missing or closed-unverified",
+        "Flag plan-referenced issues that are missing or closed-unverified, plus a stale " +
+        "security audit (latest security record written dirty or before code commits since its stamp)",
       inputSchema: z.object({}),
     },
     wrap(async () => {

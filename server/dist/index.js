@@ -566,7 +566,8 @@ export function buildServer(deps) {
         inputSchema: z.object({ number: z.number(), name: z.string() }),
     }, wrap(async (a) => ensurePhase(await getTracker(), a.number, a.name)));
     server.registerTool("plan_drift", {
-        description: "Flag plan-referenced issues that are missing or closed-unverified",
+        description: "Flag plan-referenced issues that are missing or closed-unverified, plus a stale " +
+            "security audit (latest security record written dirty or before code commits since its stamp)",
         inputSchema: z.object({}),
     }, wrap(async () => {
         const d = dir();

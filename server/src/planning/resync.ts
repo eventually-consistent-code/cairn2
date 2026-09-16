@@ -24,6 +24,62 @@ function git(projectDir: string, args: string[]): string {
   }
 }
 
+/** What the working tree looked like when something was recorded (#195). */
+export interface RevisionStamp {
+  /** Full HEAD sha at capture time. */
+  commit: string;
+  /** True when tracked files carried uncommitted changes — the recorded
+   *  judgment covered content HEAD does not have. Untracked files are
+   *  ignored on purpose (scratch files are common, and .cairn/ itself is
+   *  usually untracked). */
+  dirty: boolean;
+}
+
+/**
+ * Captures HEAD + dirty flag for a record writer — server-side, at write
+ * time, never model-asserted. Returns null outside a git repo or before
+ * the first commit, so writers that never needed git keep working
+ * (audit records in a bare temp dir, say) and simply carry no stamp.
+ *
+ * :param projectDir: repository root
+ * :returns: the stamp, or null when git can't answer
+ */
+export function revisionStamp(projectDir: string): RevisionStamp | null {
+  try {
+    const commit = execFileSync("git", ["rev-parse", "HEAD"],
+      { cwd: projectDir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    const status = execFileSync("git", ["status", "--porcelain", "--untracked-files=no"],
+      { cwd: projectDir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    return { commit, dirty: status.trim().length > 0 };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Counts commits reachable from HEAD but not from `commit` that touch any
+ * path outside `excludeDir` — "how much code moved since this stamp".
+ * Null when git can't resolve the range (commit rebased away, gc'd, or
+ * not a repo): the caller decides whether unknowable means stale.
+ *
+ * :param projectDir: repository root
+ * :param commit: the stamp's commit
+ * :param excludeDir: top-level directory whose changes don't count (docs)
+ * :returns: commit count, or null when unknowable
+ */
+export function codeCommitsSince(
+  projectDir: string, commit: string, excludeDir = "docs",
+): number | null {
+  try {
+    const raw = execFileSync("git",
+      ["rev-list", "--count", `${commit}..HEAD`, "--", ".", `:(exclude)${excludeDir}`],
+      { cwd: projectDir, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    return Number.parseInt(raw.trim(), 10);
+  } catch {
+    return null;
+  }
+}
+
 function ledgerRanges(projectDir: string): Array<{ base: string; head: string }> {
   const phasesDir = join(plansRoot(projectDir), "phases");
   const ranges: Array<{ base: string; head: string }> = [];

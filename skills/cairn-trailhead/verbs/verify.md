@@ -9,7 +9,11 @@ Verify the given phase per the `cairn-planning` skill.
 1. Goal-backward: re-read the phase's CONTEXT.md and PLAN.md; check the codebase
    delivers what the phase PROMISED, not merely that tasks closed. Run the test
    suite. Deep depth: adversarial verification subagent per the routing rubric.
-2. `plan_drift()` — this phase must contribute nothing flagged.
+2. `plan_drift()` — this phase must contribute nothing flagged. A
+   `stale-audit` flag (the latest security audit predates code commits,
+   or was recorded over a dirty tree) fails verification the same way:
+   report its `detail` line first — "re-run `/cairn:audit security`" —
+   then the commit it was stamped at.
 3. `issue_list(phase: <tracker phase id>, state: "open")` — must be empty; report
    stragglers instead of closing them unexamined.
 4. TDD evidence: for every id in PLAN.md `tdd:` frontmatter, this phase's

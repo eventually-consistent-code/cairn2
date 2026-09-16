@@ -1,5 +1,7 @@
 import { CairnError } from "../errors.js";
+import { listAuditRecords } from "../audit/record.js";
 import { isValidPhaseNumber, PHASE_NUMBER_ERROR } from "./artifacts.js";
+import { codeCommitsSince } from "./resync.js";
 import { projectStatus } from "./status.js";
 export const canonicalPhaseName = (number, name) => `Phase ${number}: ${name}`;
 // Tool-layer phase-param resolution (#138). issue_create's `phase` used to
@@ -41,9 +43,45 @@ export async function ensurePhase(tracker, number, name) {
         return existing;
     return tracker.createPhase(canonical);
 }
+const SECURITY_SCOPE_RE = /^security(-|$)/;
+/**
+ * Stale-security-audit check. Only the latest security-scoped record
+ * counts; records without a stamp (pre-phase-21, or written outside git)
+ * are never flagged — no retroactive drift.
+ *
+ * :param projectDir: repository root
+ * :returns: the flag, or null when the latest security audit is current
+ */
+export function staleAuditDrift(projectDir) {
+    const latest = listAuditRecords(projectDir)
+        .filter((r) => SECURITY_SCOPE_RE.test(r.scope))
+        .sort((a, b) => a.date.localeCompare(b.date) || a.path.localeCompare(b.path))
+        .at(-1);
+    if (!latest?.commit)
+        return null;
+    const short = latest.commit.slice(0, 7);
+    if (latest.dirty) {
+        return { reason: "stale-audit", scope: latest.scope, commit: latest.commit, cause: "dirty",
+            detail: `security audit '${latest.scope}' was recorded over uncommitted changes at ${short} — re-run /cairn:audit security on a clean tree` };
+    }
+    const moved = codeCommitsSince(projectDir, latest.commit);
+    if (moved === null) {
+        return { reason: "stale-audit", scope: latest.scope, commit: latest.commit, cause: "unresolvable",
+            detail: `security audit '${latest.scope}' is stamped at ${short}, which this repository no longer resolves — re-run /cairn:audit security` };
+    }
+    if (moved > 0) {
+        return { reason: "stale-audit", scope: latest.scope, commit: latest.commit, cause: "code-moved",
+            codeCommitsSince: moved,
+            detail: `security audit '${latest.scope}' at ${short} predates ${moved} code commit${moved === 1 ? "" : "s"} — re-run /cairn:audit security` };
+    }
+    return null;
+}
 export async function driftReport(tracker, projectDir) {
     const flagged = [];
     const ok = [];
+    const stale = staleAuditDrift(projectDir);
+    if (stale)
+        flagged.push(stale);
     for (const phase of projectStatus(projectDir).phases) {
         for (const issueId of phase.issues) {
             let state;

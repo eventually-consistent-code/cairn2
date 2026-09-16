@@ -1,6 +1,8 @@
 import { CairnError } from "../errors.js";
 import type { Phase, Tracker } from "../tracker/types.js";
+import { listAuditRecords } from "../audit/record.js";
 import { isValidPhaseNumber, PHASE_NUMBER_ERROR } from "./artifacts.js";
+import { codeCommitsSince } from "./resync.js";
 import { projectStatus } from "./status.js";
 
 export const canonicalPhaseName = (number: number, name: string) =>
@@ -54,8 +56,62 @@ export async function ensurePhase(
   return tracker.createPhase(canonical);
 }
 
-export interface DriftItem {
+export interface IssueDrift {
   issueId: string; phase: number; reason: "missing" | "closed";
+}
+
+/**
+ * The latest security audit no longer describes HEAD (#195): it was
+ * written over a dirty tree, code commits landed after its stamp, or its
+ * stamp can't be resolved any more. verify/ship stop on it like any
+ * other flag; the fix is always "re-run /cairn:audit security".
+ */
+export interface StaleAuditDrift {
+  reason: "stale-audit";
+  scope: string;
+  /** The record's stamped commit. */
+  commit: string;
+  /** Why it's stale — one of the three, human-readable in `detail`. */
+  cause: "dirty" | "code-moved" | "unresolvable";
+  /** Commits outside docs/ since the stamp (code-moved only). */
+  codeCommitsSince?: number;
+  detail: string;
+}
+
+export type DriftItem = IssueDrift | StaleAuditDrift;
+
+const SECURITY_SCOPE_RE = /^security(-|$)/;
+
+/**
+ * Stale-security-audit check. Only the latest security-scoped record
+ * counts; records without a stamp (pre-phase-21, or written outside git)
+ * are never flagged — no retroactive drift.
+ *
+ * :param projectDir: repository root
+ * :returns: the flag, or null when the latest security audit is current
+ */
+export function staleAuditDrift(projectDir: string): StaleAuditDrift | null {
+  const latest = listAuditRecords(projectDir)
+    .filter((r) => SECURITY_SCOPE_RE.test(r.scope))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.path.localeCompare(b.path))
+    .at(-1);
+  if (!latest?.commit) return null;
+  const short = latest.commit.slice(0, 7);
+  if (latest.dirty) {
+    return { reason: "stale-audit", scope: latest.scope, commit: latest.commit, cause: "dirty",
+      detail: `security audit '${latest.scope}' was recorded over uncommitted changes at ${short} — re-run /cairn:audit security on a clean tree` };
+  }
+  const moved = codeCommitsSince(projectDir, latest.commit);
+  if (moved === null) {
+    return { reason: "stale-audit", scope: latest.scope, commit: latest.commit, cause: "unresolvable",
+      detail: `security audit '${latest.scope}' is stamped at ${short}, which this repository no longer resolves — re-run /cairn:audit security` };
+  }
+  if (moved > 0) {
+    return { reason: "stale-audit", scope: latest.scope, commit: latest.commit, cause: "code-moved",
+      codeCommitsSince: moved,
+      detail: `security audit '${latest.scope}' at ${short} predates ${moved} code commit${moved === 1 ? "" : "s"} — re-run /cairn:audit security` };
+  }
+  return null;
 }
 
 export async function driftReport(
@@ -63,6 +119,8 @@ export async function driftReport(
 ): Promise<{ flagged: DriftItem[]; ok: string[] }> {
   const flagged: DriftItem[] = [];
   const ok: string[] = [];
+  const stale = staleAuditDrift(projectDir);
+  if (stale) flagged.push(stale);
   for (const phase of projectStatus(projectDir).phases) {
     for (const issueId of phase.issues) {
       let state: string;
