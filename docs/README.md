@@ -80,4 +80,5 @@ records — status lines say whether a doc is approved or draft.
 | Doc | What it covers |
 |---|---|
 | [server/README.md](../server/README.md) | Adapter live-status matrix, full MCP tool reference, artifact layout, drift semantics, test rings |
+| [EVALS.md](EVALS.md) | Behavioral eval suite under `claude plugin eval`: the guard-vs-eval decision rule, case floor, mocks, how to run it, availability, the allowed-to-fail CI lane |
 | [VERIFICATION.md](../VERIFICATION.md) | Drill records per tier, semi-live dogfood runs, pending human-gate checklists |

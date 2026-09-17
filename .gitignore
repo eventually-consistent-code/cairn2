@@ -2,3 +2,6 @@ node_modules/
 .env
 .cairn/
 /cairn.json
+
+# behavioral eval suite results (claude plugin eval) -- regenerated every run
+evals/results/

@@ -210,7 +210,10 @@ npm run build
 ```
 
 Adapter live-status, tool reference, and artifact layout:
-[server/README.md](server/README.md).
+[server/README.md](server/README.md). What the tests and guards
+cannot check — what an agent actually does with a verb — lives in the
+behavioral eval suite (`claude plugin eval .`, early access):
+[docs/EVALS.md](docs/EVALS.md).
 
 ### Dev mode vs installed plugin (release integrity, #83)
 
