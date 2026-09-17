@@ -24,4 +24,6 @@ export declare function closeTrace(projectDir: string, id: string, resolution: s
     description: string;
     verdicts: string[];
     archivePath: string;
+    /** The first `test` entry — the reproduction (command + observed failing output). */
+    repro: string;
 };

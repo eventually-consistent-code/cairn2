@@ -122,8 +122,9 @@ pairing overlay applies:
    `greenCommit` at close. Skipping RED on an eligible task: stop and
    restart the task; verify fails the phase on a missing pair regardless.
    A bug surfacing mid-issue that is NOT this issue's scope routes to
-   `trace` (fast lane allowed) — never an inline detour; the trace's
-   tracker issue keeps the discovery visible.
+   `trace` (fast lane allowed — it still logs the repro line before it
+   can close) — never an inline detour; the trace's tracker issue keeps
+   the discovery visible.
    Progress comments as the work lands — real milestones only:
    RED/GREEN/REFACTOR committed, a subtask done, a blocker hit, a trace
    spun off. Several small steps batch into ONE `issue_comment`; tracker

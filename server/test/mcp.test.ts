@@ -935,6 +935,16 @@ describe("cairn MCP server", () => {
       kind: "verdict",
       text: "cause found",
     });
+    // Phase 23 repro gate: evidence + verdict is not enough — the close
+    // refuses until a test entry (the repro) exists.
+    const early = await call("trace_close", { id: started.json.id, resolution: "fixed" });
+    expect(early.isError).toBe(true);
+    expect(early.json.code).toBe("PRECONDITION_FAILED");
+    await call("trace_log", {
+      id: started.json.id,
+      kind: "test",
+      text: "npm test -- drill → FAIL: expected 1, got 0",
+    });
     const open = await call("trace_list", { status: "open" });
     expect(
       open.json.some((t: { id: string }) => t.id === started.json.id),
@@ -944,6 +954,7 @@ describe("cairn MCP server", () => {
       resolution: "fixed",
     });
     expect(closed.json.issueClosed).toBe(true);
+    expect(closed.json.repro).toBe("npm test -- drill → FAIL: expected 1, got 0");
     const gone = await call("trace_list", { status: "open" });
     expect(
       gone.json.some((t: { id: string }) => t.id === started.json.id),

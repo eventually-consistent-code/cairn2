@@ -3,6 +3,14 @@ export interface KindSpec {
     kind: SessionKind;
     entryKinds: readonly string[];
     closeGate: string;
+    /**
+     * Entry kinds that must be present (with at least this many non-empty
+     * entries) BEFORE the close gate is even consulted — the method as a
+     * data shape (phase 23). Trace: one evidence and one test, the first
+     * test being the repro (command + observed failing output); an
+     * evidence-free trace cannot close no matter how confident its verdict.
+     */
+    requiredEntries?: Readonly<Record<string, number>>;
 }
 export declare const KIND_SPECS: Record<SessionKind, KindSpec>;
 export interface SessionInfo {
@@ -32,6 +40,8 @@ export declare function closeSession(projectDir: string, kind: SessionKind, id: 
     description: string;
     gateTexts: string[];
     archivePath: string;
+    /** First non-empty entry per REQUIRED kind (e.g. trace's repro under `test`). */
+    firstRequired: Record<string, string>;
 };
 export declare function sessionResolution(projectDir: string, kind: SessionKind, id: string): string | null;
 export interface Landscape {

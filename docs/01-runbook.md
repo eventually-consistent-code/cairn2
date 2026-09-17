@@ -259,7 +259,9 @@ merely have its tasks closed.
    the failure as the description, log the failing output as the first
    evidence entry, and continue there. Never patch-and-rerun inline.
    Proven-obvious ≤3-line causes may use trace's fast lane — still traced,
-   still mirrored.
+   still mirrored, and since phase 23 still closed on a logged repro: a
+   trace cannot close without an evidence entry and a test entry (the
+   command + failing output), whatever its verdict says.
 
 Failure honesty is policy: never write VERIFICATION.md for a phase that
 didn't pass. A failed verify is a failed verify.

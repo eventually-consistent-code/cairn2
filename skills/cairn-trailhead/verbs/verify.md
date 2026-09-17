@@ -40,4 +40,5 @@ Verify the given phase per the `cairn-planning` skill.
    (`trace_start` with the failure as the description), log the failing
    output as the first `evidence`, and continue there. Never patch-and-
    rerun inline. Proven-obvious ≤3-line causes may take trace's fast lane —
-   still traced, still mirrored.
+   still traced, still mirrored, still closed on a logged repro (the
+   failing command + output as the trace's first `test` entry).

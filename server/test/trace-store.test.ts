@@ -49,10 +49,12 @@ describe("trace store", () => {
   it("close without a verdict is refused; with one it archives + stamps", () => {
     const { id } = startTrace(dir, "b2", "GH-3");
     appendTrace(dir, id, "evidence", "e");
+    appendTrace(dir, id, "test", "npm test -- pagination → FAIL: expected 3 pages, got 2");
     expect(() => closeTrace(dir, id, "done")).toThrowError(/verdict/);
     appendTrace(dir, id, "verdict", "root cause: X; fixed in abc1234");
     const out = closeTrace(dir, id, "fixed the pagination");
     expect(out.verdicts).toEqual(["root cause: X; fixed in abc1234"]);
+    expect(out.repro).toBe("npm test -- pagination → FAIL: expected 3 pages, got 2");
     expect(existsSync(out.archivePath)).toBe(true);
     expect(readFileSync(out.archivePath, "utf8")).toContain("status: resolved");
     expect(listTraces(dir, "open").length).toBe(0);
@@ -61,6 +63,8 @@ describe("trace store", () => {
 
   it("append to resolved or unknown trace is refused", () => {
     const { id } = startTrace(dir, "b3", "GH-4");
+    appendTrace(dir, id, "evidence", "e");
+    appendTrace(dir, id, "test", "t");
     appendTrace(dir, id, "verdict", "v");
     closeTrace(dir, id, "r");
     expect(() => appendTrace(dir, id, "evidence", "late")).toThrowError(/resolved/);
@@ -69,7 +73,40 @@ describe("trace store", () => {
 
   it("whitespace-only verdict does not satisfy the close gate", () => {
     const { id } = startTrace(dir, "b4", "GH-9");
+    appendTrace(dir, id, "evidence", "e");
+    appendTrace(dir, id, "test", "t");
     appendTrace(dir, id, "verdict", "   ");
     expect(() => closeTrace(dir, id, "r")).toThrowError(/verdict/);
+  });
+
+  describe("repro gate (phase 23)", () => {
+    it("a verdict alone cannot close: the refusal names every missing required kind", () => {
+      const { id } = startTrace(dir, "b5", "GH-5");
+      appendTrace(dir, id, "verdict", "obviously the null check");
+      const err = (() => { try { closeTrace(dir, id, "r"); } catch (e) { return e as Error; } })()!;
+      expect(err.message).toMatch(/missing required entries: evidence \(0\/1\), test \(0\/1\)/);
+      expect(String((err as { nextAction?: string }).nextAction ?? "")).toMatch(/repro/);
+    });
+
+    it("evidence without a test entry is still refused; whitespace test does not count", () => {
+      const { id } = startTrace(dir, "b6", "GH-6");
+      appendTrace(dir, id, "evidence", "fails past 64KB");
+      appendTrace(dir, id, "verdict", "v");
+      expect(() => closeTrace(dir, id, "r")).toThrowError(/test \(0\/1\)/);
+      appendTrace(dir, id, "test", "   ");
+      expect(() => closeTrace(dir, id, "r")).toThrowError(/test \(0\/1\)/);
+      appendTrace(dir, id, "test", "node scripts/repro.mjs 65536 → RangeError: offset out of bounds");
+      expect(closeTrace(dir, id, "r").repro).toBe("node scripts/repro.mjs 65536 → RangeError: offset out of bounds");
+    });
+
+    it("the FIRST test entry is the repro, later tests are experiments", () => {
+      const { id } = startTrace(dir, "b7", "GH-7");
+      appendTrace(dir, id, "evidence", "e");
+      appendTrace(dir, id, "test", "repro: cmd → failing output");
+      appendTrace(dir, id, "hypothesis", "h");
+      appendTrace(dir, id, "test", "experiment that disproves h");
+      appendTrace(dir, id, "verdict", "v");
+      expect(closeTrace(dir, id, "r").repro).toBe("repro: cmd → failing output");
+    });
   });
 });

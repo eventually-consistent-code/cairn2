@@ -12,10 +12,21 @@ export interface KindSpec {
   kind: SessionKind;
   entryKinds: readonly string[];
   closeGate: string;
+  /**
+   * Entry kinds that must be present (with at least this many non-empty
+   * entries) BEFORE the close gate is even consulted — the method as a
+   * data shape (phase 23). Trace: one evidence and one test, the first
+   * test being the repro (command + observed failing output); an
+   * evidence-free trace cannot close no matter how confident its verdict.
+   */
+  requiredEntries?: Readonly<Record<string, number>>;
 }
 
 export const KIND_SPECS: Record<SessionKind, KindSpec> = {
-  trace: { kind: "trace", entryKinds: ["evidence", "hypothesis", "test", "verdict"], closeGate: "verdict" },
+  trace: {
+    kind: "trace", entryKinds: ["evidence", "hypothesis", "test", "verdict"], closeGate: "verdict",
+    requiredEntries: { evidence: 1, test: 1 },
+  },
   probe: { kind: "probe", entryKinds: ["experiment", "result", "requirement", "verdict"], closeGate: "verdict" },
   draft: { kind: "draft", entryKinds: ["variant", "decision", "note"], closeGate: "decision" },
   thread: { kind: "thread", entryKinds: ["note", "link", "decision", "wrap"], closeGate: "wrap" },
@@ -43,6 +54,13 @@ const listHint: Record<SessionKind, string> = {
   probe: "list sessions with session_landscape",
   draft: "list sessions with session_landscape",
   thread: "list sessions with session_landscape",
+};
+
+const requiredHint: Record<SessionKind, string> = {
+  trace: "trace_log the evidence you reproduced and a test entry — the first test is the repro: the command you ran and the failing output you saw — then the verdict",
+  probe: "log the required entries, then close",
+  draft: "log the required entries, then close",
+  thread: "log the required entries, then close",
 };
 
 const closeHint: Record<SessionKind, string> = {
@@ -142,6 +160,8 @@ export function listSessions(projectDir: string, kind: SessionKind,
 
 export function closeSession(projectDir: string, kind: SessionKind, id: string, resolution: string): {
   id: string; issue: string; description: string; gateTexts: string[]; archivePath: string;
+  /** First non-empty entry per REQUIRED kind (e.g. trace's repro under `test`). */
+  firstRequired: Record<string, string>;
 } {
   const spec = KIND_SPECS[kind];
   const path = livePath(projectDir, kind, id);
@@ -149,13 +169,32 @@ export function closeSession(projectDir: string, kind: SessionKind, id: string, 
     throw new CairnError("NOT_FOUND", `no open ${kind} '${id}'`, listHint[kind]);
   }
   const { data, body } = parseFrontmatter(readFileSync(path, "utf8"));
-  const gateTexts: string[] = [];
+  // Non-empty entry texts per kind, in file order — the gate and the
+  // required-entries check both read from here.
+  const texts: Record<string, string[]> = {};
   for (const block of body.split(/^## /m).slice(1)) {
-    if (block.startsWith(`${spec.closeGate} — `)) {
-      const text = block.split("\n").slice(1).join("\n").trim();
-      if (text.length > 0) gateTexts.push(text);
-    }
+    const sep = block.indexOf(" — ");
+    if (sep === -1) continue;
+    const entryKind = block.slice(0, sep);
+    if (!spec.entryKinds.includes(entryKind)) continue;
+    const text = block.split("\n").slice(1).join("\n").trim();
+    if (text.length > 0) (texts[entryKind] ??= []).push(text);
   }
+  // Required entries first (phase 23): the method is a data shape. A trace
+  // with a verdict but no reproduced failure is a hunch with a conclusion.
+  const missing: string[] = [];
+  const firstRequired: Record<string, string> = {};
+  for (const [entryKind, n] of Object.entries(spec.requiredEntries ?? {})) {
+    const have = texts[entryKind]?.length ?? 0;
+    if (have < n) missing.push(`${entryKind} (${have}/${n})`);
+    else firstRequired[entryKind] = texts[entryKind][0];
+  }
+  if (missing.length > 0) {
+    throw new CairnError("PRECONDITION_FAILED",
+      `${kind} '${id}' cannot close — missing required entries: ${missing.join(", ")}`,
+      requiredHint[kind]);
+  }
+  const gateTexts = texts[spec.closeGate] ?? [];
   if (gateTexts.length === 0) {
     throw new CairnError("PRECONDITION_FAILED",
       `${kind} '${id}' has no ${spec.closeGate} entry — close needs a ${spec.closeGate}`,
@@ -168,7 +207,10 @@ export function closeSession(projectDir: string, kind: SessionKind, id: string, 
   writeFileSync(path, serializeFrontmatter(data,
     `${body.trimEnd()}\n\n## resolution — ${today()}\n${resolution.trimEnd()}\n`));
   renameSync(path, archivePath);
-  return { id, issue: String(data.issue ?? ""), description: TITLE_RE.exec(body)?.[1] ?? "", gateTexts, archivePath };
+  return {
+    id, issue: String(data.issue ?? ""), description: TITLE_RE.exec(body)?.[1] ?? "",
+    gateTexts, archivePath, firstRequired,
+  };
 }
 
 export function sessionResolution(projectDir: string, kind: SessionKind, id: string): string | null {

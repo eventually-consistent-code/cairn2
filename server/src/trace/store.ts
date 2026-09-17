@@ -29,7 +29,9 @@ export const listTraces = (projectDir: string, status?: "open" | "resolved") =>
   listSessions(projectDir, "trace", status).map(toTraceInfo);
 export function closeTrace(projectDir: string, id: string, resolution: string): {
   id: string; issue: string; description: string; verdicts: string[]; archivePath: string;
+  /** The first `test` entry — the reproduction (command + observed failing output). */
+  repro: string;
 } {
-  const { gateTexts, ...rest } = closeSession(projectDir, "trace", id, resolution);
-  return { ...rest, verdicts: gateTexts };
+  const { gateTexts, firstRequired, ...rest } = closeSession(projectDir, "trace", id, resolution);
+  return { ...rest, verdicts: gateTexts, repro: firstRequired.test ?? "" };
 }

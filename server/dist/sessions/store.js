@@ -4,7 +4,10 @@ import { join } from "node:path";
 import { CairnError } from "../errors.js";
 import { parseFrontmatter, serializeFrontmatter } from "../planning/frontmatter.js";
 export const KIND_SPECS = {
-    trace: { kind: "trace", entryKinds: ["evidence", "hypothesis", "test", "verdict"], closeGate: "verdict" },
+    trace: {
+        kind: "trace", entryKinds: ["evidence", "hypothesis", "test", "verdict"], closeGate: "verdict",
+        requiredEntries: { evidence: 1, test: 1 },
+    },
     probe: { kind: "probe", entryKinds: ["experiment", "result", "requirement", "verdict"], closeGate: "verdict" },
     draft: { kind: "draft", entryKinds: ["variant", "decision", "note"], closeGate: "decision" },
     thread: { kind: "thread", entryKinds: ["note", "link", "decision", "wrap"], closeGate: "wrap" },
@@ -21,6 +24,12 @@ const listHint = {
     probe: "list sessions with session_landscape",
     draft: "list sessions with session_landscape",
     thread: "list sessions with session_landscape",
+};
+const requiredHint = {
+    trace: "trace_log the evidence you reproduced and a test entry — the first test is the repro: the command you ran and the failing output you saw — then the verdict",
+    probe: "log the required entries, then close",
+    draft: "log the required entries, then close",
+    thread: "log the required entries, then close",
 };
 const closeHint = {
     trace: "trace_log a verdict (cause + fix + commit), then close",
@@ -119,14 +128,35 @@ export function closeSession(projectDir, kind, id, resolution) {
         throw new CairnError("NOT_FOUND", `no open ${kind} '${id}'`, listHint[kind]);
     }
     const { data, body } = parseFrontmatter(readFileSync(path, "utf8"));
-    const gateTexts = [];
+    // Non-empty entry texts per kind, in file order — the gate and the
+    // required-entries check both read from here.
+    const texts = {};
     for (const block of body.split(/^## /m).slice(1)) {
-        if (block.startsWith(`${spec.closeGate} — `)) {
-            const text = block.split("\n").slice(1).join("\n").trim();
-            if (text.length > 0)
-                gateTexts.push(text);
-        }
+        const sep = block.indexOf(" — ");
+        if (sep === -1)
+            continue;
+        const entryKind = block.slice(0, sep);
+        if (!spec.entryKinds.includes(entryKind))
+            continue;
+        const text = block.split("\n").slice(1).join("\n").trim();
+        if (text.length > 0)
+            (texts[entryKind] ??= []).push(text);
     }
+    // Required entries first (phase 23): the method is a data shape. A trace
+    // with a verdict but no reproduced failure is a hunch with a conclusion.
+    const missing = [];
+    const firstRequired = {};
+    for (const [entryKind, n] of Object.entries(spec.requiredEntries ?? {})) {
+        const have = texts[entryKind]?.length ?? 0;
+        if (have < n)
+            missing.push(`${entryKind} (${have}/${n})`);
+        else
+            firstRequired[entryKind] = texts[entryKind][0];
+    }
+    if (missing.length > 0) {
+        throw new CairnError("PRECONDITION_FAILED", `${kind} '${id}' cannot close — missing required entries: ${missing.join(", ")}`, requiredHint[kind]);
+    }
+    const gateTexts = texts[spec.closeGate] ?? [];
     if (gateTexts.length === 0) {
         throw new CairnError("PRECONDITION_FAILED", `${kind} '${id}' has no ${spec.closeGate} entry — close needs a ${spec.closeGate}`, closeHint[kind]);
     }
@@ -136,7 +166,10 @@ export function closeSession(projectDir, kind, id, resolution) {
     mkdirSync(archiveDir(projectDir, kind), { recursive: true });
     writeFileSync(path, serializeFrontmatter(data, `${body.trimEnd()}\n\n## resolution — ${today()}\n${resolution.trimEnd()}\n`));
     renameSync(path, archivePath);
-    return { id, issue: String(data.issue ?? ""), description: TITLE_RE.exec(body)?.[1] ?? "", gateTexts, archivePath };
+    return {
+        id, issue: String(data.issue ?? ""), description: TITLE_RE.exec(body)?.[1] ?? "",
+        gateTexts, archivePath, firstRequired,
+    };
 }
 export function sessionResolution(projectDir, kind, id) {
     const path = join(archiveDir(projectDir, kind), `${id}.md`);

@@ -11,6 +11,6 @@ export const appendTrace = (projectDir, id, kind, text) => appendSession(project
 export const lastEntryKind = (projectDir, id) => lastSessionEntry(projectDir, "trace", id);
 export const listTraces = (projectDir, status) => listSessions(projectDir, "trace", status).map(toTraceInfo);
 export function closeTrace(projectDir, id, resolution) {
-    const { gateTexts, ...rest } = closeSession(projectDir, "trace", id, resolution);
-    return { ...rest, verdicts: gateTexts };
+    const { gateTexts, firstRequired, ...rest } = closeSession(projectDir, "trace", id, resolution);
+    return { ...rest, verdicts: gateTexts, repro: firstRequired.test ?? "" };
 }

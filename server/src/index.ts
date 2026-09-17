@@ -1873,8 +1873,9 @@ export function buildServer(deps: {
     "trace_close",
     {
       description:
-        "Resolve a trace: requires a verdict entry; archives the session, comments the " +
-        "resolution on the bug issue and closes it",
+        "Resolve a trace: requires >=1 evidence entry, >=1 test entry (the first test is the repro: " +
+        "command + observed failing output), and a verdict entry; archives the session, comments the " +
+        "resolution plus the repro on the bug issue and closes it",
       inputSchema: z.object({ id: z.string(), resolution: z.string() }),
     },
     wrap(async (a: { id: string; resolution: string }) => {
@@ -1884,7 +1885,10 @@ export function buildServer(deps: {
       if (out.issue) {
         const tracker = await getTracker(d);
         try {
-          await tracker.commentIssue(out.issue, `Resolved: ${a.resolution}`);
+          // The repro rides the close: a bug's typed evidence is the failure
+          // someone actually reproduced, not the fix's description.
+          await tracker.commentIssue(out.issue,
+            `Resolved: ${a.resolution}\n\nReproduced by: ${out.repro}`);
         } catch {
           // comment is best-effort mirror; close is the state change that matters
         }
