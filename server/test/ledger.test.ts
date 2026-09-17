@@ -15,7 +15,11 @@ const entry = {
   headCommit: "d4e5f6a1b2c3",
   issueId: "PROJ-105",
   closedDate: "2026-07-14",
+  evidence: { command: "npm test", result: "12 passed" },
 };
+// The exact segment the fixture's evidence renders to — every pinned line
+// below carries it between the commit range and the issue id.
+const EV = "evidence npm test => 12 passed — ";
 
 function ledgerPath(d: string, phaseDir: string): string {
   return join(d, ".cairn", "plans", "phases", phaseDir, "LEDGER.md");
@@ -33,7 +37,7 @@ describe("appendLedger", () => {
     const lines = content.split("\n").filter((l) => l.length > 0);
     // header (at least one non-entry line) precedes the single entry line
     expect(lines[lines.length - 1]).toBe(
-      "- [x] task-3 — wire adapter retries — commits a1b2c3d..d4e5f6a — PROJ-105 closed 2026-07-14",
+      `- [x] task-3 — wire adapter retries — commits a1b2c3d..d4e5f6a — ${EV}PROJ-105 closed 2026-07-14`,
     );
     expect(lines.length).toBeGreaterThan(1);
     expect(content.startsWith("#")).toBe(true);
@@ -58,7 +62,7 @@ describe("appendLedger", () => {
     expect(afterLines.length).toBe(beforeLineCount + 1);
     expect(after.startsWith(before.slice(0, before.lastIndexOf("- [x]")))).toBe(true);
     expect(afterLines[afterLines.length - 1]).toBe(
-      "- [x] task-4 — second task — commits a1b2c3d..d4e5f6a — PROJ-105 closed 2026-07-15",
+      `- [x] task-4 — second task — commits a1b2c3d..d4e5f6a — ${EV}PROJ-105 closed 2026-07-15`,
     );
   });
 
@@ -74,7 +78,7 @@ describe("appendLedger", () => {
 
     expect(line.split("\n").length).toBe(1);
     expect(line).toBe(
-      "- [x] task-3 — line one line two line three — commits a1b2c3d..d4e5f6a — PROJ-105 closed 2026-07-14",
+      `- [x] task-3 — line one line two line three — commits a1b2c3d..d4e5f6a — ${EV}PROJ-105 closed 2026-07-14`,
     );
 
     const content = readFileSync(ledgerPath(d, phaseDir), "utf8");
@@ -107,8 +111,10 @@ describe("appendLedger", () => {
       taskRef: "T2", summary: "tdd task", baseCommit: "a".repeat(40),
       headCommit: "b".repeat(40), issueId: "GH-2", closedDate: "2026-07-18",
       redCommit: "c".repeat(40), greenCommit: "d".repeat(40),
+      evidence: { command: "vitest run t2.test.ts", result: "4 passed" },
     });
-    expect(line).toContain("— tdd ccccccc..ddddddd —");
+    // tdd first, then evidence, then the close — one grammar.
+    expect(line).toContain("— tdd ccccccc..ddddddd — evidence vitest run t2.test.ts => 4 passed — GH-2 closed");
   });
 
   it("rejects a lone red or green commit", () => {
@@ -119,7 +125,44 @@ describe("appendLedger", () => {
     expect(() => appendLedger(d, phaseDir, {
       taskRef: "T3", summary: "s", baseCommit: "a".repeat(40),
       headCommit: "b".repeat(40), issueId: "GH-3", closedDate: "2026-07-18",
-      redCommit: "c".repeat(40),
+      redCommit: "c".repeat(40), evidence: { command: "c", result: "r" },
     })).toThrowError(/both or neither/);
+  });
+
+  describe("typed close evidence (phase 23)", () => {
+    const base = { taskRef: "T5", summary: "s", baseCommit: "a".repeat(40),
+      headCommit: "b".repeat(40), issueId: "GH-5", closedDate: "2026-09-17" };
+    const ready = () => {
+      const d = dir(); scaffoldProject(d, "P");
+      return { d, phaseDir: scaffoldPhase(d, 3, "Ledger Phase").dir };
+    };
+
+    it("refuses an entry with neither evidence nor a waiver — the gate", () => {
+      const { d, phaseDir } = ready();
+      let caught: unknown;
+      try { appendLedger(d, phaseDir, base); } catch (e) { caught = e; }
+      expect((caught as CairnError).code).toBe("PRECONDITION_FAILED");
+      expect((caught as CairnError).message).toMatch(/close evidence missing/);
+      expect((caught as CairnError).nextAction).toMatch(/evidenceWaived/);
+    });
+
+    it("renders a waiver with its reason; an empty reason or empty evidence field is refused; both is a contradiction", () => {
+      const { d, phaseDir } = ready();
+      const { line } = appendLedger(d, phaseDir, { ...base, evidenceWaived: "docs only — no runnable change" });
+      expect(line).toBe(`- [x] T5 — s — commits aaaaaaa..bbbbbbb — waived docs only - no runnable change — GH-5 closed 2026-09-17`);
+      expect(() => appendLedger(d, phaseDir, { ...base, evidenceWaived: "  " })).toThrowError(/needs a reason/);
+      expect(() => appendLedger(d, phaseDir, { ...base, evidence: { command: "npm test", result: " " } }))
+        .toThrowError(/both a command .* and a result/);
+      expect(() => appendLedger(d, phaseDir, { ...base, evidence: { command: "c", result: "r" }, evidenceWaived: "w" }))
+        .toThrowError(/mutually exclusive/);
+    });
+
+    it("strips em dashes and newlines from evidence so the line's separators stay unambiguous", () => {
+      const { d, phaseDir } = ready();
+      const { line } = appendLedger(d, phaseDir, {
+        ...base, evidence: { command: "npm test — full", result: "1408 passed\n0 failed" },
+      });
+      expect(line).toBe(`- [x] T5 — s — commits aaaaaaa..bbbbbbb — evidence npm test - full => 1408 passed 0 failed — GH-5 closed 2026-09-17`);
+    });
   });
 });

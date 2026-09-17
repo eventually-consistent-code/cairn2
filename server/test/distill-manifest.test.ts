@@ -28,12 +28,14 @@ describe("distillManifest", () => {
       taskRef: "T1", summary: "wired the frobnicator — carefully",
       baseCommit: SHA_A, headCommit: SHA_B,
       issueId: "GH-1", closedDate: "2026-01-01",
+      evidence: { command: "npm test", result: "9 passed" },
     });
     appendLedger(dir, "01-core", {
       taskRef: "T2", summary: "tests for the frobnicator",
       baseCommit: SHA_B, headCommit: SHA_C,
       issueId: "GH-2", closedDate: "2026-01-02",
       redCommit: SHA_C, greenCommit: SHA_D,
+      evidenceWaived: "tdd pair is the evidence",
     });
   });
 

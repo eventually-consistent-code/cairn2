@@ -1,3 +1,10 @@
+/** Typed close evidence (phase 23): what was run, and what it showed. */
+export interface CloseEvidence {
+    /** The proving command — a suite name or the shell line ("npm test", "vitest run x.test.ts"). */
+    command: string;
+    /** The observed outcome ("1408 passed", "exit 0, 3 files changed"). */
+    result: string;
+}
 export interface LedgerEntryInput {
     taskRef: string;
     summary: string;
@@ -7,6 +14,13 @@ export interface LedgerEntryInput {
     closedDate: string;
     redCommit?: string;
     greenCommit?: string;
+    /**
+     * Exactly one of `evidence` / `evidenceWaived` is required: an issue
+     * closes on what was run and what it showed, or on a written reason it
+     * needed no run (docs-only, planning-only). Neither → the append refuses.
+     */
+    evidence?: CloseEvidence;
+    evidenceWaived?: string;
 }
 /**
  * Appends one formatted line to a phase's LEDGER.md, creating the file (with

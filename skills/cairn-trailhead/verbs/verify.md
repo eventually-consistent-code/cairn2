@@ -20,6 +20,13 @@ Verify the given phase per the `cairn-planning` skill.
    LEDGER.md line for that id must carry a `tdd <red>..<green>` segment.
    Any TDD task missing its pair → the phase FAILS verification — report
    which ids, do not write VERIFICATION.md.
+   4b. Close evidence (phase 23): every issue in PLAN.md `issues:` must
+   have a LEDGER.md line carrying an `evidence <command> => <result>`
+   segment or a `waived <reason>` segment. A line with neither → the
+   phase FAILS verification the same way — report which ids. Lines
+   written before the gate existed (pre-phase-23 ledgers) are exempt
+   only in phases already verified; a live phase re-verified after the
+   gate is held to it.
 5. Write `.cairn/plans/phases/<NN-dir>/VERIFICATION.md`: what was checked, what
    passed, deviations. (Its presence marks the phase verified — drift treats
    closed issues in verified phases as normal.)

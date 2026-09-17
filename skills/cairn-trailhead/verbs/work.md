@@ -138,15 +138,23 @@ pairing overlay applies:
    (`node "$CLAUDE_PLUGIN_ROOT/hooks/scripts/cost-report.mjs" --issue <id>`
    returns > 0), add "agent cost: ~$X (approximate)" beside the time
    line — estimate vs actual vs spend in one comment.
-   Then `issue_close(id, timeSpentMinutes: <X>)` — backends
-   with worklog support (`worklogLogged: true` in the result) get a real
-   worklog entry; the comment line covers the rest. On stopping early:
-   leave in_progress and post a parked comment — why it stopped, what
-   remains.
+   Then `issue_close(id, timeSpentMinutes: <X>, evidence: { command,
+   result })` — `evidence` is the SAME run that justified the close, as
+   data: `command` = the suite or shell line you ran, `result` = what it
+   showed ("1408 passed"). The tool posts it as one standard comment
+   before the state change; backends with worklog support
+   (`worklogLogged: true` in the result) get a real worklog entry; the
+   comment line covers the rest. On stopping early: leave in_progress
+   and post a parked comment — why it stopped, what remains.
 7. On `issue_close`: `ledger_append(phaseDir: <NN-slug>, taskRef: id, summary:
    <one line — what shipped>, baseCommit: <HEAD when this issue started>,
    headCommit: <HEAD now>, issueId: id, closedDate: <today, YYYY-MM-DD>,
    redCommit: <RED sha — TDD tasks only>, greenCommit: <GREEN sha — TDD
-   tasks only>)` — the durable, git-committed record that the task landed.
+   tasks only>, evidence: <the same { command, result }>)` — the durable,
+   git-committed record that the task landed. The server REFUSES a line
+   with no evidence: an issue that genuinely had nothing to run (docs
+   only, plan text only) passes `evidenceWaived: "<why>"` instead — a
+   written reason, never a silent skip. `verify` fails the phase on a
+   ledger line carrying neither.
 8. After the last issue: `context_set(issueId: null)` and suggest
    `/cairn:verify <N>`.

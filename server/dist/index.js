@@ -484,14 +484,29 @@ export function buildServer(deps) {
     }));
     server.registerTool("issue_close", {
         description: "Close an issue; optionally log time spent (worklog on supporting " +
-            "backends, otherwise the caller folds time into the close comment)",
+            "backends, otherwise the caller folds time into the close comment). Optional typed close " +
+            "evidence `{ command, result }` is posted as one standardized comment before the close — " +
+            "comments are the one carrier every backend has",
         inputSchema: z.object({
             id: z.string(),
             timeSpentMinutes: z.number().int().positive().optional(),
+            evidence: z.object({ command: z.string().min(1), result: z.string().min(1) }).optional(),
         }),
     }, wrap(async (a) => {
         const d = dir();
         const tracker = await getTracker(d);
+        // Typed close evidence (phase 23): one standard line, same shape on
+        // every backend, posted before the state change so the close reads
+        // "here is what proved it" in order. Best-effort — the close is the
+        // state change that matters.
+        let evidenceCommented = false;
+        if (a.evidence) {
+            try {
+                await tracker.commentIssue(a.id, `evidence: \`${a.evidence.command.trim()}\` → ${a.evidence.result.trim()}`);
+                evidenceCommented = true;
+            }
+            catch { /* the ledger line still carries it */ }
+        }
         const result = await tracker.closeIssue(a.id);
         snapshotNote(d, result);
         let worklogLogged = false;
@@ -521,6 +536,7 @@ export function buildServer(deps) {
             ...result,
             worklogLogged,
             ...(worklogError ? { worklogError } : {}),
+            ...(a.evidence ? { evidenceCommented } : {}),
         };
     }));
     server.registerTool("issue_list", {
@@ -871,7 +887,10 @@ export function buildServer(deps) {
         inputSchema: z.object({}),
     }, wrap(() => ({ cleared: clearHandoff(dir()) })));
     server.registerTool("ledger_append", {
-        description: "Append a verified-task line to a phase's LEDGER.md (append-only; creates the file with a header on first write)",
+        description: "Append a verified-task line to a phase's LEDGER.md (append-only; creates the file with a header " +
+            "on first write). Requires typed close evidence — `evidence: { command, result }` (what was run, " +
+            "what it showed) — or an explicit `evidenceWaived` reason for docs/planning-only issues; neither " +
+            "is refused. verify fails a phase whose ledger lines carry neither",
         inputSchema: z.object({
             phaseDir: z.string(),
             taskRef: z.string(),
@@ -882,6 +901,8 @@ export function buildServer(deps) {
             closedDate: z.string(),
             redCommit: z.string().optional(),
             greenCommit: z.string().optional(),
+            evidence: z.object({ command: z.string().min(1), result: z.string().min(1) }).optional(),
+            evidenceWaived: z.string().min(1).optional(),
         }),
     }, wrap((a) => {
         const d = dir();

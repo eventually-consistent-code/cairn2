@@ -47,6 +47,8 @@ vi.mock("../src/core/continuity.js", async (importOriginal) => {
 describe("cairn MCP server", () => {
   let client: Client;
   let projectDir: string;
+  // The fake behind the server — test accessor for comments posted by tools.
+  let fakeTracker: FakeTracker;
 
   beforeAll(async () => {
     projectDir = mkdtempSync(join(tmpdir(), "cairn-"));
@@ -54,9 +56,10 @@ describe("cairn MCP server", () => {
       join(projectDir, "cairn.json"),
       JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }),
     );
+    fakeTracker = new FakeTracker();
     const server = buildServer({
       projectDir,
-      tracker: new FakeTracker(),
+      tracker: fakeTracker,
       // Deterministic npm-latest lookup (#82): no network in unit tests.
       fetchLatestVersion: async () => "9.9.9",
     });
@@ -537,11 +540,19 @@ describe("cairn MCP server", () => {
       headCommit: "d4e5f6a1b2c3",
       issueId: "PROJ-1",
       closedDate: "2026-07-16",
+      evidence: { command: "npm test", result: "3 passed" },
     });
     expect(res.isError).toBeFalsy();
     expect(res.json.line).toBe(
-      "- [x] task-1 — wire the tool — commits a1b2c3d..d4e5f6a — PROJ-1 closed 2026-07-16",
+      "- [x] task-1 — wire the tool — commits a1b2c3d..d4e5f6a — evidence npm test => 3 passed — PROJ-1 closed 2026-07-16",
     );
+    // Phase 23: neither evidence nor a waiver is refused at the tool.
+    const bare = await call("ledger_append", {
+      phaseDir: "01-core", taskRef: "task-2", summary: "s", baseCommit: "a1b2c3d4e5f6",
+      headCommit: "d4e5f6a1b2c3", issueId: "PROJ-2", closedDate: "2026-07-16",
+    });
+    expect(bare.isError).toBe(true);
+    expect(bare.json.code).toBe("PRECONDITION_FAILED");
   });
 
   it("ledger_append rejects a phaseDir with no scaffolded phase", async () => {
@@ -569,6 +580,18 @@ describe("cairn MCP server", () => {
     expect(wip.json.state).toBe("in_progress");
     const closed = await call("issue_close", { id: made.json.id });
     expect(closed.json.state).toBe("closed");
+    expect(closed.json).not.toHaveProperty("evidenceCommented");
+  });
+
+  it("issue_close with typed evidence posts one standard comment before closing (#200)", async () => {
+    const made = await call("issue_create", { title: "prove it" });
+    const closed = await call("issue_close", {
+      id: made.json.id, evidence: { command: "npm test", result: "1408 passed" },
+    });
+    expect(closed.json.state).toBe("closed");
+    expect(closed.json.evidenceCommented).toBe(true);
+    expect(fakeTracker.comments(made.json.id).map((c) => c.text))
+      .toContain("evidence: `npm test` → 1408 passed");
   });
 
   it("claiming an unassigned issue auto-assigns the working user", async () => {
@@ -1696,6 +1719,7 @@ describe("continuity: write-through + tools", () => {
       headCommit: "d4e5f6a1b2c3",
       issueId: "PROJ-9",
       closedDate: "2026-07-16",
+      evidenceWaived: "handoff drill — no runnable change",
     });
     const got = await call("continuity_get", {});
     expect(got.json.handoff.phase).toEqual({ number: 1, slug: "core" });

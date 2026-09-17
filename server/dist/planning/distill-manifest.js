@@ -14,11 +14,15 @@ import { PHASE_NUMBER_ERROR, isValidPhaseNumber, parsePhaseDirName, plansRoot, }
 import { parsePlanDoc } from "./frontmatter.js";
 import { projectStatus } from "./status.js";
 // The exact shape ledger.ts formatEntry writes -- em dashes and all:
-//   - [x] <taskRef> — <summary> — commits <base7>..<head7> — [tdd <r>..<g> — ]<issueId> closed <date>
+//   - [x] <taskRef> — <summary> — commits <base7>..<head7> — [tdd <r>..<g> — ]
+//     [evidence <cmd> => <result> — | waived <reason> — ]<issueId> closed <date>
 // taskRef and summary match lazily so the "commits <sha>..<sha>" anchor, not
-// an em dash inside a summary, decides where the fields end.
+// an em dash inside a summary, decides where the fields end. The evidence
+// segment (phase 23) is optional so pre-gate lines keep parsing; the writer
+// strips em dashes from evidence text so the segment can't swallow issueId.
 const LEDGER_LINE_RE = new RegExp("^- \\[x\\] (.+?) — (.+?) — commits ([0-9a-f]{7,40})\\.\\.([0-9a-f]{7,40}) — "
-    + "(?:tdd [0-9a-f]{7,40}\\.\\.[0-9a-f]{7,40} — )?(.+?) closed (.+)$");
+    + "(?:tdd [0-9a-f]{7,40}\\.\\.[0-9a-f]{7,40} — )?"
+    + "(?:(?:evidence|waived) [^—]*? — )?(.+?) closed (.+)$");
 // Live phases win; among archived copies (a number can recur across
 // milestones) the newest vN wins -- that's the copy summit archived last.
 function resolvePhase(projectDir, phaseNumber) {
