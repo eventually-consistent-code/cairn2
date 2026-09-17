@@ -1,11 +1,55 @@
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { phaseDirPrefix, plansRoot } from "./artifacts.js";
+import { parsePlanDoc } from "./frontmatter.js";
 
 export interface PlanFinding {
-  type: "contract-drift" | "unanchored-threshold";
+  /**
+   * contract-drift / unanchored-threshold: PLAN.md text findings.
+   * missing-approaches (phase 23): a planned, non-quick phase whose
+   * CONTEXT.md lacks the "Approaches considered" block — two-plus
+   * candidates and a chosen line — the divergent-design step the plan
+   * verb owes before PLAN.md exists.
+   */
+  type: "contract-drift" | "unanchored-threshold" | "missing-approaches";
   plan: string; line: number; detail: string;
   counterpart?: { plan: string; line: number };
+}
+
+// The approaches block, as data: an H2 whose text is "Approaches
+// considered", ≥2 H3 candidates under it, and one "chosen:" line before
+// the next H2. Case-insensitive on the headings; bold markers tolerated.
+export const APPROACHES_HEADING = /^##\s+approaches considered\s*$/i;
+const CANDIDATE_HEADING = /^###\s+\S/;
+const CHOSEN_LINE = /^\s*(?:\*\*)?chosen(?:\*\*)?\s*:/i;
+const ANY_H2 = /^##\s+\S/;
+export const APPROACHES_MIN_CANDIDATES = 2;
+
+/**
+ * Judges a CONTEXT.md's approaches block. Null when it satisfies the
+ * shape; otherwise the line to anchor the finding on and what's missing.
+ *
+ * :param lines: CONTEXT.md split into lines
+ * :returns: null, or { line, detail }
+ */
+export function judgeApproaches(lines: string[]): { line: number; detail: string } | null {
+  const start = lines.findIndex((l) => APPROACHES_HEADING.test(l));
+  if (start === -1) {
+    return { line: 1, detail: "CONTEXT.md has no '## Approaches considered' block — two-plus candidates with trade-offs and a chosen line" };
+  }
+  let candidates = 0;
+  let chosen = false;
+  for (let i = start + 1; i < lines.length && !ANY_H2.test(lines[i]); i++) {
+    if (CANDIDATE_HEADING.test(lines[i])) candidates++;
+    if (CHOSEN_LINE.test(lines[i])) chosen = true;
+  }
+  const missing: string[] = [];
+  if (candidates < APPROACHES_MIN_CANDIDATES) {
+    missing.push(`${candidates} candidate heading${candidates === 1 ? "" : "s"} (needs ${APPROACHES_MIN_CANDIDATES}+ '### ' entries)`);
+  }
+  if (!chosen) missing.push("no 'chosen:' line");
+  if (missing.length === 0) return null;
+  return { line: start + 1, detail: `'Approaches considered' block is incomplete — ${missing.join("; ")}` };
 }
 
 // Path-like token — used both to spot a shared fixture between plans and to
@@ -120,7 +164,30 @@ function scanThresholds(lines: string[], planRel: string): PlanFinding[] {
   return findings;
 }
 
-interface ScannedPlan { rel: string; lines: string[]; text: string; contracts: Contract[] }
+interface ScannedPlan {
+  rel: string; lines: string[]; text: string; contracts: Contract[];
+  /** The sibling CONTEXT.md path (may not exist). */
+  contextPath: string;
+  /** True when PLAN.md lists issues and depth is not quick — the gate applies. */
+  gated: boolean;
+}
+
+/**
+ * Whether the approaches gate applies to a plan: it lists tracker issues
+ * (it has been planned, not merely scaffolded) and its resolved depth —
+ * PLAN.md `depth:` frontmatter, else standard (cairn.json carries no depth
+ * key, so the frontmatter is all the server can see) — is not quick.
+ * Unparseable frontmatter never gates: plan_check reports, it doesn't
+ * brick on a malformed plan.
+ */
+function isGated(text: string): boolean {
+  try {
+    const { frontmatter } = parsePlanDoc(text);
+    return frontmatter.issues.length > 0 && (frontmatter.depth ?? "standard") !== "quick";
+  } catch {
+    return false;
+  }
+}
 
 export function planCheck(projectDir: string, phase?: number):
   { findings: PlanFinding[]; scanned: number } {
@@ -141,13 +208,29 @@ export function planCheck(projectDir: string, phase?: number):
     const text = readFileSync(path, "utf8");
     const rel = relative(projectDir, path);
     const lines = text.split("\n");
-    plans.push({ rel, lines, text, contracts: extractContracts(lines, rel) });
+    plans.push({
+      rel, lines, text, contracts: extractContracts(lines, rel),
+      contextPath: join(phasesDir, entry, "CONTEXT.md"), gated: isGated(text),
+    });
   }
 
   const findings: PlanFinding[] = [];
 
   // Thresholds — independent per plan.
   for (const p of plans) findings.push(...scanThresholds(p.lines, p.rel));
+
+  // Approaches considered (phase 23) — one finding per gated plan whose
+  // CONTEXT.md lacks the block. Anchored on CONTEXT.md, since that's the
+  // file that owes the text.
+  for (const p of plans) {
+    if (!p.gated) continue;
+    const ctxLines = existsSync(p.contextPath) ? readFileSync(p.contextPath, "utf8").split("\n") : [];
+    const verdict = judgeApproaches(ctxLines);
+    if (verdict) {
+      findings.push({ type: "missing-approaches", plan: relative(projectDir, p.contextPath),
+        line: verdict.line, detail: verdict.detail });
+    }
+  }
 
   // Contract drift — pair every Produces against every Consumes in a
   // different plan that shares a symbol, flag on the consumer's line.

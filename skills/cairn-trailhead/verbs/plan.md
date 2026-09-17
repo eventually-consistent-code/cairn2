@@ -25,6 +25,21 @@ Plan the given phase per the `cairn-planning` skill's depth dial.
 3. Write the task breakdown into the phase's PLAN.md body. Keep decisions in
    CONTEXT.md (precedence per shared rules — the tracker gets updated, not
    followed).
+   - **Approaches considered — BEFORE the task breakdown, at every depth
+     but quick.** Name the phase's central design fork and write
+     CONTEXT.md's `## Approaches considered` block: two-plus `### `
+     candidates, each with a line of trade-offs, and one `chosen: <X> —
+     because <why>` line. Vibe mode drafts the candidates itself; engineer
+     mode folds them into this verb's single interview question (the
+     user picks or adds). `plan_check` flags a planned, non-quick phase
+     whose CONTEXT.md lacks the block (`missing-approaches`) — the
+     divergent-design step is a data shape, not a habit. When the chosen
+     approach rests on an assumption the repo can't settle (a library
+     behavior, a platform limit, a performance guess), STOP before
+     PLAN.md: hand the question to `probe "<question>"` (verbs/probe.md),
+     write `chosen: pending probe <id>` in the block, and resume this
+     verb when the probe wraps — a plan built on a hunch is the thing
+     the block exists to prevent.
    - Estimate every issue this verb creates (`issue_create` here and in
      steps 5–6): `estimatePoints` from task complexity (quick/mechanical
      1–2, standard 3–5, deep/cross-cutting 8), `estimateMinutes` as an

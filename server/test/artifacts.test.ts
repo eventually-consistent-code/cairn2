@@ -95,6 +95,12 @@ describe("scaffolding", () => {
       expect(existsSync(join(base, f))).toBe(true);
     }
     expect(readFileSync(join(base, "PLAN.md"), "utf8")).toContain("issues: []");
+    // Phase 23: the context scaffold names the approaches block, as a
+    // comment-only skeleton — present to guide, unfilled so it can't
+    // satisfy plan_check's gate by accident.
+    const ctx = readFileSync(join(base, "CONTEXT.md"), "utf8");
+    expect(ctx).toContain("## Approaches considered");
+    expect(ctx).not.toMatch(/^### /m);
   });
 });
 
