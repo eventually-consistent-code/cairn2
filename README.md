@@ -90,7 +90,7 @@ git PRs.
 generated from the routing table.
 The routing table is complete: the reserved verb set is now empty.
 
-**Server:** <!-- auto:tool-count -->85<!-- /auto:tool-count --> typed MCP tools, <!-- auto:test-count -->1400<!-- /auto:test-count --> passing tests — counts move with each
+**Server:** <!-- auto:tool-count -->85<!-- /auto:tool-count --> typed MCP tools, <!-- auto:test-count -->1412<!-- /auto:test-count --> passing tests — counts move with each
 tier and are measured in CI (env-gated live-backend
 suites skip without creds) — <!-- auto:deps -->four dependencies
 (`@modelcontextprotocol/client`, `@modelcontextprotocol/server`,

@@ -1,5 +1,67 @@
 # Changelog
 
+## v2.6.0 — the refutation (2026-09-17)
+
+The first half of milestone v8: no cairn claim ships unverified.
+Findings survive an adversarial panel before they reach the tracker,
+audit records know which commit they judged, fixes are staged behind
+an independent verifier instead of applied on the verb's say-so, and
+the in-flight method gaps — design alternatives before a plan, a
+reproduced failure before a trace closes, typed evidence before an
+issue closes — became server-side data shapes on existing tools. Tool
+count holds at 85 across both phases.
+
+### the refutation (phase 21)
+
+- Every finding carries a typed failure scenario — the concrete inputs
+  and the wrong result — and the audit record refuses one without it.
+  The dedup engine treats two seats with matching scenarios as one
+  finding even when their headlines differ.
+- Verify before the tracker: critical and important findings pass a
+  refutation panel whose votes (CONFIRMED / PLAUSIBLE / REFUTED) are
+  recorded in the audit record and tallied in code — a refuted
+  majority kills the finding (it stays in the record with its votes,
+  never filed), ties survive as plausible, and a critical finding with
+  no panel cannot be recorded at all (two votes minimum on a security
+  scope). Survivors credit their raising seats' yield, so "survived"
+  now means survived verification. The peers council's own verdicts
+  map onto the same panel.
+- Audit records are stamped with the commit they judged and whether
+  the tree was dirty; the drift report flags a stale security audit —
+  written over a dirty tree, or predating code commits — and ship and
+  verify stop on it like any other flag.
+- `--fix` stages instead of applying: a dirty tree is refused, fixes
+  are generated in a detached scratch worktree, written as patch files
+  mirrored to their issues, judged by one independent verifier stating
+  three claims (targeted, no new issue, behavior unchanged) that the
+  record turns into an apply-eligibility bit, and applied only on the
+  user's choice.
+- `audit simplify`: a quality-only sweep over what recently changed,
+  seen through the clarity and architecture seats, applying through
+  the staged-patch path — a bug found mid-sweep is filed, never fixed
+  in place.
+
+### the method (phase 23)
+
+- Plans consider alternatives before tasks exist: every phase context
+  gets an "Approaches considered" skeleton (comment-only, so an
+  unfilled scaffold can't satisfy the gate), the plan verb writes two
+  or more candidates with trade-offs and a chosen line before the task
+  breakdown, and `plan_check` flags a planned, non-quick phase without
+  the block. An assumption the repo can't settle routes to a probe
+  first.
+- A trace cannot close on a verdict alone: the server requires at
+  least one evidence entry and one test entry — the first test being
+  the reproduction, the command run and the failing output seen — and
+  that repro rides the bug's resolution comment. The fast lane skips
+  the hypothesis loop, never the repro.
+- Issue closes carry typed evidence: the ledger refuses a line with
+  neither `evidence` (what was run, what it showed) nor an explicit
+  waiver with a reason; the evidence renders into the ledger line
+  beside the TDD segment, `issue_close` posts it as one standard
+  comment on every tracker backend, and verify fails a phase whose
+  ledger lines carry neither.
+
 ## v2.5.0 — the seats (2026-09-16)
 
 Milestones v6's close and all of v7: every public claim became
