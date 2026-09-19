@@ -2,7 +2,7 @@
 name: review-records-before-filing
 tags: [review, closing]
 runs: 3
-max_turns: 10
+max_turns: 30
 allowed_tools: [Read, Glob, Grep, Skill, ToolSearch, AskUserQuestion]
 ---
 /cairn:review working

@@ -66,8 +66,18 @@ under the plugins directory is a separate clone pinned to the last
 release tag, so the plugin-name form grades the STALE copy. The path
 form loads the working tree.
 
+`--case` matches the case's frontmatter `name`, not its directory, and
+only the last `--case` flag counts — run one glob at a time. Bill the
+run to the subscription, not a Console key: an exported
+`ANTHROPIC_API_KEY` in the shell makes every spawned session use it
+(`env -u ANTHROPIC_API_KEY claude plugin eval …` when the shell exports
+one). `${CLAUDE_PLUGIN_ROOT}` substitutes inside plugin command bodies,
+never inside a case prompt — a prompt that needs a plugin file goes
+through the slash command, not a literal path.
+
 Costs: every case runs three times in two arms with a haiku judge on
-the `llm` graders. `--max-cost-usd` is not optional here — the run
+the `llm` graders — roughly $0.25–0.55 per with-plugin run in this
+suite, so a full run lands near $6–8. `--max-cost-usd` is not optional here — the run
 exits 2 on breach and skips the paid graders for the breaching run.
 
 Exit codes: 0 every case ≥ `--threshold` (default 1.0); 1 below
