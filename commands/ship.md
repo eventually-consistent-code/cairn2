@@ -5,7 +5,7 @@ allowed-tools: "mcp__plugin_cairn_cairn__*, Bash, Read, Write, Edit, Glob, Grep,
 
 Execute the cairn verb `ship`:
 
-1. Read `skills/cairn-trailhead/SKILL.md` (this plugin) — its shared
+1. Read `${CLAUDE_PLUGIN_ROOT}/skills/cairn-trailhead/SKILL.md` — its shared
    rules apply to every step below.
-2. Read `skills/cairn-trailhead/verbs/ship.md` and execute it with
-   `$ARGUMENTS` as its arguments.
+2. Read `${CLAUDE_PLUGIN_ROOT}/skills/cairn-trailhead/verbs/ship.md` and
+   execute it with `$ARGUMENTS` as its arguments.

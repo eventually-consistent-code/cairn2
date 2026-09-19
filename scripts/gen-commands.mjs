@@ -63,10 +63,16 @@ for (const { verb, purpose, args } of rows) {
     "",
     `Execute the cairn verb \`${verb}\`:`,
     "",
-    "1. Read `skills/cairn-trailhead/SKILL.md` (this plugin) — its shared",
+    // ${CLAUDE_PLUGIN_ROOT} is substituted inside plugin command bodies at
+    // load time (verified 2026-09-19 under `claude plugin eval` — trace
+    // fb6fa9fb): a bare relative path here left every fresh agent guessing
+    // the plugin root and improvising the verb from its one-line registry
+    // description. The absolute form is what a session outside this repo
+    // (or any harness) can actually open.
+    "1. Read `${CLAUDE_PLUGIN_ROOT}/skills/cairn-trailhead/SKILL.md` — its shared",
     "   rules apply to every step below.",
-    `2. Read \`skills/cairn-trailhead/verbs/${verb}.md\` and execute it with`,
-    "   `$ARGUMENTS` as its arguments.",
+    `2. Read \`\${CLAUDE_PLUGIN_ROOT}/skills/cairn-trailhead/verbs/${verb}.md\` and`,
+    "   execute it with `$ARGUMENTS` as its arguments.",
     "",
   ];
 
