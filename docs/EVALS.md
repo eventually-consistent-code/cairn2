@@ -141,9 +141,23 @@ variable: obtain it through your Anthropic contact.
 
 ## CI lane
 
-An allowed-to-fail workflow (`.github/workflows/evals.yml`, #203)
-runs the suite nightly and on changes under `skills/**`, `commands/**`,
-`evals/**`, uploads the results as an artifact, and NEVER blocks a
-merge — a stochastic lane earns a blocking threshold only after its
-variance baseline exists. The threshold starts at 0.7 and rises
-toward 1.0 as green nights accumulate.
+An allowed-to-fail workflow (`.github/workflows/evals.yml`) runs the
+suite nightly (06:17 UTC), on manual dispatch, and on changes under
+`skills/**`, `commands/**`, `evals/**`, `.claude-plugin/**`. It uploads
+`evals/results/**` (aggregate JSON + report) as a 14-day artifact and
+NEVER blocks a merge — `continue-on-error: true`; a stochastic lane
+earns a blocking threshold only after its variance baseline exists.
+The threshold starts at 0.7 and rises toward 1.0 as green nights
+accumulate; the cost ceiling is $12 per run (the full suite plus the
+trigger set costs ~$15 at three runs, so the lane trims by cost before
+it trims by threshold — narrow with `--tag` if that bites).
+
+Two repository secrets, both owner-set, neither assumed by the
+workflow (it exits 1 with a plain message when the key is missing):
+
+- `ANTHROPIC_API_KEY` — bills the eval sessions to a Console account.
+  Subscription auth does not exist on a CI runner.
+- `PLUGIN_EVAL_ENABLEMENT` — the early-access enablement assignment
+  for hosts outside the per-organization rollout, as one `NAME=1`
+  line. The workflow `export`s it, so the variable's name never enters
+  the repo. Obtain it through your Anthropic contact (Availability).

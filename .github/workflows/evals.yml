@@ -1,0 +1,85 @@
+# Behavioral eval lane — ADVISORY. Runs the `claude plugin eval` suite
+# (docs/EVALS.md) nightly and whenever the plugin's prose surfaces change.
+# It never blocks a merge: a stochastic lane earns a blocking threshold only
+# after its variance baseline exists (phase 22 constraint). The threshold
+# starts at 0.7 and rises toward 1.0 as green nights accumulate.
+#
+# Two repository secrets, both owner-set, neither assumed:
+#   ANTHROPIC_API_KEY      — bills the eval sessions (Console account).
+#   PLUGIN_EVAL_ENABLEMENT — the early-access enablement assignment for
+#                            hosts outside the per-organization rollout, as
+#                            one `NAME=1` line; obtained from your Anthropic
+#                            contact and never written into the repo.
+name: evals
+
+on:
+  schedule:
+    - cron: "17 6 * * *"          # nightly, 06:17 UTC
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "skills/**"
+      - "commands/**"
+      - "evals/**"
+      - ".claude-plugin/**"
+      - ".github/workflows/evals.yml"
+  pull_request:
+    paths:
+      - "skills/**"
+      - "commands/**"
+      - "evals/**"
+      - ".claude-plugin/**"
+      - ".github/workflows/evals.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: evals-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  behavioral-evals:
+    runs-on: ubuntu-latest
+    # Allowed to fail by design — see the header comment. The step's own
+    # exit code (1 below threshold, 2 cost ceiling) still shows in the log
+    # and the artifact carries the per-case scores.
+    continue-on-error: true
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: install claude code
+        run: npm install -g @anthropic-ai/claude-code
+      - name: run the suite
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          PLUGIN_EVAL_ENABLEMENT: ${{ secrets.PLUGIN_EVAL_ENABLEMENT }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "ANTHROPIC_API_KEY secret is not set — the lane cannot run (docs/EVALS.md, CI lane)."
+            exit 1
+          fi
+          if [ -n "$PLUGIN_EVAL_ENABLEMENT" ]; then
+            # one NAME=1 assignment; exporting it keeps the name out of the repo
+            export "$PLUGIN_EVAL_ENABLEMENT"
+          fi
+          # the PATH form, from the repo root — never the plugin name
+          claude plugin eval . \
+            --json evals/results/ci/aggregate-result.json \
+            --output-dir evals/results/ci \
+            --no-publish \
+            --runs 3 \
+            --threshold 0.7 \
+            --max-cost-usd 12
+      - name: upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-results-${{ github.run_number }}
+          path: evals/results/**
+          retention-days: 14
+          if-no-files-found: warn
