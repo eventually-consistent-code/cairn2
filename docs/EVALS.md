@@ -88,6 +88,28 @@ Results: `evals/results/<timestamp>/aggregate-result.json` is the same
 document `--json` prints — `cases[].arms.{with,without}[].graders[]`
 plus `aggregates`; camelCase, additive-only. `report.html` beside it.
 
+## Trigger-rate baseline
+
+The `trigger`-tagged cases (`evals/10–19`) measure whether a
+description catches the natural-language ask it should (`*-fires`) and
+ignores the near-miss it shouldn't (`*-holds`). Graded on the Skill
+tool's dispatch, in both arms, three runs each. First measurement,
+2026-09-19 at 820454b, sandbox cwd empty (no `cairn.json`):
+
+| Description | Should-fire rate | Should-NOT-fire hold rate | Note |
+|---|---|---|---|
+| `do` | 0/3 | 3/3 | The router is bypassed when intent is obvious — "what should I work on next" went straight to the status verb (outcome reached 3/3). Not a defect; a fact about routers. |
+| `mark` | 3/3 | 3/3 | |
+| `ship` | 3/3 | 3/3 | |
+| `review` | 3/3 | 3/3 | One run fired but ran out of turns before `seat_roster`. |
+| `cairn-planning` (skill) | — | 3/3 | Should-fire needs a cwd carrying `cairn.json` (case.yaml scaffold) — not measured yet. |
+| `cairn-memory` (skill) | — | 3/3 | Same. |
+
+Baseline arm (no plugin): every `*-fires` case 0/3, every `*-holds`
+case 3/3 — the descriptions add triggers and take none away. A later
+description edit is judged against this table: rerun with
+`--tag trigger`, compare per row. Cost of the run: $9.26.
+
 ## Mocks
 
 `evals/mocks/cairn/` replaces the real cairn server for the run: the
