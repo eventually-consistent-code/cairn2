@@ -733,7 +733,7 @@ Four dependency-free, fire-and-forget Node scripts, registered in
 | 3 | `SessionStart` | — | `sessionstart-continuity.mjs` | Cat the handoff + recall banner; offer/auto-run/suppress resume per `continuity.resume` |
 | 4 | `PreToolUse` | `Bash` | `pretooluse-leakguard.mjs` | Leak guard — scan a staged `git commit`'s diff for cairn-internal refs before it lands |
 | 5 | `PostToolUse` | `Edit\|Write\|Bash` | `posttooluse-observe.mjs` | Passive observation capture (tool, target, error flag) to `.cairn/observations/` — cairn projects only, capped, reviewed and cleared by `retro` |
-| 6 | `Stop` | — | `stop-costtracker.mjs` | Cumulative session cost snapshot (tokens + approximate $) tagged with the active phase/issue, to `~/.cairn/metrics/`; `cost-report.mjs` rolls it up |
+| 6 | `Stop` | — | `stop-costtracker.mjs` | Cumulative session cost snapshot (tokens + approximate $ + report bytes) tagged with the active phase/issue, to `~/.cairn/metrics/`; `cost-report.mjs` rolls it up |
 
 ### Leak guard (hook #4)
 
@@ -766,6 +766,28 @@ and the agent sees exactly what leaked and where.
 Accepted limitation (spec §Why): commits made outside Claude Code are
 unguarded — a git-hook installer is a possible later `tune` offering, out of
 scope here.
+
+### Report bytes (hook #6)
+
+Fan-out is not free: every subagent's report lands in the coordinator's
+context and stays there. Hook #6 measures how much, so the question "is
+compressing reports worth building" has a number behind it instead of a
+hunch. It counts both shapes a report arrives in — the `tool_result`
+answering a `Task`/`Agent` call, and the `<task-notification>` an async
+agent's result comes back on — and records three cumulative fields per
+session: `report_bytes`, `report_count` (injections), and `report_tasks`
+(distinct subagents; an async fan-out produces both shapes but is one
+subagent, deduped by the tool-use id the notification names).
+
+The share is taken against `context_peak_tokens` — the largest single
+request a session made — never against the token sums. With prompt caching
+those sums count the same replayed prefix over and over: one real session
+here totalled 957M cache-read tokens against a window that never passed
+~1M, so a share against them means nothing.
+
+`cost-report.mjs` renders a `task reports` block in the summary, a
+`reports` object in `--json`, and a per-coordinator breakdown under
+`--reports`.
 
 ## Running the live gates
 

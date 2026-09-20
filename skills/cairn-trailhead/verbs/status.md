@@ -70,8 +70,10 @@ remembered count from an earlier session:
 - Agent spend: run the plugin's `hooks/scripts/cost-report.mjs` (Bash,
   `node "$CLAUDE_PLUGIN_ROOT/hooks/scripts/cost-report.mjs"`) — approximate
   session-cost totals rolled up by phase and issue from the Stop-hook
-  metrics log. Say "approximate" when rendering; no log yet → skip the
-  line silently.
+  metrics log, plus a `task reports` line when a session fanned out — how
+  much of the coordinator's peak context was subagent reports. Say
+  "approximate" when rendering; no log yet → skip the line silently.
+  `--reports` breaks the report bytes out per coordinator session.
 
 Render as a compact table, one line per source above. State plainly that
 these are live reads, not a cached snapshot — the whole point of folding

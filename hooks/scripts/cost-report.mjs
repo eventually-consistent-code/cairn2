@@ -10,6 +10,7 @@
  *   node cost-report.mjs              # summary: total, by phase, by issue
  *   node cost-report.mjs --issue X    # one number: est. cost for issue X
  *   node cost-report.mjs --phase N    # one number: est. cost for phase N
+ *   node cost-report.mjs --reports    # report bytes per coordinator session
  *   node cost-report.mjs --json      # machine-readable summary
  * Author(s): John Reed
  */
@@ -33,6 +34,44 @@ function latestPerSession(path) {
     } catch { /* skip corrupt line */ }
   }
   return [...bySession.values()];
+}
+
+// Rough chars-per-token for English prose + code. Only ever used to put a
+// byte count on the same scale as the token columns -- never to bill anything.
+const BYTES_PER_TOKEN = 4;
+
+function sumField(rows, key) {
+  return rows.reduce((s, r) => s + (r[key] ?? 0), 0);
+}
+
+function fmtBytes(n) {
+  if (n >= 1024 * 1024) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  if (n >= 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${n} B`;
+}
+
+/**
+ * How much of each coordinator's context was subagent reports (#176).
+ *
+ * The denominator is the PEAK context a session's requests carried, not any
+ * token sum: with prompt caching, the sums count the same replayed prefix
+ * over and over (one real session totalled 957M cache-read tokens against a
+ * window that never exceeded ~200k), so a share against them is meaningless.
+ * Peak context answers the question that decides compression -- what fraction
+ * of the window the coordinator was actually holding reports in.
+ */
+function reportStats(rows) {
+  const bytes = sumField(rows, "report_bytes");
+  const peak = sumField(rows, "context_peak_tokens");
+  const estTokens = Math.round(bytes / BYTES_PER_TOKEN);
+  return {
+    bytes,
+    injections: sumField(rows, "report_count"),
+    tasks: sumField(rows, "report_tasks"),
+    est_tokens: estTokens,
+    context_peak_tokens: peak,
+    share_pct: peak > 0 ? Number(((estTokens / peak) * 100).toFixed(1)) : 0,
+  };
 }
 
 function groupCost(rows, key) {
@@ -71,6 +110,22 @@ function main() {
     console.log(cost.toFixed(2));
     return;
   }
+  if (args.includes("--reports")) {
+    const fanned = rows.filter((r) => (r.report_bytes ?? 0) > 0)
+      .sort((a, b) => (b.report_bytes ?? 0) - (a.report_bytes ?? 0));
+    if (!fanned.length) {
+      console.log("no task-result injections recorded yet.");
+      return;
+    }
+    console.log(`report bytes by coordinator session (${fanned.length} of ${rows.length} fanned out):`);
+    for (const r of fanned) {
+      const s = reportStats([r]);
+      console.log(`  ${r.session_id.slice(0, 8)} ${r.issue ?? `phase ${r.phase ?? "-"}`}: `
+        + `${fmtBytes(s.bytes)} over ${s.injections} injections from ${s.tasks} subagents `
+        + `-- ~${s.est_tokens} est. tok, ${s.share_pct}% of a ${s.context_peak_tokens}-tok peak context`);
+    }
+    return;
+  }
   if (args.includes("--json")) {
     console.log(JSON.stringify({
       sessions: rows.length,
@@ -78,6 +133,7 @@ function main() {
       by_phase: Object.fromEntries(groupCost(rows, "phase")),
       by_issue: Object.fromEntries(groupCost(rows, "issue")),
       by_kind: Object.fromEntries(groupCost(rows, "kind")),
+      reports: reportStats(rows),
     }));
     return;
   }
@@ -97,6 +153,18 @@ function main() {
   if (byKind.length) {
     console.log("by kind:");
     for (const [k, v] of byKind) console.log(`  ${k}: $${v.toFixed(2)}`);
+  }
+  const reports = reportStats(rows);
+  if (reports.bytes > 0) {
+    console.log("task reports:");
+    console.log(`  ${fmtBytes(reports.bytes)} over ${reports.injections} injections `
+      + `from ${reports.tasks} subagents`);
+    console.log(`  ~${reports.est_tokens} est. tokens -- ${reports.share_pct}% of peak `
+      + `coordinator context (${reports.context_peak_tokens} tok)`);
+    if (reports.tasks > 0) {
+      console.log(`  mean ${fmtBytes(Math.round(reports.bytes / reports.tasks))} per subagent `
+        + `(--reports for the per-session breakdown)`);
+    }
   }
 }
 
