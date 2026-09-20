@@ -2093,6 +2093,26 @@ cd ~/repos/cairn2 && CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=0.2 claude
 
 Do a normal piece of work — long enough to cross at least two boundaries. Do not do throwaway work: the measurement is only worth what the session was worth. Confirm mid-session that `config_probe` now reports `{"status":"match"}`.
 
+> **Updated after Phase A execution — read before running this task.**
+>
+> Two findings from the whole-branch review change how this task must be run.
+>
+> **1. The symptom detector is not a standalone gate.** Its first version could
+> not fire at all: it only read `message.content` when that field was an array,
+> and 94-100% of user prose in real transcripts is a bare string. The
+> "0 symptoms" it reported was blindness. That is fixed and proven — a spliced
+> repeat question now fires exactly once where the old code fired zero times —
+> but the measured transcripts contained only 6 and 4 post-boundary questions
+> in total. **Zero symptoms against a denominator that small is weak evidence
+> of no harm.** Report the denominator (post-boundary questions asked at all,
+> and files re-read at all) beside the symptom count, and judge the ratio.
+> Do not gate on `symptoms.length === 0`.
+>
+> **2. The detector matches repeated wording, not repeated meaning.** Phrase
+> matching is bigram-literal by design, so a paraphrased re-ask will not fire.
+> Treat a symptom as strong evidence of harm, and its absence as weak evidence
+> of safety. The asymmetry is the point.
+
 - [ ] **Step 4: Analyse that session's boundaries**
 
 ```bash
@@ -2117,10 +2137,25 @@ Re-run Task 10 Step 1 and compare `avgContextPerTurn` and `bandRentShare` agains
 
 Create `docs/notes/context-economy-phase-b.md` recording: boundaries crossed, symptoms found per boundary, the rent comparison, and a plain judgement on whether output quality held. Include the symptoms that were *false positives* — a detector that cries wolf is a finding about the detector.
 
-Then apply the gate from the spec:
+Then apply the gate — amended from the spec in light of the Phase A findings
+above, because the spec's version assumed a detector that could carry the
+decision alone:
 
-- **Quality held or improved** → phase B succeeded. Phases C, D and E may be planned.
-- **Quality degraded** → raise `autocompactPct` (0.3, then 0.4), repeat from Step 3, and record the saving at whatever threshold quality allows. The spec's kill criterion is explicit: the threshold rises, the saving is whatever survives.
+- **Symptoms fired** → real evidence of harm. Raise `autocompactPct` (0.3, then
+  0.4), repeat from Step 3, and record the saving at whatever threshold quality
+  allows. The kill criterion stands: the threshold rises, the saving is
+  whatever survives.
+- **No symptoms, and the denominator was meaningful** (a reasonable number of
+  post-boundary questions and re-reads occurred, and none were repeats) →
+  evidence of no harm, proportional to that denominator. Record the denominator
+  in the write-up so the strength of the claim is legible later.
+- **No symptoms and a tiny denominator** → the session did not exercise the
+  boundary enough to conclude anything. This is not a pass. Run another
+  session before deciding, or say plainly in the write-up that the gate is
+  unresolved.
+- **Your own judgement outranks all three.** You ran the session. If the work
+  felt degraded — repeating yourself, re-establishing context, the model losing
+  the thread — that is evidence the detectors cannot see, and it counts.
 
 - [ ] **Step 7: Commit**
 
