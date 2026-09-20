@@ -65,6 +65,11 @@ export interface TokenEstimateOptions {
      *  to issue counts alone when absent or failing. */
     tracker?: IssueReader;
 }
+/** Every segment of the metrics log, oldest first, the live one last. The live
+ *  segment keeps the canonical name; a closed one is "<stem>.<stamp>.jsonl"
+ *  with a fixed-width stamp, so a plain lexical sort is chronological order.
+ *  Scheme mirrored in hooks/scripts/stop-costtracker.mjs, which writes them. */
+export declare function metricsSegments(current: string): string[];
 /** What one issue estimates, with the provenance of each number. */
 export interface IssueEstimateRead {
     points: number | null;

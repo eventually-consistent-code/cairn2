@@ -148,7 +148,7 @@ interface MetricsRow {
  *  segment keeps the canonical name; a closed one is "<stem>.<stamp>.jsonl"
  *  with a fixed-width stamp, so a plain lexical sort is chronological order.
  *  Scheme mirrored in hooks/scripts/stop-costtracker.mjs, which writes them. */
-function metricsSegments(current: string): string[] {
+export function metricsSegments(current: string): string[] {
   const dir = dirname(current);
   const stem = basename(current).replace(/\.jsonl$/, "");
   let names: string[];

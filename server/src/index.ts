@@ -74,7 +74,7 @@ import {
 import { resyncReport } from "./planning/resync.js";
 import { docsDriftReport } from "./planning/docs-drift.js";
 import { distillManifest } from "./planning/distill-manifest.js";
-import { estimatePhaseTokens } from "./planning/token-estimate.js";
+import { estimatePhaseTokens, metricsSegments } from "./planning/token-estimate.js";
 import { snapshotNote, trackerDelta } from "./planning/tracker-delta.js";
 import {
   MemoryIndex,
@@ -93,7 +93,10 @@ import {
   updateCard,
 } from "./memory/cards.js";
 import { checkCardStaleness } from "./memory/staleness.js";
-import { readHandoff, writeHandoff, clearHandoff } from "./core/continuity.js";
+import {
+  readHandoff, writeHandoff, clearHandoff, metricsPath,
+} from "./core/continuity.js";
+import { summarise, sessionSpans, type MetricsRow } from "./context/meter.js";
 import { registerPlanResources } from "./core/resources.js";
 import { installedVersions, type InstalledVersions } from "./core/versions.js";
 import type { Handoff } from "./core/continuity.js";
@@ -372,6 +375,42 @@ export function buildServer(deps: {
       : undefined;
   };
 
+  // Reads every metrics segment for this project (the live one plus any
+  // closed, dated ones) and parses each line to a raw row. No collapse here
+  // -- summarise() and sessionSpans() each need the latest-per-session rule
+  // applied their own way, and sessionSpans additionally needs every row's
+  // timestamp, not just the winner's.
+  const readMetricsRows = (projectDir: string): MetricsRow[] => {
+    const rows: MetricsRow[] = [];
+    for (const segment of metricsSegments(metricsPath(projectDir))) {
+      let raw: string;
+      try {
+        raw = readFileSync(segment, "utf8");
+      } catch {
+        continue; // pruned or never written -- not an error
+      }
+      for (const line of raw.split("\n")) {
+        if (!line.trim()) continue;
+        try {
+          rows.push(JSON.parse(line));
+        } catch {
+          // corrupt line -- skip, never guess
+        }
+      }
+    }
+    return rows;
+  };
+
+  /**
+   * Rent rollup for this project. Reads the metrics log the Stop hook writes;
+   * returns zeros rather than throwing when no session has been recorded yet,
+   * because an empty meter is a true answer, not an error.
+   */
+  const contextMeterReport = (projectDir: string) => {
+    const rows = readMetricsRows(projectDir);
+    return { ...summarise(rows), spans: sessionSpans(rows).length };
+  };
+
   server.registerTool(
     "context_get",
     {
@@ -425,6 +464,15 @@ export function buildServer(deps: {
       writeBanner(d);
       return state;
     }),
+  );
+
+  server.registerTool(
+    "context_meter",
+    {
+      description: "Context rent rollup: per-turn average, bands, residency, prefix",
+      inputSchema: z.object({}),
+    },
+    wrap(() => contextMeterReport(dir())),
   );
 
   server.registerTool(

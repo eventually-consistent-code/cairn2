@@ -84,7 +84,7 @@ const ESTIMATE_LINE_RE = /^Estimate:\s*(\d+(?:\.\d+)?)\s*points?(?:\s*\/\s*~\s*(
  *  segment keeps the canonical name; a closed one is "<stem>.<stamp>.jsonl"
  *  with a fixed-width stamp, so a plain lexical sort is chronological order.
  *  Scheme mirrored in hooks/scripts/stop-costtracker.mjs, which writes them. */
-function metricsSegments(current) {
+export function metricsSegments(current) {
     const dir = dirname(current);
     const stem = basename(current).replace(/\.jsonl$/, "");
     let names;

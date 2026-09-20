@@ -82,6 +82,7 @@ describe("cairn MCP server", () => {
     expect(tools).toEqual(
       [
         "context_get",
+        "context_meter",
         "context_set",
         "issue_close",
         "issue_create",
@@ -171,8 +172,8 @@ describe("cairn MCP server", () => {
     );
   });
 
-  it("pins the tool count at 86", async () => {
-    expect((await listToolNames()).length).toBe(86);
+  it("pins the tool count at 87", async () => {
+    expect((await listToolNames()).length).toBe(87);
   });
 
   it("issue_attach reads the file and forwards to the tracker; missing file is NOT_FOUND", async () => {
