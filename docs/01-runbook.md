@@ -1399,6 +1399,22 @@ recommendation is to split the active issue into sub-tasks rather than
 piling more work into one context. Advisory means advisory — the tool can't
 pause you; you act on the signal.
 
+**Observation backlog.** The PostToolUse observe hook appends a row per
+Edit/Write/Bash call to `.cairn/observations/observations.jsonl`, and retro
+is the only thing that ever reads or clears it. Left alone, that buffer
+grows until the hook's retention cap quietly drops the oldest half — work
+nobody reviewed, gone without a word. So memory announces its own state:
+`mem_stats` returns an `observations` block (row count, oldest-entry age in
+days, the threshold), and once the count reaches
+`memory.observationWarnThreshold` (default 25) the recall banner carries a
+line directly under its header — `N unreviewed observations (oldest Xd) —
+run retro`. A backlog past the line is enough to render the banner on its
+own, because the session with no cards and no open sessions is exactly the
+one that has never run retro. Capture stays passive and review stays
+retro-gated; the counter only refuses to let the pile grow invisibly. Like
+the card audit, it reads one plain file, so a broken index binding never
+hides the warning.
+
 One care-and-feeding note: cards are git-committed, so treat them like
 code — review, PR, don't hand-edit frontmatter into malformed shapes. A
 malformed card silently drops out of recall rather than erroring; check
@@ -1660,6 +1676,7 @@ nothing.
 | `docs.config` | object | — | Connector config: `baseUrl`, `spaceKey`, `emailEnv` (default `CONFLUENCE_EMAIL`), `tokenEnv` (default `CONFLUENCE_API_TOKEN`) |
 | `agents.model` | `auto \| inherit \| haiku \| sonnet \| opus` | `auto` | Model routing for agent fan-out. `inherit` = session model everywhere; an explicit value pins everything; `auto` routes per work class: mechanical → fast tier, synthesis → session tier, judgment gates → strongest. Blast-radius rule: output that gates verify/ship routes UP, never down; uncertain → inherit |
 | `memory.tokenThreshold` | positive integer | `150000` | The capacity-guard advisory line for the memory index |
+| `memory.observationWarnThreshold` | positive integer | `25` | Unreviewed observation rows before the banner says "run retro" |
 | `user.handle` | non-empty string | *(optional)* | Your tracker identity — enables ownership tracking, claiming, skip-others'-work |
 | `user.mode` | `vibe \| engineer` | absent ≡ `vibe` | Collaboration posture (section 9). Engineer requires `handle` |
 | `continuity.resume` | `prompt \| auto \| off` | `prompt` | Session-start resume behavior: ask, proceed, or suppress |

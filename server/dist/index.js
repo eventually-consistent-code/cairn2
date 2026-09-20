@@ -9,6 +9,7 @@ import { z } from "zod";
 import { CairnError } from "./errors.js";
 import { loadConfig, writeConfigPatch } from "./config.js";
 import { auditMemory } from "./memory/audit.js";
+import { observationBacklog } from "./memory/observations.js";
 import { ActiveContext } from "./active-context.js";
 import { forgetProject, readRegistry, registerProject, } from "./core/registry.js";
 import { emitOutlook, outlookAggregate } from "./core/outlook.js";
@@ -667,9 +668,10 @@ export function buildServer(deps) {
     }));
     server.registerTool("mem_stats", {
         description: "Memory index size — chunk count and approximate token usage (capacity guard signal), " +
-            "recall-banner token accounting, and card-store health for `audit memory`: cards that " +
+            "recall-banner token accounting, card-store health for `audit memory`: cards that " +
             "fail to parse (silently skipped by list and recall), broken provenance, near-duplicates, " +
-            "and aged low-confidence cards",
+            "and aged low-confidence cards, plus the observation backlog waiting on retro (count, " +
+            "oldest-entry age, warn threshold)",
         inputSchema: z.object({}),
     }, wrap(() => {
         const d = dir();
@@ -677,6 +679,9 @@ export function buildServer(deps) {
         // FTS binding — a memory audit that dies when memory is unhealthy is
         // the wrong shape (#171). Index stats degrade to a note instead.
         const cards = auditMemory(d);
+        // Same independence rule for the observation backlog (#173): it reads
+        // one plain JSONL file, so a broken index never hides the warning.
+        const observations = observationBacklog(d);
         let index;
         try {
             index = { ...getMemIndex(d).stats(), ...bannerStats(d) };
@@ -684,7 +689,7 @@ export function buildServer(deps) {
         catch (e) {
             index = { indexUnavailable: e.message ?? String(e) };
         }
-        return { ...index, cards };
+        return { ...index, cards, observations };
     }));
     server.registerTool("mem_card_create", {
         description: "Write a durable memory card (decision/constraint/gotcha/reference/note) with provenance",
