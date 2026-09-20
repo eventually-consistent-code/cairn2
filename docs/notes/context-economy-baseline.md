@@ -172,6 +172,29 @@ re-derive them from yet. The next honest re-run of this document is the
 one where at least a handful of sessions have stopped since this code
 landed.
 
+**`rent` is two measurements under one name, and the report now says
+which.** A session with a `context` field contributes `ctx_sum` — Σ(input +
+cache_write + cache_read) — while an older session contributes
+`cache_read_tokens` alone, which omits input and cache-write entirely and is
+therefore strictly smaller. The 6.87B figure above is 100% the fallback
+quantity, since no row in this run carried `context`. `summarise()` now
+returns a `rentBasis` block (sessions and tokens on each side) and every
+`SessionSpan` carries `rentBasis: "ctx_sum" | "cache_read"`, so the next
+re-run of this document — which will straddle both generations — can state
+the mix instead of averaging over it. Expect the headline rent to JUMP when
+`ctx_sum` rows start landing; that is the fuller measurement arriving, not
+spend increasing.
+
+**Band share was a turn share until this branch fixed it.** `bands` counts
+turns, and a turn riding 600k costs several times one riding 100k, so
+dividing the counts understated the expensive bands — exactly the bands the
+design's "63% of spend above 300k" claim is about. The Stop hook now also
+sums context tokens per band (`context.band_tokens`) and `bandRentShare` is
+divided from those whenever any session has them. Rows predating that field
+can only offer counts: they fall back to the turn share, and
+`bandShare.basis` plus its session counts say so in the output rather than
+silently.
+
 **Tokens are a `chars / 4` estimate — but not the number this document
 leans on.** The residency fields (`ctx_sum`, `prefix_tokens`, bands,
 per-producer residency) are computed from message-content byte length

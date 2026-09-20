@@ -12,8 +12,20 @@ export interface SessionSpan {
     sessionId: string;
     startedAt: string;
     endedAt: string;
-    /** cache_read tokens this session paid -- the `ctx_sum` metrics field. */
+    /**
+     * Context tokens this session paid -- and NOT one measurement, which is
+     * why `rentBasis` rides beside it:
+     *   - `ctx_sum`: Sigma(input + cache_write + cache_read) over the session's
+     *     turns, the metrics row's `context.ctx_sum` field;
+     *   - `cache_read`: the row's `cache_read_tokens` alone, which is what a
+     *     row written before `context` existed can offer. Strictly smaller --
+     *     it omits input and cache-write entirely.
+     * A total summed across both is a mixture. Report the mix; do not coerce
+     * the two into agreement.
+     */
     rent: number;
+    /** Which quantity `rent` is. */
+    rentBasis: "ctx_sum" | "cache_read";
 }
 export interface WorkItem {
     id: string;

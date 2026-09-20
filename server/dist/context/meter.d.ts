@@ -9,6 +9,12 @@
  * session's whole record, and summing rows would multiply-count every one.
  */
 import type { SessionSpan } from "./attribution.js";
+type Bands = {
+    under150k: number;
+    to300k: number;
+    to500k: number;
+    over500k: number;
+};
 export interface MetricsRow {
     ts: string;
     session_id: string;
@@ -18,22 +24,47 @@ export interface MetricsRow {
         turns_sidechain: number;
         ctx_sum: number;
         prefix_tokens: number;
-        bands: {
-            under150k: number;
-            to300k: number;
-            to500k: number;
-            over500k: number;
-        };
+        /** TURNS per band. Every row that has a `context` field has these. */
+        bands: Bands;
+        /** Context TOKENS summed per band. Absent on rows written before it existed. */
+        band_tokens?: Bands;
         residency: Record<string, number>;
     };
 }
 export interface MeterReport {
     sessions: number;
     turns: number;
+    /**
+     * Summed session rent -- see `rentBasis`. This is NOT one measurement: a
+     * row carrying `context.ctx_sum` contributes Sigma(input + cache_write +
+     * cache_read); an older row without it contributes `cache_read_tokens`
+     * alone, which is strictly smaller. Reported as one total because it is
+     * the total that was paid, with the mix declared beside it.
+     */
     rent: number;
+    /** How many sessions contributed which quantity to `rent`, and how much. */
+    rentBasis: {
+        ctxSumSessions: number;
+        ctxSumRent: number;
+        cacheReadSessions: number;
+        cacheReadRent: number;
+    };
     avgContextPerTurn: number;
     sidechainTurnShare: number;
+    /**
+     * Share of context spend by band. Divided from summed TOKENS when any
+     * session carries `band_tokens`, and from turn COUNTS otherwise -- a turn
+     * share understates the high bands, because a high-band turn costs more.
+     * `bandShare.basis` says which one this is.
+     */
     bandRentShare: Record<string, number>;
+    /** Which quantity `bandRentShare` divided, and the count-based share always. */
+    bandShare: {
+        basis: "tokens" | "turns" | "none";
+        tokenSessions: number;
+        turnOnlySessions: number;
+        turnShare: Record<string, number>;
+    };
     residency: Record<string, number>;
     prefixTokens: {
         p50: number;
@@ -53,3 +84,4 @@ export declare function summarise(rows: MetricsRow[]): MeterReport;
  * :returns one span per session id
  */
 export declare function sessionSpans(rows: MetricsRow[]): SessionSpan[];
+export {};
