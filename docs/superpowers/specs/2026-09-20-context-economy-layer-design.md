@@ -214,10 +214,28 @@ draft). Cairn owns the auto-compact threshold per project and per verb, via
 - a recommended threshold written into the project's configuration, defaulting
   to T=200k on the simulation above, with per-verb overrides where a verb
   genuinely needs breadth
-- **compaction-boundary quality measurement** — the piece nothing does today.
-  Detect each boundary in the transcript, then look for the symptoms of a bad
-  one: a re-read of a file that was resident before the boundary, a repeated
-  question, a contradicted decision. Without this the threshold is a guess.
+- **a compaction artifact contract.** Setting a threshold without defining
+  what a good compaction *contains* is half a design. Borrowed from Writer's
+  harness (see Prior art), a checkpoint carries four typed artifacts:
+  durable memory (decisions, constraints, and **rejected approaches** — the
+  most commonly lost and most expensive to rediscover), a summary written for
+  resumability (current state, files touched, errors, next steps), the user's
+  requirements preserved **verbatim**, and skill references. Each checkpoint
+  folds the previous one forward so cost stays incremental.
+
+  Two rules carry most of the value. Summarization runs on a **cheaper helper
+  model** off the paying loop — `CLAUDE_CONTEXT_COLLAPSE_MODEL` is the harness
+  knob for exactly this. And **a degraded or empty summary aborts the
+  compaction** rather than persisting it: a bad checkpoint is worse than no
+  checkpoint, because the context it replaced is already gone.
+
+  Cairn has most of this vocabulary already — `continuity_checkpoint`, memory
+  cards, `distill`. What it lacks is the contract and the abort rule.
+- **compaction-boundary quality measurement** — the piece nothing does today,
+  and it measures in **both** directions (see the risk section). Detect each
+  boundary, then look for symptoms of a bad one: a re-read of a file that was
+  resident before the boundary, a repeated question, a contradicted decision.
+  Without this the threshold is a guess.
 - the existing `continuity_checkpoint` and `waypoint` remain the manual path
   for a deliberate hand-off; they are no longer load-bearing for cost.
 
@@ -235,6 +253,35 @@ grows to count MCP tool schemas, with the budget re-pinned at the true figure
 and enforced in CI; plus a report-only machine-wide mode ranking every
 installed plugin by resident cost. That is what makes a 79.7k prefix
 actionable, and most of that prefix belongs to plugins other than cairn.
+
+The remedy for cairn's own 11,396 tokens is **progressive disclosure applied
+to tool schemas**. Skill bodies already load on demand — that lazy split is the
+design `check-footprint` exists to protect — but tool schemas do not. The
+harness supports deferred tools (`deferredBuiltinTools`, resolved on demand via
+tool search), so rarely-used verbs' tools can leave the resident prefix and
+load when called. A tool count of 86 is not the problem; 86 *resident* schemas
+is.
+
+**7. Subagent report cap and sidecar.** Sidechains are 60% of turns and 26% of
+rent — the cheapest place work can happen. The one channel where that cost
+re-enters the parent is the report. Cap it (Writer uses 8KB), write the detail
+to a file the parent reads only on demand, and depth-cap delegation so
+delegated exploration cannot inflate the parent loop. Cairn already measures
+`report_bytes` under #176 and caps nothing; this turns that measurement into a
+control.
+
+**8. Bounded refinement loops.** Review and reflection loops are the largest
+single source of waste in multi-agent systems, and growth is quadratic — a
+10-cycle self-critique loop can burn ~50x a single pass. Published results put
+runtime supervision at ~30% savings and dynamic turn limits at 24%, both at
+comparable quality.
+
+Cairn's `peers`, `review`, `audit` and `verify` are exactly these loops. ADR
+0008 caps budget at phase and wave boundaries, but nothing caps *iterations*.
+Each loop gets a maximum turn count, a **minimum-improvement stop rule**
+(if an iteration does not measurably improve correctness or completeness, stop
+rather than spend another pass), and an explicit handoff condition when the cap
+is hit.
 
 ### Data flow
 
@@ -327,14 +374,15 @@ guard extensions test where the existing ones do.
 
 | Phase | Ships | Behavior change | Gate to next |
 |---|---|---|---|
-| **A** | meter, attribution, report, footprint audit | none | real per-work-item baseline exists |
-| **B** | threshold set to T=200k + compaction-boundary quality measurement | the 50% claim lands here | quality across boundaries holds |
-| **C** | per-verb thresholds + band signal | tuned per workload | measured better than the flat setting |
-| **D** | guard rule 1, shadow then enforcing | first enforcement | shadow shows a real target |
+| **A** | meter, attribution, report, footprint audit (incl. tool-schema deferral proposal) | none | real per-work-item baseline exists |
+| **B** | threshold at T=200k + compaction artifact contract + boundary quality measurement | the 50% claim lands here | boundary quality holds or improves |
+| **C** | per-verb thresholds + band signal + subagent report cap and sidecar | tuned per workload | measured better than the flat setting |
+| **D** | bounded refinement loops across peers/review/audit/verify | caps iteration | loops end earlier at equal quality |
+| **E** | guard rule 1, shadow then enforcing | first enforcement | shadow shows a real target |
 
-Phase B is now the phase that delivers the target, and it is a configuration
-change plus the measurement that proves it safe. That inverts the first draft,
-where B was a signal and the savings waited on C.
+Phase B is the phase that delivers the target, and it is a configuration change
+plus the artifact contract and measurement that prove it safe. That inverts the
+first draft, where B was a signal and the savings waited on C.
 
 Phase A ships first and alone. It changes nothing and produces the number every
 later claim depends on — including the honest possibility that the target needs
@@ -346,17 +394,37 @@ A cost layer that costs more than it saves is the failure mode here.
 
 - If phase B's boundary measurement shows quality loss, the threshold rises
   until it does not, and the saving is whatever survives.
-- If D's shadow mode finds under ~2% recoverable, D never ships.
+- If D's loop caps reduce output quality at any measured iteration bound, the
+  caps loosen rather than the quality bar.
+- If E's shadow mode finds under ~2% recoverable, E never ships.
 - If the layer's own resident footprint exceeds ~500 tokens, it has eaten its
   margin and gets cut back.
 
-### Principal risk
+### Principal risk, and why it is smaller than it looks
 
 No longer compliance — the threshold is enforced by the harness once set. The
-risk is now **quality across compaction boundaries**, which is unmeasured
-today and which the simulation cannot speak to. Phase B ships the measurement
-alongside the setting for exactly that reason. If boundary quality degrades,
-the threshold moves up and the saving falls to whatever quality allows.
+risk is **quality across compaction boundaries**, which is unmeasured today and
+which the simulation cannot speak to.
+
+But the framing "compaction is lossy, so cutting context trades quality for
+cost" is only half true. **Riding a 900k context is also lossy.** Anthropic's
+own context-rot research finds recall accuracy degrades as context grows:
+larger contexts do not merely cost more, they perform worse. Practitioner
+accounts describe the same failure in symptoms — the model stops following
+earlier instructions, answers drift generic, and it asks for something already
+provided.
+
+So T=200k may *improve* output quality rather than trade against it, and the
+measurement must look in both directions. Three symptoms are mechanically
+detectable in a transcript and become the detector:
+
+- a re-read of a file that was resident before the boundary
+- a question the user already answered earlier in the session
+- a decision reversed without new evidence
+
+Phase B ships this measurement alongside the setting. If boundary quality
+degrades, the threshold rises and the saving is whatever quality allows. If it
+improves, the threshold comes down.
 
 ## Rejected, with reasons
 
@@ -388,6 +456,40 @@ needed is an invisible correctness failure.
 **A cairn-built session-restart API.** Considered and unnecessary. Auto-compact
 already restarts the context; only its trigger needed moving. Supervised child
 sessions remain available for delegated work via the SDK surfaces named above.
+
+## Related work, not in this spec
+
+**Verb compilation.** Vivek Haldar cut an agent skill's token use by 94% by
+treating the natural-language skill as a specification, collecting execution
+traces, identifying the steps that had stabilized into deterministic behavior,
+and lowering those into code — keeping model calls only where semantic judgment
+genuinely lives. Run fluid first; compile once the shape is known; amortize
+over every later run.
+
+This lands squarely on cairn. Cairn is 39 verbs expressed as natural-language
+skill bodies, executed repeatedly, with traces, run manifests, ledgers and
+metrics already recorded — the trace substrate the method requires already
+exists. And cairn's stated architecture (the plugin layer owns policy and
+judgment; the server owns every mechanism with a wrong answer) *is* the
+compiler thesis, never yet applied systematically with trace evidence deciding
+what moves.
+
+It is a different thesis with its own measurement needs, and it gets its own
+design. Noted here so it is not lost.
+
+## Prior art
+
+| Source | What was taken |
+|---|---|
+| Writer, *How to rein in token costs with your harness* | The compaction artifact contract, the cheaper-helper-model rule, abort-on-degraded-summary, sub-agents as context firewalls with capped reports and a metadata sidecar. Their two-zone prompt reaching 99.9% cache reads independently confirms that prefix caching is solved and not a lever here. |
+| Glean, *How to optimize token efficiency in agentic systems* | Context rot as a quality argument *for* smaller contexts; bounded refinement loops with minimum-improvement stop rules; the published 24-30% figures; the observation that review loops dominate multi-agent spend. |
+| Monte Carlo, *Working smarter with Claude* | "Start a new conversation for every new task" as the highest-impact habit, and the three degradation symptoms that became the boundary detector. |
+| Zylon, *How to use tokens efficiently in enterprise AI workflows* | Independent arrival at tokens-per-resolved-task as the correct metric; the discipline of returning only needed fields from tools. |
+| Vivek Haldar, *How I cut an AI agent's token use by 94%* | The compiler thesis, carried to Related work above. |
+
+Where these sources lead with compressing tool outputs or improving retrieval,
+the measurement in this repo rejects both: median read result is 878 tokens and
+the largest Bash result in the corpus is 7,295.
 
 ## Open items
 
