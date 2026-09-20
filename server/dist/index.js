@@ -286,13 +286,18 @@ export function buildServer(deps) {
             ? { points: estimatePoints, minutes: estimateMinutes }
             : undefined;
         const result = await tracker.createIssue({ ...input, phase, estimate });
-        snapshotNote(d, result);
+        const { estimateSkipped: partialSkip, ...issue } = result;
+        snapshotNote(d, issue);
         // mirrors the worklogError note on issue_close -- a silently dropped
         // estimate reads as a bug, so say why it never reached the backend.
+        // Two ways to lose one: the backend has no estimate support at all
+        // (capability, known up front), or it supports estimates and still
+        // lost half of this one (a Jira site with no story-point field --
+        // that verdict is per call, so the adapter reports it, #231).
         const estimateSkipped = wantsEstimate && !tracker.capabilities.hasEstimates
             ? "backend has no estimate support; fold points/minutes into the issue body"
-            : undefined;
-        return { ...result, ...(estimateSkipped ? { estimateSkipped } : {}) };
+            : partialSkip;
+        return { ...issue, ...(estimateSkipped ? { estimateSkipped } : {}) };
     }));
     server.registerTool("issue_get", {
         description: "Fetch one issue",
@@ -352,20 +357,23 @@ export function buildServer(deps) {
             }
         }
         const result = await tracker.updateIssue(id, patch);
-        snapshotNote(d, result);
+        const { estimateSkipped: partialSkip, ...issue } = result;
+        snapshotNote(d, issue);
         refreshHandoff({ source: "tool", issue: id }, d);
         // mirrors the worklogError note on issue_close -- a silently dropped
         // estimate reads as a bug, so say why it never reached the backend.
+        // Same two sources as issue_create: no estimate support at all, or a
+        // backend that supports estimates and still lost half of this one.
         const estimateSkipped = wantsEstimate && !tracker.capabilities.hasEstimates
             ? "backend has no estimate support; fold points/minutes into the issue body"
-            : undefined;
+            : partialSkip;
         // same pattern for a phase the backend can't re-parent to -- a
         // silently ignored re-phase bit two live sessions before #142.
         const phaseSkipped = phaseParam !== undefined && !canRephase
             ? "backend can't move an existing issue between phases; recreate the issue in the target phase"
             : undefined;
         return {
-            ...result,
+            ...issue,
             ...(autoAssigned ? { autoAssigned: true } : {}),
             ...(estimateSkipped ? { estimateSkipped } : {}),
             ...(phaseSkipped ? { phaseSkipped } : {}),
