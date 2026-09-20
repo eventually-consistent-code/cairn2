@@ -11,6 +11,15 @@ export declare const DEFAULT_USD_PER_MTOK: {
     low: number;
     high: number;
 };
+/** Where an estimate number came from. A real tracker field and a regex
+ *  scrape of a prose line are NOT the same evidence -- pooling them without
+ *  saying so is how a calibration curve gets fitted to a parser bug. */
+export type EstimateSource = "field" | "body";
+/** How many numbers in a pool came from each source. */
+export interface SourceTally {
+    field: number;
+    body: number;
+}
 export interface TokenEstimate {
     phase: number;
     range: {
@@ -25,10 +34,21 @@ export interface TokenEstimate {
     basis: {
         historyPhases: number;
         pointsTotal: number | null;
+        /** Minutes the target phase's issues estimate -- native minutes field, or
+         *  the hours half of the body line x 60. Null when nothing resolves. */
+        minutesTotal: number | null;
         issueCount: number;
         /** How many real (phase total, issue count) pairs fed the per-issue
          *  grain -- 0 means the range came from whole-phase totals or defaults. */
         perIssuePairs: number;
+        /** How many completed phases fed the tokens-per-minute grain -- 0 means
+         *  minutes contributed nothing to this range. */
+        perMinutePairs: number;
+        /** Provenance of the TARGET phase's numbers, carried not inferred. */
+        estimateSources: {
+            points: SourceTally;
+            minutes: SourceTally;
+        };
     };
     confidence: "wide" | "calibrated";
     notes: string[];
@@ -45,14 +65,23 @@ export interface TokenEstimateOptions {
      *  to issue counts alone when absent or failing. */
     tracker?: IssueReader;
 }
+/** What one issue estimates, with the provenance of each number. */
+export interface IssueEstimateRead {
+    points: number | null;
+    minutes: number | null;
+    /** Null exactly where the matching number is null. */
+    pointsSource: EstimateSource | null;
+    minutesSource: EstimateSource | null;
+}
 /**
  * Estimate a phase's agent-token spend as a range, before it runs.
  *
  * Method: collapse metrics history (latest row per session, grouped by phase
- * tag), derive tokens-per-point / tokens-per-issue / tokens-per-phase
- * distributions from completed phases, then scale by the target phase's
- * points and issue count. No usable history degrades to a published wide
- * default with confidence "wide" and an honest note.
+ * tag), derive tokens-per-point / tokens-per-minute / tokens-per-issue /
+ * tokens-per-phase distributions from completed phases, then scale by the
+ * target phase's points, estimated minutes and issue count. No usable history
+ * degrades to a published wide default with confidence "wide" and an honest
+ * note.
  *
  * "Tokens" here means input + output only -- cache traffic is excluded from
  * the unit but folded into the history-derived USD rate, so estUsd stays

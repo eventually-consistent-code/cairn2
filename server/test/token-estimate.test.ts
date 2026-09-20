@@ -37,6 +37,22 @@ const fakeIssueReader = (bodies: Record<string, string>): IssueReader => ({
   },
 });
 
+// Backends that DO persist structured estimates (2 of 9) -- native field, no
+// prose line to scrape. The provenance tally must tell the two apart.
+const fieldIssueReader = (
+  fields: Record<string, { points?: number; minutes?: number }>,
+): IssueReader => ({
+  async getIssue(id: string): Promise<Issue> {
+    const estimate = fields[id];
+    if (estimate === undefined) throw new Error(`no such issue ${id}`);
+    return {
+      id, title: id, body: "no estimate line here", estimate,
+      state: "open", category: "open", labels: [],
+      updatedAt: "2026-01-01T00:00:00Z", url: `https://x/${id}`,
+    };
+  },
+});
+
 describe("estimatePhaseTokens", () => {
   let dir: string;
   let metricsFile: string;
@@ -68,7 +84,11 @@ describe("estimatePhaseTokens", () => {
     expect(est.estUsd.high).toBeCloseTo(
       (est.range.high / 1e6) * DEFAULT_USD_PER_MTOK.high, 2);
     expect(est.basis).toEqual({
-      historyPhases: 0, pointsTotal: null, issueCount: 3, perIssuePairs: 0,
+      historyPhases: 0, pointsTotal: null, minutesTotal: null, issueCount: 3,
+      perIssuePairs: 0, perMinutePairs: 0,
+      estimateSources: {
+        points: { field: 0, body: 0 }, minutes: { field: 0, body: 0 },
+      },
     });
     expect(est.notes.join(" ")).toContain("wide default");
   });
@@ -107,11 +127,115 @@ describe("estimatePhaseTokens", () => {
       "GH-5": "target task\n\nEstimate: 3 points / ~4h.\n",
     });
     const est = await estimatePhaseTokens(dir, 2, { metricsFile, tracker });
-    // per-point: 150k / 4 pts = 37.5k; target 9 pts -> 253_125..421_875
-    // per-issue: 168_750..281_250; envelope union takes the wider bounds
+    // per-point:  150k / 4 pts = 37.5k; target 9 pts -> 253_125..421_875
+    // per-minute: 150k / 180 min = 833.33; target 360 min -> 225_000..375_000
+    // per-issue:  168_750..281_250; envelope union takes the wider bounds
     expect(est.range).toEqual({ low: 168_750, high: 421_875 });
     expect(est.basis.pointsTotal).toBe(9);
     expect(est.notes.join(" ")).toContain("tokens-per-point");
+    // #230: the hours half of the same body line no longer hits the floor --
+    // GH-3 (~2h) + GH-5 (~4h) = 360 minutes, GH-4 carries no hours.
+    expect(est.basis.minutesTotal).toBe(360);
+    expect(est.basis.perMinutePairs).toBe(1);
+    expect(est.basis.estimateSources).toEqual({
+      points: { field: 0, body: 3 }, minutes: { field: 0, body: 2 },
+    });
+    expect(est.notes.join(" ")).toContain("tokens-per-minute");
+    expect(est.notes.join(" "))
+      .toContain("1 of 3 issues carry no hours estimate");
+  });
+
+  it("#230 regression: the scraped hours move the envelope, they are not decoration", async () => {
+    // History burned 150k over 2 points / 120 minutes. The target claims the
+    // same 3 points but TEN TIMES the hours -- if the minutes signal were
+    // still being dropped, the range would be identical to the points-only
+    // one (168_750..281_250) and the size difference would be invisible.
+    appendFileSync(metricsFile, row("s1", 1, 100_000, 50_000, 30));
+    const tracker = fakeIssueReader({
+      "GH-1": "Estimate: 1 points / ~1h.\n",
+      "GH-2": "Estimate: 1 points / ~1h.\n",
+      "GH-3": "Estimate: 1 points / ~10h.\n",
+      "GH-4": "Estimate: 1 points / ~10h.\n",
+      "GH-5": "Estimate: 1 points / ~10h.\n",
+    });
+    const est = await estimatePhaseTokens(dir, 2, { metricsFile, tracker });
+    // per-minute: 150k / 120 min = 1250/min; target 1800 min -> 2_250_000,
+    // thin cushion 0.75/1.25 -> 1_687_500..2_812_500. The union widens to it.
+    expect(est.basis.minutesTotal).toBe(1800);
+    expect(est.range).toEqual({ low: 168_750, high: 2_812_500 });
+    expect(est.basis.perMinutePairs).toBe(1);
+    expect(est.notes.join(" "))
+      .toContain("minutes corpus: 2 from body-line scrape");
+  });
+
+  it("native minutes field is preferred over the prose line and says so", async () => {
+    appendFileSync(metricsFile, row("s1", 1, 100_000, 50_000, 30));
+    const tracker = fieldIssueReader({
+      "GH-1": { points: 2, minutes: 180 },
+      "GH-2": { points: 2, minutes: 180 },
+      "GH-3": { points: 3, minutes: 120 },
+      "GH-4": { points: 3, minutes: 120 },
+      "GH-5": { points: 3, minutes: 120 },
+    });
+    const est = await estimatePhaseTokens(dir, 2, { metricsFile, tracker });
+    expect(est.basis.pointsTotal).toBe(9);
+    expect(est.basis.minutesTotal).toBe(360);
+    expect(est.basis.estimateSources).toEqual({
+      points: { field: 3, body: 0 }, minutes: { field: 3, body: 0 },
+    });
+    // per-point 37.5k x 9 -> 253_125..421_875; per-minute 416.67 x 360 ->
+    // 112_500..187_500; per-issue 168_750..281_250. Union spans all three.
+    expect(est.range).toEqual({ low: 112_500, high: 421_875 });
+    expect(est.notes.join(" ")).toContain("minutes corpus: 2 from tracker field");
+    expect(est.notes.join(" ")).not.toContain("MIXED");
+  });
+
+  it("mixed provenance is reported, never pooled silently", async () => {
+    // One native field, one scraped prose line, one issue with no hours at
+    // all -- the exact shape that would quietly fit a curve to a parser bug.
+    const mixed: IssueReader = {
+      async getIssue(id: string): Promise<Issue> {
+        const shell = {
+          id, title: id, state: "open" as const, category: "open" as const,
+          labels: [], updatedAt: "2026-01-01T00:00:00Z", url: `https://x/${id}`,
+        };
+        if (id === "GH-3") {
+          return { ...shell, body: "native", estimate: { points: 3, minutes: 120 } };
+        }
+        if (id === "GH-4") return { ...shell, body: "Estimate: 3 points / ~1.5h.\n" };
+        if (id === "GH-5") return { ...shell, body: "Estimate: 3 points.\n" };
+        throw new Error(`no such issue ${id}`);
+      },
+    };
+    const est = await estimatePhaseTokens(dir, 2, { metricsFile, tracker: mixed });
+    expect(est.basis.pointsTotal).toBe(9);
+    // 120 native + 1.5h scraped as 90 -- decimals convert, hours become minutes
+    expect(est.basis.minutesTotal).toBe(210);
+    expect(est.basis.estimateSources).toEqual({
+      points: { field: 1, body: 2 }, minutes: { field: 1, body: 1 },
+    });
+    const notes = est.notes.join(" ");
+    expect(notes).toContain("minutesTotal provenance: 1 from tracker field, 1 from body-line scrape");
+    expect(notes).toContain("MIXED provenance");
+    expect(notes).toContain("1 of 3 issues carry no hours estimate");
+  });
+
+  it("points without hours: minutes degrade on their own axis, with a note", async () => {
+    appendFileSync(metricsFile, row("s1", 1, 100_000, 50_000, 30));
+    const tracker = fakeIssueReader({
+      "GH-1": "Estimate: 2 points.\n",
+      "GH-2": "Estimate: 2 points.\n",
+      "GH-3": "Estimate: 3 points.\n",
+      "GH-4": "Estimate: 3 points.\n",
+      "GH-5": "Estimate: 3 points.\n",
+    });
+    const est = await estimatePhaseTokens(dir, 2, { metricsFile, tracker });
+    expect(est.basis.pointsTotal).toBe(9);
+    expect(est.basis.minutesTotal).toBeNull();
+    expect(est.basis.perMinutePairs).toBe(0);
+    expect(est.notes.join(" "))
+      .toContain("no issue in this phase carries an hours estimate");
+    expect(est.notes.join(" ")).not.toContain("tokens-per-minute");
   });
 
   it("in-flight phases (live dir, no VERIFICATION.md) are excluded from calibration", async () => {
