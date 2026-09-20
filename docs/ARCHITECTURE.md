@@ -9,6 +9,32 @@ for work items; git owns prose.
 ## Server subsystems
 <!-- docs: done -->
 
+The boundaries below are not only described here — `server/test/architecture.test.ts`
+asserts them on every run, so this section and the code cannot drift apart
+quietly. Four rules hold today:
+
+1. **Tracker adapters are leaves.** A file under `tracker/adapters/` imports
+   only from within `tracker/` or the root-level shared modules. An adapter
+   implements the contract; it does not consume the rest of the server.
+2. **The tracker subsystem sits underneath its callers.** Planning, audit and
+   docs all read the tracker; the tracker imports none of them back. That
+   one-way arrow is what makes the SPI a layer rather than a tangle.
+3. **Docs connectors are a sibling, not an extension.** They may reuse four
+   named tracker modules — `http`, `probe`, `types`, `registry` — and nothing
+   else from it. The list is explicit because that shared plumbing is arguably
+   misplaced (it is transport, not tracker logic); widening the list is a
+   decision someone makes on purpose, and an entry that stops being used fails
+   the test until it is deleted.
+4. **`index.ts` is the composition root.** Nothing imports it back, and the
+   whole tree is free of import cycles.
+
+What is deliberately *not* asserted: that peer subsystems avoid each other.
+They do not, legitimately — planning reads the tracker, audit reads planning,
+memory reads sessions. A rule forbidding that would have to be watered down
+until it said nothing, and a rule that cannot fail is worse than no rule.
+Every rule above fails when its file pattern matches zero files, for the same
+reason.
+
 - `tracker/` — eight tracker adapters (GitHub, GitLab, Jira, Asana,
   Azure Boards, ClickUp, Linear, and a zero-credential local backend)
   behind one normalized interface with per-backend capability flags, a
