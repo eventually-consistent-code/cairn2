@@ -27,11 +27,18 @@
 // want (moving prose OUT of the always-resident surface and INTO files
 // that load when needed).
 //
+// COUNTED as of #TBD-issue: MCP tool schemas. They are neither a slash
+// listing entry nor an on-demand body -- they are resident on every turn of
+// every session, and they are 83% of what cairn actually costs. The guard
+// watching only the descriptions was watching the small half.
+//
 // Exit 0 clean, exit 1 over budget.
 
-import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
+import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -47,7 +54,14 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 // found on its first run. Spending that is a discoverability decision the
 // owner makes, not a tidy-up; when it happens, this budget comes down with
 // it.
-const BUDGET_TOKENS = 2300;
+//
+// It jumped from 2300 to 13712 when tool schemas came inside the fence
+// (#TBD-issue). Nothing got worse that day; the guard simply stopped
+// excluding 83% of what it was built to watch. The way this number comes
+// down is progressive disclosure for schemas -- deferring rarely-used tools
+// so they load on call instead of on every turn, the way skill bodies
+// already do -- not by moving the pin.
+const BUDGET_TOKENS = 13712;
 
 /** chars / 4 — see the note above on why this approximation is the right one. */
 const estimateTokens = (chars) => Math.ceil(chars / 4);
@@ -106,6 +120,84 @@ if (existsSync(hookPath)) {
   for (const m of src.matchAll(/"((?:[^"\\]|\\.){40,})"/g)) injectionChars += m[1].length;
 }
 parts.push({ what: "SessionStart injected prose", chars: injectionChars });
+
+// --- 4. MCP tool schemas ------------------------------------------------------
+// Asked of the real server over stdio rather than estimated from source: the
+// client sees zod lowered to JSON Schema, which is not the shape src/index.ts
+// spells. Requires a built dist -- check-dist already demands one.
+//
+// The probe is written out to a scratch file and run as its own node process
+// (rather than inlined as a `node -e` string) because a JSON-RPC handshake
+// full of escaped newlines inside an already-escaped string is exactly the
+// kind of fragile that breaks quietly. The scratch file is a temp copy, not
+// a project fixture, and it is removed before this script exits either way.
+const distPath = join(root, "server", "dist", "index.js");
+const probeSrc = `
+import { spawn } from "node:child_process";
+
+const p = spawn(process.argv[2], [process.argv[3]], {
+  env: { ...process.env, CLAUDE_PROJECT_DIR: process.argv[4] },
+  stdio: ["pipe", "pipe", "ignore"],
+});
+
+let buf = "";
+p.stdout.on("data", (d) => {
+  buf += d;
+  for (const line of buf.split("\\n")) {
+    if (!line.trim()) continue;
+    let msg;
+    try { msg = JSON.parse(line); } catch { continue; }
+    if (msg.id === 2 && msg.result && msg.result.tools) {
+      let chars = 0;
+      for (const t of msg.result.tools) chars += JSON.stringify(t).length;
+      process.stdout.write("CHARS:" + chars + ":" + msg.result.tools.length + "\\n");
+      p.kill();
+      process.exit(0);
+    }
+  }
+});
+
+p.stdin.write(JSON.stringify({
+  jsonrpc: "2.0", id: 1, method: "initialize",
+  params: { protocolVersion: "2024-11-05", capabilities: {},
+            clientInfo: { name: "footprint", version: "1" } },
+}) + "\\n");
+
+setTimeout(() => {
+  p.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\\n");
+  p.stdin.write(JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list" }) + "\\n");
+}, 400);
+
+setTimeout(() => { p.kill(); process.exit(1); }, 15000);
+`;
+
+let toolChars = null;
+let toolCount = 0;
+const scratchDir = mkdtempSync(join(tmpdir(), "cairn-footprint-"));
+try {
+  const probePath = join(scratchDir, "probe.mjs");
+  writeFileSync(probePath, probeSrc);
+  const probe = spawnSync(
+    process.execPath,
+    [probePath, process.execPath, distPath, root],
+    { encoding: "utf8", timeout: 20000 },
+  );
+  const match = /CHARS:(\d+):(\d+)/.exec(probe.stdout ?? "");
+  if (match) {
+    toolChars = Number(match[1]);
+    toolCount = Number(match[2]);
+  }
+} finally {
+  rmSync(scratchDir, { recursive: true, force: true });
+}
+
+if (toolChars === null) {
+  console.error("check-footprint: could not list tools from server/dist/index.js.");
+  console.error("  Run `cd server && npm run build` first -- the guard measures the");
+  console.error("  schemas the client really sees, not an estimate from source.");
+  process.exit(1);
+}
+parts.push({ what: `${toolCount} MCP tool schemas`, chars: toolChars });
 
 // --- report ------------------------------------------------------------------
 
