@@ -25,8 +25,21 @@
 //   Rationale: each step needs enough real pairs to trust the min/max span
 //   itself before the cushion shrinks, and the floor admits that agent runs
 //   never get more predictable than roughly +/-10%. Only size-normalized
-//   grains (per-issue, per-point) tighten; the whole-phase fallback keeps
-//   the thin cushion forever because it can't see the target's size.
+//   grains (per-issue, per-point, per-minute) tighten; the whole-phase
+//   fallback keeps the thin cushion forever because it can't see the
+//   target's size.
+//
+//   Minutes grain (#230) -- seven of nine tracker backends drop structured
+//   estimates, so the plan verb degrades to a prose body line, "Estimate: N
+//   points / ~Xh.", which this file re-parses. The regex always captured BOTH
+//   halves and used only the first: points survived, hours hit the floor.
+//   That single dropped capture is why cairn had a points corpus and no
+//   minutes corpus anywhere that mattered. Hours are now threaded through as
+//   minutes exactly the way points are -- empirical span over completed
+//   phases, same cushion curve, unioned rather than averaged -- and each
+//   number carries WHICH SOURCE produced it. A real tracker field and a regex
+//   scrape of prose are not the same evidence; pooling them quietly is how a
+//   calibration curve ends up fitted to a parser bug.
 // Author(s): John Reed
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
@@ -61,7 +74,10 @@ function cushionFor(n) {
     return THIN_CUSHION;
 }
 // The plan verb's body-line degrade convention for estimate-less backends:
-// "Estimate: N points / ~Xh." -- points required, hours optional.
+// "Estimate: N points / ~Xh." -- points required, hours optional. BOTH halves
+// are captured and BOTH are used (#230): the hours capture used to be parsed
+// and dropped on the floor, which is the whole reason seven of nine backends
+// had a points corpus and no minutes corpus at all.
 const ESTIMATE_LINE_RE = /^Estimate:\s*(\d+(?:\.\d+)?)\s*points?(?:\s*\/\s*~\s*(\d+(?:\.\d+)?)\s*h)?\.?\s*$/im;
 /** Latest row per session_id -- append order means later lines win. Same
  *  collapse as cost-report.mjs's latestPerSession (see header for why it's
@@ -141,44 +157,99 @@ function planIssuesAt(base) {
         return [];
     }
 }
-/** Points for one issue: native estimate field first, body-line convention
- *  as the GitHub-class fallback. Null when neither carries a number. */
-function issuePoints(issue) {
-    if (issue.estimate?.points !== undefined)
-        return issue.estimate.points;
+/** Points AND minutes for one issue: native estimate field first, the
+ *  body-line convention as the GitHub-class fallback. The two numbers resolve
+ *  INDEPENDENTLY -- a backend that persists points natively can still have its
+ *  hours sitting in the prose line, and vice versa. Provenance rides along
+ *  with each number so a later consumer never has to guess whether it is
+ *  holding a tracker field or a regex scrape. */
+function issueEstimate(issue) {
     const m = ESTIMATE_LINE_RE.exec(issue.body ?? "");
-    return m ? Number(m[1]) : null;
+    const bodyPoints = m ? Number(m[1]) : null;
+    // The hours half -- optional in the convention, so absent is normal, not a
+    // parse failure. Stored as minutes to match the native field's unit.
+    const bodyMinutes = m && m[2] !== undefined ? Number(m[2]) * 60 : null;
+    const fieldPoints = issue.estimate?.points;
+    const fieldMinutes = issue.estimate?.minutes;
+    return {
+        points: fieldPoints ?? bodyPoints,
+        pointsSource: fieldPoints !== undefined
+            ? "field" : bodyPoints !== null ? "body" : null,
+        minutes: fieldMinutes ?? bodyMinutes,
+        minutesSource: fieldMinutes !== undefined
+            ? "field" : bodyMinutes !== null ? "body" : null,
+    };
 }
-/** Sum of resolvable points across `ids`; null when none resolve (tracker
- *  absent, all lookups fail, or no issue carries an estimate). */
-async function pointsFor(ids, tracker) {
-    if (!tracker || ids.length === 0)
-        return { total: null, missing: ids.length };
-    let total = 0;
-    let found = 0;
+async function estimatesFor(ids, tracker) {
+    const pointsSources = { field: 0, body: 0 };
+    const minutesSources = { field: 0, body: 0 };
+    if (!tracker || ids.length === 0) {
+        return {
+            points: null, minutes: null,
+            pointsMissing: ids.length, minutesMissing: ids.length,
+            pointsSources, minutesSources,
+        };
+    }
+    let points = 0;
+    let pointsFound = 0;
+    let minutes = 0;
+    let minutesFound = 0;
     for (const id of ids) {
         try {
-            const p = issuePoints(await tracker.getIssue(id));
-            if (p !== null) {
-                total += p;
-                found++;
+            const e = issueEstimate(await tracker.getIssue(id));
+            if (e.points !== null && e.pointsSource !== null) {
+                points += e.points;
+                pointsFound++;
+                pointsSources[e.pointsSource]++;
+            }
+            if (e.minutes !== null && e.minutesSource !== null) {
+                minutes += e.minutes;
+                minutesFound++;
+                minutesSources[e.minutesSource]++;
             }
         }
         catch {
             // one dead lookup must not sink the estimate -- counted as missing
         }
     }
-    return { total: found > 0 ? total : null, missing: ids.length - found };
+    return {
+        points: pointsFound > 0 ? points : null,
+        minutes: minutesFound > 0 ? minutes : null,
+        pointsMissing: ids.length - pointsFound,
+        minutesMissing: ids.length - minutesFound,
+        pointsSources, minutesSources,
+    };
+}
+/** Fold one issue-set's provenance into a running corpus tally. */
+function addTally(into, from) {
+    into.field += from.field;
+    into.body += from.body;
+}
+/** "2 from tracker field, 1 from body-line scrape" -- plus a shout when the
+ *  pool mixes the two, because a curve fitted across both can be fitting a
+ *  parser bug rather than the work. Empty string for an empty tally. */
+function sourceSummary(t) {
+    const parts = [];
+    if (t.field > 0)
+        parts.push(`${t.field} from tracker field`);
+    if (t.body > 0)
+        parts.push(`${t.body} from body-line scrape`);
+    if (parts.length === 0)
+        return "none";
+    return parts.join(", ") + (t.field > 0 && t.body > 0
+        ? " -- MIXED provenance; a scraped prose number is weaker evidence than a real tracker field"
+        : "");
 }
 const round2 = (n) => Number(n.toFixed(2));
 /**
  * Estimate a phase's agent-token spend as a range, before it runs.
  *
  * Method: collapse metrics history (latest row per session, grouped by phase
- * tag), derive tokens-per-point / tokens-per-issue / tokens-per-phase
- * distributions from completed phases, then scale by the target phase's
- * points and issue count. No usable history degrades to a published wide
- * default with confidence "wide" and an honest note.
+ * tag), derive tokens-per-point / tokens-per-minute / tokens-per-issue /
+ * tokens-per-phase distributions from completed phases, then scale by the
+ * target phase's points, estimated minutes and issue count. No usable history
+ * degrades to a published wide default with confidence "wide" and an honest
+ * note.
  *
  * "Tokens" here means input + output only -- cache traffic is excluded from
  * the unit but folded into the history-derived USD rate, so estUsd stays
@@ -199,15 +270,31 @@ export async function estimatePhaseTokens(projectDir, phaseNumber, opts = {}) {
         throw new CairnError("NOT_FOUND", `no phase ${phaseNumber} under .cairn/plans/phases or .cairn/plans/milestones`, "run plan_status to list live phases, or plan_scaffold_phase to create this one");
     }
     const issueCount = target.issues.length;
-    const targetPoints = await pointsFor(target.issues, opts.tracker);
+    const targetEst = await estimatesFor(target.issues, opts.tracker);
     if (issueCount > 0 && !opts.tracker) {
         notes.push("no tracker available -- points unknown, estimating from issue count only");
     }
-    else if (issueCount > 0 && targetPoints.total === null) {
+    else if (issueCount > 0 && targetEst.points === null) {
         notes.push("no issue in this phase carries a points estimate (native field or 'Estimate: N points' body line) -- estimating from issue count only");
     }
-    else if (targetPoints.missing > 0) {
-        notes.push(`${targetPoints.missing} of ${issueCount} issues carry no points estimate -- pointsTotal is a partial sum`);
+    else if (targetEst.pointsMissing > 0) {
+        notes.push(`${targetEst.pointsMissing} of ${issueCount} issues carry no points estimate -- pointsTotal is a partial sum`);
+    }
+    if (targetEst.points !== null) {
+        notes.push(`pointsTotal provenance: ${sourceSummary(targetEst.pointsSources)}`);
+    }
+    // Minutes degrade on their own axis -- a phase can have every point and no
+    // hour, so they get their own miss count and their own note (#230).
+    if (issueCount > 0 && opts.tracker) {
+        if (targetEst.minutes === null) {
+            notes.push("no issue in this phase carries an hours estimate (native minutes field or the '/ ~Xh' half of the 'Estimate:' body line) -- minutes contribute nothing to this range");
+        }
+        else {
+            if (targetEst.minutesMissing > 0) {
+                notes.push(`${targetEst.minutesMissing} of ${issueCount} issues carry no hours estimate -- minutesTotal is a partial sum`);
+            }
+            notes.push(`minutesTotal provenance: ${sourceSummary(targetEst.minutesSources)}`);
+        }
     }
     // -- history ---------------------------------------------------------------
     const rows = collapseMetrics(opts.metricsFile ?? metricsPath(projectDir));
@@ -225,6 +312,9 @@ export async function estimatePhaseTokens(projectDir, phaseNumber, opts = {}) {
     const perIssue = []; // tokens per issue, where issue count known
     const perIssuePhases = []; // which phases contributed those pairs
     const perPoint = []; // tokens per point, where points known
+    const perMinute = []; // tokens per estimated minute, where known
+    const corpusPoints = { field: 0, body: 0 };
+    const corpusMinutes = { field: 0, body: 0 };
     const rates = []; // usd per counted token
     let skippedInFlight = 0;
     const used = [];
@@ -243,9 +333,15 @@ export async function estimatePhaseTokens(projectDir, phaseNumber, opts = {}) {
         if (info && info.issues.length > 0) {
             perIssue.push(g.tokens / info.issues.length);
             perIssuePhases.push(p);
-            const pts = await pointsFor(info.issues, opts.tracker);
-            if (pts.total !== null && pts.total > 0)
-                perPoint.push(g.tokens / pts.total);
+            const hist = await estimatesFor(info.issues, opts.tracker);
+            if (hist.points !== null && hist.points > 0) {
+                perPoint.push(g.tokens / hist.points);
+                addTally(corpusPoints, hist.pointsSources);
+            }
+            if (hist.minutes !== null && hist.minutes > 0) {
+                perMinute.push(g.tokens / hist.minutes);
+                addTally(corpusMinutes, hist.minutesSources);
+            }
         }
     }
     if (skippedInFlight > 0) {
@@ -258,10 +354,19 @@ export async function estimatePhaseTokens(projectDir, phaseNumber, opts = {}) {
     });
     const pct = (c) => `-${Math.round((1 - c.low) * 100)}%/+${Math.round((c.high - 1) * 100)}%`;
     const candidates = [];
-    if (perPoint.length > 0 && targetPoints.total !== null && targetPoints.total > 0) {
+    if (perPoint.length > 0 && targetEst.points !== null && targetEst.points > 0) {
         const cushion = cushionFor(perPoint.length);
-        candidates.push(span(perPoint, targetPoints.total, cushion));
-        notes.push(`tokens-per-point calibrated from ${perPoint.length} completed phase(s), cushion ${pct(cushion)}`);
+        candidates.push(span(perPoint, targetEst.points, cushion));
+        notes.push(`tokens-per-point calibrated from ${perPoint.length} completed phase(s), cushion ${pct(cushion)} (points corpus: ${sourceSummary(corpusPoints)})`);
+    }
+    // Minutes are a PARALLEL scaler, threaded exactly like points (#230): an
+    // empirical span over completed phases, the same cushion curve, unioned
+    // rather than averaged with its neighbours. Nothing about how ranges get
+    // computed changes -- there is simply one more honest signal in the union.
+    if (perMinute.length > 0 && targetEst.minutes !== null && targetEst.minutes > 0) {
+        const cushion = cushionFor(perMinute.length);
+        candidates.push(span(perMinute, targetEst.minutes, cushion));
+        notes.push(`tokens-per-minute calibrated from ${perMinute.length} completed phase(s), cushion ${pct(cushion)} (minutes corpus: ${sourceSummary(corpusMinutes)})`);
     }
     if (perIssue.length > 0 && issueCount > 0) {
         const cushion = cushionFor(perIssue.length);
@@ -306,9 +411,15 @@ export async function estimatePhaseTokens(projectDir, phaseNumber, opts = {}) {
         estUsd: { low: round2(range.low * lowRate), high: round2(range.high * highRate) },
         basis: {
             historyPhases: used.length,
-            pointsTotal: targetPoints.total,
+            pointsTotal: targetEst.points,
+            minutesTotal: targetEst.minutes,
             issueCount,
             perIssuePairs: perIssue.length,
+            perMinutePairs: perMinute.length,
+            estimateSources: {
+                points: targetEst.pointsSources,
+                minutes: targetEst.minutesSources,
+            },
         },
         confidence,
         notes,
