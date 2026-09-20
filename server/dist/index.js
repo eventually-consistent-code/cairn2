@@ -38,6 +38,7 @@ import { createCard, listCards, readCard, updateCard, } from "./memory/cards.js"
 import { checkCardStaleness } from "./memory/staleness.js";
 import { readHandoff, writeHandoff, clearHandoff, metricsPath, } from "./core/continuity.js";
 import { summarise, sessionSpans } from "./context/meter.js";
+import { thresholdDrift } from "./context/threshold.js";
 import { registerPlanResources } from "./core/resources.js";
 import { installedVersions } from "./core/versions.js";
 import { appendLedger } from "./planning/ledger.js";
@@ -1239,6 +1240,7 @@ export function buildServer(deps) {
                 return connector.probe ? connector.probe() : { verdict: "ok" };
             });
         }
+        out.contextEconomy = thresholdDrift(cfg.contextEconomy?.autocompactPct ?? null, process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE);
         // Installed-version visibility (#82) -- never throws, npm lookup fails
         // soft to "unknown" so an offline probe stays green.
         out.versions = await installedVersions({

@@ -85,6 +85,9 @@ export declare const ConfigSchema: z.ZodObject<{
             off: "off";
         }>>;
     }, z.core.$strict>>;
+    contextEconomy: z.ZodOptional<z.ZodObject<{
+        autocompactPct: z.ZodDefault<z.ZodNullable<z.ZodNumber>>;
+    }, z.core.$strip>>;
 }, z.core.$strip>;
 export type CairnConfig = z.infer<typeof ConfigSchema>;
 export declare function loadConfig(projectDir: string): CairnConfig;

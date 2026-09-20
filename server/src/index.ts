@@ -97,6 +97,7 @@ import {
   readHandoff, writeHandoff, clearHandoff, metricsPath,
 } from "./core/continuity.js";
 import { summarise, sessionSpans, type MetricsRow } from "./context/meter.js";
+import { thresholdDrift, type ThresholdDrift } from "./context/threshold.js";
 import { registerPlanResources } from "./core/resources.js";
 import { installedVersions, type InstalledVersions } from "./core/versions.js";
 import type { Handoff } from "./core/continuity.js";
@@ -1852,6 +1853,7 @@ export function buildServer(deps: {
         docs?: ProbeResult;
         versions?: InstalledVersions;
         native?: NativeProbe;
+        contextEconomy?: ThresholdDrift;
       } = {
         tracker: await safeProbe(async () => {
           const t = await getTracker(d);
@@ -1865,6 +1867,10 @@ export function buildServer(deps: {
           return connector.probe ? connector.probe() : { verdict: "ok" };
         });
       }
+      out.contextEconomy = thresholdDrift(
+        cfg.contextEconomy?.autocompactPct ?? null,
+        process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE,
+      );
       // Installed-version visibility (#82) -- never throws, npm lookup fails
       // soft to "unknown" so an offline probe stays green.
       out.versions = await installedVersions({

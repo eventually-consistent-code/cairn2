@@ -939,6 +939,13 @@ describe("cairn MCP server", () => {
       module: "better-sqlite3",
       status: "ok",
     });
+    // contextEconomy (task 7): no contextEconomy block configured, so cairn
+    // has expressed no preference -- unset, not drift.
+    expect(res.json.contextEconomy).toEqual({
+      status: "unset",
+      desired: null,
+      live: null,
+    });
   });
 
   it("CairnError surfaces as isError with code + nextAction", async () => {

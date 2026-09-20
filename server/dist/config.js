@@ -116,6 +116,12 @@ export const ConfigSchema = z.object({
         dispatch: z.enum(["auto", "off"]).optional(),
     })
         .optional(),
+    contextEconomy: z
+        .object({
+        /** Desired CLAUDE_AUTOCOMPACT_PCT_OVERRIDE; null leaves the harness default. */
+        autocompactPct: z.number().min(0.05).max(1).nullable().default(null),
+    })
+        .optional(),
 });
 export function loadConfig(projectDir) {
     let raw;
