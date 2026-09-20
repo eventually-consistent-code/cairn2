@@ -151,6 +151,43 @@ function handoffPathForEnvDir(home: string, projectDir: string): string {
   return join(home, ".cairn", "handoff", `${base}-${hash}.json`);
 }
 
+/**
+ * Marginal cost of a hook, over and above starting a node interpreter.
+ *
+ * Timing a spawned hook with a plain wall-clock budget measures node's
+ * startup, not the hook: on a quiet machine a bare `node -e ""` spawn is
+ * ~31ms and the leak guard is ~32ms, so a 100ms absolute pin was 97%
+ * interpreter and 3% subject. It duly failed the v2.5.0 publish gate at
+ * 298ms on a shared runner and flaked three times in one local session,
+ * every time reporting machine load as if it were a regression (#169).
+ *
+ * Measure the DIFFERENCE against a bare spawn instead, and take the
+ * minimum of several samples rather than one reading: contention can only
+ * ever make a sample slower, so the minimum is the robust estimator, and
+ * a busy machine inflates the baseline and the subject together.
+ *
+ * `reset` runs between samples but outside the timed region, so a hook
+ * with its own throttle still does real work on every sample.
+ */
+function marginalHookMs(run: () => void, reset?: () => void, samples = 5): number {
+  const best = (f: () => void): number => {
+    let min = Infinity;
+    for (let i = 0; i < samples; i++) {
+      reset?.();
+      const t0 = Date.now();
+      f();
+      min = Math.min(min, Date.now() - t0);
+    }
+    return min;
+  };
+  const baseline = best(() => execFileSync(process.execPath, ["-e", ""], { encoding: "utf8" }));
+  return best(run) - baseline;
+}
+
+/** A hook doing real work costs single-digit ms over a spawn; 50 catches a
+ *  hook that started shelling out or reaching the network, and nothing else. */
+const MARGINAL_BUDGET_MS = 50;
+
 function backdateMtime(path: string, msAgo: number): void {
   const t = (Date.now() - msAgo) / 1000;
   utimesSync(path, t, t);
@@ -240,19 +277,18 @@ describe("posttooluse-breadcrumb", () => {
     expect(written.uncommitted_files).toContain("f0.txt");
   });
 
-  it("wall-clock stays well under the <100ms budget", () => {
+  it("costs almost nothing beyond starting node", () => {
     const proj = freshDir("cairn-hooks-proj-");
     const home = freshDir("cairn-hooks-home-");
     const path = writeHandoffFixture(home, proj, baseHandoff());
-    backdateMtime(path, 70_000);
 
-    runHook(BREADCRUMB, proj, home); // warm-up run, untimed (disk cache / OS scheduling noise)
-    backdateMtime(path, 70_000);
-
-    const started = Date.now();
-    runHook(BREADCRUMB, proj, home);
-    const elapsed = Date.now() - started;
-    expect(elapsed).toBeLessThan(100);
+    // Backdating between samples defeats the 60s throttle, so every timed
+    // run takes the real write path rather than the early return.
+    const marginal = marginalHookMs(
+      () => runHook(BREADCRUMB, proj, home),
+      () => backdateMtime(path, 70_000),
+    );
+    expect(marginal).toBeLessThan(MARGINAL_BUDGET_MS);
   });
 
   it("CLAUDE_PROJECT_DIR, not cwd, governs the handoff path when both are set", () => {
@@ -483,15 +519,14 @@ describe("leak guard hook", () => {
     expect(r.stderr).toContain("app.ts:1:");
   });
 
-  it("wall-clock stays under the 100ms budget", () => {
+  it("costs almost nothing beyond starting node", () => {
     const proj = tmpProj(); gitInit(proj);
     writeFileSync(join(proj, "cairn.json"),
       JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
     stageFile(proj, "clean.ts", "const ok = true;\n");
-    runHookRaw(LEAKGUARD, proj, payload("git commit -m x")); // warm-up
-    const t0 = Date.now();
-    runHookRaw(LEAKGUARD, proj, payload("git commit -m x"));
-    expect(Date.now() - t0).toBeLessThan(100);
+    const marginal = marginalHookMs(
+      () => runHookRaw(LEAKGUARD, proj, payload("git commit -m x")));
+    expect(marginal).toBeLessThan(MARGINAL_BUDGET_MS);
   });
 
   // #140 path-scoped exemption -- fixture strings are concatenated so this
