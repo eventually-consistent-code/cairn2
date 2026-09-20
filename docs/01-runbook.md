@@ -68,7 +68,7 @@ decision, which stops for you).
 | Five-axis code review of a diff, branch, or phase | `/cairn:review [target]` |
 | Sweep open issues for hygiene problems | `/cairn:triage` |
 | Build/query the project knowledge graph | `/cairn:map build` |
-| Check the planning directory's own health, repair, or forensics | `/cairn:medic` |
+| Check the planning directory's own health (and plugin state), repair, or forensics | `/cairn:medic` |
 | Safely revert a phase's shipped commits (reverts only) | `/cairn:backtrack <phase>` |
 | Manage multi-project workspaces and the dispatch board | `/cairn:basecamp` |
 | See every cairn project on this machine on one board | `/cairn:outlook` |
@@ -749,7 +749,11 @@ doctor. Bare `medic`: plan status, drift, plan checks, and ledger/file
 cross-checks (does every phase have its ledger, plan, and directory? do
 ledger commits still exist? a phase marked verified with no ledger evidence
 is a finding, not a pass), ranked by what breaks next if ignored, closed
-with a record. `--repair`, only after the health record exists, makes
+with a record. It also checks **plugin state** — the triple of installed
+version, marketplace pin, and running server — because a stale or
+orphaned plugin is the one health problem that makes every other check
+lie to you (details in section 11's "Running an older cairn than you
+think"). `--repair`, only after the health record exists, makes
 exactly three mechanical moves: ensure a missing phase's tracker object,
 scaffold missing files, relink stale plan↔issue links. **Structure, never
 content**: it never rewrites what a plan says, never resolves a drift
@@ -1834,7 +1838,7 @@ stack traces.
 | `HANDOFF_INVALID` | The continuity handoff file is malformed | Inspect or discard it; a fresh checkpoint rewrites it |
 | `HANDOFF_STALE` | The handoff is too old to trust | Inspect or discard — stale handoffs are never auto-resumed |
 | `UNSUPPORTED` | The operation isn't valid here — e.g. an invalid node/edge type in a map patch, or a capability the backend doesn't have | Use a supported type/path; capability differences are in section 4 |
-| `NATIVE_MODULE_BROKEN` | The better-sqlite3 compiled binding is missing (never compiled in this install) or built for a different node ABI — memory *index* tools (`mem_index`/`mem_search`/`mem_stats`/`mem_timeline`) fail; card tools keep working | Run the command in the message: `cd <install root> && npm rebuild better-sqlite3`, then reload plugins (or restart the session) so the server picks up the new binding. The directory is derived from where better-sqlite3 actually resolves from — the install root, **not** the plugin cache's `server/` — so paste it as given. The message names which of the two modes you hit; `config_probe` reports both preemptively (`native.kind`) |
+| `NATIVE_MODULE_BROKEN` | The better-sqlite3 compiled binding is missing (never compiled in this install) or built for a different node ABI — memory *index* tools (`mem_index`/`mem_search`/`mem_stats`/`mem_timeline`) fail; card tools keep working | Run the command in the message: `cd <install root> && npm rebuild better-sqlite3`, then open `/plugin` and close it — plugin changes apply on menu close — or restart the session, so the server picks up the new binding. The directory is derived from where better-sqlite3 actually resolves from — the install root, **not** the plugin cache's `server/` — so paste it as given. The message names which of the two modes you hit; `config_probe` reports both preemptively (`native.kind`) |
 | `PRECONDITION_FAILED` | The operation's gate isn't satisfied — unverified phases at summit, closing a session without its gate entry, starting a duplicate open session, a map patch with dangling edges, board writes without a workspace, a peer that isn't on PATH / is disabled / timed out | The message names the gate. Satisfy it and re-run — these operations are built to be safely re-runnable |
 
 ### Common failure scenarios
@@ -1887,12 +1891,47 @@ Fix, both modes: run the exact command in the error message —
 `cd <install root> && npm rebuild better-sqlite3` — once, then retry. The
 directory is derived from where better-sqlite3 actually resolves from, never
 hardcoded, so paste it as given rather than guessing at `server/`.
-The rebuild alone isn't enough — reload plugins (or restart the session)
-so the server picks up the new binding; a running server keeps failing on
-its cached load until you do.
+The rebuild alone isn't enough — open `/plugin` and close it again
+(plugin changes apply on menu close), or restart the session, so the
+server picks up the new binding; a running server keeps failing on its
+cached load until you do.
 `config_probe` reports the same thing up front as an advisory `native` line
 (ok / broken + `kind` + fix), so a preflight catches it before any memory
 call does.
+
+**Running an older cairn than you think.** Symptom: a verb documents a
+tool the session can't call, or a fix you know landed doesn't take. Cause:
+the plugin you're running is not the source you're reading. Three numbers
+settle it, and `/cairn:medic` reports them as one finding:
+
+| The number | Where it comes from |
+|---|---|
+| installed version | `claude plugin list --json` — the entry's `version` and the cache path it runs from; `config_probe` reports the same pair from inside the server |
+| marketplace pin | `.claude-plugin/marketplace.json` → the plugin's `source.ref` — the release tag an install or update actually fetches |
+| running server | `config_probe`'s version line, against `git describe --tags` in the source tree you're editing |
+
+The nasty case is the one where all three version *strings* agree and the
+plugin is still stale: `git describe --tags` reads `vX.Y.Z-<n>-g<sha>`
+with `<n>` above zero, meaning the working tree is `<n>` commits past the
+tag the pin names. Installed = released by design (see the README's dev
+mode vs installed plugin note), so everything merged since that tag is
+invisible to the session even though no version number disagrees. Version
+equality is not freshness. The other two cases are louder: installed
+version ≠ pin means an update was never adopted, and an installed plugin
+whose marketplace has vanished from `claude plugin marketplace list` is
+orphaned — nothing can update it, because `update` has no source to fetch
+from.
+
+Fix: `/plugin` → update → close the menu; plugin changes apply on menu
+close, no reload step and no restart. Where there's no TTY to answer the
+consent prompt — a headless run, CI, a batch job — the mutating
+subcommands take `-y` (`claude plugin install <plugin>@<marketplace> -y`,
+and the same on `update` and `uninstall`), which accepts the
+marketplace-declared command without prompting and is *required* when
+stdin or stdout isn't a TTY. Read state with `claude plugin list --json`
+rather than scraping the human output; which other subcommands emit JSON
+moves with the Claude Code version, so `--help` is the authority, not this
+table.
 
 **Planning directory looks wrong.** `/cairn:medic` for the diagnosis,
 `medic --repair` for the mechanical subset, `medic forensics <phase>` when
