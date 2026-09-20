@@ -255,6 +255,10 @@ merely have its tasks closed.
    public docs owe — "docs owe entries for phases X, Y —
    `/cairn:distill <N>` generates them". Report only: verify never
    generates docs, and a drift-report error never fails the verification.
+   It also confirms the phase's row in `roadmap.md` reads `verified`, and
+   repairs the row if it still reads `planned` — the roadmap is the table
+   people actually read, so it is not allowed to disagree with the
+   VERIFICATION.md sitting next to it. A failed verify leaves the row alone.
 7. **A failed verification routes to `trace` — mandatory.** Open a trace with
    the failure as the description, log the failing output as the first
    evidence entry, and continue there. Never patch-and-rerun inline.
@@ -272,7 +276,10 @@ The pre-push gate:
 
 1. Drift check — anything flagged: stop and report. Do not push.
 2. Every phase with a VERIFICATION.md must show all its issues closed
-   (spot-checked live) — any still open: stop.
+   (spot-checked live) — any still open: stop. A stale `planned` roadmap
+   row on one of those phases is repaired with the plan-doc commit, not
+   treated as a failed gate. Ship never writes `shipped (v<N>)` into a
+   row — that flip is `summit`'s, at the milestone archive.
 3. Engineer mode only: no cairn-authored PR may still be awaiting human
    review. Human review is the merge gate; ship never overrides it.
 4. Docs catch-up: any verified phase the docs-drift report still flags
