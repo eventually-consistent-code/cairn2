@@ -17,6 +17,7 @@ const SESSIONSTART = join(scriptsDir, "sessionstart-continuity.mjs");
 const SCRIPTS = scriptsDir;
 const LEAKGUARD = join(SCRIPTS, "pretooluse-leakguard.mjs");
 const RUNGUARD = join(SCRIPTS, "pretooluse-runguard.mjs");
+const HARNESSGUARD = join(SCRIPTS, "pretooluse-harnessguard.mjs");
 
 const dirs: string[] = [];
 function freshDir(prefix: string): string {
@@ -648,6 +649,117 @@ describe("run guard hook", () => {
     writeFileSync(join(home, "runs", `${base}-${hash}-broken.json`), "{ not json");
     expect(runHookRaw(RUNGUARD, proj, cwdPayload("git checkout main", proj),
       { CAIRN_HOME: home }).status).toBe(0);
+  });
+});
+
+describe("harness guard hook", () => {
+  const editPayload = (filePath: string, tool = "Edit") =>
+    JSON.stringify({ tool_name: tool, tool_input: { file_path: filePath }, cwd: "" });
+  const bashPayload = (command: string) =>
+    JSON.stringify({ tool_name: "Bash", tool_input: { command }, cwd: "" });
+
+  /** The guard reads no project state, so a bare temp dir is a complete fixture. */
+  function proj(): string {
+    return freshDir("cairn-hooks-harnessguard-");
+  }
+
+  it("refuses an Edit to every protected surface, naming the file", () => {
+    const p = proj();
+    const cases: Array<[string, string]> = [
+      ["hooks/hooks.json", "hook directory"],
+      ["hooks/scripts/pretooluse-leakguard.mjs", "hook directory"],
+      [".mcp.json", "MCP server config"],
+      [".claude/settings.json", "settings file"],
+      [".claude/settings.local.json", "settings file"],
+      [".claude-plugin/plugin.json", "plugin manifest"],
+      [".claude-plugin/marketplace.json", "plugin manifest"],
+    ];
+    for (const [file, phrase] of cases) {
+      const r = runHookRaw(HARNESSGUARD, p, editPayload(join(p, file)));
+      expect(r.status, file).toBe(2);
+      expect(r.stderr, file).toContain(phrase);
+      expect(r.stderr, file).toContain(file);
+    }
+  });
+
+  it("refuses Write and NotebookEdit on the same surfaces", () => {
+    const p = proj();
+    expect(runHookRaw(HARNESSGUARD, p,
+      editPayload(join(p, ".mcp.json"), "Write")).status).toBe(2);
+    expect(runHookRaw(HARNESSGUARD, p, JSON.stringify({
+      tool_name: "NotebookEdit", tool_input: { notebook_path: join(p, "hooks/x.ipynb") }, cwd: "",
+    })).status).toBe(2);
+  });
+
+  it("ordinary project files pass, including look-alikes", () => {
+    const p = proj();
+    for (const file of [
+      "server/src/index.ts", "docs/hooks.md", "settings.json", "my.mcp.json",
+      "hooksy/thing.json", "server/hooks/helper.ts",
+    ]) {
+      expect(runHookRaw(HARNESSGUARD, p, editPayload(join(p, file))).status, file).toBe(0);
+    }
+  });
+
+  it("protects the machine-wide settings from any project", () => {
+    const p = proj();
+    const home = freshDir("cairn-hooks-harnessguard-home-");
+    const r = runHookRaw(HARNESSGUARD, p,
+      editPayload(join(home, ".claude", "settings.json")), { HOME: home });
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain("machine-wide");
+  });
+
+  it("a path outside the project is not this guard's business", () => {
+    const p = proj();
+    const other = freshDir("cairn-hooks-harnessguard-other-");
+    expect(runHookRaw(HARNESSGUARD, p,
+      editPayload(join(other, "hooks", "hooks.json"))).status).toBe(0);
+  });
+
+  it("catches the shell write shapes an agent actually uses", () => {
+    const p = proj();
+    for (const c of [
+      "echo '{}' > hooks/hooks.json",
+      "cat x >> .mcp.json",
+      "sed -i '' 's/a/b/' .claude/settings.json",
+      "cp /tmp/evil.json .claude-plugin/plugin.json",
+      "mv /tmp/x hooks/scripts/pretooluse-leakguard.mjs",
+      "rm hooks/scripts/pretooluse-leakguard.mjs",
+      'tee ".mcp.json" < /tmp/x',
+    ]) {
+      expect(runHookRaw(HARNESSGUARD, p, bashPayload(c)).status, c).toBe(2);
+    }
+  });
+
+  it("reading a protected file stays frictionless", () => {
+    const p = proj();
+    for (const c of [
+      "cat hooks/hooks.json",
+      "grep -n matcher hooks/hooks.json",
+      "node scripts/check-surface.mjs",
+      "git diff .mcp.json",
+    ]) {
+      expect(runHookRaw(HARNESSGUARD, p, bashPayload(c)).status, c).toBe(0);
+    }
+  });
+
+  it("CAIRN_HARNESS_EDIT=1 overrides, by env for any tool and by prefix for Bash", () => {
+    const p = proj();
+    expect(runHookRaw(HARNESSGUARD, p, editPayload(join(p, "hooks/hooks.json")),
+      { CAIRN_HARNESS_EDIT: "1" }).status).toBe(0);
+    expect(runHookRaw(HARNESSGUARD, p,
+      bashPayload("CAIRN_HARNESS_EDIT=1 echo '{}' > hooks/hooks.json")).status).toBe(0);
+    // Prefix-only: a mention elsewhere in the line does not bypass.
+    expect(runHookRaw(HARNESSGUARD, p,
+      bashPayload("echo 'CAIRN_HARNESS_EDIT=1' > hooks/hooks.json")).status).toBe(2);
+  });
+
+  it("unrelated tools are not scanned at all", () => {
+    const p = proj();
+    expect(runHookRaw(HARNESSGUARD, p, JSON.stringify({
+      tool_name: "Read", tool_input: { file_path: join(p, "hooks/hooks.json") }, cwd: "",
+    })).status).toBe(0);
   });
 });
 

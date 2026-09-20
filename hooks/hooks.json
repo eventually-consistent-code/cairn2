@@ -1,5 +1,5 @@
 {
-  "description": "cairn continuity hooks -- PreToolUse leak guard + run guard, PostToolUse breadcrumb + observation capture, PreCompact refresh, SessionStart resume injection, Stop cost tracker, TaskCreated/TaskCompleted tracker mirror spool. All are dependency-free, fire-and-forget Node scripts (see hooks/scripts/).",
+  "description": "cairn continuity hooks -- PreToolUse leak guard + run guard + harness guard, PostToolUse breadcrumb + observation capture, PreCompact refresh, SessionStart resume injection, Stop cost tracker, TaskCreated/TaskCompleted tracker mirror spool. All are dependency-free, fire-and-forget Node scripts (see hooks/scripts/).",
   "hooks": {
     "PreToolUse": [
       {
@@ -13,6 +13,16 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pretooluse-runguard.mjs\"",
+            "timeout": 3000
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pretooluse-harnessguard.mjs\"",
             "timeout": 3000
           }
         ]

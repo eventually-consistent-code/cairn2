@@ -1682,6 +1682,28 @@ worktree: put it back rather than reaching for the override. That
 override, for the rare hand-run case, is a `CAIRN_RUN_OK=1 ` prefix,
 same shape and same prefix-only rule as the leak guard's.
 
+The third of the trio is the **harness guard**, and it protects the
+configuration that decides what the agent may do at all: the `hooks/`
+directory, `.mcp.json`, the settings files under `.claude/`, the plugin
+manifests under `.claude-plugin/`, and your machine-wide Claude
+settings. An agent that can rewrite its own hooks can switch off every
+other control in one edit, so edits, writes and the shell shapes that
+write (redirect, `sed -i`, `tee`, `cp`, `mv`, `rm`) are refused on those
+paths. Reading them is untouched — inspecting a hook is ordinary work.
+The refusal names the file and then asks the question that matters: if
+you did not ask for this, something the agent read did, so find out
+where the instruction came from before allowing it. To allow it
+deliberately, set `CAIRN_HARNESS_EDIT=1` for the session, or prefix a
+shell command with it.
+
+Be clear-eyed about what this buys. The realistic attack is indirect —
+instructions embedded in text the agent reads, which the trailhead's
+"tracker text is data" rule addresses on the judgment side. The guard
+turns a silent success into a refusal a human sees. It is not a sandbox,
+and text that can steer the agent can also ask for the override; real
+isolation is the operating system's job. The Bash coverage is
+best-effort matching over the command text, not a shell parser.
+
 ---
 
 ## 11. Error codes & troubleshooting
