@@ -24,7 +24,36 @@ export interface StaleAuditDrift {
     codeCommitsSince?: number;
     detail: string;
 }
-export type DriftItem = IssueDrift | StaleAuditDrift;
+/**
+ * Work that went quiet (#218). An issue held in progress that nobody has
+ * touched and no commit mentions, or a branch with commits and no recent
+ * activity. Neither is an error — the point is only that silent work is
+ * invisible work, and a scan that never says so lets it stay that way.
+ * Advisory everywhere: ship does not stop on these.
+ */
+export interface StaleWorkDrift {
+    reason: "stale-issue" | "stale-branch";
+    /** The issue id, or the branch name. */
+    ref: string;
+    /** Whole days since the most recent sign of life. */
+    idleDays: number;
+    detail: string;
+}
+export type DriftItem = IssueDrift | StaleAuditDrift | StaleWorkDrift;
+/** Days of silence before work is called stale. `drift.staleDays` overrides. */
+export declare const DEFAULT_STALE_DAYS = 5;
+/**
+ * Branches whose last commit is older than the window. Local and remote,
+ * minus the default branch and whatever is checked out — the branch you
+ * are standing on is not forgotten work.
+ *
+ * Deliberately git-only: "has no open pull request" would be the sharper
+ * signal, but the tracker SPI has no pull-request surface, and inventing
+ * one for an advisory flag is the wrong trade. A branch that IS under
+ * review will show up here once it goes quiet, which is arguably correct
+ * anyway — a review nobody has finished in a week is also stale work.
+ */
+export declare function staleBranchDrift(projectDir: string, staleDays?: number, now?: number): StaleWorkDrift[];
 /**
  * Stale-security-audit check. Only the latest security-scoped record
  * counts; records without a stamp (pre-phase-21, or written outside git)
@@ -34,7 +63,10 @@ export type DriftItem = IssueDrift | StaleAuditDrift;
  * :returns: the flag, or null when the latest security audit is current
  */
 export declare function staleAuditDrift(projectDir: string): StaleAuditDrift | null;
-export declare function driftReport(tracker: Tracker, projectDir: string): Promise<{
+export declare function driftReport(tracker: Tracker, projectDir: string, opts?: {
+    staleDays?: number;
+    now?: number;
+}): Promise<{
     flagged: DriftItem[];
     ok: string[];
 }>;

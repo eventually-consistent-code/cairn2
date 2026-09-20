@@ -582,12 +582,14 @@ export function buildServer(deps) {
         inputSchema: z.object({ number: z.number(), name: z.string() }),
     }, wrap(async (a) => ensurePhase(await getTracker(), a.number, a.name)));
     server.registerTool("plan_drift", {
-        description: "Flag plan-referenced issues that are missing or closed-unverified, plus a stale " +
-            "security audit (latest security record written dirty or before code commits since its stamp)",
+        description: "Flag plan-referenced issues that are missing or closed-unverified, a stale " +
+            "security audit (latest security record written dirty or before code commits since " +
+            "its stamp), and work that has gone quiet (an issue held in progress with no tracker " +
+            "update and no commit naming it, or a branch with no recent commit)",
         inputSchema: z.object({}),
     }, wrap(async () => {
         const d = dir();
-        return driftReport(await getTracker(d), d);
+        return driftReport(await getTracker(d), d, { staleDays: loadConfig(d).drift.staleDays });
     }));
     server.registerTool("plan_issues_set", {
         description: "Set the tracker issue ids a phase's PLAN.md advances",

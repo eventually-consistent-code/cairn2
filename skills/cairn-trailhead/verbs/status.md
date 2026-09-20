@@ -14,7 +14,12 @@ Show project status:
    (C/R/P/V), issue count.
 2. For the active phase (`context_get`), `issue_get` each referenced issue and
    show id · title · state · assignee.
-3. `plan_drift()` — append flagged items, each with its one-line remedy
+3. `plan_drift()` — append flagged items, each with its one-line remedy.
+   `stale-issue` and `stale-branch` are ADVISORY: render them in their own
+   short "gone quiet" group after the real drift, newest silence last, and
+   never let them outweigh a missing or closed-unverified issue in the
+   report's lead. Nothing to say when the group is empty — silence about
+   silence.
    (missing → recreate + `plan_issues_set`; closed-unverified → verify or reopen).
 4. `plan_unplanned()` — tracker issues no plan references. If any: list
    id · title · assignee and offer adoption (`/cairn:plan <N>` folds them in,

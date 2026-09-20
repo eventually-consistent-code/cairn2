@@ -13,7 +13,9 @@ Verify the given phase per the `cairn-planning` skill.
    `stale-audit` flag (the latest security audit predates code commits,
    or was recorded over a dirty tree) fails verification the same way:
    report its `detail` line first — "re-run `/cairn:audit security`" —
-   then the commit it was stamped at.
+   then the commit it was stamped at. `stale-issue` and `stale-branch` do
+   NOT fail verification: they describe work that went quiet elsewhere, not
+   a claim this phase is making. Note them in the report and move on.
 3. `issue_list(phase: <tracker phase id>, state: "open")` — must be empty; report
    stragglers instead of closing them unexamined.
 4. TDD evidence: for every id in PLAN.md `tdd:` frontmatter, this phase's

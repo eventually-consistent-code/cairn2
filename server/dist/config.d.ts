@@ -60,6 +60,9 @@ export declare const ConfigSchema: z.ZodObject<{
     ship: z.ZodPrefault<z.ZodObject<{
         confirm: z.ZodDefault<z.ZodBoolean>;
     }, z.core.$strip>>;
+    drift: z.ZodPrefault<z.ZodObject<{
+        staleDays: z.ZodDefault<z.ZodNumber>;
+    }, z.core.$strip>>;
     peers: z.ZodOptional<z.ZodRecord<z.ZodEnum<{
         codex: "codex";
         opencode: "opencode";

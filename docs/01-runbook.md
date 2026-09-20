@@ -1644,6 +1644,7 @@ nothing.
 | `continuity.wipCommits` | boolean | `false` | Whether `waypoint` offers a `wip(cairn):` commit on pause |
 | `continuity.recallIndex.enabled` | boolean | `true` | The session-start memory banner |
 | `continuity.recallIndex.maxCards` | positive integer | `20` | Banner card cap |
+| `drift.staleDays` | positive integer | `5` | Days of silence before `plan_drift` calls work stale |
 | `leakGuard.enabled` | boolean | `true` | The commit-time leak guard hook |
 | `leakGuard.allow` | string[] | `[]` | Path globs exempt from the guard |
 | `leakGuard.extraPatterns` | string[] | `[]` | Additional regex patterns to guard against |
@@ -1668,6 +1669,17 @@ config keys, or a one-shot `CAIRN_LEAK_OK=1 ` *prefix* on the commit
 command (mentioning the variable elsewhere — say, quoted inside the commit
 message — does not bypass). Accepted limitation: commits made outside
 Claude Code are unguarded.
+
+On `drift.staleDays`: `plan_drift` reports two advisory flags about work
+that has gone quiet. An issue held in progress that has had no tracker
+update and no commit naming it for that many days, and a branch whose
+last commit is that old. Neither is an error and neither blocks a ship or
+a verify — the point is that silent work is invisible work, and a scan
+that never says so lets it stay that way. The branch check is git-only:
+"has no open pull request" would be sharper, but the tracker interface
+has no pull-request surface and inventing one for an advisory flag is the
+wrong trade. A branch under review that nobody has finished in a week
+shows up here too, which is arguably right.
 
 Its sibling is the **run guard**, which protects your working directory
 rather than your outbound text. A batch run works inside its own

@@ -7,6 +7,10 @@ status: live
 Pre-ship gate, then ship:
 
 1. `plan_drift()` — anything flagged: **stop** and report; do not push.
+   The two exceptions are `stale-issue` and `stale-branch`, which are
+   advisory: mention them in one line each with the rest of the summary and
+   carry on. Forgotten work is worth seeing, never a reason to block a good
+   push.
    A `stale-audit` flag means the latest security audit no longer
    describes HEAD (written over a dirty tree, or code commits landed
    since its stamp): lead with its `detail` line — "re-run

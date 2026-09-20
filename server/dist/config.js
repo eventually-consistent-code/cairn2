@@ -65,6 +65,12 @@ export const ConfigSchema = z.object({
     // cairn's no-action recommendation. Default on; confirm: false restores
     // the silent push flow.
     ship: z.object({ confirm: z.boolean().default(true) }).prefault({}),
+    // Days of silence before plan_drift calls work stale (#218) — an issue
+    // held in progress with no tracker update and no commit naming it, or a
+    // branch nobody has pushed to. Advisory only; ship never blocks on it.
+    drift: z
+        .object({ staleDays: z.number().int().min(1).default(5) })
+        .prefault({}),
     // Per-provider peer CLI settings (Tier F2 #997) — absent provider or
     // absent field means enabled with defaults; unknown provider keys are
     // rejected by the enum-keyed record below.

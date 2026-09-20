@@ -7,7 +7,7 @@ import { FakeTracker } from "../src/tracker/fake.js";
 import { writeAuditRecord } from "../src/audit/record.js";
 import { scaffoldPhase, writePlanIssues } from "../src/planning/artifacts.js";
 import {
-  canonicalPhaseName, ensurePhase, driftReport, staleAuditDrift,
+  canonicalPhaseName, ensurePhase, driftReport, staleAuditDrift, staleBranchDrift,
 } from "../src/planning/mirror.js";
 
 const dir = () => mkdtempSync(join(tmpdir(), "cairn-mirror-"));
@@ -64,6 +64,50 @@ describe("driftReport", () => {
       { issueId: closed.id, phase: 1, reason: "closed" },
       { issueId: "FAKE-999", phase: 1, reason: "missing" },
     ]));
+  });
+
+  it("an in-progress issue nobody has touched for the window is stale work", async () => {
+    const t = new FakeTracker();
+    const held = await t.createIssue({ title: "held open" });
+    await t.updateIssue(held.id, { state: "in_progress" });
+    const d = dir();
+    const { dir: pd } = scaffoldPhase(d, 1, "Core");
+    writePlanIssues(d, pd, [held.id]);
+
+    // Look at the same repo from eight days in the future rather than
+    // back-dating the tracker: the fake stamps updatedAt as "now".
+    const future = Date.now() + 8 * 86_400_000;
+    const report = await driftReport(t, d, { staleDays: 5, now: future });
+    const stale = report.flagged.find((f) => f.reason === "stale-issue");
+    expect(stale).toMatchObject({ reason: "stale-issue", ref: held.id, idleDays: 8 });
+    expect(stale?.detail).toContain("8 days");
+    // Still a tracked, un-drifted issue — stale is advisory, not an error.
+    expect(report.ok).toEqual([held.id]);
+  });
+
+  it("recent activity on either side clears it", async () => {
+    const t = new FakeTracker();
+    const held = await t.createIssue({ title: "held open" });
+    await t.updateIssue(held.id, { state: "in_progress" });
+    const d = dir();
+    const { dir: pd } = scaffoldPhase(d, 1, "Core");
+    writePlanIssues(d, pd, [held.id]);
+
+    // Inside the window: the tracker stamp alone is a sign of life.
+    const soon = Date.now() + 2 * 86_400_000;
+    expect((await driftReport(t, d, { staleDays: 5, now: soon }))
+      .flagged.filter((f) => f.reason === "stale-issue")).toEqual([]);
+  });
+
+  it("only in-progress issues go stale — open backlog is not forgotten work", async () => {
+    const t = new FakeTracker();
+    const backlog = await t.createIssue({ title: "someday" });
+    const d = dir();
+    const { dir: pd } = scaffoldPhase(d, 1, "Core");
+    writePlanIssues(d, pd, [backlog.id]);
+    const future = Date.now() + 90 * 86_400_000;
+    expect((await driftReport(t, d, { staleDays: 5, now: future }))
+      .flagged.filter((f) => f.reason === "stale-issue")).toEqual([]);
   });
 
   it("closed issues in a VERIFIED phase are not drift", async () => {
@@ -123,5 +167,64 @@ describe("staleAuditDrift (#195)", () => {
       "---\nscope: security\nverdict: pass\ncreated: 2020-01-01\n---\n# Audit: security\n");
     expect(staleAuditDrift(d)).toBeNull();
     expect(staleAuditDrift(dir())).toBeNull();
+  });
+});
+
+describe("staleBranchDrift (#218)", () => {
+  /** Commits a file on a new branch with a back-dated committer date. */
+  function branchAt(d: string, name: string, daysAgo: number): void {
+    const when = new Date(Date.now() - daysAgo * 86_400_000).toISOString();
+    execFileSync("git", ["checkout", "-q", "-b", name], { cwd: d });
+    writeFileSync(join(d, `${name.replace(/\//g, "-")}.txt`), "work\n");
+    execFileSync("git", ["add", "-A"], { cwd: d });
+    execFileSync("git", ["commit", "-q", "-m", `work on ${name}`, "--no-gpg-sign"],
+      { cwd: d, env: { ...process.env, GIT_COMMITTER_DATE: when, GIT_AUTHOR_DATE: when } });
+    execFileSync("git", ["checkout", "-q", "main"], { cwd: d });
+  }
+
+  /** repo() seeds on whatever the default branch is called; normalise to main. */
+  function repoOnMain(): string {
+    const d = repo();
+    execFileSync("git", ["branch", "-M", "main"], { cwd: d });
+    return d;
+  }
+
+  it("flags a branch that has gone quiet, naming the age", () => {
+    const d = repoOnMain();
+    branchAt(d, "feature/old-thing", 9);
+    const flags = staleBranchDrift(d, 5);
+    expect(flags).toHaveLength(1);
+    expect(flags[0]).toMatchObject({ reason: "stale-branch", ref: "feature/old-thing" });
+    expect(flags[0].idleDays).toBeGreaterThanOrEqual(9);
+    expect(flags[0].detail).toContain("feature/old-thing");
+  });
+
+  it("leaves recent branches, the default branch, and the checked-out branch alone", () => {
+    const d = repoOnMain();
+    branchAt(d, "feature/fresh", 1);
+    branchAt(d, "feature/old", 9);
+    execFileSync("git", ["checkout", "-q", "feature/old"], { cwd: d });
+    // Standing on it means it is not forgotten, however old the commit is.
+    expect(staleBranchDrift(d, 5)).toEqual([]);
+    execFileSync("git", ["checkout", "-q", "main"], { cwd: d });
+    expect(staleBranchDrift(d, 5).map((f) => f.ref)).toEqual(["feature/old"]);
+  });
+
+  it("orders by how long the silence has run", () => {
+    const d = repoOnMain();
+    branchAt(d, "feature/a", 7);
+    branchAt(d, "feature/b", 30);
+    expect(staleBranchDrift(d, 5).map((f) => f.ref)).toEqual(["feature/b", "feature/a"]);
+  });
+
+  it("the threshold is respected, not hardcoded", () => {
+    const d = repoOnMain();
+    branchAt(d, "feature/week-old", 7);
+    expect(staleBranchDrift(d, 30)).toEqual([]);
+    expect(staleBranchDrift(d, 5).map((f) => f.ref)).toEqual(["feature/week-old"]);
+  });
+
+  it("a directory that is not a git repo says nothing rather than throwing", () => {
+    expect(staleBranchDrift(dir(), 5)).toEqual([]);
   });
 });
