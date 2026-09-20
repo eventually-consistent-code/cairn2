@@ -84,9 +84,12 @@ pairing overlay applies:
      resolves failed thunks to `null`; keep the filter even though
      schema'd failures usually arrive as values.
    - The moment dispatch returns, record the run id in BOTH places so it
-     survives /clear: `continuity_checkpoint(source: "work", notes:
+     survives /clear: `continuity_checkpoint(source: "tool", notes:
      "wave <N> run <id>")` AND `outlook_emit(tracker: {open, inProgress,
      blocked, nextVerb: "work <N> --wave — resume run <id>", asOf})`.
+     The checkpoint source enum is exactly `tool`, `posttooluse`,
+     `precompact`, `waypoint` — a wave dispatch is a `tool` checkpoint,
+     and the wave identity rides in `notes`, never in the source.
    - Re-entry on an interrupted wave: resume with `resumeFromRunId: <id>`
      instead of redispatching — unchanged agent-call prefixes replay from
      cache, so completed workers are free and only unfinished ones run.
