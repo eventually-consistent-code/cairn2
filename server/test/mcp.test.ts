@@ -2254,6 +2254,8 @@ describe("docs tools over an injected fake connector", () => {
       expect(probe.isError).toBeFalsy();
       expect(probe.json.native.status).toBe("broken");
       expect(probe.json.native.module).toBe("better-sqlite3");
+      // #178: the two modes are told apart -- nothing compiled here at all.
+      expect(probe.json.native.kind).toBe("absent");
       expect(probe.json.native.fix).toMatch(
         /^cd .+ && npm rebuild better-sqlite3, then reload plugins/,
       );
@@ -2265,7 +2267,7 @@ describe("docs tools over an injected fake connector", () => {
       expect(search.isError).toBe(true);
       expect(search.json.code).toBe("NATIVE_MODULE_BROKEN");
       expect(search.json.message).toContain(
-        `native module better-sqlite3 not built for this runtime (node ${process.version})`,
+        `native module better-sqlite3 has no compiled binding in this install (node ${process.version})`,
       );
       expect(search.json.message).toContain("npm rebuild better-sqlite3");
       expect(search.json.message).not.toContain(

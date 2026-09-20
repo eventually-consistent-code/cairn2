@@ -1,4 +1,4 @@
-// Native-binding safeguard for better-sqlite3 (#108).
+// Native-binding safeguard for better-sqlite3 (#108, #178).
 //
 // Real incident: a fresh installed-plugin cache under a newer node ABI
 // (node 26) had no compiled better-sqlite3 binding -- every memory index
@@ -6,11 +6,20 @@
 // until someone manually rebuilt inside the cache's node_modules. This
 // module makes that failure detect-and-explain: the require is lazy, the
 // failure is recognized, and the typed error names the exact fix command
-// with the real resolved server directory.
+// against the directory the module actually resolves from.
+//
+// Follow-up (#178): the fix command used to hardcode the cache's `server/`
+// subdirectory. Since the root-manifest migration the runtime deps install
+// at the plugin-cache ROOT -- `server/node_modules` does not exist -- so a
+// user following the instruction rebuilt nothing and hit the same error on
+// reload. The rebuild path is now derived from the failed resolution, and
+// the two failure modes are told apart: "never compiled here" (no artifact
+// on disk at all) needs different next-action text from "compiled for a
+// different runtime" (an artifact exists, aimed at another node ABI).
 
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
 import { CairnError } from "../errors.js";
@@ -21,31 +30,59 @@ export type SqliteCtor = new (filename: string) => Database.Database;
 /** Injectable loader seam -- tests simulate a broken binding here. */
 export type SqliteLoader = () => SqliteCtor;
 
-const nativeRequire = createRequire(import.meta.url);
+/** Injectable resolver seam -- tests simulate an install layout here. */
+export type ResolveFn = (id: string) => string;
 
-// Signatures of "the compiled binding is missing or built for another
-// runtime" -- everything else (disk full, corrupt install, ...) rethrows
-// untranslated so we never mislabel an unrelated failure.
-const BINDINGS_FAILURE_PATTERNS: RegExp[] = [
-  /could not locate the bindings file/i, // no build at all (the #108 incident)
+/**
+ * How a bindings failure actually failed. They read the same to a loader
+ * but need different instructions, so they are never collapsed:
+ * - `absent` -- nothing was ever compiled in this install (the #178 case)
+ * - `abi`    -- a binding exists, built for another node runtime/platform
+ */
+export type BindingFailureKind = "absent" | "abi";
+
+const nativeRequire = createRequire(import.meta.url);
+const nativeResolve: ResolveFn = (id) => nativeRequire.resolve(id);
+
+// Signatures of "a binding exists but this runtime can't load it" -- ABI
+// mismatch and wrong-platform binaries.
+const ABI_FAILURE_PATTERNS: RegExp[] = [
   /was compiled against a different node\.js version/i, // ABI mismatch, loud form
   /node_module_version/i, // ABI mismatch, raw NODE_MODULE_VERSION form
   /invalid elf header/i, // binary from another platform (linux loader)
   /no suitable image found/i, // same, darwin loader
   /not a valid win32 application/i, // same, windows loader
-  /better[-_]sqlite3\.node/i, // any other loader complaint naming the binding
+];
+
+// Signatures of "there is no binding to load". Kept narrow on purpose: a
+// bare "Cannot find module" must stay unclaimed so an unrelated missing
+// dependency is never mislabeled as a native-build problem.
+const ABSENT_FAILURE_PATTERNS: RegExp[] = [
+  /could not locate the bindings file/i, // no build at all (the #108 incident)
+  /better[-_]sqlite3\.node/i, // loader complaint naming the binding itself
+  /cannot find module ['"]better-sqlite3['"]/i, // the package isn't installed here
+];
+
+// Where a compiled artifact lands, whichever way it got there.
+const ARTIFACT_CANDIDATES = [
+  join("build", "Release", "better_sqlite3.node"),
+  join("build", "Debug", "better_sqlite3.node"),
+  "prebuilds",
 ];
 
 /** True when `e` looks like a missing/incompatible compiled binding. */
 export function isBindingsFailure(e: unknown): boolean {
   const msg = e instanceof Error ? e.message : String(e);
-  return BINDINGS_FAILURE_PATTERNS.some((p) => p.test(msg));
+  return [...ABI_FAILURE_PATTERNS, ...ABSENT_FAILURE_PATTERNS].some((p) =>
+    p.test(msg),
+  );
 }
 
 /**
- * The directory holding the server's package.json -- where `npm rebuild`
- * must run. Walks up from this module's own location so it resolves
- * correctly from dist/ (installed plugin cache) and src/ (repo tree) alike.
+ * The directory holding the server's package.json. Walks up from this
+ * module's own location so it resolves from dist/ (installed plugin cache)
+ * and src/ (repo tree) alike. Only a last-resort fallback now -- the
+ * rebuild path comes from the real resolution, see `rebuildRoot`.
  */
 export function serverDir(): string {
   let d = dirname(fileURLToPath(import.meta.url));
@@ -58,8 +95,84 @@ export function serverDir(): string {
   return d;
 }
 
-/** The one-line fix command, against the real resolved server dir. */
-export function rebuildFix(dir: string = serverDir()): string {
+/**
+ * The directory better-sqlite3 actually resolves from, or undefined when
+ * the package cannot be resolved at all.
+ *
+ * :param resolve: resolver seam (defaults to this module's own require)
+ */
+export function nativePackageDir(
+  resolve: ResolveFn = nativeResolve,
+): string | undefined {
+  // The package has no exports map, so its manifest resolves directly --
+  // that is the package root with no guessing.
+  try {
+    return dirname(resolve("better-sqlite3/package.json"));
+  } catch {
+    /* fall through to the entry point */
+  }
+  // Older/odd layouts: resolve the entry and walk up to its manifest.
+  try {
+    let d = dirname(resolve("better-sqlite3"));
+    for (let i = 0; i < 6; i++) {
+      if (existsSync(join(d, "package.json"))) return d;
+      const parent = dirname(d);
+      if (parent === d) break;
+      d = parent;
+    }
+  } catch {
+    /* not installed anywhere we can see */
+  }
+  return undefined;
+}
+
+/**
+ * The directory to run `npm rebuild` in: the one owning the node_modules
+ * that holds better-sqlite3. Since the root-manifest migration that is the
+ * plugin-cache root, not `server/` -- hardcoding the latter is exactly the
+ * #178 bug. Falls back to the server dir when nothing resolves.
+ *
+ * :param pkgDir: the resolved package dir (defaults to the live one)
+ */
+export function rebuildRoot(
+  pkgDir: string | undefined = nativePackageDir(),
+): string {
+  if (!pkgDir) return serverDir();
+  let d = pkgDir;
+  for (let i = 0; i < 8; i++) {
+    if (basename(d) === "node_modules") return dirname(d);
+    const parent = dirname(d);
+    if (parent === d) break;
+    d = parent;
+  }
+  return serverDir();
+}
+
+/** True when the resolved package has a compiled artifact on disk. */
+export function bindingArtifactPresent(pkgDir: string | undefined): boolean {
+  if (!pkgDir) return false;
+  return ARTIFACT_CANDIDATES.some((rel) => existsSync(join(pkgDir, rel)));
+}
+
+/**
+ * Tell the two failure modes apart. Disk evidence wins over message
+ * sniffing: if no artifact exists, nothing was compiled here no matter how
+ * the loader phrased its complaint.
+ *
+ * :param e: the failure the loader threw
+ * :param pkgDir: the resolved package dir (defaults to the live one)
+ */
+export function classifyBindingFailure(
+  e: unknown,
+  pkgDir: string | undefined = nativePackageDir(),
+): BindingFailureKind {
+  if (!bindingArtifactPresent(pkgDir)) return "absent";
+  const msg = e instanceof Error ? e.message : String(e);
+  return ABI_FAILURE_PATTERNS.some((p) => p.test(msg)) ? "abi" : "absent";
+}
+
+/** The one-line fix command, against the real resolved rebuild root. */
+export function rebuildFix(dir: string = rebuildRoot()): string {
   return `cd ${dir} && npm rebuild better-sqlite3`;
 }
 
@@ -68,18 +181,46 @@ export function rebuildFix(dir: string = serverDir()): string {
 const RELOAD_STEP =
   "then reload plugins (or restart the session) so the server picks up the new binding";
 
-/** The typed, human-first error a bindings failure translates into. */
+/** The typed error, carrying which failure mode produced it. */
+export class NativeBindingError extends CairnError {
+  constructor(
+    public readonly kind: BindingFailureKind,
+    message: string,
+    nextAction: string,
+  ) {
+    super("NATIVE_MODULE_BROKEN", message, nextAction);
+  }
+}
+
+/**
+ * The typed, human-first error a bindings failure translates into.
+ *
+ * :param kind: which failure mode -- absent binding vs. wrong-runtime one
+ * :param nodeVersion: the running node (defaults to this process)
+ * :param dir: where to rebuild (defaults to the real resolution root)
+ */
 export function bindingsError(
+  kind: BindingFailureKind = "absent",
   nodeVersion: string = process.version,
-  dir: string = serverDir(),
-): CairnError {
-  return new CairnError(
-    "NATIVE_MODULE_BROKEN",
-    `native module better-sqlite3 not built for this runtime (node ${nodeVersion}); ` +
-      `run: ${rebuildFix(dir)}, ${RELOAD_STEP}`,
-    "a fresh plugin-cache install under a newer node ABI ships no compiled " +
-      `binding -- rebuild once, ${RELOAD_STEP}, then retry; ` +
-      "card tools keep working meanwhile",
+  dir: string = rebuildRoot(),
+): NativeBindingError {
+  const headline =
+    kind === "abi"
+      ? `native module better-sqlite3 was built for a different runtime (this is node ${nodeVersion})`
+      : `native module better-sqlite3 has no compiled binding in this install (node ${nodeVersion})`;
+  const why =
+    kind === "abi"
+      ? "the binding exists but targets another node ABI -- rebuild it where " +
+        `better-sqlite3 actually resolves from (${dir}), ${RELOAD_STEP}, then ` +
+        "retry"
+      : "nothing was ever compiled here -- there is no binding to re-target, " +
+        `so rebuild at the install root where the runtime deps live (${dir}), ` +
+        "not the server/ subdirectory; if npm reports nothing to rebuild, run " +
+        `npm install there first, ${RELOAD_STEP}, then retry`;
+  return new NativeBindingError(
+    kind,
+    `${headline}; run: ${rebuildFix(dir)}, ${RELOAD_STEP}`,
+    `${why}; card tools keep working meanwhile`,
   );
 }
 
@@ -94,7 +235,7 @@ export function loadSqlite(
   try {
     return requireFn("better-sqlite3") as SqliteCtor;
   } catch (e) {
-    if (isBindingsFailure(e)) throw bindingsError();
+    if (isBindingsFailure(e)) throw bindingsError(classifyBindingFailure(e));
     throw e;
   }
 }
@@ -102,6 +243,7 @@ export function loadSqlite(
 export interface NativeProbe {
   module: "better-sqlite3";
   status: "ok" | "broken";
+  kind?: BindingFailureKind;
   message?: string;
   fix?: string;
 }
@@ -118,9 +260,12 @@ export function probeNativeBindings(
     load();
     return { module: "better-sqlite3", status: "ok" };
   } catch (e) {
+    const kind =
+      e instanceof NativeBindingError ? e.kind : classifyBindingFailure(e);
     return {
       module: "better-sqlite3",
       status: "broken",
+      kind,
       message: e instanceof Error ? e.message : String(e),
       fix: `${rebuildFix()}, ${RELOAD_STEP}`,
     };
