@@ -20,6 +20,14 @@ export declare function resolveJiraAuth(cfg: JiraConfig): {
     email: string;
     token: string;
 };
+/** A write result that could not store part of the estimate it was given.
+ *  Structurally an `Issue` — the extra note rides back with the call and is
+ *  read (and stripped off) by the tool layer, which re-publishes it as
+ *  `estimateSkipped`. Nothing else reads it, and it never reaches a
+ *  plan snapshot. */
+export type JiraWriteResult = Issue & {
+    estimateSkipped?: string;
+};
 export declare class JiraTracker implements Tracker {
     private readonly cfg;
     private readonly fetchImpl;
@@ -27,7 +35,15 @@ export declare class JiraTracker implements Tracker {
     readonly capabilities: Capability;
     private storyPointField;
     private storyPointFieldId;
-    /** SPI estimate → Jira write fields (timetracking + discovered points field). */
+    /** SPI estimate → Jira write fields (timetracking + discovered points field).
+     *
+     *  `skipped` is the honest half of the answer (#231). `hasEstimates` is a
+     *  backend-wide claim and stays true — minutes ride the standard
+     *  timetracking field and always land — but story points live in a custom
+     *  field that a given site may simply not have. That loss is per call, so
+     *  it travels back with the call instead of only to stderr; the tool layer
+     *  turns it into `estimateSkipped` so the caller can fall back to writing
+     *  the points into the issue body. */
     private estimateFields;
     /** Read-field list: timetracking always; the points field once discovered. */
     private readFields;
@@ -60,7 +76,7 @@ export declare class JiraTracker implements Tracker {
     /** Scrum boards: new work belongs in the running sprint. Best-effort —
      *  an Agile-API hiccup must never turn a successful create into a failure. */
     private assignToActiveSprint;
-    createIssue(input: IssueCreate): Promise<Issue>;
+    createIssue(input: IssueCreate): Promise<JiraWriteResult>;
     getIssue(id: string): Promise<Issue>;
     private self;
     resolveSelf(): Promise<string | undefined>;
@@ -70,7 +86,7 @@ export declare class JiraTracker implements Tracker {
     probe(): Promise<ProbeResult>;
     /** Assignee values may arrive as an email (user.handle) — Jira wants accountId. */
     private toAccountId;
-    updateIssue(id: string, patch: IssuePatch): Promise<Issue>;
+    updateIssue(id: string, patch: IssuePatch): Promise<JiraWriteResult>;
     closeIssue(id: string): Promise<Issue>;
     listIssues(filter?: {
         phase?: string;

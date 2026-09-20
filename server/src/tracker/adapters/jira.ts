@@ -140,6 +140,13 @@ function normalizeTimestamp(raw: string): string {
   return s;
 }
 
+/** A write result that could not store part of the estimate it was given.
+ *  Structurally an `Issue` — the extra note rides back with the call and is
+ *  read (and stripped off) by the tool layer, which re-publishes it as
+ *  `estimateSkipped`. Nothing else reads it, and it never reaches a
+ *  plan snapshot. */
+export type JiraWriteResult = Issue & { estimateSkipped?: string };
+
 export class JiraTracker implements Tracker {
   readonly capabilities: Capability = {
     hasInProgress: true,
@@ -179,18 +186,34 @@ export class JiraTracker implements Tracker {
     return this.storyPointField;
   }
 
-  /** SPI estimate → Jira write fields (timetracking + discovered points field). */
-  private async estimateFields(
-    est: IssueEstimate,
-  ): Promise<Record<string, unknown>> {
-    const out: Record<string, unknown> = {};
+  /** SPI estimate → Jira write fields (timetracking + discovered points field).
+   *
+   *  `skipped` is the honest half of the answer (#231). `hasEstimates` is a
+   *  backend-wide claim and stays true — minutes ride the standard
+   *  timetracking field and always land — but story points live in a custom
+   *  field that a given site may simply not have. That loss is per call, so
+   *  it travels back with the call instead of only to stderr; the tool layer
+   *  turns it into `estimateSkipped` so the caller can fall back to writing
+   *  the points into the issue body. */
+  private async estimateFields(est: IssueEstimate): Promise<{
+    fields: Record<string, unknown>;
+    skipped?: string;
+  }> {
+    const fields: Record<string, unknown> = {};
     if (est.minutes !== undefined)
-      out.timetracking = { originalEstimate: `${est.minutes}m` };
+      fields.timetracking = { originalEstimate: `${est.minutes}m` };
+    let skipped: string | undefined;
     if (est.points !== undefined) {
       const fld = await this.storyPointFieldId();
-      if (fld) out[fld] = est.points;
+      if (fld) fields[fld] = est.points;
+      // Minutes are unaffected, so say which half was lost, not just "lost".
+      else
+        skipped =
+          est.minutes !== undefined
+            ? "this Jira site has no story-point field: points dropped, minutes landed; fold the points into the issue body"
+            : "this Jira site has no story-point field: points dropped; fold the points into the issue body";
     }
-    return out;
+    return { fields, skipped };
   }
 
   /** Read-field list: timetracking always; the points field once discovered. */
@@ -448,7 +471,7 @@ export class JiraTracker implements Tracker {
     }
   }
 
-  async createIssue(input: IssueCreate): Promise<Issue> {
+  async createIssue(input: IssueCreate): Promise<JiraWriteResult> {
     const fields: Record<string, unknown> = {
       project: { key: this.cfg.projectKey },
       summary: input.title,
@@ -457,8 +480,12 @@ export class JiraTracker implements Tracker {
     };
     if (input.labels?.length) fields.labels = input.labels;
     if (input.phase) fields.parent = { key: input.phase };
-    if (input.estimate)
-      Object.assign(fields, await this.estimateFields(input.estimate));
+    let estimateSkipped: string | undefined;
+    if (input.estimate) {
+      const est = await this.estimateFields(input.estimate);
+      Object.assign(fields, est.fields);
+      estimateSkipped = est.skipped;
+    }
     const created = (await this.api(
       "POST",
       "/rest/api/3/issue",
@@ -466,7 +493,8 @@ export class JiraTracker implements Tracker {
       "jira issue_create",
     )) as { key: string };
     await this.assignToActiveSprint(created.key);
-    return this.getIssue(created.key);
+    const issue = await this.getIssue(created.key);
+    return estimateSkipped ? { ...issue, estimateSkipped } : issue;
   }
 
   async getIssue(id: string): Promise<Issue> {
@@ -521,7 +549,10 @@ export class JiraTracker implements Tracker {
     return id;
   }
 
-  async updateIssue(id: string, patch: IssuePatch): Promise<Issue> {
+  async updateIssue(
+    id: string,
+    patch: IssuePatch,
+  ): Promise<JiraWriteResult> {
     this.assertId(id);
     const fields: Record<string, unknown> = {};
     if (patch.title !== undefined) fields.summary = patch.title;
@@ -532,8 +563,12 @@ export class JiraTracker implements Tracker {
     }
     // Re-phase: same mapping as createIssue — parent Epic key.
     if (patch.phase) fields.parent = { key: patch.phase };
-    if (patch.estimate)
-      Object.assign(fields, await this.estimateFields(patch.estimate));
+    let estimateSkipped: string | undefined;
+    if (patch.estimate) {
+      const est = await this.estimateFields(patch.estimate);
+      Object.assign(fields, est.fields);
+      estimateSkipped = est.skipped;
+    }
     if (Object.keys(fields).length > 0) {
       await this.api(
         "PUT",
@@ -556,7 +591,8 @@ export class JiraTracker implements Tracker {
         this.cfg.transitions[patch.state] ?? patch.state,
       );
     }
-    return this.getIssue(id);
+    const issue = await this.getIssue(id);
+    return estimateSkipped ? { ...issue, estimateSkipped } : issue;
   }
 
   async closeIssue(id: string): Promise<Issue> {

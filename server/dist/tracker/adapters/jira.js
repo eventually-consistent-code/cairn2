@@ -109,17 +109,32 @@ export class JiraTracker {
         }
         return this.storyPointField;
     }
-    /** SPI estimate → Jira write fields (timetracking + discovered points field). */
+    /** SPI estimate → Jira write fields (timetracking + discovered points field).
+     *
+     *  `skipped` is the honest half of the answer (#231). `hasEstimates` is a
+     *  backend-wide claim and stays true — minutes ride the standard
+     *  timetracking field and always land — but story points live in a custom
+     *  field that a given site may simply not have. That loss is per call, so
+     *  it travels back with the call instead of only to stderr; the tool layer
+     *  turns it into `estimateSkipped` so the caller can fall back to writing
+     *  the points into the issue body. */
     async estimateFields(est) {
-        const out = {};
+        const fields = {};
         if (est.minutes !== undefined)
-            out.timetracking = { originalEstimate: `${est.minutes}m` };
+            fields.timetracking = { originalEstimate: `${est.minutes}m` };
+        let skipped;
         if (est.points !== undefined) {
             const fld = await this.storyPointFieldId();
             if (fld)
-                out[fld] = est.points;
+                fields[fld] = est.points;
+            // Minutes are unaffected, so say which half was lost, not just "lost".
+            else
+                skipped =
+                    est.minutes !== undefined
+                        ? "this Jira site has no story-point field: points dropped, minutes landed; fold the points into the issue body"
+                        : "this Jira site has no story-point field: points dropped; fold the points into the issue body";
         }
-        return out;
+        return { fields, skipped };
     }
     /** Read-field list: timetracking always; the points field once discovered. */
     readFields() {
@@ -300,11 +315,16 @@ export class JiraTracker {
             fields.labels = input.labels;
         if (input.phase)
             fields.parent = { key: input.phase };
-        if (input.estimate)
-            Object.assign(fields, await this.estimateFields(input.estimate));
+        let estimateSkipped;
+        if (input.estimate) {
+            const est = await this.estimateFields(input.estimate);
+            Object.assign(fields, est.fields);
+            estimateSkipped = est.skipped;
+        }
         const created = (await this.api("POST", "/rest/api/3/issue", { fields }, "jira issue_create"));
         await this.assignToActiveSprint(created.key);
-        return this.getIssue(created.key);
+        const issue = await this.getIssue(created.key);
+        return estimateSkipped ? { ...issue, estimateSkipped } : issue;
     }
     async getIssue(id) {
         this.assertId(id);
@@ -351,8 +371,12 @@ export class JiraTracker {
         // Re-phase: same mapping as createIssue — parent Epic key.
         if (patch.phase)
             fields.parent = { key: patch.phase };
-        if (patch.estimate)
-            Object.assign(fields, await this.estimateFields(patch.estimate));
+        let estimateSkipped;
+        if (patch.estimate) {
+            const est = await this.estimateFields(patch.estimate);
+            Object.assign(fields, est.fields);
+            estimateSkipped = est.skipped;
+        }
         if (Object.keys(fields).length > 0) {
             await this.api("PUT", `/rest/api/3/issue/${id}`, { fields }, "jira issue_update");
         }
@@ -370,7 +394,8 @@ export class JiraTracker {
             // Jira's own transition list is the authority either way.
             await this.transitionByName(id, this.cfg.transitions[patch.state] ?? patch.state);
         }
-        return this.getIssue(id);
+        const issue = await this.getIssue(id);
+        return estimateSkipped ? { ...issue, estimateSkipped } : issue;
     }
     async closeIssue(id) {
         return this.updateIssue(id, { state: "closed" });

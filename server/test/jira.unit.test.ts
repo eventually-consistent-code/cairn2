@@ -659,6 +659,82 @@ describe("JiraTracker estimates", () => {
     errSpy.mockRestore();
   });
 
+  // #231 — the silent-loss path. hasEstimates stays true (minutes always land),
+  // so the loss has to travel back with the call or the caller never learns.
+  it("no story-point field: the create RESULT says points were dropped and minutes landed", async () => {
+    const { f } = fixtureFetch([
+      { status: 200, body: [{ id: "customfield_9", name: "Unrelated" }] },
+      { status: 201, body: { key: "CHN-404" } },
+      { status: 200, body: { values: [] } },
+      { status: 200, body: { ...jiraIssue(), key: "CHN-404" } },
+    ]);
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    const issue = await t.createIssue({ title: "t", estimate: { points: 8, minutes: 30 } });
+    errSpy.mockRestore();
+    expect(issue.estimateSkipped).toContain("story-point field");
+    expect(issue.estimateSkipped).toContain("minutes landed");
+  });
+
+  it("no story-point field, points only: the note claims no surviving half", async () => {
+    const { f } = fixtureFetch([
+      { status: 200, body: [{ id: "customfield_9", name: "Unrelated" }] },
+      { status: 201, body: { key: "CHN-405" } },
+      { status: 200, body: { values: [] } },
+      { status: 200, body: { ...jiraIssue(), key: "CHN-405" } },
+    ]);
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    const issue = await t.createIssue({ title: "t", estimate: { points: 8 } });
+    errSpy.mockRestore();
+    expect(issue.estimateSkipped).toContain("points dropped;");
+    expect(issue.estimateSkipped).not.toContain("minutes landed");
+  });
+
+  it("no story-point field: updateIssue reports the drop too", async () => {
+    const { f } = fixtureFetch([
+      { status: 200, body: [{ id: "customfield_9", name: "Unrelated" }] },
+      { status: 204, body: null },
+      { status: 200, body: { ...jiraIssue(), fields: {
+        ...jiraIssue().fields, timetracking: { originalEstimateSeconds: 1800 },
+      } } },
+    ]);
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    const issue = await t.updateIssue("CHN-101", { estimate: { points: 5, minutes: 30 } });
+    errSpy.mockRestore();
+    expect(issue.estimateSkipped).toContain("minutes landed");
+    // the half that DID land is still on the issue — this is a partial skip
+    expect(issue.estimate).toMatchObject({ minutes: 30 });
+  });
+
+  it("site WITH a story-point field reports no skip on either write", async () => {
+    const { f } = fixtureFetch([
+      { status: 200, body: fieldList },
+      { status: 201, body: { key: "CHN-406" } },
+      { status: 200, body: { values: [] } },
+      { status: 200, body: estimated("CHN-406") },
+      { status: 204, body: null },
+      { status: 200, body: estimated("CHN-406") },
+    ]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    const created = await t.createIssue({ title: "t", estimate: { points: 3, minutes: 90 } });
+    expect(created.estimateSkipped).toBeUndefined();
+    const updated = await t.updateIssue("CHN-406", { estimate: { points: 3 } });
+    expect(updated.estimateSkipped).toBeUndefined();
+  });
+
+  it("minutes-only never reports a skip — timetracking is standard on every site", async () => {
+    const { f } = fixtureFetch([
+      { status: 201, body: { key: "CHN-407" } },
+      { status: 200, body: { values: [] } },
+      { status: 200, body: { ...jiraIssue(), key: "CHN-407" } },
+    ]);
+    const t = new JiraTracker(cfg, f, () => ({ email: "e", token: "t" }));
+    const issue = await t.createIssue({ title: "t", estimate: { minutes: 45 } });
+    expect(issue.estimateSkipped).toBeUndefined();
+  });
+
   it("updateIssue(estimate) writes the discovered field + timetracking", async () => {
     const { f, calls } = fixtureFetch([
       { status: 200, body: fieldList },
