@@ -36,7 +36,7 @@ import { MemoryIndex, indexDbPath, } from "./memory/index-store.js";
 import { probeNativeBindings, } from "./memory/native.js";
 import { createCard, listCards, readCard, updateCard, } from "./memory/cards.js";
 import { checkCardStaleness } from "./memory/staleness.js";
-import { readHandoff, writeHandoff, clearHandoff, metricsPath, } from "./core/continuity.js";
+import { readHandoff, writeHandoff, clearHandoff, metricsPath, validateArtifacts, } from "./core/continuity.js";
 import { summarise, sessionSpans } from "./context/meter.js";
 import { thresholdDrift } from "./context/threshold.js";
 import { registerPlanResources } from "./core/resources.js";
@@ -968,6 +968,16 @@ export function buildServer(deps) {
             next_action: z.string().optional(),
             notes: z.string().optional(),
             partial: z.boolean().optional(),
+            artifacts: z.object({
+                decisions: z.array(z.string()).default([]),
+                constraints: z.array(z.string()).default([]),
+                rejected: z.array(z.string()).default([]),
+                state: z.string().default(""),
+                filesTouched: z.array(z.string()).default([]),
+                nextSteps: z.array(z.string()).default([]),
+                requirements: z.string().default(""),
+                skills: z.array(z.string()).default([]),
+            }).optional(),
         }),
     }, wrap((a) => {
         // writeHandoff doesn't independently validate -- unlike phaseDirName/
@@ -976,6 +986,11 @@ export function buildServer(deps) {
         if (a.phase && !isValidPhaseNumber(a.phase.number)) {
             throw new CairnError("CONFIG_INVALID", PHASE_NUMBER_ERROR(a.phase.number));
         }
+        // The abort rule: refuse a degraded checkpoint rather than persist it.
+        // Optional overall -- a caller that passes no artifacts gets the old
+        // behaviour -- but a caller that passes some must pass enough.
+        if (a.artifacts)
+            validateArtifacts(a.artifacts);
         const d = dir();
         writeHandoff(d, { ...a, source: a.source ?? "tool" });
         return readHandoff(d);

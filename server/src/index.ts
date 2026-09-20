@@ -94,13 +94,13 @@ import {
 } from "./memory/cards.js";
 import { checkCardStaleness } from "./memory/staleness.js";
 import {
-  readHandoff, writeHandoff, clearHandoff, metricsPath,
+  readHandoff, writeHandoff, clearHandoff, metricsPath, validateArtifacts,
 } from "./core/continuity.js";
 import { summarise, sessionSpans, type MetricsRow } from "./context/meter.js";
 import { thresholdDrift, type ThresholdDrift } from "./context/threshold.js";
 import { registerPlanResources } from "./core/resources.js";
 import { installedVersions, type InstalledVersions } from "./core/versions.js";
-import type { Handoff } from "./core/continuity.js";
+import type { Handoff, CheckpointArtifacts } from "./core/continuity.js";
 import { appendLedger } from "./planning/ledger.js";
 import {
   checkBudget,
@@ -1451,9 +1451,19 @@ export function buildServer(deps: {
         next_action: z.string().optional(),
         notes: z.string().optional(),
         partial: z.boolean().optional(),
+        artifacts: z.object({
+          decisions: z.array(z.string()).default([]),
+          constraints: z.array(z.string()).default([]),
+          rejected: z.array(z.string()).default([]),
+          state: z.string().default(""),
+          filesTouched: z.array(z.string()).default([]),
+          nextSteps: z.array(z.string()).default([]),
+          requirements: z.string().default(""),
+          skills: z.array(z.string()).default([]),
+        }).optional(),
       }),
     },
-    wrap((a: Partial<Handoff>) => {
+    wrap((a: Partial<Handoff> & { artifacts?: Partial<CheckpointArtifacts> }) => {
       // writeHandoff doesn't independently validate -- unlike phaseDirName/
       // ensurePhase, there's no downstream CairnError to catch a bad phase
       // number here, so check explicitly before it ever reaches disk.
@@ -1463,6 +1473,10 @@ export function buildServer(deps: {
           PHASE_NUMBER_ERROR(a.phase.number),
         );
       }
+      // The abort rule: refuse a degraded checkpoint rather than persist it.
+      // Optional overall -- a caller that passes no artifacts gets the old
+      // behaviour -- but a caller that passes some must pass enough.
+      if (a.artifacts) validateArtifacts(a.artifacts);
       const d = dir();
       writeHandoff(d, { ...a, source: a.source ?? "tool" });
       return readHandoff(d);

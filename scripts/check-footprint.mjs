@@ -71,7 +71,28 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 // each. Raising the budget to silence a failure is still the failure; this
 // cushion is not that, because it was set from the shape at hand, not to
 // dodge one.
-const BUDGET_TOKENS = 13750;
+//
+// It moved again, from 13750 to 13885, for the compaction artifact
+// contract on continuity_checkpoint: eight fields (decisions, constraints,
+// rejected, state, filesTouched, nextSteps, requirements, skills) added to
+// that tool's inputSchema so a checkpoint can carry what a compaction
+// needs to be worth resuming from. That is 135 resident tokens spent on
+// purpose -- the price of the contract that makes the lower compaction
+// threshold elsewhere on this branch pay off, not an accident this guard
+// failed to catch. Raising the budget to silence a failure is still the
+// failure; this is a recorded purchase of real resident cost for a real
+// feature.
+//
+// The pin still carries its ~38-token cushion above the newly measured
+// 13847 -- the same margin this budget has carried at every pin since the
+// 2300-against-2264 original, not a fresh grant for this feature. Zero
+// slack would turn every incidental one-word prose edit across 87 tool
+// descriptions into a mandatory re-pin, and a guard re-pinned that
+// routinely stops enforcing deliberateness at all. The cushion is still
+// far too small to hide a real schema change -- these eight fields alone
+// cost 135, well clear of it -- so a genuinely added tool or field still
+// fails immediately, which is the whole point.
+const BUDGET_TOKENS = 13885;
 
 /** chars / 4 — see the note above on why this approximation is the right one. */
 const estimateTokens = (chars) => Math.ceil(chars / 4);

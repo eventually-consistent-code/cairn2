@@ -51,3 +51,36 @@ export declare function writeHandoff(projectDir: string, patch: Partial<Handoff>
 }): void;
 /** Deletes the project's handoff file, if any. Returns whether one existed. */
 export declare function clearHandoff(projectDir: string): boolean;
+/**
+ * What a compaction checkpoint must carry to be worth keeping.
+ *
+ * Four typed artifacts: durable memory (decisions, constraints, and the
+ * approaches already rejected -- the most commonly lost and the most
+ * expensive to rediscover), a summary written for resumability, the user's
+ * requirements preserved verbatim, and the skills in play.
+ */
+export interface CheckpointArtifacts {
+    decisions: string[];
+    constraints: string[];
+    rejected: string[];
+    state: string;
+    filesTouched: string[];
+    nextSteps: string[];
+    requirements: string;
+    skills: string[];
+}
+/** Thrown instead of persisting a checkpoint that would not survive a resume. */
+export declare class DegradedCheckpointError extends Error {
+    readonly missing: string[];
+    constructor(missing: string[]);
+}
+/**
+ * The abort rule. Required: at least one decision, a usable state summary,
+ * and the user's requirements verbatim. Not required: rejected approaches,
+ * skills, next steps, files touched -- a session may genuinely have none of
+ * those, and demanding them would teach the caller to invent them.
+ *
+ * :param a: the artifacts a caller proposes to persist
+ * :throws DegradedCheckpointError naming every missing artifact at once
+ */
+export declare function validateArtifacts(a: Partial<CheckpointArtifacts>): void;
