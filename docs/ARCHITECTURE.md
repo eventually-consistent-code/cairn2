@@ -173,7 +173,11 @@ review's classic axes byte-identically until a project overrides them
   categories and honesty line at standard, full anchors at full; an
   optional role-memory section ("what this seat remembers", stale
   cards marked) renders when the seat has role-scoped cards
-  (ADR 0014) and is byte-absent otherwise.
+  (ADR 0014) and is byte-absent otherwise. Section order is the
+  template's and is load-bearing: static framing first (the prefix a
+  provider can cache across a wave), then issue and plan, then the
+  dated memory section, and the standing rules LAST at the recency
+  end of the window.
 - **Dispatch** (`server/src/seats/signals.ts`, `yield.ts`) —
   diff-derived scope signals select firing seats (opt-in per seat,
   full-panel off dial is the default); a persisted per-seat yield

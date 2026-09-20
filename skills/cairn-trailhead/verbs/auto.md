@@ -145,6 +145,20 @@ batch-specific loop.
    loop resumes at the first phase the evidence can't vouch for. The
    umbrella issue is found (runId search), never recreated.
 2. **Per manifest phase, in manifest order:**
+   - **Re-inject the constraint set.** FIRST act of every phase, before
+     the budget check: `run_manifest(action: "read")`, then restate what
+     it says in plain language before doing anything with it — the
+     staged phase list (the run's whole scope, nothing wider), the
+     `ceiling`, `pushAuth.granted` and its `manifest-phases` scope, the
+     staged `answers` that stand in for the absent user, and the hard
+     stops that end a run early. The manifest is the authority at every
+     boundary, not just at run start: by phase three the staging
+     statement is thousands of turns back, and a constraint that has
+     fallen out of attention is a constraint the run will violate.
+     Re-read it, don't remember it — it costs a couple hundred tokens
+     per boundary and it is the cheapest correctness the run buys. A
+     manifest that no longer reads `running` ends the run right here:
+     report, don't continue.
    - **Boundary budget check.** `budget_check(runId, phase: <N>)` —
      records the boundary row. Verdict `stop` → no new phase starts:
      `run_manifest(action: "set_status", status: "stopped")`, one
@@ -166,7 +180,10 @@ batch-specific loop.
      agent-spend component, summed into spentTokens). Same stop
      semantics: the in-flight wave finishes, a `stop` verdict refuses
      the next wave, then the same stopped-marking, comments, and wrap
-     as the phase boundary.
+     as the phase boundary. A wave boundary is a boundary: re-inject
+     the constraint set there too (same read, same restatement), so the
+     next wave's briefs are composed against the manifest rather than
+     against whatever the session still half-remembers of it.
    - **Verify.** The `verify` verb's steps; failure = auto's posture,
      unchanged: stop THIS phase, prepare the `trace_start` handoff
      (never start it), skip dependent phases, continue independent

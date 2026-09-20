@@ -27,8 +27,9 @@ export interface BriefInput {
     seatBody?: string;
     /**
      * Role-scoped memory cards (scopeRole = seat name) — rendered as a short
-     * "what this seat remembers" section. Absent or empty skips the section
-     * entirely: output stays byte-identical to a roleCards-less compose.
+     * "what this seat remembers" section below the plan excerpt. Absent or
+     * empty skips the section entirely: output stays byte-identical to a
+     * roleCards-less compose.
      */
     roleCards?: RoleCard[];
     /** Tracker issue content: id, title, body — lands verbatim under Task. */
@@ -47,7 +48,14 @@ export interface BriefInput {
  * structurally identical to the hand-written ones this replaces. With a
  * seat, the framing section leads, quoting lens/categories/honesty at
  * the seat's dose. An unprovided optional slot renders empty (never a
- * dangling {{marker}}); blank-line runs left by empty slots collapse.
+ * dangling {{marker}}); blank-line runs left by empty slots collapse,
+ * and a trailing run is trimmed — the standing rules land last, so an
+ * empty {{rules}} must not leave the brief ending in whitespace.
+ *
+ * Section order is the template's, not this function's: static framing
+ * first (the cacheable prefix), then issue and plan, then the dated
+ * seat memory, and the invariants last at the attention peak. Both files
+ * move together or the composed brief and the template disagree.
  *
  * :param input: seat (optional), issue content, plan excerpt, rules
  * :returns: the filled brief text, ready to hand a wave worker

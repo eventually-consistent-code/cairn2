@@ -479,12 +479,15 @@ describe("wave-brief composition (composeBrief)", () => {
 
   it("seatless: generic brief with every standing section, no leftovers", () => {
     const brief = composeBrief(BASE);
+    // Invariants LAST — the recency end is the attention peak, so the
+    // standing rules sit after the issue and plan content, not before.
     expect(headings(brief)).toEqual([
       "## Task",
       "## Plan excerpt",
-      "## Standing rules",
       "## Report",
+      "## Standing rules",
     ]);
+    expect(brief.trimEnd().endsWith(BASE.rules)).toBe(true);
     expect(brief).toContain(BASE.issue);
     expect(brief).toContain(BASE.planExcerpt);
     expect(brief).toContain(BASE.rules);
@@ -530,7 +533,7 @@ describe("wave-brief composition (composeBrief)", () => {
     expect(brief).toContain("The lens prose body.");
   });
 
-  it("roleCards: 'what this seat remembers' rides under the framing", () => {
+  it("roleCards: 'what this seat remembers' rides below the plan excerpt", () => {
     const { seat, body } = makeSeat();
     const brief = composeBrief({
       ...BASE,
@@ -546,14 +549,16 @@ describe("wave-brief composition (composeBrief)", () => {
         { body: "the auth layer moved once already", created: "2026-08-15", stale: false },
       ],
     });
-    expect(brief).toContain("What this seat remembers:");
-    // memory sits inside the framing slot: after the seat, before Task
-    expect(brief.indexOf("What this seat remembers:")).toBeGreaterThan(
-      brief.indexOf("## Seat: correctness"),
-    );
-    expect(brief.indexOf("What this seat remembers:")).toBeLessThan(
-      brief.indexOf("## Task"),
-    );
+    // Dated lines never belong in the cacheable prefix: memory renders in
+    // its own slot below the plan excerpt, above the report + invariants.
+    expect(headings(brief)).toEqual([
+      "## Seat: correctness",
+      "## Task",
+      "## Plan excerpt",
+      "## What this seat remembers",
+      "## Report",
+      "## Standing rules",
+    ]);
     // one line per card: created + optional confidence, body flattened
     expect(brief).toContain(
       "- (2026-09-01; confidence high) prefer typed errors over raw throws here",
@@ -591,8 +596,24 @@ describe("wave-brief composition (composeBrief)", () => {
     expect(composeBrief({ ...BASE, seat, seatBody: body, roleCards: [] }))
       .toBe(withSeat);
     expect(composeBrief({ ...BASE, roleCards: [] })).toBe(composeBrief(BASE));
-    expect(withSeat).not.toContain("What this seat remembers:");
-    expect(composeBrief(BASE)).not.toContain("What this seat remembers:");
+    expect(withSeat).not.toContain("What this seat remembers");
+    expect(composeBrief(BASE)).not.toContain("What this seat remembers");
+  });
+
+  it("the cacheable prefix is the same bytes with or without memory", () => {
+    const { seat, body } = makeSeat();
+    // Everything above ## Task is what a provider's prefix cache holds
+    // across a wave — dated card lines must never churn it.
+    const prefix = (t: string) => t.slice(0, t.indexOf("## Task"));
+    const bare = composeBrief({ ...BASE, seat, seatBody: body });
+    const remembering = composeBrief({
+      ...BASE,
+      seat,
+      seatBody: body,
+      roleCards: [{ body: "auth moved once", created: "2026-08-15", stale: true }],
+    });
+    expect(prefix(remembering)).toBe(prefix(bare));
+    expect(remembering).toContain("auth moved once");
   });
 
   it("rules omitted: slot renders empty, never a dangling marker", () => {

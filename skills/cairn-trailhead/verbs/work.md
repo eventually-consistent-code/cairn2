@@ -54,7 +54,10 @@ pairing overlay applies:
    and `{{rules}}` (wave specifics: expected base sha, setup commands,
    this session's commit trailer block) slots; the standing rules
    (worktree/commit/leak-guard/report shape) already live in the
-   template — never retype them. When the issue's PLAN.md task line
+   template — never retype them. Fill the slots where they sit: the
+   template renders the invariants LAST on purpose (recency end of the
+   window) and keeps dated content out of the static prefix, so a
+   hand-filled brief that "tidies" the order loses the point of it. When the issue's PLAN.md task line
    carries a `` `seat: <name>` `` annotation (grammar in `plan.md`),
    pull that seat from `seat_roster` and fill `{{seat_framing}}` at the
    seat's declared dose — minimal: lens only; standard: + categories +
