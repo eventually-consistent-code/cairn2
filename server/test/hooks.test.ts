@@ -1005,6 +1005,133 @@ describe("stop-costtracker + cost-report", () => {
       JSON.stringify({ session_id: "s", transcript_path: join(proj, "nope.jsonl") })).status).toBe(0);
     expect(existsSync(metrics)).toBe(false);
   });
+
+  // #176 -- report bytes. A fan-out reports back two ways: the tool_result
+  // answering a Task/Agent call, and the <task-notification> an async agent's
+  // result arrives on. Both are real coordinator context; the async pair is
+  // ONE subagent, not two, and the queue-operation echo is not context at all.
+  const LAUNCH = "Async agent launched";     // the tool_result of an async call
+  const SYNC_REPORT = "a synchronous subagent's whole report";
+  const NOTIFICATION = [
+    "<task-notification>",
+    "<task-id>task-one</task-id>",
+    "<tool-use-id>toolu_async</tool-use-id>",
+    "<status>completed</status>",
+    "<result>the async subagent's whole report</result>",
+    "</task-notification>",
+  ].join("\n");
+
+  function transcriptWithReports(dir: string): string {
+    const lines = [
+      // async fan-out: Agent call, its launch blob, then the notification
+      JSON.stringify({ type: "assistant", message: { model: "claude-opus-4-8",
+        usage: { input_tokens: 1000, output_tokens: 2000, cache_read_input_tokens: 4000 },
+        content: [{ type: "tool_use", id: "toolu_async", name: "Agent" }] } }),
+      JSON.stringify({ type: "user", message: { content: [
+        { type: "tool_result", tool_use_id: "toolu_async", content: [{ type: "text", text: LAUNCH }] }] } }),
+      // the enqueue echo of the same notification -- never enters the context
+      JSON.stringify({ type: "queue-operation", operation: "enqueue", content: NOTIFICATION }),
+      JSON.stringify({ type: "user", message: { content: NOTIFICATION } }),
+      // synchronous fan-out: one Task call, one tool_result, no notification
+      JSON.stringify({ type: "assistant", message: { model: "claude-opus-4-8",
+        usage: { input_tokens: 500, output_tokens: 100 },
+        content: [{ type: "tool_use", id: "toolu_sync", name: "Task" }] } }),
+      JSON.stringify({ type: "user", message: { content: [
+        { type: "tool_result", tool_use_id: "toolu_sync", content: SYNC_REPORT }] } }),
+      // a plain tool_result from an ordinary tool -- not a report
+      JSON.stringify({ type: "assistant", message: { model: "claude-opus-4-8",
+        usage: { input_tokens: 10, output_tokens: 10 },
+        content: [{ type: "tool_use", id: "toolu_bash", name: "Bash" }] } }),
+      JSON.stringify({ type: "user", message: { content: [
+        { type: "tool_result", tool_use_id: "toolu_bash", content: "x".repeat(4096) }] } }),
+    ];
+    const p = join(dir, "reports.jsonl");
+    writeFileSync(p, lines.join("\n") + "\n");
+    return p;
+  }
+
+  it("attributes coordinator input growth to task-result injections (#176)", () => {
+    const proj = freshDir("cairn-cost-reports-");
+    mkdirSync(join(proj, ".cairn", "state"), { recursive: true });
+    writeFileSync(join(proj, ".cairn", "state", "active-context.json"),
+      JSON.stringify({ phase: 24, issueId: "CRN-176" }));
+    const transcript = transcriptWithReports(proj);
+    const metrics = metricsPathFor(proj);
+    rmSync(metrics, { force: true });
+
+    expect(runHookRaw(COSTTRACKER, proj,
+      JSON.stringify({ session_id: "s-fan", transcript_path: transcript })).status).toBe(0);
+    const row = JSON.parse(readFileSync(metrics, "utf8").trim().split("\n")[0]);
+
+    const expected = Buffer.byteLength(LAUNCH) + Buffer.byteLength(NOTIFICATION)
+      + Buffer.byteLength(SYNC_REPORT);
+    expect(row.report_bytes).toBe(expected);
+    // launch blob + notification + sync result; the Bash result is not a report
+    expect(row.report_count).toBe(3);
+    // the async pair is ONE subagent, plus the synchronous one
+    expect(row.report_tasks).toBe(2);
+
+    // the report renders it, and --json exposes it with a share of fresh input
+    const human = spawnSync(process.execPath, [COSTREPORT], {
+      cwd: proj, env: { ...process.env, CLAUDE_PROJECT_DIR: proj }, encoding: "utf8",
+    });
+    expect(human.stdout).toContain("task reports:");
+    expect(human.stdout).toContain("from 2 subagents");
+
+    const json = spawnSync(process.execPath, [COSTREPORT, "--json"], {
+      cwd: proj, env: { ...process.env, CLAUDE_PROJECT_DIR: proj }, encoding: "utf8",
+    });
+    const parsed = JSON.parse(json.stdout);
+    expect(parsed.reports).toMatchObject({ bytes: expected, injections: 3, tasks: 2 });
+    // peak context is one request's own input, not the token sums: the busiest
+    // turn carried 1000 fresh + 4000 replayed, so 5000 -- never 1510 or 15510.
+    expect(parsed.reports.context_peak_tokens).toBe(5000);
+    expect(parsed.reports.share_pct).toBeGreaterThan(0);
+
+    const per = spawnSync(process.execPath, [COSTREPORT, "--reports"], {
+      cwd: proj, env: { ...process.env, CLAUDE_PROJECT_DIR: proj }, encoding: "utf8",
+    });
+    expect(per.stdout).toContain("s-fan");
+    expect(per.stdout).toContain("CRN-176");
+    rmSync(metrics, { force: true });
+  });
+
+  it("records zero report bytes for a session that never fanned out", () => {
+    const proj = freshDir("cairn-cost-noreports-");
+    const transcript = transcriptWith(proj);
+    const metrics = metricsPathFor(proj);
+    rmSync(metrics, { force: true });
+
+    expect(runHookRaw(COSTTRACKER, proj,
+      JSON.stringify({ session_id: "s-solo", transcript_path: transcript })).status).toBe(0);
+    const row = JSON.parse(readFileSync(metrics, "utf8").trim().split("\n")[0]);
+    expect(row).toMatchObject({ report_bytes: 0, report_count: 0, report_tasks: 0 });
+    expect(row.context_peak_tokens).toBe(11500); // 1000 + 500 cache-write + 10000 cache-read
+
+    // nothing to render -- the section stays out of the way
+    const human = spawnSync(process.execPath, [COSTREPORT], {
+      cwd: proj, env: { ...process.env, CLAUDE_PROJECT_DIR: proj }, encoding: "utf8",
+    });
+    expect(human.stdout).not.toContain("task reports:");
+    const per = spawnSync(process.execPath, [COSTREPORT, "--reports"], {
+      cwd: proj, env: { ...process.env, CLAUDE_PROJECT_DIR: proj }, encoding: "utf8",
+    });
+    expect(per.stdout.trim()).toBe("no task-result injections recorded yet.");
+    rmSync(metrics, { force: true });
+  });
+
+  it("stays a cheap recorder on a transcript full of fan-out (#176)", () => {
+    const proj = freshDir("cairn-cost-perf-");
+    const transcript = transcriptWithReports(proj);
+    const metrics = metricsPathFor(proj);
+    const payload = JSON.stringify({ session_id: "s-perf", transcript_path: transcript });
+    const marginal = marginalHookMs(
+      () => runHookRaw(COSTTRACKER, proj, payload),
+      () => rmSync(metrics, { force: true }),
+    );
+    expect(marginal).toBeLessThan(MARGINAL_BUDGET_MS);
+    rmSync(metrics, { force: true });
+  });
 });
 
 describe("posttooluse-observe", () => {
