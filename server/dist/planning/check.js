@@ -239,9 +239,12 @@ export function planCheck(projectDir, phase) {
         findings.push(...scanThresholds(p.lines, p.rel));
     // Approaches considered (phase 23) — one finding per gated plan whose
     // CONTEXT.md lacks the block. Anchored on CONTEXT.md, since that's the
-    // file that owes the text.
+    // file that owes the text. A VERIFIED phase is exempt for the same
+    // reason the declared-verification gate exempts it: the phase already
+    // passed its gate, so asking it for a design block after the fact is
+    // noise on every scan until the milestone archives it.
     for (const p of plans) {
-        if (!p.gated)
+        if (!p.gated || p.verified)
             continue;
         const ctxLines = existsSync(p.contextPath) ? readFileSync(p.contextPath, "utf8").split("\n") : [];
         const verdict = judgeApproaches(ctxLines);

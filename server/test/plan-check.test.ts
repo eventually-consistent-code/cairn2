@@ -144,6 +144,15 @@ describe("planCheck — approaches considered (phase 23)", () => {
     expect(findings[0].plan).toContain("04-planned-noctx/CONTEXT.md");
   });
 
+  it("a verified phase is exempt — it already passed its gate", () => {
+    const dir = fresh();
+    plan(dir, "01-core", PLANNED());
+    context(dir, "01-core", "# Phase 1 — Context\n\n## Locked decisions\n\n- x\n");
+    expect(planCheck(dir).findings).toHaveLength(1);
+    writeFileSync(join(dir, ".cairn", "plans", "phases", "01-core", "VERIFICATION.md"), "# done\n");
+    expect(planCheck(dir).findings).toEqual([]);
+  });
+
   it("output stays byte-stable and sorts with the other finding types", () => {
     const dir = fresh();
     plan(dir, "01-core", `---\nissues: [7]\n---\n# Phase 1\n\nLatency < 100ms.\n`);
