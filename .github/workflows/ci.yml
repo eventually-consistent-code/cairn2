@@ -33,6 +33,12 @@ jobs:
       # known sites when they disagree with the live registry (issue #139).
       - name: tool-count pins
         run: node scripts/check-pins.mjs
+      # Everything cairn puts in front of the model before it is asked to do
+      # anything — 39 command descriptions, 3 skill descriptions, the
+      # session-start prose — is rent paid once per session. Nothing was
+      # watching it grow (issue #211).
+      - name: context footprint
+        run: node scripts/check-footprint.mjs
       # Diagram labels carry counted claims ("84 typed MCP tools") that
       # drifted from the registry three times — the PNGs review fine no
       # matter what the numbers say. Detection only: the renderer lives

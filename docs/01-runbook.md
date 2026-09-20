@@ -1670,6 +1670,19 @@ command (mentioning the variable elsewhere — say, quoted inside the commit
 message — does not bypass). Accepted limitation: commits made outside
 Claude Code are unguarded.
 
+**The context-footprint pin.** `node scripts/check-footprint.mjs` sums
+what cairn costs a session before any verb runs — the command
+descriptions in the slash listing, the skill descriptions, and the fixed
+prose the session-start hook injects — and fails above a pinned budget.
+Verb bodies and skill bodies are deliberately not counted: they load on
+demand, and that lazy split is the design the budget exists to protect.
+Tokens are estimated as characters over four, which the output says
+plainly; the estimate is stable and monotone, which is all a growth guard
+needs. The budget moves the way the tool count moves — because someone
+decided the surface earned the room, never to make a red check go green.
+Both generators print the current figure after they run, so the number
+appears where the change was made.
+
 **Declared verification.** Every plan task says how it will be proved,
 in a backticked `verify: <command>` clause written when the plan is
 written — the suite file, the guard script, the eval case, whatever

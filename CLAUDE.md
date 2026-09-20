@@ -15,6 +15,7 @@ node scripts/check-dist.mjs            # committed dist freshness
 node scripts/check-pins.mjs            # tool-count pin agreement
 node scripts/check-versions.mjs        # version surfaces agree
 node scripts/check-diagrams.mjs        # diagram count labels agree
+node scripts/check-footprint.mjs       # resident context stays under its pinned budget
 node scripts/release.mjs <version>     # bump every version surface (see Releases)
 ```
 

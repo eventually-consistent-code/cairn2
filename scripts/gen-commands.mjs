@@ -92,3 +92,20 @@ for (const f of readdirSync(join(root, "commands"))) {
 }
 
 console.log(`command shims generated — ${rows.length} live verbs.`);
+
+// Context footprint (#211): the generated surface is resident in every
+// session, so say what it now costs. Advisory here -- check-footprint.mjs
+// is the gate; this is the number appearing where the change was made.
+try {
+  const { execFileSync } = await import("node:child_process");
+  const out = execFileSync(process.execPath,
+    [join(root, "scripts", "check-footprint.mjs")], { encoding: "utf8" });
+  const summary = out.trim().split("\n").at(-1);
+  if (summary) console.log(`  ${summary.replace(/^check-footprint: /, "footprint: ")}`);
+} catch (e) {
+  // Over budget exits non-zero; still worth printing what it said.
+  const out = (e.stdout ?? "") + (e.stderr ?? "");
+  const line = out.trim().split("\n").find((l) => l.includes("check-footprint:"));
+  if (line) console.log(`  ${line.trim()}`);
+}
+
