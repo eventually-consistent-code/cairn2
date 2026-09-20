@@ -48,14 +48,74 @@ Verified against the Claude Code 2.1.267 binary:
 - The harness already evicts: `tengu_time_based_microcompact`, a `keepRecent`
   policy, and the literal `[Old tool result content cleared]`. It triggers on
   `context_hint` — a server-side signal that the context window is nearly full.
+- **The eviction threshold is configurable.** `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE`
+  moves the percentage of the window at which auto-compact fires;
+  `CLAUDE_CODE_MAX_CONTEXT_TOKENS` sets the window the client assumes, and the
+  harness states plainly that "auto-compact keeps this session within N tokens
+  (the context window it assumes)". Settings-level equivalents exist as
+  `autoCompactThreshold` and `isAutoCompactEnabled`.
+- Adjacent knobs worth knowing: `CLAUDE_CODE_SUBAGENT_MODEL` (sidechains are
+  60% of turns), `CLAUDE_CODE_FILE_READ_MAX_OUTPUT_TOKENS`, and
+  `CLAUDE_CONTEXT_COLLAPSE` / `CLAUDE_CONTEXT_COLLAPSE_MODEL` — a
+  harness-native form of the local-digest idea the handoff proposed.
+- The harness already computes the residency breakdown this design set out to
+  re-derive: `messageBreakdown: {toolCallTokens, toolResultTokens,
+  attachmentTokens, assistantMessageTokens, userMessageTokens,
+  redirectedContextTokens, unattributedTokens}`.
 
 The keystone: **cost-optimal eviction and window-safety eviction are different
-policies, and only the second one exists.** The harness protects the window,
-not the wallet. It intervenes around 900k; 63% of spend happens above 300k.
-The gap between those two numbers is the whole opportunity.
+policies, and the shipped default is the second one.** The harness protects the
+window, not the wallet. It intervenes around 900k; 63% of spend happens above
+300k. The gap between those two numbers is the whole opportunity — and it is
+closed by configuration, not by code.
 
-Since cairn cannot evict, its levers are prevention at source, signalling,
-session turnover, routing to sidechains, and prefix hygiene.
+Cairn cannot evict. But it does not need to: it needs to own the threshold,
+per project and per verb, and measure what moving it costs in quality.
+
+### Simulated effect of moving the threshold
+
+Replaying every recorded session's per-turn context growth under a policy that
+compacts at T and resumes at prefix + 20k:
+
+| T | rent | saving | compactions across 400 sessions | avg ctx |
+|---|---|---|---|---|
+| 150k | 2.85B | 56% | 244 | 101k |
+| 200k | 3.27B | **50%** | 97 | 116k |
+| 300k | 3.92B | 40% | 36 | 139k |
+| 400k | 4.42B | 32% | 24 | 156k |
+| 500k | 4.88B | 25% | 14 | 172k |
+
+Baseline average context is 229k. In the longest sessions, T=200k is one
+compaction every 217-436 turns.
+
+The result is robust to re-reading. Modelling a penalty where the agent pulls
+back a fraction p of the dropped context over the following 40 turns:
+
+| T | p=0% | p=30% | p=50% | p=100% |
+|---|---|---|---|---|
+| 200k | 51% | 49% | 49% | 50% |
+| 300k | 41% | 38% | 37% | 40% |
+
+At T=200k the saving holds near 50% even if the agent re-reads everything it
+lost. **Residency duration dominates byte count**: a re-read byte lives ~40
+turns and is dropped again, where the same byte in the baseline stays resident
+for thousands of turns. That single sentence is the most useful thing this
+measurement produced.
+
+### What the knob cannot do
+
+It is global and static. It cannot know that a survey should run lean while a
+refactor needs the tree in view, and it cannot tell whether a compaction
+boundary cost anything. Compaction is lossy: ten summarizations in a
+2,500-turn session accumulate drift that no simulation here models. And
+`MAX_CONTEXT_TOKENS` is off-label for this purpose — the harness frames it as
+declaring an unknown model's true window. `AUTOCOMPACT_PCT_OVERRIDE` is the
+cleaner instrument.
+
+So cairn's job is not a turnover protocol. It is to **own the threshold per
+project and per verb, and measure quality across compaction boundaries** —
+which nothing does today, and which is the only evidence that can say whether
+200k is free or expensive.
 
 ## Section 1 — the metric
 
@@ -147,11 +207,25 @@ to write it into the user's settings, and never writes it unasked. The agent
 channel must therefore stand alone and carry the signal by itself wherever the
 statusline is absent, which is the default.
 
-**4. Turnover.** A band crossing prompts a checkpoint through the existing
-`continuity_checkpoint` and `waypoint`. Cairn cannot restart a session — no
-harness API exists for it — so this is advisory by construction, which matches
-the chosen authority level. The new piece is measuring **re-entry cost**
-(prefix + handoff + re-reads) so that restart-versus-ride is an argued number.
+**4. Threshold management** (replaces the turnover protocol of the first
+draft). Cairn owns the auto-compact threshold per project and per verb, via
+`/cairn:tune`, and measures what it costs. Three parts:
+
+- a recommended threshold written into the project's configuration, defaulting
+  to T=200k on the simulation above, with per-verb overrides where a verb
+  genuinely needs breadth
+- **compaction-boundary quality measurement** — the piece nothing does today.
+  Detect each boundary in the transcript, then look for the symptoms of a bad
+  one: a re-read of a file that was resident before the boundary, a repeated
+  question, a contradicted decision. Without this the threshold is a guess.
+- the existing `continuity_checkpoint` and `waypoint` remain the manual path
+  for a deliberate hand-off; they are no longer load-bearing for cost.
+
+For delegated work, a genuine per-task budget is buildable today: `--resume`,
+`--fork-session`, `--session-id` and the SDK control protocol all exist, and
+`server/src/peers/run.ts` already spawns external CLIs through `execFile`. A
+cairn-supervised `claude` child with its own context budget is a later phase,
+not part of this one.
 
 **5. Context guard.** `hooks/scripts/pretooluse-contextguard.mjs`. The only
 enforcing component. See section 3.
@@ -254,9 +328,13 @@ guard extensions test where the existing ones do.
 | Phase | Ships | Behavior change | Gate to next |
 |---|---|---|---|
 | **A** | meter, attribution, report, footprint audit | none | real per-work-item baseline exists |
-| **B** | statusline + band crossings | signal only | bands observed crossed and acted on |
-| **C** | turnover protocol + re-entry cost | advisory | restart measurably beats riding |
+| **B** | threshold set to T=200k + compaction-boundary quality measurement | the 50% claim lands here | quality across boundaries holds |
+| **C** | per-verb thresholds + band signal | tuned per workload | measured better than the flat setting |
 | **D** | guard rule 1, shadow then enforcing | first enforcement | shadow shows a real target |
+
+Phase B is now the phase that delivers the target, and it is a configuration
+change plus the measurement that proves it safe. That inverts the first draft,
+where B was a signal and the savings waited on C.
 
 Phase A ships first and alone. It changes nothing and produces the number every
 later claim depends on — including the honest possibility that the target needs
@@ -266,17 +344,19 @@ revising once the denominator is real.
 
 A cost layer that costs more than it saves is the failure mode here.
 
-- If phase C shows re-entry cost exceeding turnover savings, C is wrong and the
-  gateway escape hatch returns to the table.
+- If phase B's boundary measurement shows quality loss, the threshold rises
+  until it does not, and the saving is whatever survives.
 - If D's shadow mode finds under ~2% recoverable, D never ships.
 - If the layer's own resident footprint exceeds ~500 tokens, it has eaten its
   margin and gets cut back.
 
 ### Principal risk
 
-Turnover savings depend on compliance, and cairn can only advise — it cannot
-restart a session. If the band signal is ignored, phases B and C produce
-nothing.
+No longer compliance — the threshold is enforced by the harness once set. The
+risk is now **quality across compaction boundaries**, which is unmeasured
+today and which the simulation cannot speak to. Phase B ships the measurement
+alongside the setting for exactly that reason. If boundary quality degrades,
+the threshold moves up and the saving falls to whatever quality allows.
 
 ## Rejected, with reasons
 
@@ -295,15 +375,19 @@ finds work worth running locally.
 enter context, so it saves the turn and not the residency — and residency is
 97.4% of the bill.
 
-**Local API gateway (handoff dropped it; new evidence partly revives it).** A
-proxy at `ANTHROPIC_BASE_URL` owns the message list and is the only thing that
-could implement the cost-optimal eviction the harness refuses to do before
-900k. Genuinely the highest ceiling here. Rejected anyway: the auth path is a
+**Local API gateway (handoff dropped it; briefly revived, now moot).** A proxy
+at `ANTHROPIC_BASE_URL` owns the message list and could implement cost-optimal
+eviction directly. It is moot: `AUTOCOMPACT_PCT_OVERRIDE` achieves the same
+thing supported, in one environment variable. It was also rejected on its own
+terms: the auth path is a
 subscription OAuth token, and putting a proxy in it is a credential-handling
 risk that standing policy forbids. It also fights the harness's own cache
 prefix, breaks across upgrades, and silently dropping a result the model still
-needed is an invisible correctness failure. Documented as the escape hatch if
-phase C's kill criterion fires.
+needed is an invisible correctness failure.
+
+**A cairn-built session-restart API.** Considered and unnecessary. Auto-compact
+already restarts the context; only its trigger needed moving. Supervised child
+sessions remain available for delegated work via the SDK surfaces named above.
 
 ## Open items
 
