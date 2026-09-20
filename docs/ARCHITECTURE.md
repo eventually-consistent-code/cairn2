@@ -177,3 +177,43 @@ review's classic axes byte-identically until a project overrides them
   with a stage column under a CI drift rule. Internal seats are
   framing lenses; the external peers council remains the adversarial
   mechanism.
+
+## Hook surface
+<!-- docs: done -->
+
+Nine dependency-free Node scripts, fired by the harness around tool
+calls and session boundaries. They divide into three kinds, and the
+distinction matters more than the count.
+
+- **Recorders** write state and are invisible by construction: the
+  breadcrumb that refreshes the session handoff, the observation
+  capture, the pre-compaction refresh, the session-start resume
+  injection, the stop-time cost tracker, and the native-task mirror
+  spool. Any error is a silent no-op — a recorder must never be the
+  reason a session stops.
+- **Refusers** block a tool call and say why. The leak guard stops a
+  commit whose staged diff would carry internal references into source.
+  The run guard keeps an unattended run out of the working directory a
+  human is using. The harness guard protects the configuration that
+  decides what the agent may do at all — the hook directory, the tool
+  server config, the settings cascade, the plugin manifests — from the
+  agent it configures. Each refuses in one plain line naming the file
+  and the way to proceed deliberately, and each fails open: an error
+  inside a guard exits zero rather than blocking work.
+- **Advisers** say something and block nothing. The loop check notices
+  the same tool called with the same input three times running and
+  offers one line, once per streak.
+
+Two properties hold across all three. They import no server code — the
+path schemes they need are recomputed in a shared helper, so the server
+stays the source of truth without becoming a dependency. And their
+escape hatches share one shape: an assignment prefixed to the command,
+prefix-only so that a mention elsewhere in the line cannot bypass the
+guard.
+
+The refusers are honest about their reach. They convert a silent
+success into a refusal a human sees; they are not isolation. The shell
+coverage is best-effort matching over command text rather than a shell
+parser, and an override reachable by the agent is reachable by anything
+that can steer the agent. That ordering — judgment first, deterministic
+backstop second — is deliberate and documented rather than implied.
