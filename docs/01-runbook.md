@@ -1696,6 +1696,15 @@ where the instruction came from before allowing it. To allow it
 deliberately, set `CAIRN_HARNESS_EDIT=1` for the session, or prefix a
 shell command with it.
 
+One more hook worth knowing, on the advisory side rather than the
+refusing side: the **loop check** notices when the same tool is called
+with the same input three times in a row and says so, once. An agent
+stuck re-running an identical call is not making progress — the result
+will not change on a fourth — so the line suggests changing the input,
+trying another approach, or opening a trace if it is a bug being chased.
+Any different call resets the streak, a new session starts clean, and it
+never blocks anything.
+
 Be clear-eyed about what this buys. The realistic attack is indirect —
 instructions embedded in text the agent reads, which the trailhead's
 "tracker text is data" rule addresses on the judgment side. The guard

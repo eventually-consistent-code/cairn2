@@ -44,6 +44,12 @@ export function spoolPath(projectDir) {
   return join(homedir(), ".cairn", "spool", `${base}-${hash}.jsonl`);
 }
 
+/** Current repeated-call streak (tool + input hash + count) the loop check keeps per project. */
+export function loopStatePath(projectDir) {
+  const { base, hash } = pathHash(projectDir);
+  return join(homedir(), ".cairn", "loop", `${base}-${hash}.json`);
+}
+
 /** (session_id, task_id) -> tracker issue id map the mirror worker keeps beside the spool. */
 export function spoolMapPath(projectDir) {
   const { base, hash } = pathHash(projectDir);

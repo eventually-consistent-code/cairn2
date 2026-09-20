@@ -652,6 +652,120 @@ describe("run guard hook", () => {
   });
 });
 
+describe("posttooluse-loopcheck", () => {
+  const LOOPCHECK = join(SCRIPTS, "posttooluse-loopcheck.mjs");
+
+  function loopStatePathFor(home: string, projectDir: string): string {
+    const { base, hash } = hashAndBaseForEnvDir(projectDir);
+    return join(home, ".cairn", "loop", `${base}-${hash}.json`);
+  }
+
+  const call = (tool: string, input: unknown, session = "s1") =>
+    JSON.stringify({ tool_name: tool, tool_input: input, session_id: session, cwd: "" });
+
+  /** One hook run; returns parsed additionalContext (or null when it stayed quiet). */
+  function run(proj: string, home: string, payloadJson: string): string | null {
+    const r = runHookRaw(LOOPCHECK, proj, payloadJson, { HOME: home });
+    expect(r.status).toBe(0);
+    if (!r.stdout.trim()) return null;
+    return JSON.parse(r.stdout).hookSpecificOutput.additionalContext as string;
+  }
+
+  it("stays quiet for the first two identical calls, nudges on the third", () => {
+    const proj = freshDir("cairn-hooks-loop-");
+    const home = freshDir("cairn-hooks-loop-home-");
+    const p = call("Bash", { command: "npm test" });
+    expect(run(proj, home, p)).toBeNull();
+    expect(run(proj, home, p)).toBeNull();
+    const nudge = run(proj, home, p);
+    expect(nudge).toContain("3 identical Bash calls");
+    expect(nudge).toContain("trace");
+  });
+
+  it("says it once, then goes quiet for the rest of the streak", () => {
+    const proj = freshDir("cairn-hooks-loop-");
+    const home = freshDir("cairn-hooks-loop-home-");
+    const p = call("Bash", { command: "npm test" });
+    for (let i = 0; i < 2; i++) run(proj, home, p);
+    expect(run(proj, home, p)).not.toBeNull();
+    expect(run(proj, home, p)).toBeNull();
+    expect(run(proj, home, p)).toBeNull();
+  });
+
+  it("any different call resets the streak", () => {
+    const proj = freshDir("cairn-hooks-loop-");
+    const home = freshDir("cairn-hooks-loop-home-");
+    const a = call("Bash", { command: "npm test" });
+    run(proj, home, a);
+    run(proj, home, a);
+    run(proj, home, call("Bash", { command: "git status" })); // breaks it
+    expect(run(proj, home, a)).toBeNull();
+    expect(run(proj, home, a)).toBeNull();
+    expect(run(proj, home, a)).not.toBeNull();
+  });
+
+  it("same input, different tool is a different call", () => {
+    const proj = freshDir("cairn-hooks-loop-");
+    const home = freshDir("cairn-hooks-loop-home-");
+    const input = { file_path: "a.ts" };
+    run(proj, home, call("Read", input));
+    run(proj, home, call("Read", input));
+    expect(run(proj, home, call("Edit", input))).toBeNull();
+  });
+
+  it("key order does not make two identical inputs look different", () => {
+    const proj = freshDir("cairn-hooks-loop-");
+    const home = freshDir("cairn-hooks-loop-home-");
+    run(proj, home, call("Edit", { file_path: "a.ts", old_string: "x" }));
+    run(proj, home, call("Edit", { old_string: "x", file_path: "a.ts" }));
+    expect(run(proj, home, call("Edit", { file_path: "a.ts", old_string: "x" })))
+      .not.toBeNull();
+  });
+
+  it("a new session starts its own streak", () => {
+    const proj = freshDir("cairn-hooks-loop-");
+    const home = freshDir("cairn-hooks-loop-home-");
+    const input = { command: "npm test" };
+    run(proj, home, call("Bash", input, "s1"));
+    run(proj, home, call("Bash", input, "s1"));
+    expect(run(proj, home, call("Bash", input, "s2"))).toBeNull();
+  });
+
+  it("a corrupt state file costs nothing but the streak", () => {
+    const proj = freshDir("cairn-hooks-loop-");
+    const home = freshDir("cairn-hooks-loop-home-");
+    const path = loopStatePathFor(home, proj);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, "{ not json");
+    expect(run(proj, home, call("Bash", { command: "x" }))).toBeNull();
+    expect(JSON.parse(readFileSync(path, "utf8")).count).toBe(1);
+  });
+
+  /**
+   * The issue asks this hook to respect the breadcrumb's wall-clock budget.
+   * Asserted structurally rather than as another wall-clock pin: the two
+   * existing pins already measure runner load instead of hook cost (#169),
+   * and a third instance of a known-flaky pattern is not evidence. What
+   * actually makes a PostToolUse hook slow is shelling out or reaching the
+   * network, so that is what gets pinned -- one small read, one small write,
+   * no child processes.
+   */
+  it("does its work without spawning anything or touching the network", () => {
+    const src = readFileSync(join(SCRIPTS, "posttooluse-loopcheck.mjs"), "utf8");
+    expect(src).not.toMatch(/child_process|execFile|spawn|execSync/);
+    expect(src).not.toMatch(/node:https?|fetch\(/);
+    expect(src).toMatch(/atomicWriteJson/); // one write, via the shared helper
+  });
+
+  it("writes exactly one state file and nothing else", () => {
+    const proj = freshDir("cairn-hooks-loop-");
+    const home = freshDir("cairn-hooks-loop-home-");
+    run(proj, home, call("Bash", { command: "npm test" }));
+    expect(readdirSync(join(home, ".cairn"))).toEqual(["loop"]);
+    expect(readdirSync(join(home, ".cairn", "loop")).length).toBe(1);
+  });
+});
+
 describe("harness guard hook", () => {
   const editPayload = (filePath: string, tool = "Edit") =>
     JSON.stringify({ tool_name: tool, tool_input: { file_path: filePath }, cwd: "" });
