@@ -907,7 +907,9 @@ export function buildServer(deps: {
         "Flag plan-referenced issues that are missing or closed-unverified, a stale " +
         "security audit (latest security record written dirty or before code commits since " +
         "its stamp), and work that has gone quiet (an issue held in progress with no tracker " +
-        "update and no commit naming it, or a branch with no recent commit)",
+        "update and no commit naming it, or a branch with no recent commit); also repairs " +
+        "roadmap.md Status cells that still say 'planned' for a phase with VERIFICATION.md, " +
+        "reporting each as a 'roadmap-row' item",
       inputSchema: z.object({}),
     },
     wrap(async () => {

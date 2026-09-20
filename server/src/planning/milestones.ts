@@ -40,12 +40,135 @@ export function patchRoadmapMeta(projectDir: string,
   if (patch.milestoneId === null) delete data.milestone_id;
   else if (patch.milestoneId !== undefined) data.milestone_id = patch.milestoneId;
   if (patch.lastResync !== undefined) data.last_resync = patch.lastResync;
-  writeFileSync(roadmapPath(projectDir), serializeFrontmatter(data, body));
+  writeRoadmap(projectDir, data, body);
+}
+
+/**
+ * Single writer for roadmap.md. A roadmap carrying no frontmatter (a
+ * freshly scaffolded one) keeps carrying none -- serializeFrontmatter
+ * would otherwise stamp an empty `---\n---` block onto a human's file
+ * just because something touched a table row.
+ */
+function writeRoadmap(projectDir: string,
+  data: Record<string, string | string[]>, body: string): void {
+  writeFileSync(roadmapPath(projectDir),
+    Object.keys(data).length > 0 ? serializeFrontmatter(data, body) : body);
+}
+
+// -- Roadmap phase-table rows (#185) ---------------------------------------
+//
+// The Status column used to be remembered-by-convention: only the route
+// verb ever wrote a cell, by hand, so a verified phase kept saying
+// "planned" until a human noticed. The functions below are the ONE place
+// the table is parsed and patched -- the drift scan computes the rows it
+// wants, milestone_complete computes its own, and neither grows a second
+// parser over a file this module already owns.
+
+/** One phase row of a roadmap table, with the line it came from. */
+export interface RoadmapRow {
+  /** The Phase cell, parsed -- decimal phases included. */
+  number: number;
+  /** The Name cell, trimmed. */
+  name: string;
+  /** The Status cell, trimmed and verbatim -- never normalised. */
+  status: string;
+  /** Index into the body's lines: where a patch lands. */
+  line: number;
+}
+
+/** A Status cell a patch actually rewrote. */
+export interface RoadmapRowPatch { number: number; from: string; to: string }
+
+const PHASE_CELL_RE = /^\d+(?:\.\d+)?$/;
+/** Leading whitespace, content, trailing whitespace of one table cell. */
+const CELL_RE = /^(\s*)(.*?)(\s*)$/;
+
+/**
+ * The three cells of a `| a | b | c |` line with their padding intact, or
+ * null for anything that is not a three-cell row: prose, the header, the
+ * separator -- and a struck-through row from `route remove` (`~~7~~`),
+ * which a status patch must never resurrect.
+ */
+function rowCells(line: string): string[] | null {
+  const trimmed = line.trimEnd();
+  if (!trimmed.startsWith("|") || !trimmed.endsWith("|")) return null;
+  const cells = trimmed.split("|").slice(1, -1);
+  return cells.length === 3 ? cells : null;
+}
+
+/** Every phase row of a roadmap body, in document order. */
+export function parseRoadmapRows(body: string): RoadmapRow[] {
+  const rows: RoadmapRow[] = [];
+  const lines = body.split("\n");
+  for (let i = 0; i < lines.length; i += 1) {
+    const cells = rowCells(lines[i]);
+    if (!cells) continue;
+    const phase = cells[0].trim();
+    if (!PHASE_CELL_RE.test(phase)) continue;
+    rows.push({
+      number: Number(phase), name: cells[1].trim(), status: cells[2].trim(), line: i,
+    });
+  }
+  return rows;
+}
+
+/**
+ * Rewrites the Status cell of every row `wanted` names whose current value
+ * differs, preserving that cell's own padding so a patched row still lines
+ * up with the hand-authored table around it. A row already saying the
+ * right thing is not rewritten at all -- that is what makes the calling
+ * scan idempotent, and silent in the steady state.
+ *
+ * :param body: roadmap body, frontmatter already stripped
+ * :param wanted: phase number -> the Status that row should carry
+ * :returns: the new body, and one entry per cell actually changed
+ */
+export function applyRoadmapRows(body: string, wanted: Map<number, string>):
+  { body: string; applied: RoadmapRowPatch[] } {
+  const applied: RoadmapRowPatch[] = [];
+  const lines = body.split("\n");
+  for (const row of parseRoadmapRows(body)) {
+    const to = wanted.get(row.number);
+    if (to === undefined || to === row.status) continue;
+    const cells = rowCells(lines[row.line]);
+    if (!cells) continue; // unreachable: parseRoadmapRows read this same line
+    const [, lead, , trail] = CELL_RE.exec(cells[2]) ?? ["", " ", "", " "];
+    cells[2] = `${lead}${to}${trail}`;
+    lines[row.line] = `|${cells.join("|")}|`;
+    applied.push({ number: row.number, from: row.status, to });
+  }
+  return { body: applied.length > 0 ? lines.join("\n") : body, applied };
+}
+
+/** The roadmap's phase rows, or none at all when there is no roadmap yet. */
+export function readRoadmapRows(projectDir: string): RoadmapRow[] {
+  if (!existsSync(roadmapPath(projectDir))) return [];
+  return parseRoadmapRows(readRoadmapRaw(projectDir).body);
+}
+
+/**
+ * Patches Status cells in place and reports what moved. A project with no
+ * roadmap.md is not an error here: the scans that call this run on every
+ * status check, and a project mid-scaffold has nothing to say.
+ *
+ * :param projectDir: repository root
+ * :param wanted: phase number -> the Status that row should carry
+ * :returns: one entry per cell actually changed (empty = nothing to do)
+ */
+export function patchRoadmapRows(projectDir: string, wanted: Map<number, string>):
+  RoadmapRowPatch[] {
+  if (!existsSync(roadmapPath(projectDir))) return [];
+  const { data, body } = readRoadmapRaw(projectDir);
+  const { body: next, applied } = applyRoadmapRows(body, wanted);
+  if (applied.length > 0) writeRoadmap(projectDir, data, next);
+  return applied;
 }
 
 export interface MilestoneCompleteReport {
   closedPhases: string[]; skippedPhases: Array<{ dir: string; reason: string }>;
   released?: Milestone; archivedTo: string; nextMilestone: number;
+  /** Status cells this completion flipped to `shipped (vN)` (#185). */
+  roadmapRows: RoadmapRowPatch[];
 }
 
 export async function milestoneComplete(tracker: Tracker, projectDir: string,
@@ -106,12 +229,19 @@ export async function milestoneComplete(tracker: Tracker, projectDir: string,
   const { data, body } = readRoadmapRaw(projectDir);
   const archiveNote = `\n## Archived — v${meta.milestone}\n\n`
     + `${summary} — see milestones/v${meta.milestone}/\n`;
+  // The rows this milestone shipped are set by the SAME event that
+  // archived their phase dirs -- one read, one write, no convention left
+  // to remember (#185). Phases the table never listed stay unlisted:
+  // adding rows is route's job, not summit's.
+  const shipped = `shipped (v${meta.milestone})`;
+  const { body: patchedBody, applied: roadmapRows } = applyRoadmapRows(body,
+    new Map(status.phases.map((p) => [p.number, shipped])));
   data.milestone = String(meta.milestone + 1);
   delete data.milestone_id;
-  writeFileSync(roadmapPath(projectDir), serializeFrontmatter(data, body + archiveNote));
+  writeRoadmap(projectDir, data, patchedBody + archiveNote);
 
   return {
-    closedPhases, skippedPhases, released,
+    closedPhases, skippedPhases, released, roadmapRows,
     archivedTo: join(".cairn", "plans", "milestones", `v${meta.milestone}`),
     nextMilestone: meta.milestone + 1,
   };

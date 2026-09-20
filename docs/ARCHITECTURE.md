@@ -47,7 +47,7 @@ reason.
   budget ledger enforcing the ceiling at phase/wave boundaries (ADR
   0008).
 
-  The plan↔tracker drift report has grown five reasons, and they are not
+  The plan↔tracker drift report has grown six reasons, and they are not
   all the same kind of thing. Two are errors the scan must not let pass:
   an issue the plan names that the tracker has lost, and an issue closed
   inside a phase nothing has verified. One is a staleness claim — the
@@ -57,7 +57,18 @@ reason.
   commit naming it, or a branch whose last commit has aged past the
   window. Advisory means neither stops a ship nor fails a verification;
   forgotten work is worth seeing and is never a reason to block a good
-  push.
+  push. The sixth is a repair rather than a complaint: the roadmap's
+  Status column was the last piece of plan state nothing computed — only
+  the route verb ever wrote a cell, by hand, so a phase could sit
+  verified for a week with its row still reading "planned". The scan now
+  patches that cell from the evidence on disk (a phase directory holding
+  VERIFICATION.md) and reports what it changed, the same posture every
+  other drift class already has; milestone completion sets the shipped
+  rows from the same event that archives their directories. Narrow on
+  both sides by design — only a cell still saying exactly "planned"
+  moves, and only for a row the table already holds, because overwriting
+  a human's wording or inventing rows would be a worse bug than the one
+  being fixed.
 
   Two sibling scans sit beside it. `docs_drift` reports which verified
   phases the published documentation has not caught up with. The

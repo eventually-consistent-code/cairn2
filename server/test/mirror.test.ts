@@ -1,13 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { execFileSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { FakeTracker } from "../src/tracker/fake.js";
 import { writeAuditRecord } from "../src/audit/record.js";
-import { scaffoldPhase, writePlanIssues } from "../src/planning/artifacts.js";
+import { scaffoldPhase, scaffoldProject, writePlanIssues } from "../src/planning/artifacts.js";
 import {
-  canonicalPhaseName, ensurePhase, driftReport, staleAuditDrift, staleBranchDrift,
+  canonicalPhaseName, ensurePhase, driftReport, roadmapRowDrift,
+  staleAuditDrift, staleBranchDrift,
 } from "../src/planning/mirror.js";
 
 const dir = () => mkdtempSync(join(tmpdir(), "cairn-mirror-"));
@@ -121,6 +122,86 @@ describe("driftReport", () => {
     const report = await driftReport(t, d);
     expect(report.flagged).toEqual([]);
     expect(report.ok).toEqual([done.id]);
+  });
+});
+
+describe("roadmapRowDrift (#185)", () => {
+  const roadmapPath = (d: string) => join(d, ".cairn/plans/roadmap.md");
+  const roadmap = (d: string) => readFileSync(roadmapPath(d), "utf8");
+
+  /** A project whose roadmap table carries the given rows. */
+  function project(...rows: string[]): string {
+    const d = dir();
+    scaffoldProject(d, "proj");
+    writeFileSync(roadmapPath(d), roadmap(d) + rows.join("\n") + "\n");
+    return d;
+  }
+
+  it("flips a verified phase's planned row and reports the repair", () => {
+    const d = project("| 1 | core | planned |");
+    const { dir: pd } = scaffoldPhase(d, 1, "Core");
+    writeFileSync(join(d, ".cairn/plans/phases", pd, "VERIFICATION.md"), "# ok");
+
+    const items = roadmapRowDrift(d);
+    expect(items).toEqual([{
+      reason: "roadmap-row", phase: 1, from: "planned", to: "verified",
+      detail: expect.stringContaining("VERIFICATION.md"),
+    }]);
+    expect(roadmap(d)).toContain("| 1 | core | verified |");
+    // Self-healing means the second pass has nothing left to say.
+    expect(roadmapRowDrift(d)).toEqual([]);
+  });
+
+  it("leaves an unverified phase's row planned", () => {
+    const d = project("| 1 | core | planned |");
+    scaffoldPhase(d, 1, "Core"); // no VERIFICATION.md
+    expect(roadmapRowDrift(d)).toEqual([]);
+    expect(roadmap(d)).toContain("| 1 | core | planned |");
+  });
+
+  it("never overwrites a human's wording, only the literal 'planned'", () => {
+    const d = project("| 1 | core | blocked on #99 |", "| 2 | polish | shipped (v7) |");
+    for (const n of [1, 2]) {
+      const { dir: pd } = scaffoldPhase(d, n, n === 1 ? "Core" : "Polish");
+      writeFileSync(join(d, ".cairn/plans/phases", pd, "VERIFICATION.md"), "# ok");
+    }
+    expect(roadmapRowDrift(d)).toEqual([]);
+    expect(roadmap(d)).toContain("| 1 | core | blocked on #99 |");
+    expect(roadmap(d)).toContain("| 2 | polish | shipped (v7) |");
+  });
+
+  it("does not invent a row for a phase the table never listed", () => {
+    const d = project("| 1 | core | planned |");
+    const { dir: pd } = scaffoldPhase(d, 3, "Unlisted");
+    writeFileSync(join(d, ".cairn/plans/phases", pd, "VERIFICATION.md"), "# ok");
+    expect(roadmapRowDrift(d)).toEqual([]);
+    expect(roadmap(d)).not.toContain("| 3 |");
+  });
+
+  it("matches decimal phases to their own row", () => {
+    const d = project("| 1 | core | planned |", "| 1.5 | slice | planned |");
+    const { dir: pd } = scaffoldPhase(d, 1.5, "Slice");
+    writeFileSync(join(d, ".cairn/plans/phases", pd, "VERIFICATION.md"), "# ok");
+    expect(roadmapRowDrift(d).map((i) => i.phase)).toEqual([1.5]);
+    expect(roadmap(d)).toContain("| 1 | core | planned |");
+    expect(roadmap(d)).toContain("| 1.5 | slice | verified |");
+  });
+
+  it("a project with no roadmap.md is not an error", () => {
+    const d = dir();
+    const { dir: pd } = scaffoldPhase(d, 1, "Core");
+    writeFileSync(join(d, ".cairn/plans/phases", pd, "VERIFICATION.md"), "# ok");
+    expect(roadmapRowDrift(d)).toEqual([]);
+  });
+
+  it("the full drift report carries the repair", async () => {
+    const d = project("| 1 | core | planned |");
+    const { dir: pd } = scaffoldPhase(d, 1, "Core");
+    writeFileSync(join(d, ".cairn/plans/phases", pd, "VERIFICATION.md"), "# ok");
+    const report = await driftReport(new FakeTracker(), d);
+    expect(report.flagged).toEqual([expect.objectContaining({
+      reason: "roadmap-row", phase: 1, to: "verified",
+    })]);
   });
 });
 

@@ -3,6 +3,7 @@ import { CairnError } from "../errors.js";
 import type { Phase, Tracker } from "../tracker/types.js";
 import { listAuditRecords } from "../audit/record.js";
 import { isValidPhaseNumber, PHASE_NUMBER_ERROR } from "./artifacts.js";
+import { patchRoadmapRows, readRoadmapRows } from "./milestones.js";
 import { codeCommitsSince } from "./resync.js";
 import { projectStatus } from "./status.js";
 
@@ -95,7 +96,31 @@ export interface StaleWorkDrift {
   detail: string;
 }
 
-export type DriftItem = IssueDrift | StaleAuditDrift | StaleWorkDrift;
+/**
+ * A roadmap Status cell that no longer matched the evidence on disk
+ * (#185) -- already rewritten by the scan that found it.
+ *
+ * The odd one out of the drift kinds on purpose: the others describe a
+ * problem for a human to fix, this one describes a fix already made. The
+ * Status column was the last piece of plan state nothing computed -- only
+ * the route verb wrote a cell, by hand -- so a phase could sit verified
+ * for a week with its row still saying "planned". Reporting the repair
+ * rather than silently doing it keeps the scan honest about what it
+ * touched; reporting nothing once the row is right keeps it quiet.
+ */
+export interface RoadmapRowDrift {
+  reason: "roadmap-row";
+  /** The phase whose row was patched. */
+  phase: number;
+  /** What the cell said. */
+  from: string;
+  /** What the phase dir says, now written. */
+  to: string;
+  detail: string;
+}
+
+export type DriftItem =
+  IssueDrift | StaleAuditDrift | StaleWorkDrift | RoadmapRowDrift;
 
 /** Days of silence before work is called stale. `drift.staleDays` overrides. */
 export const DEFAULT_STALE_DAYS = 5;
@@ -221,6 +246,42 @@ export function staleAuditDrift(projectDir: string): StaleAuditDrift | null {
   return null;
 }
 
+/** The Status a live phase's row carries before and after verification. */
+const PLANNED_STATUS = "planned";
+const VERIFIED_STATUS = "verified";
+
+/**
+ * Flips `planned` -> `verified` for every phase whose directory carries a
+ * VERIFICATION.md, in place, and reports each flip (#185).
+ *
+ * Deliberately narrow on both sides. Only a row that still says exactly
+ * "planned" moves: any other wording is a human's -- "blocked", "shipped
+ * (v7)", a struck-through row from `route remove` -- and a scan that
+ * overwrote those would be a worse bug than the one it fixes. And only
+ * rows the table already holds move: inventing a row for an unlisted
+ * phase is route's job, not drift's.
+ *
+ * :param projectDir: repository root
+ * :returns: one item per row repaired; empty when the table already agrees
+ */
+export function roadmapRowDrift(projectDir: string): RoadmapRowDrift[] {
+  const verified = new Set(projectStatus(projectDir).phases
+    .filter((p) => p.hasVerification).map((p) => p.number));
+  if (verified.size === 0) return [];
+  const wanted = new Map<number, string>();
+  for (const row of readRoadmapRows(projectDir)) {
+    if (verified.has(row.number) && row.status.toLowerCase() === PLANNED_STATUS) {
+      wanted.set(row.number, VERIFIED_STATUS);
+    }
+  }
+  if (wanted.size === 0) return [];
+  return patchRoadmapRows(projectDir, wanted).map((p) => ({
+    reason: "roadmap-row" as const, phase: p.number, from: p.from, to: p.to,
+    detail: `roadmap row for phase ${p.number} said '${p.from}' but the phase has `
+      + `VERIFICATION.md — row set to '${p.to}'`,
+  }));
+}
+
 export async function driftReport(
   tracker: Tracker, projectDir: string,
   opts: { staleDays?: number; now?: number } = {},
@@ -229,6 +290,8 @@ export async function driftReport(
   const ok: string[] = [];
   const stale = staleAuditDrift(projectDir);
   if (stale) flagged.push(stale);
+  // Repairs first: what the scan fixed, before what it wants fixed.
+  flagged.push(...roadmapRowDrift(projectDir));
 
   const staleDays = opts.staleDays ?? DEFAULT_STALE_DAYS;
   const now = opts.now ?? Date.now();
