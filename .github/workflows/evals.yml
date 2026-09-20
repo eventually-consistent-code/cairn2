@@ -4,12 +4,20 @@
 # after its variance baseline exists (phase 22 constraint). The threshold
 # starts at 0.7 and rises toward 1.0 as green nights accumulate.
 #
+# Subscription only. cairn never spawns API-key (Console-billed) sessions
+# anywhere — every agent turn runs on the operator's Claude subscription —
+# and this lane is no exception: it authenticates with the subscription's
+# long-lived OAuth token (`claude setup-token`), the same secret the
+# claude.yml / claude-code-review.yml workflows use. No ANTHROPIC_API_KEY,
+# ever; an operator who exports one locally runs the suite with it unset.
+#
 # Two repository secrets, both owner-set, neither assumed:
-#   ANTHROPIC_API_KEY      — bills the eval sessions (Console account).
-#   PLUGIN_EVAL_ENABLEMENT — the early-access enablement assignment for
-#                            hosts outside the per-organization rollout, as
-#                            one `NAME=1` line; obtained from your Anthropic
-#                            contact and never written into the repo.
+#   CLAUDE_CODE_OAUTH_TOKEN — subscription auth (installed by
+#                             /install-github-app; rotate with setup-token).
+#   PLUGIN_EVAL_ENABLEMENT  — the early-access enablement assignment for
+#                             hosts outside the per-organization rollout, as
+#                             one `NAME=1` line; obtained from your Anthropic
+#                             contact and never written into the repo.
 name: evals
 
 on:
@@ -56,13 +64,15 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code
       - name: run the suite
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           PLUGIN_EVAL_ENABLEMENT: ${{ secrets.PLUGIN_EVAL_ENABLEMENT }}
         run: |
-          if [ -z "$ANTHROPIC_API_KEY" ]; then
-            echo "ANTHROPIC_API_KEY secret is not set — the lane cannot run (docs/EVALS.md, CI lane)."
+          if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            echo "CLAUDE_CODE_OAUTH_TOKEN secret is not set — the lane cannot run (docs/EVALS.md, CI lane)."
             exit 1
           fi
+          # belt and braces: a key in the runner env would silently re-route billing
+          unset ANTHROPIC_API_KEY
           if [ -n "$PLUGIN_EVAL_ENABLEMENT" ]; then
             # one NAME=1 assignment; exporting it keeps the name out of the repo
             export "$PLUGIN_EVAL_ENABLEMENT"

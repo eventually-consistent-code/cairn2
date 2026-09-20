@@ -66,18 +66,25 @@ under the plugins directory is a separate clone pinned to the last
 release tag, so the plugin-name form grades the STALE copy. The path
 form loads the working tree.
 
-`--case` matches the case's frontmatter `name`, not its directory, and
-only the last `--case` flag counts — run one glob at a time. Bill the
-run to the subscription, not a Console key: an exported
-`ANTHROPIC_API_KEY` in the shell makes every spawned session use it
-(`env -u ANTHROPIC_API_KEY claude plugin eval …` when the shell exports
-one). `${CLAUDE_PLUGIN_ROOT}` substitutes inside plugin command bodies,
-never inside a case prompt — a prompt that needs a plugin file goes
-through the slash command, not a literal path.
+**Subscription only.** cairn never spawns API-key (Console-billed)
+sessions — every agent turn, local or CI, runs on the operator's Claude
+subscription. The harness inherits the shell: an exported
+`ANTHROPIC_API_KEY` silently re-routes every spawned session to Console
+billing, so run with it unset (`env -u ANTHROPIC_API_KEY claude plugin
+eval …`) or, better, don't export one in a shell that runs cairn. The
+"cost" figures the harness prints are usage estimates against the plan,
+not invoices.
 
-Costs: every case runs three times in two arms with a haiku judge on
-the `llm` graders — roughly $0.25–0.55 per with-plugin run in this
-suite, so a full run lands near $6–8. `--max-cost-usd` is not optional here — the run
+`--case` matches the case's frontmatter `name`, not its directory, and
+only the last `--case` flag counts — run one glob at a time.
+`${CLAUDE_PLUGIN_ROOT}` substitutes inside plugin command bodies, never
+inside a case prompt — a prompt that needs a plugin file goes through
+the slash command, not a literal path.
+
+Usage: every case runs three times in two arms with a haiku judge on
+the `llm` graders — roughly $0.25–0.55 of plan usage per with-plugin
+run in this suite, so a full run reads near $6–8 on the estimate.
+`--max-cost-usd` is the usage governor, keep it. `--max-cost-usd` is not optional here — the run
 exits 2 on breach and skips the paid graders for the breaching run.
 
 Exit codes: 0 every case ≥ `--threshold` (default 1.0); 1 below
@@ -152,11 +159,14 @@ accumulate; the cost ceiling is $12 per run (the full suite plus the
 trigger set costs ~$15 at three runs, so the lane trims by cost before
 it trims by threshold — narrow with `--tag` if that bites).
 
-Two repository secrets, both owner-set, neither assumed by the
-workflow (it exits 1 with a plain message when the key is missing):
+Subscription only, on the runner too. Two repository secrets, both
+owner-set, neither assumed by the workflow (it exits 1 with a plain
+message when the token is missing, and unsets any `ANTHROPIC_API_KEY`
+before running):
 
-- `ANTHROPIC_API_KEY` — bills the eval sessions to a Console account.
-  Subscription auth does not exist on a CI runner.
+- `CLAUDE_CODE_OAUTH_TOKEN` — the subscription's long-lived OAuth
+  token (`claude setup-token`); `/install-github-app` installs it and
+  the `claude.yml` / `claude-code-review.yml` workflows already use it.
 - `PLUGIN_EVAL_ENABLEMENT` — the early-access enablement assignment
   for hosts outside the per-organization rollout, as one `NAME=1`
   line. The workflow `export`s it, so the variable's name never enters
