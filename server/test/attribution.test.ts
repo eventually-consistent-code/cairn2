@@ -61,6 +61,16 @@ describe("rent attribution", () => {
     expect(out.items[0]).toEqual({ id: "#4", kind: "issue", rent: 600, sessions: ["s1"] });
   });
 
+  it("prefers the issue over the commit whichever order they arrive in", () => {
+    const out = attributeRent(
+      [span("s1", "2026-09-01T10:00:00Z", "2026-09-01T12:00:00Z", 600)],
+      [item("#4", "2026-09-01T10:31:00Z", "commit"),
+       item("#4", "2026-09-01T10:30:00Z", "issue")],
+    );
+    expect(out.items).toHaveLength(1);
+    expect(out.items[0]).toEqual({ id: "#4", kind: "issue", rent: 600, sessions: ["s1"] });
+  });
+
   it("tolerates an unparseable timestamp by treating the item as an orphan", () => {
     const out = attributeRent(
       [span("s1", "2026-09-01T10:00:00Z", "2026-09-01T12:00:00Z", 300)],
