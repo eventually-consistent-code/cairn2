@@ -40,14 +40,30 @@ reason.
   behind one normalized interface with per-backend capability flags, a
   shared HTTP core (retry/backoff, typed errors), and a contract test
   suite every adapter must pass.
-- `planning/` — plan artifacts, tracker mirroring, drift detection
-  (plan↔tracker and docs↔shipped-phases both — `docs_drift` reports
-  which verified phases the docs haven't caught up with), per-phase
-  distill manifests, milestone lifecycle — plus the headless-batch
+- `planning/` — plan artifacts, tracker mirroring, drift detection,
+  per-phase distill manifests, milestone lifecycle — plus the headless-batch
   primitives: per-phase token estimation calibrated from recorded spend,
   the run manifest (push authorization and scope, ADR 0007), and the
   budget ledger enforcing the ceiling at phase/wave boundaries (ADR
   0008).
+
+  The plan↔tracker drift report has grown five reasons, and they are not
+  all the same kind of thing. Two are errors the scan must not let pass:
+  an issue the plan names that the tracker has lost, and an issue closed
+  inside a phase nothing has verified. One is a staleness claim — the
+  latest security audit no longer describing the commit it judged. Two
+  are advisory and say so everywhere they surface: work that has gone
+  quiet, meaning an issue held in progress with no tracker update and no
+  commit naming it, or a branch whose last commit has aged past the
+  window. Advisory means neither stops a ship nor fails a verification;
+  forgotten work is worth seeing and is never a reason to block a good
+  push.
+
+  Two sibling scans sit beside it. `docs_drift` reports which verified
+  phases the published documentation has not caught up with. The
+  plan-quality scan reports contract drift, unanchored thresholds, a
+  phase that never wrote down its design alternatives, and a task that
+  never declared how it would be proved.
 - `memory/` — disposable FTS index + git-committed memory cards with
   provenance, staleness checking, and phase/issue/role scopes.
 - `docs/` — documentation connectors (below) plus the marked-section
