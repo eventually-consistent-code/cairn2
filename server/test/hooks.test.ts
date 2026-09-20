@@ -16,6 +16,7 @@ const PRECOMPACT = join(scriptsDir, "precompact-refresh.mjs");
 const SESSIONSTART = join(scriptsDir, "sessionstart-continuity.mjs");
 const SCRIPTS = scriptsDir;
 const LEAKGUARD = join(SCRIPTS, "pretooluse-leakguard.mjs");
+const RUNGUARD = join(SCRIPTS, "pretooluse-runguard.mjs");
 
 const dirs: string[] = [];
 function freshDir(prefix: string): string {
@@ -120,10 +121,11 @@ function runHookRaw(
   script: string,
   projectDir: string,
   stdinPayload: string,
+  extraEnv: Record<string, string> = {},
 ): { status: number | null; stderr: string; stdout: string } {
   const result = spawnSync(process.execPath, [script], {
     cwd: projectDir,
-    env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir },
+    env: { ...process.env, CLAUDE_PROJECT_DIR: projectDir, ...extraEnv },
     input: stdinPayload,
     encoding: "utf8",
     timeout: 5000,
@@ -552,6 +554,100 @@ describe("leak guard hook", () => {
     writeFileSync(join(proj, "app.ts"), 'const p = ".cairn/plans/x";\n');
     const r = runHookRaw(LEAKGUARD, proj, payload("git commit -m x"));
     expect(r.status).toBe(0);
+  });
+});
+
+describe("run guard hook", () => {
+  /** Project + git repo + an isolated cairn home for its run manifests. */
+  function runFixture(status?: string): { proj: string; home: string; runId: string } {
+    const proj = tmpProj();
+    gitInit(proj);
+    stageFile(proj, "seed.txt", "seed\n");
+    execFileSync("git", ["commit", "-q", "-m", "init"], { cwd: proj });
+    const home = freshDir("cairn-hooks-runguard-home-");
+    const runId = "run-abc123";
+    if (status) {
+      // The guard recomputes the manifest name from CLAUDE_PROJECT_DIR the
+      // same way the server does -- plain resolve(), no symlink canonicalization
+      // -- so the fixture must hash that same literal value.
+      const { base, hash } = hashAndBaseForEnvDir(proj);
+      mkdirSync(join(home, "runs"), { recursive: true });
+      writeFileSync(join(home, "runs", `${base}-${hash}-${runId}.json`),
+        JSON.stringify({ version: 1, runId, status }));
+    }
+    return { proj, home, runId };
+  }
+
+  const cwdPayload = (command: string, cwd: string) =>
+    JSON.stringify({ tool_name: "Bash", tool_input: { command }, cwd });
+
+  it("blocks git checkout in the owner's checkout while a run is live", () => {
+    const { proj, home, runId } = runFixture("running");
+    const r = runHookRaw(RUNGUARD, proj, cwdPayload("git checkout -b feature", proj),
+      { CAIRN_HOME: join(home) });
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain(runId);
+    expect(r.stderr).toContain("git checkout");
+  });
+
+  it("blocks git switch and git reset --hard the same way", () => {
+    const { proj, home } = runFixture("running");
+    const env = { CAIRN_HOME: home };
+    expect(runHookRaw(RUNGUARD, proj, cwdPayload("git switch main", proj), env).status).toBe(2);
+    expect(runHookRaw(RUNGUARD, proj, cwdPayload("git reset --hard HEAD~1", proj), env)
+      .status).toBe(2);
+  });
+
+  it("allows the same command inside the run's own worktree", () => {
+    const { proj, home } = runFixture("running");
+    const wt = join(freshDir("cairn-hooks-runguard-wt-"), "tree");
+    execFileSync("git", ["worktree", "add", "-q", "-b", "runbranch", wt], { cwd: proj });
+    const r = runHookRaw(RUNGUARD, proj, cwdPayload("git checkout -b other", wt),
+      { CAIRN_HOME: home });
+    expect(r.status).toBe(0);
+  });
+
+  it("no live run: the same command passes untouched", () => {
+    const { proj, home } = runFixture("complete");
+    expect(runHookRaw(RUNGUARD, proj, cwdPayload("git checkout main", proj),
+      { CAIRN_HOME: home }).status).toBe(0);
+    const bare = runFixture();
+    expect(runHookRaw(RUNGUARD, bare.proj, cwdPayload("git checkout main", bare.proj),
+      { CAIRN_HOME: bare.home }).status).toBe(0);
+  });
+
+  it("harmless git commands pass while a run is live", () => {
+    const { proj, home } = runFixture("running");
+    const env = { CAIRN_HOME: home };
+    for (const c of ["git status", "git log --oneline", 'git commit -m "checkout the docs"']) {
+      expect(runHookRaw(RUNGUARD, proj, cwdPayload(c, proj), env).status).toBe(0);
+    }
+  });
+
+  it("CAIRN_RUN_OK=1 overrides once, and only as a prefix", () => {
+    const { proj, home } = runFixture("running");
+    const env = { CAIRN_HOME: home };
+    expect(runHookRaw(RUNGUARD, proj,
+      cwdPayload("CAIRN_RUN_OK=1 git checkout main", proj), env).status).toBe(0);
+    expect(runHookRaw(RUNGUARD, proj,
+      cwdPayload('git checkout main -m "CAIRN_RUN_OK=1"', proj), env).status).toBe(2);
+  });
+
+  it("honours git -C when it retargets the owner's checkout", () => {
+    const { proj, home } = runFixture("running");
+    const elsewhere = freshDir("cairn-hooks-runguard-cwd-");
+    const r = runHookRaw(RUNGUARD, proj,
+      cwdPayload(`git -C ${proj} checkout main`, elsewhere), { CAIRN_HOME: home });
+    expect(r.status).toBe(2);
+  });
+
+  it("a corrupt manifest is not evidence of a live run", () => {
+    const { proj, home } = runFixture();
+    const { base, hash } = hashAndBaseForEnvDir(proj);
+    mkdirSync(join(home, "runs"), { recursive: true });
+    writeFileSync(join(home, "runs", `${base}-${hash}-broken.json`), "{ not json");
+    expect(runHookRaw(RUNGUARD, proj, cwdPayload("git checkout main", proj),
+      { CAIRN_HOME: home }).status).toBe(0);
   });
 });
 

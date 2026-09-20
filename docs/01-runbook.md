@@ -1669,6 +1669,19 @@ command (mentioning the variable elsewhere — say, quoted inside the commit
 message — does not bypass). Accepted limitation: commits made outside
 Claude Code are unguarded.
 
+Its sibling is the **run guard**, which protects your working directory
+rather than your outbound text. A batch run works inside its own
+worktree, so you can keep editing while it builds. The guard makes that
+separation enforced rather than merely intended: while a run's manifest
+reads `running`, a `git checkout`, `git switch`, or `git reset --hard`
+aimed at your main checkout is refused with a plain line naming the run.
+The same commands inside the run's own worktree pass untouched, as does
+every other git command — a commit message that happens to mention
+checking out does not trip it. If the refusal fires, the run escaped its
+worktree: put it back rather than reaching for the override. That
+override, for the rare hand-run case, is a `CAIRN_RUN_OK=1 ` prefix,
+same shape and same prefix-only rule as the leak guard's.
+
 ---
 
 ## 11. Error codes & troubleshooting

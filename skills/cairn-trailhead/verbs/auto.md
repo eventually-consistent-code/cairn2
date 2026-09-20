@@ -114,6 +114,22 @@ batch-specific loop.
    (`budget_check(runId)` with no phase — a read-only poll). A manifest
    reading `complete` or `stopped` is terminal: report, don't run —
    re-staging means a new runId, never a resurrected old one.
+
+   **The run works in its own worktree, never the owner's checkout.**
+   Before any phase starts: enter a dedicated worktree for the run
+   (`EnterWorktree` where the harness has it, else `git worktree add
+   <dir> <base branch>` under the machine's cairn home, never inside
+   the repo). Every checkout, merge, commit and push for the whole run
+   happens there. The owner keeps typing in their own directory while
+   the run works — the two never share a working tree. Remove the
+   worktree on EVERY exit path: normal completion, ceiling hit, hard
+   stop, and error; a run that leaves its worktree behind is a run the
+   next one trips over. While the manifest reads `running`, a
+   PreToolUse guard refuses `git checkout`, `git switch` and `git reset
+   --hard` aimed at the owner's checkout — if that refusal ever fires,
+   the run escaped its worktree and the fix is to re-enter it, never to
+   override.
+
    First act: the run's umbrella tracker issue — `issue_create` (label
    `batch-run`, runId in the title), opening comment in plain language:
    the phase list as staged, the ceiling, push authority granted or
@@ -185,7 +201,9 @@ batch-specific loop.
    umbrella issue's closing comment, the close itself, and the run's
    final board emit. Last, close continuity: `continuity_checkpoint(
    source: "auto", notes: "batch run <runId> ended <status> — next:
-   <action>")`.
+   <action>")`, then leave and remove the run's worktree (step 1) —
+   after the status move, so a crash between the two leaves a manifest
+   that is no longer `running` and a worktree the next run can clear.
 
 ### The run report — the artifact the dev reads when they're back
 
