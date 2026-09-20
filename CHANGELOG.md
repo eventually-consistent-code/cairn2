@@ -1,5 +1,87 @@
 # Changelog
 
+## Unreleased — memory hygiene
+
+Seventeen issues over three waves. Memory that audits, compacts and
+announces itself; the measurement that decides whether report compression
+is worth building; a metrics log that stops destroying its own history;
+and a handful of small debts that had each been paid around rather than
+paid. Suite 1465 → 1541. Tool count 85 → 86, the first addition in three
+milestones and a deliberate exception.
+
+### memory hygiene
+
+- The card store can now be audited, and the finding it exists for is the
+  one you could not otherwise see. A card whose frontmatter will not parse
+  is skipped silently by both listing and recall, so a corrupted card
+  disappears from every surface without announcing itself and the store
+  looks healthy precisely because the broken card is invisible. The audit
+  reads every file directly and reports what the normal path drops, along
+  with provenance whose file is gone or whose commit no longer resolves,
+  near-duplicate bodies and aged cards. It reads files and git rather than
+  the search index, deliberately: that index needs a compiled binding that
+  can be missing, and an audit that dies exactly when memory is unhealthy
+  would be the wrong shape.
+- The capacity guard gained an action. Aged low-confidence cards merge
+  into one dated archive whose provenance lists the retired cards'
+  commits — rotation without time decay. The archive is written before
+  anything is retired, so a failure leaves the store whole; the approved
+  identifiers are applied exactly, never re-derived at write time, so a
+  card that ages between the proposal and the approval is never swept in
+  without being seen; and an archive cannot itself be archived, which is
+  guarded twice because the first guard is an implicit coupling.
+- Memory announces its own backlog. The unreviewed observation count and
+  the age of the oldest entry surface in the statistics and, past a
+  configurable threshold, in the session banner. Capture stays passive and
+  review stays gated behind the retrospective — the buffer simply stops
+  growing in silence.
+- The cost tracker records report bytes per fan-out, measured against peak
+  single-request tokens rather than cumulative totals. With prompt caching
+  those totals count the same replayed prefix over and over: one real
+  session summed to nearly a billion cached tokens against a window that
+  never exceeded a million, which understated the share twentyfold. This
+  is measurement only. Whether compression is worth building is the
+  question it exists to answer.
+- The metrics log rotates instead of truncating. It previously capped
+  itself at five thousand lines and cut back to twenty-five hundred, which
+  is not a retention policy but amnesia with a ratchet, and it bit hardest
+  on the busiest projects. Segments now close by rename and are never
+  rewritten, readers merge them oldest-first to the latest row per
+  session rather than summing, and pruning happens by age and supersession
+  rather than by line count.
+- Estimates stop losing half of themselves. The prose fallback that
+  rescues estimates on backends without native fields was capturing both
+  the points and the hours and discarding the hours — which is why there
+  was a points corpus and no minutes corpus at all. The hours now survive,
+  carried with their provenance, because a real tracker field and a scrape
+  of prose are not the same evidence and pooling them is how a calibration
+  curve gets fitted to a parser bug.
+- Jira stops dropping story points in silence. It discovers that field at
+  runtime, and when no field matched it warned once to the error stream
+  and dropped the value while still reporting full estimate support. The
+  loss now reaches the caller as a partial skip, so the fallback runs and
+  the estimate survives in the issue body.
+- Roadmap status became computed rather than remembered. Drift repairs a
+  verified phase's row in place and milestone completion patches the rest,
+  so the table stops sitting at "planned" until somebody notices.
+- Timing tests measure the subject instead of the machine. A pair of
+  hundred-millisecond budgets were timing a spawned interpreter: a bare
+  process start is thirty-one milliseconds and the hook under test is
+  thirty-two, so the budget was almost entirely startup. It failed a
+  release gate on a shared runner and flaked repeatedly on loaded
+  machines, reporting load as though it were a regression. Both now
+  measure the marginal cost over a baseline spawn, minimum of five
+  samples, and were proven in both directions — they catch an injected
+  slowdown and survive eight saturating load generators.
+- Smaller debts: the native-binding error names the directory the module
+  actually resolves from and distinguishes a dependency never compiled
+  here from one built for a different runtime, which need different
+  instructions; three verb documents stopped implying the index tool reads
+  a file; dispatch briefs render their invariants last, where attention is
+  most reliable, and keep dated content out of the cacheable prefix; and
+  the design-alternatives gate stops asking already-verified phases for a
+  block they no longer owe.
+
 ## Unreleased — harness hygiene
 
 Eight mechanics that turn cairn's own rules about itself into gates and
