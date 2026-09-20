@@ -265,3 +265,31 @@ doesn't support.
    tracker: {open, inProgress, blocked, nextVerb, asOf})` AFTER the
    comment — the board outlives the run, and its final state should
    show the run's true ending, not its second-to-last boundary.
+
+### Plugin state — installs, updates, and the release pin
+
+A batch run has no TTY, so any command that stops to ask a question
+hangs the run instead of failing it. Plugin operations are the ones that
+ask: `claude plugin install`, `update` and `uninstall` confirm the
+marketplace-declared command before running it, and that confirmation is
+**required** to be pre-answered when stdin or stdout isn't a terminal.
+`-y` is that answer (`claude plugin install <plugin>@<marketplace> -y`).
+Read state with `claude plugin list --json` — never by scraping human
+output — and check `--help` for which other subcommands emit JSON, since
+that moves with the Claude Code version.
+
+Two standing rules for the run itself:
+
+- **A run never updates its own plugin mid-flight.** Swapping the tools
+  out from under a running executor is not a decision a headless run
+  gets to make; it is a hard stop with the reason named, same as any
+  other. Installing a *different* plugin the work needs is fine on the
+  `-y` path, logged as an unattended decision with its principle.
+- **Shipping a release moves the pin, not the run.** If a manifest phase
+  cuts a release, `scripts/release.mjs` bumps the marketplace pin along
+  with the version files — but installed copies, this run's included,
+  stay on the tag they were installed from until somebody updates them.
+  The report says so in one line rather than implying the release is
+  live for anyone. Adopting it is the human's first act next session:
+  `/plugin` → update → close the menu, since plugin changes apply on
+  menu close.

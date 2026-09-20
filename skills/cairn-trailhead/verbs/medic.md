@@ -30,6 +30,35 @@ from the evidence trail. All three close the same way: a record.
    (an edge whose issue no longer exists). Report each as
    "`<from>` —`<type>`→ `<to>`: endpoint missing." Skip silently on
    `UNSUPPORTED` backends.
+5c. Plugin state — the version triple: installed version, marketplace
+   pin, running server. `config_probe` gives two of the three (the
+   running server's version and the plugin-cache entry it executes
+   from, plus the repo's version files when the project dir *is* the
+   cairn repo); the pin is `.claude-plugin/marketplace.json`'s
+   `source.ref`, and the marketplace that installed the plugin has to
+   still resolve. Three findings live here:
+   - **Orphaned install.** The plugin is installed, its marketplace is
+     gone from the configured list. Nothing can update it — `update`
+     has no source to fetch — so it sits at its cached version forever.
+     This is the case the triple was built to catch.
+   - **Pin and cache disagree.** Installed version ≠ `source.ref`: an
+     update was never applied, or a release moved the pin and nobody
+     adopted it. `config_probe`'s drift lines cover cache-vs-server;
+     the pin is the half it can't see.
+   - **Every version agrees and the server is still stale.** All three
+     strings match and the check still fails, because the working tree
+     is commits past the tag the pin names — `git describe --tags`
+     reading `vX.Y.Z-<n>-g<sha>` with `<n>` above zero. The installed
+     plugin is the tag's build, so tools and verbs that landed after it
+     are not callable in the session while every version number reads
+     fine. Say **version equality is not freshness** in the finding,
+     with the commit distance — otherwise the next reader diagnoses it
+     from scratch, which is how this became a finding in the first
+     place.
+   The fix is an install or an update, never a repair: `/plugin` →
+   update → close the menu (plugin changes apply on menu close), or
+   `claude plugin update <plugin>@<marketplace> -y` where there is no
+   TTY to answer the consent prompt.
 6. `audit_record(scope: "medic", verdict, findings)` — same discipline as
    `audit`: the record is the source of truth even when every finding is
    minor, and a clean bill of health still gets a `verdict: pass` record
@@ -54,8 +83,12 @@ match the plan), and never guesses at what an ambiguous phase state
 *should* mean. Anything judgment-shaped — a drift finding with no obvious
 correct side, a plan that contradicts itself, a phase whose scope clearly
 changed mid-flight — gets reported in the record and named explicitly as
-"not auto-repaired, needs a human call." Executing a judgment call under
-`--repair`'s roof is exactly the failure mode this verb exists to avoid.
+"not auto-repaired, needs a human call." Plugin state (5c) is in that
+bucket by construction: installing, updating, or re-pointing a
+marketplace changes what the user is running, which is a decision, not a
+structural gap — `--repair` reports it and stops. Executing a judgment
+call under `--repair`'s roof is exactly the failure mode this verb
+exists to avoid.
 
 Each mechanical repair is one tool call, logged in the record against the
 finding it closed. `--repair` never invents a new finding to fix — it
