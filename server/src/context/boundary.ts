@@ -39,11 +39,24 @@ const CLEARED_MARKER = "[Old tool result content cleared]";
 
 /**
  * Content blocks of an entry, or an empty list for any other shape.
+ *
+ * `message.content` arrives in TWO shapes on disk and both carry prose: the
+ * array of typed blocks, and a bare string -- which is what a plain typed
+ * turn looks like. Measured over real transcripts on this machine, the string
+ * shape holds the overwhelming majority of user prose characters (69% on one,
+ * 94% on another), while array-shaped user entries are mostly tool-result
+ * wrappers with no prose at all. Reading only the array shape therefore left
+ * `repeat_question` nearly blind -- so a string is surfaced here as a single
+ * text block, attributed to the entry's role exactly as an array text block
+ * would be. `tool_use` and `tool_result` detection is unaffected: those never
+ * live in a string.
+ *
  * A content array can hold anything -- null, a bare string, whatever a
  * malformed line coughs up -- so only real objects pass through.
  */
 function blocks(entry: TranscriptEntry): Array<Record<string, unknown>> {
   const content = entry?.message?.content;
+  if (typeof content === "string") return [{ type: "text", text: content }];
   if (!Array.isArray(content)) return [];
   return content.filter(
     (b): b is Record<string, unknown> => typeof b === "object" && b !== null,
@@ -139,6 +152,32 @@ function phrases(text: string): Set<string> {
 }
 
 /**
+ * Just the sentences of a text that actually ask something.
+ *
+ * Two tunings, both forced by real transcripts once the string-shaped prose
+ * above became visible and the false-positive rate went with it:
+ *
+ * Scope to the interrogative sentence. Treating the whole block as "the
+ * question" because it holds a single "?" makes every noun pair anywhere in
+ * a long assistant message -- narration, a plan, a summary -- a repeated
+ * topic the moment the user once used the same two words. On the two real
+ * transcripts that turned 0 genuine repeats into 16 and 44 reported ones.
+ *
+ * Drop inline code spans first. A backticked run is a token, a path, a
+ * command -- not prose -- and a literal "?" inside one (git status output, a
+ * glob) is not a question. Same reasoning as the slash-path stripping in
+ * `phrases`, and it removed the last false positive on both transcripts.
+ *
+ * :param text: an assistant text block
+ * :returns the question sentences joined, or "" when nothing is asked
+ */
+function questionSentences(text: string): string {
+  const prose = text.replace(/`[^`]*`/g, " ");
+  if (!prose.includes("?")) return "";
+  return prose.split(/(?<=[.!?\n])/).filter((s) => s.includes("?")).join(" ");
+}
+
+/**
  * :param entries: transcript entries in order
  * :param boundaries: output of findBoundaries over the same entries
  * :returns symptoms attributed to the nearest preceding boundary
@@ -190,8 +229,8 @@ export function detectSymptoms(
     entries.slice(boundary.index + 1, windowEnd).forEach((entry) => {
       if (entry?.type !== "assistant") return;
       for (const b of blocks(entry)) {
-        const text = textOf(b);
-        if (!text.includes("?")) continue;
+        const text = questionSentences(textOf(b));
+        if (!text) continue;
         for (const p of phrases(text)) {
           if (supplied.has(p) && !asked.has(p)) {
             asked.add(p);

@@ -133,6 +133,101 @@ describe("symptom attribution across multiple boundaries", () => {
   });
 });
 
+// The shape that mattered and had no test. On real transcripts most user
+// prose is NOT an array of blocks -- `message.content` is a bare string, and
+// the array-shaped user entries are overwhelmingly tool-result wrappers with
+// no prose in them. Reading only the array shape left repeat_question
+// effectively blind, and a blind detector reports zero symptoms, which reads
+// exactly like no harm.
+describe("string-shaped message.content", () => {
+  const userString = (text: string) => ({ type: "user", message: { role: "user", content: text } });
+  const assistantString = (text: string) => ({
+    type: "assistant", message: { role: "assistant", content: text },
+  });
+
+  it("reads a fact the user supplied as a bare string, not a block array", () => {
+    const entries = [
+      userString("The deploy target is the staging cluster in us-east-1."),
+      boundaryEntry(),
+      assistantSays("Which deploy target should I use?"),
+    ];
+    expect(detectSymptoms(entries, findBoundaries(entries))).toEqual([
+      { kind: "repeat_question", boundaryIndex: 1, evidence: "deploy target" },
+    ]);
+  });
+
+  it("reads a question the assistant asked as a bare string", () => {
+    const entries = [
+      userSays("The deploy target is the staging cluster."),
+      boundaryEntry(),
+      assistantString("Which deploy target should I use?"),
+    ];
+    expect(detectSymptoms(entries, findBoundaries(entries))).toEqual([
+      { kind: "repeat_question", boundaryIndex: 1, evidence: "deploy target" },
+    ]);
+  });
+
+  it("attributes by the entry's role -- an assistant string is not a supplied fact", () => {
+    const entries = [
+      assistantString("The deploy target is the staging cluster."),
+      boundaryEntry(),
+      assistantSays("Which deploy target should I use?"),
+    ];
+    expect(detectSymptoms(entries, findBoundaries(entries))).toEqual([]);
+  });
+
+  it("does not turn a string mentioning the cleared marker into a boundary", () => {
+    // findBoundaries keys on a tool_result BLOCK, which a string can never
+    // be -- so surfacing strings must not invent microcompacts. Confirmed
+    // against both real transcripts: zero string-shaped entries carry it.
+    const entries = [
+      userString("The log said [Old tool result content cleared] which confused me."),
+      read("/a.ts"),
+    ];
+    expect(findBoundaries(entries)).toEqual([]);
+  });
+});
+
+// Once string-shaped prose became visible the false-positive rate went with
+// it: on two real transcripts the whole-block reading turned 0 genuine
+// repeats into 16 and 44 reported ones. A question is the sentence that asks
+// something, not every noun pair in a block that happens to contain a "?".
+describe("repeat_question is scoped to the question itself", () => {
+  it("does not flag topics from narration sharing a block with an unrelated question", () => {
+    const entries = [
+      userSays("The deploy target is the staging cluster."),
+      boundaryEntry(),
+      assistantSays(
+        "I pushed the deploy target config and reran the suite. Should I bump the minor version?",
+      ),
+    ];
+    expect(detectSymptoms(entries, findBoundaries(entries))).toEqual([]);
+  });
+
+  it("does not read a literal question mark inside a code span as a question", () => {
+    // The exact false positive left on a real transcript: git status output
+    // quoted in backticks, ending in `?`, is prose about a command -- not
+    // the assistant asking anything.
+    const entries = [
+      userSays("Run git status before every commit."),
+      boundaryEntry(),
+      assistantSays("The published tree is untracked -- `git status` there shows `?`"),
+    ];
+    expect(detectSymptoms(entries, findBoundaries(entries))).toEqual([]);
+  });
+
+  it("still flags the real thing when the question stands on its own", () => {
+    const entries = [
+      userSays("The deploy target is the staging cluster."),
+      boundaryEntry(),
+      assistantSays("I finished the refactor and the tests pass. Which deploy target should I use?"),
+    ];
+    expect(detectSymptoms(entries, findBoundaries(entries))).toEqual([
+      { kind: "repeat_question", boundaryIndex: 1, evidence: "deploy target" },
+    ]);
+  });
+});
+
 // A transcript contains all sorts of shapes; a null or bare-string element
 // inside a content array must not crash the detectors.
 describe("malformed content blocks", () => {
