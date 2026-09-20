@@ -135,6 +135,12 @@ batch-specific loop.
    the phase list as staged, the ceiling, push authority granted or
    declined. Then `continuity_checkpoint(source: "auto", notes:
    "batch run <runId> — phase <first>")` so a killed run leaves a trail.
+   A usage limit is NOT a kill: the run pauses when it hits the ceiling
+   and resumes itself when the window rolls over, so nothing is dropped
+   and nothing needs restarting by hand. The checkpoint is for real
+   deaths — a crash, a reboot, a closed session — and batch mode carries
+   no defences against limit-time agent loss, because the platform no
+   longer loses them.
    **Resume path — a killed run re-enters HERE.** The checkpoint notes
    hold the runId; `run_manifest(action: "read")` is the authority on
    what was approved (a resumed run never widens scope or push
@@ -190,7 +196,11 @@ batch-specific loop.
    one comment — tracker noise is a failure mode, not diligence. At
    every phase boundary: `outlook_emit(tracker: {open, inProgress,
    blocked, nextVerb, asOf})` so the board tracks the run in real time
-   — the final report is a summary, not the only visibility.
+   — the final report is a summary, not the only visibility. The
+   harness's own headless progress reporting is trustworthy again: watch
+   it for liveness and let it be the running view. The tracker comments
+   and board emits stay the durable record, and neither one is padded to
+   cover for the other.
 4. **Wrap — every exit lands here (complete or stopped).** In order:
    final `budget_check(runId, phase: "wrap")` boundary — the honest
    last spend row, overshoot included; `run_manifest(action:

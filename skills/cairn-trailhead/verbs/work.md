@@ -40,12 +40,23 @@ pairing overlay applies:
    `/cairn:plan <N>`.
 2. `--wave` (only when PLAN.md has `wave_N` frontmatter — else say so and
    point at `/cairn:plan <N>`): run waves in order (`--wave N` runs just
-   that wave). Each worker runs the full per-issue lifecycle below
-   (claim → work → close → ledger) — the dispatch mechanism changes,
-   the lifecycle never does. Wave N+1 starts only when every wave-N
-   issue is closed and merged. A failed issue: let the wave's others
-   finish, then STOP before the next wave and report — never build on
-   possibly-broken foundations.
+   that wave). Every issue still runs the full per-issue lifecycle below
+   (claim → work → close → ledger) — the dispatch mechanism and who
+   holds each step change; the lifecycle never does. Wave N+1 starts
+   only when every wave-N issue is closed and merged. A failed issue:
+   let the wave's others finish, then STOP before the next wave and
+   report — never build on possibly-broken foundations.
+
+   **Wave sizing — the platform's ten-agent guideline.** Count agents,
+   not issues. The harness runs about ten subagents at a time and queues
+   the rest, so a wave dispatched past that number doesn't run faster,
+   it just runs deeper in the queue. Size the wave so the agents in
+   flight stay around ten. A fan-out that is inference-bound rather than
+   machine-bound — workers waiting on model time, not on a build — can
+   raise that ceiling with the `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`
+   environment dial; when a wave only fits under a raised dial, say so
+   in the wave report, so nobody later reads it as a wave that fit by
+   default.
 
    **Brief composition (both dispatch paths):** every worker's prompt
    composes from `templates/wave-brief.md` — read the template, fill its
@@ -68,9 +79,17 @@ pairing overlay applies:
 
    **Primary — the harness has the `Workflow` tool** (probe #86 validated
    every leg of this path): dispatch the wave as ONE `Workflow` run.
-   Script shape: `pipeline(issues, claim, work, verify, close)` — one
-   `agent()` call per stage per issue, so the run graph mirrors the
-   lifecycle exactly and the platform owns retries, ordering, and fan-in.
+   Default script shape — ONE agent per issue: `pipeline(issues, work)`,
+   with claim, close and ledger kept in the coordinator's own thread and
+   run in wave order, so the paper trail lands in one predictable
+   sequence and the wave's agent count is exactly its issue count.
+   The per-stage pipeline — `pipeline(issues, claim, work, verify,
+   close)`, one `agent()` call per stage per issue, so the run graph
+   mirrors the lifecycle exactly and the platform owns retries,
+   ordering, and fan-in — is the option for a wave small enough to
+   afford it: it multiplies the issue count by four, so eight issues
+   means thirty-two agents, well past the guideline above, where the
+   same eight at one agent per issue sit comfortably under it.
    - Every stage declares a structured-output schema and returns
      machine-readable status (issue id, stage, ok, detail) — the schema
      IS the worker contract; a misbehaving worker degrades to a
