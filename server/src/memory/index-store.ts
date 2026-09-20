@@ -5,6 +5,7 @@ import { mkdirSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import {
   bindingsError,
+  classifyBindingFailure,
   isBindingsFailure,
   loadSqlite,
   type SqliteCtor,
@@ -59,7 +60,7 @@ export class MemoryIndex {
       mkdirSync(join(dbPath, ".."), { recursive: true });
       this.db = new Sqlite(dbPath);
     } catch (e) {
-      if (isBindingsFailure(e)) throw bindingsError();
+      if (isBindingsFailure(e)) throw bindingsError(classifyBindingFailure(e));
       throw e;
     }
     this.db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5(

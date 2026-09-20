@@ -1834,7 +1834,7 @@ stack traces.
 | `HANDOFF_INVALID` | The continuity handoff file is malformed | Inspect or discard it; a fresh checkpoint rewrites it |
 | `HANDOFF_STALE` | The handoff is too old to trust | Inspect or discard — stale handoffs are never auto-resumed |
 | `UNSUPPORTED` | The operation isn't valid here — e.g. an invalid node/edge type in a map patch, or a capability the backend doesn't have | Use a supported type/path; capability differences are in section 4 |
-| `NATIVE_MODULE_BROKEN` | The better-sqlite3 compiled binding is missing or built for a different node ABI — memory *index* tools (`mem_index`/`mem_search`/`mem_stats`/`mem_timeline`) fail; card tools keep working | Run the command in the message: `cd <server dir> && npm rebuild better-sqlite3`, then reload plugins (or restart the session) so the server picks up the new binding — `config_probe` reports the same fix preemptively |
+| `NATIVE_MODULE_BROKEN` | The better-sqlite3 compiled binding is missing (never compiled in this install) or built for a different node ABI — memory *index* tools (`mem_index`/`mem_search`/`mem_stats`/`mem_timeline`) fail; card tools keep working | Run the command in the message: `cd <install root> && npm rebuild better-sqlite3`, then reload plugins (or restart the session) so the server picks up the new binding. The directory is derived from where better-sqlite3 actually resolves from — the install root, **not** the plugin cache's `server/` — so paste it as given. The message names which of the two modes you hit; `config_probe` reports both preemptively (`native.kind`) |
 | `PRECONDITION_FAILED` | The operation's gate isn't satisfied — unverified phases at summit, closing a session without its gate entry, starting a duplicate open session, a map patch with dangling edges, board writes without a workspace, a peer that isn't on PATH / is disabled / timed out | The message names the gate. Satisfy it and re-run — these operations are built to be safely re-runnable |
 
 ### Common failure scenarios
@@ -1872,15 +1872,27 @@ fix; a lost claim race means back off and pick different work.
 
 **Memory tools fail with `NATIVE_MODULE_BROKEN`.** Symptom: every
 `mem_index`/`mem_search`/`mem_stats`/`mem_timeline` call fails (card tools
-still work). Cause: a freshly installed plugin cache under a newer node ABI
-ships no compiled better-sqlite3 binding — nothing you did wrong. Fix: run
-the exact command in the error message —
-`cd <server dir> && npm rebuild better-sqlite3` — once, then retry.
+still work). Nothing you did wrong. The error names one of two modes,
+because they are not the same problem:
+
+- **no compiled binding in this install** — nothing was ever built here. A
+  freshly installed plugin cache ships no compiled better-sqlite3, and the
+  runtime deps live at the cache **root**, so there is no `server/node_modules`
+  to rebuild in. If npm reports nothing to rebuild, the dependency isn't
+  installed at that root at all — `npm install` there first, then rebuild.
+- **built for a different runtime** — a binding exists but targets another
+  node ABI (or another platform). The rebuild re-targets it.
+
+Fix, both modes: run the exact command in the error message —
+`cd <install root> && npm rebuild better-sqlite3` — once, then retry. The
+directory is derived from where better-sqlite3 actually resolves from, never
+hardcoded, so paste it as given rather than guessing at `server/`.
 The rebuild alone isn't enough — reload plugins (or restart the session)
 so the server picks up the new binding; a running server keeps failing on
 its cached load until you do.
 `config_probe` reports the same thing up front as an advisory `native` line
-(ok / broken + fix), so a preflight catches it before any memory call does.
+(ok / broken + `kind` + fix), so a preflight catches it before any memory
+call does.
 
 **Planning directory looks wrong.** `/cairn:medic` for the diagnosis,
 `medic --repair` for the mechanical subset, `medic forensics <phase>` when

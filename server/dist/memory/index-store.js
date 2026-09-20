@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { mkdirSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
-import { bindingsError, isBindingsFailure, loadSqlite, } from "./native.js";
+import { bindingsError, classifyBindingFailure, isBindingsFailure, loadSqlite, } from "./native.js";
 export function indexDbPath(projectDir) {
     const abs = resolve(projectDir);
     const hash = createHash("sha256").update(abs).digest("hex").slice(0, 16);
@@ -27,7 +27,7 @@ export class MemoryIndex {
         }
         catch (e) {
             if (isBindingsFailure(e))
-                throw bindingsError();
+                throw bindingsError(classifyBindingFailure(e));
             throw e;
         }
         this.db.exec(`CREATE VIRTUAL TABLE IF NOT EXISTS chunks USING fts5(
