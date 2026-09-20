@@ -15,7 +15,7 @@ same courtesy.
 
 Cairn's column reflects version <!-- auto:version -->2.6.0<!-- /auto:version -->:
 <!-- auto:verb-count -->39<!-- /auto:verb-count --> verbs,
-<!-- auto:tool-count -->85<!-- /auto:tool-count --> typed MCP tools, 1258
+<!-- auto:tool-count -->86<!-- /auto:tool-count --> typed MCP tools, 1258
 passing tests, <!-- auto:tracker-count -->8<!-- /auto:tracker-count --> tracker
 backends. Counts are script-computed from the same sources CI gates on and
 refreshed each release by `scripts/refresh-comparison.mjs`; the test count

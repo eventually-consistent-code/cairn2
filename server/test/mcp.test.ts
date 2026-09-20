@@ -110,6 +110,7 @@ describe("cairn MCP server", () => {
         "mem_card_list",
         "mem_card_recall",
         "mem_card_update",
+        "mem_compact",
         "mem_timeline",
         "continuity_checkpoint",
         "continuity_get",
@@ -170,8 +171,8 @@ describe("cairn MCP server", () => {
     );
   });
 
-  it("pins the tool count at 85", async () => {
-    expect((await listToolNames()).length).toBe(85);
+  it("pins the tool count at 86", async () => {
+    expect((await listToolNames()).length).toBe(86);
   });
 
   it("issue_attach reads the file and forwards to the tracker; missing file is NOT_FOUND", async () => {

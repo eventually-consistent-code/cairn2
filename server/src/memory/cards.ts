@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CairnError } from "../errors.js";
 import { parseFrontmatter, serializeFrontmatter } from "../planning/frontmatter.js";
@@ -119,6 +119,35 @@ export function updateCard(projectDir: string, id: string, patch: CardPatch): Ca
   const frontmatter = validateFrontmatter(data, `card '${id}' frontmatter`);
   writeFileSync(path, serializeFrontmatter(data, body));
   return { id, frontmatter, body };
+}
+
+/** Card ids are `<type>-<hash>`; anything else must never reach a path join. */
+const SAFE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
+/**
+ * Retires a card by deleting its file (#172). Card bodies are immutable, so
+ * retirement is deletion -- never an edit in place, and never a body rewritten
+ * to say "archived". The archive card that replaces a retired batch is a new
+ * card written before any of this runs; see memory/compaction.ts.
+ *
+ * Returns false when the card was already gone, so retrying a half-finished
+ * compaction is a no-op rather than an error.
+ *
+ * :param projectDir: repository root
+ * :param id: card id, validated before it is joined onto a path
+ * :returns: true when a file was removed
+ */
+export function deleteCard(projectDir: string, id: string): boolean {
+  // Ids flow in from tool input and card frontmatter, both of which can carry
+  // a hostile "../..". Reads survive that; an unlink must not.
+  if (!SAFE_ID.test(id)) {
+    throw new CairnError("CONFIG_INVALID", `invalid card id '${id}'`,
+      "list ids with mem_card_list");
+  }
+  const path = join(cardsDir(projectDir), `${id}.md`);
+  if (!existsSync(path)) return false;
+  unlinkSync(path);
+  return true;
 }
 
 export function updateCardConfidence(projectDir: string, id: string,

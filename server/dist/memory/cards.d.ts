@@ -47,6 +47,20 @@ export interface CardPatch {
     provenanceCommits?: string[];
 }
 export declare function updateCard(projectDir: string, id: string, patch: CardPatch): Card;
+/**
+ * Retires a card by deleting its file (#172). Card bodies are immutable, so
+ * retirement is deletion -- never an edit in place, and never a body rewritten
+ * to say "archived". The archive card that replaces a retired batch is a new
+ * card written before any of this runs; see memory/compaction.ts.
+ *
+ * Returns false when the card was already gone, so retrying a half-finished
+ * compaction is a no-op rather than an error.
+ *
+ * :param projectDir: repository root
+ * :param id: card id, validated before it is joined onto a path
+ * :returns: true when a file was removed
+ */
+export declare function deleteCard(projectDir: string, id: string): boolean;
 export declare function updateCardConfidence(projectDir: string, id: string, confidence: "high" | "medium" | "low"): Card;
 export declare function listCards(projectDir: string, filter?: {
     scopePhase?: number;
