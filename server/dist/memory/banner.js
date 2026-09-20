@@ -5,6 +5,7 @@ import { loadConfig } from "../config.js";
 import { bannerPath } from "../core/continuity.js";
 import { lastSessionEntry, listSessions } from "../sessions/store.js";
 import { listCards } from "./cards.js";
+import { observationBacklog } from "./observations.js";
 /** Fetch cost is computed fresh at render time -- never stored on the card. */
 function fetchCost(body) {
     return Math.ceil(body.length / 4);
@@ -56,8 +57,13 @@ function computeBannerData(projectDir) {
     const cards = scopedCards(listCards(projectDir), active).slice(0, maxCards);
     const open = ["trace", "probe", "draft", "thread"]
         .flatMap((kind) => listSessions(projectDir, kind, "open"));
-    if (cards.length === 0 && open.length === 0)
+    // A backlog past the threshold is reason enough to render on its own: the
+    // session with no cards and no open sessions is exactly the one that has
+    // never run retro (#173).
+    const backlog = observationBacklog(projectDir);
+    if (cards.length === 0 && open.length === 0 && !backlog.overThreshold) {
         return { text: null, cardCostTotal: 0 };
+    }
     const project = basename(resolve(projectDir));
     const headerParts = [`cairn recall index — ${project}`];
     if (active.phase !== undefined)
@@ -66,6 +72,12 @@ function computeBannerData(projectDir) {
         headerParts.push(active.issueId);
     const lines = [`## ${headerParts.join(" / ")}`];
     let cardCostTotal = 0;
+    // Directly under the header, never below a 20-row card table -- a warning
+    // nobody scrolls to is the silence this was meant to end.
+    if (backlog.overThreshold) {
+        const noun = backlog.count === 1 ? "observation" : "observations";
+        lines.push(`**${backlog.count} unreviewed ${noun} (oldest ${backlog.oldestAgeDays}d) — run retro**`);
+    }
     if (cards.length > 0) {
         const rows = cards.map((card) => {
             const type = card.frontmatter.confidence
@@ -90,11 +102,14 @@ function computeBannerData(projectDir) {
  * project (id tiebreak), capped at `recallIndex.maxCards`, followed by an
  * "open sessions:" section (sorted kind trace/probe/draft/thread, then id) when any
  * open sessions exist -- the banner is non-null if either cards or open
- * sessions are present. Byte-stable -- no timestamps beyond the dates already
- * in session frontmatter, no volatile ordering; bytes change only when the
- * card/session store or active context changes. Returns null (and deletes any
- * existing banner file) when `recallIndex.enabled` is false or there is
- * nothing to render.
+ * sessions are present. An observation backlog past
+ * `memory.observationWarnThreshold` adds a "run retro" line under the header
+ * and is on its own enough to render a banner (#173). Byte-stable -- no
+ * timestamps beyond the dates already in session frontmatter, no volatile
+ * ordering; bytes change only when the card/session/observation store or the
+ * active context changes, plus the backlog's whole-day age, which rolls over
+ * at most once a day. Returns null (and deletes any existing banner file)
+ * when `recallIndex.enabled` is false or there is nothing to render.
  */
 export function renderBanner(projectDir) {
     const { text } = computeBannerData(projectDir);

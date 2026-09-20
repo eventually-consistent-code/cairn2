@@ -31,6 +31,7 @@ export declare const ConfigSchema: z.ZodObject<{
     }, z.core.$strip>>;
     memory: z.ZodDefault<z.ZodObject<{
         tokenThreshold: z.ZodNumber;
+        observationWarnThreshold: z.ZodDefault<z.ZodNumber>;
     }, z.core.$strip>>;
     user: z.ZodOptional<z.ZodObject<{
         handle: z.ZodString;

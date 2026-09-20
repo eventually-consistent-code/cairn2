@@ -3,11 +3,14 @@
  * project (id tiebreak), capped at `recallIndex.maxCards`, followed by an
  * "open sessions:" section (sorted kind trace/probe/draft/thread, then id) when any
  * open sessions exist -- the banner is non-null if either cards or open
- * sessions are present. Byte-stable -- no timestamps beyond the dates already
- * in session frontmatter, no volatile ordering; bytes change only when the
- * card/session store or active context changes. Returns null (and deletes any
- * existing banner file) when `recallIndex.enabled` is false or there is
- * nothing to render.
+ * sessions are present. An observation backlog past
+ * `memory.observationWarnThreshold` adds a "run retro" line under the header
+ * and is on its own enough to render a banner (#173). Byte-stable -- no
+ * timestamps beyond the dates already in session frontmatter, no volatile
+ * ordering; bytes change only when the card/session/observation store or the
+ * active context changes, plus the backlog's whole-day age, which rolls over
+ * at most once a day. Returns null (and deletes any existing banner file)
+ * when `recallIndex.enabled` is false or there is nothing to render.
  */
 export declare function renderBanner(projectDir: string): string | null;
 /**

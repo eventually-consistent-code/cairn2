@@ -25,7 +25,10 @@ milestone (including just-archived `milestones/v<N>/`).
      unless the ledger corroborates it, provenance pointing at the real
      files. Observations NEVER become cards without this review, and after
      the batch is approved, truncate the reviewed observations file —
-     retro is the gate and the garbage collector.
+     retro is the gate and the garbage collector. How deep the pile is
+     comes from `mem_stats`' `observations` block (count, oldest-entry
+     age); past `memory.observationWarnThreshold` the session banner has
+     already been asking for this run.
 3. Re-grade prior knowledge: `mem_card_recall` scoped to this phase — for
    each card, did this scope's events confirm or contradict it? Confirmed
    → `mem_card_update` confidence up one step. Contradicted → down to

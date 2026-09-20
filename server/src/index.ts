@@ -16,6 +16,7 @@ import { z } from "zod";
 import { CairnError } from "./errors.js";
 import { loadConfig, writeConfigPatch } from "./config.js";
 import { auditMemory } from "./memory/audit.js";
+import { observationBacklog } from "./memory/observations.js";
 import type { CairnConfig } from "./config.js";
 import { ActiveContext } from "./active-context.js";
 import {
@@ -1049,9 +1050,10 @@ export function buildServer(deps: {
     {
       description:
         "Memory index size — chunk count and approximate token usage (capacity guard signal), " +
-        "recall-banner token accounting, and card-store health for `audit memory`: cards that " +
+        "recall-banner token accounting, card-store health for `audit memory`: cards that " +
         "fail to parse (silently skipped by list and recall), broken provenance, near-duplicates, " +
-        "and aged low-confidence cards",
+        "and aged low-confidence cards, plus the observation backlog waiting on retro (count, " +
+        "oldest-entry age, warn threshold)",
       inputSchema: z.object({}),
     },
     wrap(() => {
@@ -1060,13 +1062,16 @@ export function buildServer(deps: {
       // FTS binding — a memory audit that dies when memory is unhealthy is
       // the wrong shape (#171). Index stats degrade to a note instead.
       const cards = auditMemory(d);
+      // Same independence rule for the observation backlog (#173): it reads
+      // one plain JSONL file, so a broken index never hides the warning.
+      const observations = observationBacklog(d);
       let index: Record<string, unknown>;
       try {
         index = { ...getMemIndex(d).stats(), ...bannerStats(d) };
       } catch (e) {
         index = { indexUnavailable: (e as Error).message ?? String(e) };
       }
-      return { ...index, cards };
+      return { ...index, cards, observations };
     }),
   );
 

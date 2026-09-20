@@ -46,7 +46,10 @@ describe("config defaults round-trip (.prefault parse-through)", () => {
     expect(cfg.ship).toEqual({ confirm: true });
     // Non-empty .default values stay complete-by-construction.
     expect(cfg.agents).toEqual({ model: "auto" });
-    expect(cfg.memory).toEqual({ tokenThreshold: 150000 });
+    // The memory default object must stay complete as fields are added — a
+    // key present only as an inner .default would vanish under the
+    // short-circuit (#173 added observationWarnThreshold).
+    expect(cfg.memory).toEqual({ tokenThreshold: 150000, observationWarnThreshold: 25 });
   });
 
   it("partial nested block merges with inner defaults instead of replacing them", () => {

@@ -31,9 +31,15 @@ export const ConfigSchema = z.object({
     agents: z
         .object({ model: z.enum(["auto", "inherit", "haiku", "sonnet", "opus"]) })
         .default({ model: "auto" }),
+    // observationWarnThreshold (#173): unreviewed rows in the observation
+    // buffer before the session banner says "run retro". The block's default
+    // object stays complete — see the .default note above.
     memory: z
-        .object({ tokenThreshold: z.number().int().positive() })
-        .default({ tokenThreshold: 150000 }),
+        .object({
+        tokenThreshold: z.number().int().positive(),
+        observationWarnThreshold: z.number().int().positive().default(25),
+    })
+        .default({ tokenThreshold: 150000, observationWarnThreshold: 25 }),
     user: z
         .object({
         handle: z.string().min(1),

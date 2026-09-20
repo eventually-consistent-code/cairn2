@@ -119,7 +119,7 @@ gotchas/references:
 |---|---|
 | `mem_index` | Index reference material into the searchable memory store (disposable, rebuildable) |
 | `mem_search` | Full-text search the memory index, optionally scoped to a phase/issue |
-| `mem_stats` | Memory index size — chunk count and approximate token usage (capacity guard signal) |
+| `mem_stats` | Memory index size — chunk count and approximate token usage (capacity guard signal), card-store health, and the observation backlog waiting on retro |
 | `mem_card_create` | Write a durable memory card (decision/constraint/gotcha/reference) with provenance |
 | `mem_card_list` | List memory cards, optionally filtered by phase/issue scope |
 | `mem_card_recall` | List memory cards with staleness checked against their provenance (the anti-rot check) |
@@ -243,6 +243,17 @@ fresh at render time; `mem_stats` reports `bannerTokens` (the banner's own
 cost) and `tokensSavedVsFullInjection` (sum of the scoped cards' costs minus
 the banner cost, floored at 0) — honest accounting of what the pre-rendered
 index actually saves versus injecting every card in full.
+
+The banner also carries the observation buffer's state. Once
+`.cairn/observations/observations.jsonl` holds at least
+`memory.observationWarnThreshold` rows (default 25), a line directly under
+the header reads `N unreviewed observations (oldest Xd) — run retro`, and a
+backlog past that line renders the banner even with no cards and no open
+sessions. `mem_stats` reports the same facts under `observations` (count,
+`oldestAgeDays`, threshold). Both read the plain JSONL file — like the card
+audit, independent of the index binding, so a broken index can't hide the
+backlog. Capture stays passive; retro remains the only reader and the only
+garbage collector.
 
 ### Configuration
 
@@ -732,7 +743,7 @@ Four dependency-free, fire-and-forget Node scripts, registered in
 | 2 | `PreCompact` | — | `precompact-refresh.mjs` | Unthrottled handoff refresh before compaction discards context |
 | 3 | `SessionStart` | — | `sessionstart-continuity.mjs` | Cat the handoff + recall banner; offer/auto-run/suppress resume per `continuity.resume` |
 | 4 | `PreToolUse` | `Bash` | `pretooluse-leakguard.mjs` | Leak guard — scan a staged `git commit`'s diff for cairn-internal refs before it lands |
-| 5 | `PostToolUse` | `Edit\|Write\|Bash` | `posttooluse-observe.mjs` | Passive observation capture (tool, target, error flag) to `.cairn/observations/` — cairn projects only, capped, reviewed and cleared by `retro` |
+| 5 | `PostToolUse` | `Edit\|Write\|Bash` | `posttooluse-observe.mjs` | Passive observation capture (tool, target, error flag) to `.cairn/observations/` — cairn projects only, capped, reviewed and cleared by `retro`, with its depth surfaced by `mem_stats` and the banner |
 | 6 | `Stop` | — | `stop-costtracker.mjs` | Cumulative session cost snapshot (tokens + approximate $ + report bytes) tagged with the active phase/issue, to `~/.cairn/metrics/`; `cost-report.mjs` rolls it up |
 
 ### Leak guard (hook #4)
