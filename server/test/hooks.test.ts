@@ -1120,6 +1120,169 @@ describe("stop-costtracker + cost-report", () => {
     rmSync(metrics, { force: true });
   });
 
+  // #229 -- the log SEGMENTS, it does not truncate. The old cap kept the last
+  // 2500 of 5000 lines, deleting exactly the samples the token estimator
+  // calibrates from, and fastest on the busiest projects.
+  function segmentDir(projectDir: string): { dir: string; stem: string } {
+    const p = metricsPathFor(projectDir);
+    return { dir: dirname(p), stem: basename(p).replace(/\.jsonl$/, "") };
+  }
+
+  /** Closed segments beside the live one, oldest first. */
+  function closedSegments(projectDir: string): string[] {
+    const { dir, stem } = segmentDir(projectDir);
+    try {
+      return readdirSync(dir)
+        .filter((n) => n !== `${stem}.jsonl` && n.startsWith(`${stem}.`) && n.endsWith(".jsonl"))
+        .sort();
+    } catch {
+      return [];
+    }
+  }
+
+  /** Metrics live under the real $HOME, so every test here cleans its own
+   *  stem -- live segment and closed ones alike -- or the next one inherits
+   *  rows it never wrote. */
+  function clearMetrics(projectDir: string): void {
+    const { dir, stem } = segmentDir(projectDir);
+    rmSync(join(dir, `${stem}.jsonl`), { force: true });
+    for (const n of closedSegments(projectDir)) rmSync(join(dir, n), { force: true });
+  }
+
+  function rows(...entries: Record<string, unknown>[]): string {
+    return entries.map((e) => JSON.stringify(e)).join("\n") + "\n";
+  }
+
+  /** A live segment already at the roll-over threshold, aged past the hook's
+   *  30s throttle so the next run actually does work. */
+  function fillLiveSegment(projectDir: string, count: number, ts: string): string {
+    const metrics = metricsPathFor(projectDir);
+    mkdirSync(dirname(metrics), { recursive: true });
+    const lines: string[] = [];
+    for (let i = 0; i < count; i++) {
+      lines.push(JSON.stringify({
+        ts, session_id: `bulk-${i}`, phase: 1,
+        input_tokens: 10, output_tokens: 1, est_cost_usd: 0.01,
+      }));
+    }
+    writeFileSync(metrics, lines.join("\n") + "\n");
+    const aged = new Date(Date.now() - 120_000);
+    utimesSync(metrics, aged, aged);
+    return metrics;
+  }
+
+  it("closes a full segment by renaming it -- no row is ever dropped (#229)", () => {
+    const proj = freshDir("cairn-cost-rotate-");
+    clearMetrics(proj);
+    const transcript = transcriptWith(proj);
+    // recent rows: still-live sessions, so nothing is prunable either
+    const metrics = fillLiveSegment(proj, 5000, new Date().toISOString());
+
+    expect(runHookRaw(COSTTRACKER, proj,
+      JSON.stringify({ session_id: "s-fresh", transcript_path: transcript })).status).toBe(0);
+
+    // the live segment holds the new row alone...
+    const live = readFileSync(metrics, "utf8").trim().split("\n");
+    expect(live).toHaveLength(1);
+    expect(JSON.parse(live[0]).session_id).toBe("s-fresh");
+
+    // ...and every one of the 5000 prior rows is intact in a dated segment
+    const closed = closedSegments(proj);
+    expect(closed).toHaveLength(1);
+    expect(closed[0]).toMatch(/\.\d{8}-\d{6}-\d{2}\.jsonl$/);
+    const kept = readFileSync(join(dirname(metrics), closed[0]), "utf8").trim().split("\n");
+    expect(kept).toHaveLength(5000);
+    expect(JSON.parse(kept[0]).session_id).toBe("bulk-0");
+    expect(JSON.parse(kept[4999]).session_id).toBe("bulk-4999");
+
+    // and the report sees the whole record, not just the live segment
+    const json = spawnSync(process.execPath, [COSTREPORT, "--json"], {
+      cwd: proj, env: { ...process.env, CLAUDE_PROJECT_DIR: proj }, encoding: "utf8",
+    });
+    expect(JSON.parse(json.stdout).sessions).toBe(5001);
+    clearMetrics(proj);
+  });
+
+  it("merges segments to the LATEST row per session, never the sum (#229)", () => {
+    const proj = freshDir("cairn-cost-merge-");
+    clearMetrics(proj);
+    const metrics = metricsPathFor(proj);
+    const { dir, stem } = segmentDir(proj);
+    mkdirSync(dir, { recursive: true });
+
+    // s1 started before the roll-over: its early CUMULATIVE row sits in the
+    // closed segment. s2 lived and died entirely inside it.
+    writeFileSync(join(dir, `${stem}.20250101-000000-00.jsonl`), rows(
+      { ts: "2025-01-01T00:00:00.000Z", session_id: "s1", phase: 4, issue: "CRN-1",
+        input_tokens: 100, output_tokens: 10, est_cost_usd: 1 },
+      { ts: "2025-01-01T00:00:01.000Z", session_id: "s2", phase: 4, issue: "CRN-1",
+        input_tokens: 50, output_tokens: 5, est_cost_usd: 0.5 },
+    ));
+    // days later s1 gets another row -- cumulative, so it SUPERSEDES the first
+    writeFileSync(metrics, rows(
+      { ts: "2025-01-09T00:00:00.000Z", session_id: "s1", phase: 4, issue: "CRN-1",
+        input_tokens: 300, output_tokens: 30, est_cost_usd: 3 },
+    ));
+
+    const json = spawnSync(process.execPath, [COSTREPORT, "--json"], {
+      cwd: proj, env: { ...process.env, CLAUDE_PROJECT_DIR: proj }, encoding: "utf8",
+    });
+    const parsed = JSON.parse(json.stdout);
+    expect(parsed.sessions).toBe(2);
+    // 3.00 (s1's latest) + 0.50 (s2) -- NOT 4.50, which is what concatenating
+    // the segments and summing would produce.
+    expect(parsed.total_est_usd).toBe(3.5);
+
+    const perIssue = spawnSync(process.execPath, [COSTREPORT, "--issue", "CRN-1"], {
+      cwd: proj, env: { ...process.env, CLAUDE_PROJECT_DIR: proj }, encoding: "utf8",
+    });
+    expect(perIssue.stdout.trim()).toBe("3.50");
+    clearMetrics(proj);
+  });
+
+  it("prunes a closed segment only once its sessions are quiescent (#229)", () => {
+    const proj = freshDir("cairn-cost-prune-");
+    clearMetrics(proj);
+    const transcript = transcriptWith(proj);
+    const { dir, stem } = segmentDir(proj);
+    mkdirSync(dir, { recursive: true });
+    const day = 24 * 60 * 60 * 1000;
+    const stale = new Date(Date.now() - 200 * day).toISOString();  // past the 90d window
+    const fresh = new Date().toISOString();
+
+    // droppable: "dead" is quiescent, "moved" is superseded by the live segment
+    writeFileSync(join(dir, `${stem}.20250101-000000-00.jsonl`), rows(
+      { ts: stale, session_id: "dead", phase: 1, est_cost_usd: 1 },
+      { ts: stale, session_id: "moved", phase: 1, est_cost_usd: 1 },
+    ));
+    // kept: "alive" is neither -- one live session holds the whole segment
+    writeFileSync(join(dir, `${stem}.20250102-000000-00.jsonl`), rows(
+      { ts: stale, session_id: "old-friend", phase: 1, est_cost_usd: 1 },
+      { ts: fresh, session_id: "alive", phase: 1, est_cost_usd: 1 },
+    ));
+    // live segment at the threshold, carrying "moved"'s newer row
+    const metrics = metricsPathFor(proj);
+    const bulk: string[] = [
+      JSON.stringify({ ts: fresh, session_id: "moved", phase: 1, est_cost_usd: 2 }),
+    ];
+    for (let i = 0; i < 4999; i++) {
+      bulk.push(JSON.stringify({ ts: fresh, session_id: `bulk-${i}`, phase: 1, est_cost_usd: 0 }));
+    }
+    writeFileSync(metrics, bulk.join("\n") + "\n");
+    const aged = new Date(Date.now() - 120_000);
+    utimesSync(metrics, aged, aged);
+
+    expect(runHookRaw(COSTTRACKER, proj,
+      JSON.stringify({ session_id: "s-prune", transcript_path: transcript })).status).toBe(0);
+
+    const closed = closedSegments(proj);
+    expect(closed).not.toContain(`${stem}.20250101-000000-00.jsonl`);
+    expect(closed).toContain(`${stem}.20250102-000000-00.jsonl`);
+    // the roll-over's own segment is brand new -- it is never a prune candidate
+    expect(closed).toHaveLength(2);
+    clearMetrics(proj);
+  });
+
   it("stays a cheap recorder on a transcript full of fan-out (#176)", () => {
     const proj = freshDir("cairn-cost-perf-");
     const transcript = transcriptWithReports(proj);

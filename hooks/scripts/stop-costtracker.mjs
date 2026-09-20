@@ -6,6 +6,9 @@
  *   ~/.cairn/metrics/<project>.jsonl, tagged with the active cairn phase and
  *   issue so spend rolls up to the work items the tracker shows. Rows are
  *   cumulative per session: reports take the LATEST row per session_id.
+ *   The log is SEGMENTED, never truncated (#229) -- a full segment is closed
+ *   under a dated name and a fresh one started, so the longitudinal record
+ *   the token estimator calibrates from survives a busy project.
  *   Also measures REPORT BYTES (#176) -- how much of a coordinator's context
  *   is subagent task results rather than its own work. Measurement only: it
  *   tells us whether report compression is worth building, nothing more.
@@ -13,13 +16,24 @@
  * Author(s): John Reed
  */
 
-import { readFileSync, readdirSync, statSync, appendFileSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import {
+  appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync,
+} from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { metricsPath } from "./lib.mjs";
 
 const THROTTLE_MS = 30_000;
-const MAX_LINES = 5000;
-const KEEP_LINES = 2500;
+
+// Lines at which the live segment is CLOSED -- renamed, not trimmed. Nothing
+// in it is ever edited or dropped; the cap bounds one file, not the record.
+const SEGMENT_MAX_LINES = 5000;
+
+// A session that has gone this long without a new row is quiescent: its
+// cumulative record is final and will not grow again. Only once EVERY session
+// in a closed segment is quiescent (or superseded, see prune) may that segment
+// go. Age, never line count -- a line-count cap deletes hardest exactly where
+// the history is richest.
+const QUIESCENCE_MS = 90 * 24 * 60 * 60 * 1000;
 
 // Tools that fan work out to a subagent. Harnesses have called it both.
 const TASK_TOOLS = new Set(["Task", "Agent"]);
@@ -190,11 +204,137 @@ function workKind(projectDir, ctx) {
   return "other";
 }
 
-/** Retention guard -- the metrics log must not grow unbounded (CRN-27). */
-function capFile(path) {
-  const lines = readFileSync(path, "utf8").split("\n").filter(Boolean);
-  if (lines.length <= MAX_LINES) return;
-  writeFileSync(path, lines.slice(-KEEP_LINES).join("\n") + "\n");
+/**
+ * Every segment of the metrics log, oldest first, the live one last.
+ *
+ * The live segment keeps the canonical name; a closed one is
+ * "<stem>.<stamp>.jsonl" with a fixed-width stamp, so a plain lexical sort is
+ * chronological order. Readers depend on that order: rows are cumulative per
+ * session and the LATEST row wins, so a session that gets another row days
+ * later -- landing in a newer segment while its older rows sit in an older
+ * one -- must resolve to the newer row. Concatenating and summing instead
+ * would inflate every number that session touches.
+ *
+ * Scheme mirrored in cost-report.mjs and server/src/planning/token-estimate.ts;
+ * hook scripts may never import server code, so it lives on both sides.
+ */
+function metricsSegments(current) {
+  const dir = dirname(current);
+  const stem = basename(current).replace(/\.jsonl$/, "");
+  let names;
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return [current]; // no metrics dir yet -- the live segment is the whole story
+  }
+  const closed = names
+    .filter((n) => n !== `${stem}.jsonl` && n.startsWith(`${stem}.`) && n.endsWith(".jsonl"))
+    .sort();
+  return [...closed.map((n) => join(dir, n)), current];
+}
+
+/** Fixed-width UTC stamp for a closed segment: 20260920-143000. Fixed width
+ *  is load-bearing -- it is what makes a lexical sort chronological. */
+function segmentStamp(d) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getUTCFullYear()}${p(d.getUTCMonth() + 1)}${p(d.getUTCDate())}`
+    + `-${p(d.getUTCHours())}${p(d.getUTCMinutes())}${p(d.getUTCSeconds())}`;
+}
+
+/**
+ * Close the live segment when it fills, BEFORE the new row is appended.
+ *
+ * A rename, never a rewrite: not one row is edited or dropped. The old cap
+ * kept the last 2500 of 5000 lines, which quietly deleted exactly the samples
+ * the token estimator calibrates from, fastest on the busiest projects.
+ * Returns true when a segment was closed.
+ */
+function rotate(path) {
+  let lines;
+  try {
+    lines = readFileSync(path, "utf8").split("\n").filter(Boolean).length;
+  } catch {
+    return false; // no live segment yet -- nothing to close
+  }
+  if (lines < SEGMENT_MAX_LINES) return false;
+
+  const stem = path.replace(/\.jsonl$/, "");
+  const stamp = segmentStamp(new Date());
+  // The counter is always present so every closed name is the same width.
+  for (let n = 0; n < 100; n++) {
+    const candidate = `${stem}.${stamp}-${String(n).padStart(2, "0")}.jsonl`;
+    if (existsSync(candidate)) continue;
+    renameSync(path, candidate);
+    return true;
+  }
+  return false; // 100 rotations inside one second -- keep the data, skip the roll
+}
+
+/** Parsed rows of one segment; a missing file or a corrupt line yields nothing
+ *  rather than throwing -- a recorder never gets to be why a session stops. */
+function segmentRows(path) {
+  const out = [];
+  let raw;
+  try {
+    raw = readFileSync(path, "utf8");
+  } catch {
+    return out;
+  }
+  for (const line of raw.split("\n")) {
+    if (!line.trim()) continue;
+    try {
+      const row = JSON.parse(line);
+      if (typeof row?.session_id === "string") out.push(row);
+    } catch { /* corrupt line -- skip, never guess */ }
+  }
+  return out;
+}
+
+/** Session id -> index of the segment holding its LATEST row, with that row's
+ *  timestamp. Segments arrive oldest-first and rows are appended in order, so
+ *  the last write for a session id is by construction its latest. */
+function lastRowBySession(perSegment) {
+  const last = new Map();
+  perSegment.forEach((rows, idx) => {
+    for (const r of rows) last.set(r.session_id, { idx, ts: Date.parse(r.ts ?? "") });
+  });
+  return last;
+}
+
+/**
+ * Prune closed segments nobody can still learn anything from. By AGE, never
+ * by line count -- and only ever a whole segment, since segments are
+ * append-only and never rewritten.
+ *
+ * A closed segment goes only when every session id in it is either
+ *   QUIESCENT  -- its latest row anywhere is older than QUIESCENCE_MS, so its
+ *                 cumulative record is final and this segment holds all of it; or
+ *   SUPERSEDED -- its latest row lives in a later segment, so these rows are
+ *                 already invisible to every latest-row-wins reader.
+ * One still-live session keeps the whole segment. An unparseable timestamp
+ * counts as NOT quiescent: unprovable means kept.
+ */
+function prune(segments, now) {
+  if (segments.length < 2) return;
+  const perSegment = segments.map(segmentRows);
+  const last = lastRowBySession(perSegment);
+
+  // The live segment (last) is never a candidate.
+  for (let i = 0; i < segments.length - 1; i++) {
+    const ids = new Set(perSegment[i].map((r) => r.session_id));
+    if (ids.size === 0) continue; // empty stray -- leave it alone rather than guess
+    const done = [...ids].every((id) => {
+      const l = last.get(id);
+      if (!l) return false;
+      if (l.idx !== i) return true; // superseded by a later segment
+      return Number.isFinite(l.ts) && now - l.ts > QUIESCENCE_MS;
+    });
+    if (done) {
+      try {
+        rmSync(segments[i], { force: true });
+      } catch { /* another process got there first -- fine */ }
+    }
+  }
 }
 
 function main() {
@@ -231,8 +371,12 @@ function main() {
     models: [...totals.models],
   };
   mkdirSync(dirname(path), { recursive: true });
+  // Close a full segment first, so the live one always carries the newest row
+  // and a closed one is capped at exactly SEGMENT_MAX_LINES. Pruning runs only
+  // on the rare rotation -- it reads every segment, and a Stop hook that did
+  // that every turn would be the visible cost a hook must never be.
+  if (rotate(path)) prune(metricsSegments(path), Date.now());
   appendFileSync(path, JSON.stringify(row) + "\n");
-  capFile(path);
 }
 
 try {

@@ -1,6 +1,7 @@
 // Purpose: per-phase token/cost estimator (#129) -- predict a phase's
 //   approximate agent-token spend as a RANGE before it runs, calibrated from
-//   the metrics history the Stop hook writes (~/.cairn/metrics/<hashed>.jsonl).
+//   the metrics history the Stop hook writes (~/.cairn/metrics/<hashed>*.jsonl
+//   -- one live segment plus closed, append-only ones beside it, #229).
 //   Rows there are CUMULATIVE per session, so every read collapses to the
 //   LATEST row per session_id first -- summing raw rows would multiply-count.
 //   The collapse is reimplemented here rather than shared with
@@ -29,7 +30,7 @@
 //   the thin cushion forever because it can't see the target's size.
 // Author(s): John Reed
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { CairnError } from "../errors.js";
 import { metricsPath } from "../core/continuity.js";
 import { isValidPhaseNumber, PHASE_NUMBER_ERROR, parsePhaseDirName, plansRoot, } from "./artifacts.js";
@@ -63,28 +64,60 @@ function cushionFor(n) {
 // The plan verb's body-line degrade convention for estimate-less backends:
 // "Estimate: N points / ~Xh." -- points required, hours optional.
 const ESTIMATE_LINE_RE = /^Estimate:\s*(\d+(?:\.\d+)?)\s*points?(?:\s*\/\s*~\s*(\d+(?:\.\d+)?)\s*h)?\.?\s*$/im;
-/** Latest row per session_id -- append order means later lines win. Same
- *  collapse as cost-report.mjs's latestPerSession (see header for why it's
- *  duplicated, not shared). */
-function collapseMetrics(path) {
-    const bySession = new Map();
-    let raw;
+/** Every segment of the metrics log, oldest first, the live one last. The live
+ *  segment keeps the canonical name; a closed one is "<stem>.<stamp>.jsonl"
+ *  with a fixed-width stamp, so a plain lexical sort is chronological order.
+ *  Scheme mirrored in hooks/scripts/stop-costtracker.mjs, which writes them. */
+function metricsSegments(current) {
+    const dir = dirname(current);
+    const stem = basename(current).replace(/\.jsonl$/, "");
+    let names;
     try {
-        raw = readFileSync(path, "utf8");
+        names = readdirSync(dir);
     }
     catch {
-        return [];
+        return [current]; // no metrics dir yet -- the live segment is the whole story
     }
-    for (const line of raw.split("\n")) {
-        if (!line.trim())
-            continue;
+    const closed = names
+        .filter((n) => n !== `${stem}.jsonl` && n.startsWith(`${stem}.`) && n.endsWith(".jsonl"))
+        .sort();
+    return [...closed.map((n) => join(dir, n)), current];
+}
+/**
+ * Latest row per session_id across every segment. Segments are read oldest
+ * first and rows within one are in append order, so a later row simply
+ * REPLACES an earlier one for the same session.
+ *
+ * That replacement is the whole point of the merge (#229). Rows are
+ * cumulative per session, and a session can pick up another row days after
+ * its first -- landing in the live segment while its older rows sit in a
+ * closed one. Concatenating the segments and summing would count that
+ * session's tokens twice over, inflating every phase total it feeds.
+ *
+ * Same collapse as cost-report.mjs's latestPerSession (see header for why
+ * it's duplicated, not shared).
+ */
+function collapseMetrics(path) {
+    const bySession = new Map();
+    for (const segment of metricsSegments(path)) {
+        let raw;
         try {
-            const row = JSON.parse(line);
-            if (typeof row.session_id === "string")
-                bySession.set(row.session_id, row);
+            raw = readFileSync(segment, "utf8");
         }
         catch {
-            // corrupt line -- skip, never guess
+            continue; // pruned or never written -- not an error
+        }
+        for (const line of raw.split("\n")) {
+            if (!line.trim())
+                continue;
+            try {
+                const row = JSON.parse(line);
+                if (typeof row.session_id === "string")
+                    bySession.set(row.session_id, row);
+            }
+            catch {
+                // corrupt line -- skip, never guess
+            }
         }
     }
     return [...bySession.values()];
