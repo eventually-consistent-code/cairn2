@@ -18,7 +18,8 @@ evidence panel.
 The lifecycle spine (new → plan → work → verify → ship → summit) drawn as a
 two-lane mirror: plan artifacts in git above the line, the tracker paper
 trail your manager reads below it, and the resync channel running back the
-other way.
+other way. The plan lane names the check each task will be proved by; the
+tracker lane's close cites it.
 
 ![the cairn workflow — git plan artifacts above the verb spine, tracker paper trail below, resync running the other way](cairn-workflow.png)
 
@@ -28,5 +29,11 @@ Three swim-lanes: the model's side (slash command → verb subroutine →
 sequenced tool calls), the plugin's process side (the MCP server `.mcp.json`
 spawns), and the outside world where state actually lives. The bottom strip
 shows one real tool-call round trip.
+
+Below that, the third surface: the hooks Claude Code fires around every tool
+call, in the three kinds that behave differently — recorders that write state
+and say nothing, refusers that block the call and name the file, and the one
+adviser that says something and blocks nothing. A verbatim refusal is included,
+because the shape of that message is the design.
 
 ![how cairn runs inside Claude Code — model side, process side, outside world](cairn-in-claude.png)
