@@ -1670,6 +1670,18 @@ command (mentioning the variable elsewhere — say, quoted inside the commit
 message — does not bypass). Accepted limitation: commits made outside
 Claude Code are unguarded.
 
+**Architecture rules run with the suite.** The layering the architecture
+document describes is asserted, not merely written down:
+`server/test/architecture.test.ts` checks that tracker adapters are
+leaves, that the tracker subsystem imports none of the subsystems that
+import it, that the docs connectors reuse only four named tracker
+modules, and that the composition root is imported by nothing and the
+tree has no import cycles. Every rule fails when its file pattern matches
+zero files, because a rule that inspected nothing and passed reads as
+coverage forever. The rules and the reasoning — including what is
+deliberately not asserted — live in the architecture document beside
+them, so the two cannot drift apart quietly.
+
 **The context-footprint pin.** `node scripts/check-footprint.mjs` sums
 what cairn costs a session before any verb runs — the command
 descriptions in the slash listing, the skill descriptions, and the fixed
