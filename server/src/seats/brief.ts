@@ -48,8 +48,9 @@ export interface BriefInput {
   seatBody?: string;
   /**
    * Role-scoped memory cards (scopeRole = seat name) — rendered as a short
-   * "what this seat remembers" section. Absent or empty skips the section
-   * entirely: output stays byte-identical to a roleCards-less compose.
+   * "what this seat remembers" section below the plan excerpt. Absent or
+   * empty skips the section entirely: output stays byte-identical to a
+   * roleCards-less compose.
    */
   roleCards?: RoleCard[];
   /** Tracker issue content: id, title, body — lands verbatim under Task. */
@@ -98,11 +99,16 @@ function seatFraming(seat: Seat, body?: string): string {
  * role-scoped card, newest-first order left to the caller. A stale card
  * (provenance rotted) is marked inline so the reader weighs it lightly.
  *
+ * Every line here carries a date and possibly a staleness mark, which is
+ * exactly the content that must not sit in the brief's cacheable prefix
+ * — so this renders into its own {{seat_memory}} slot below the plan
+ * excerpt, not into the seat framing at the top.
+ *
  * :param cards: role-scoped card summaries, already staleness-checked
  * :returns: the markdown memory section
  */
 function roleMemory(cards: RoleCard[]): string {
-  const lines = ["What this seat remembers:"];
+  const lines = ["## What this seat remembers", ""];
   for (const c of cards) {
     const meta = [c.created];
     if (c.confidence) meta.push(`confidence ${c.confidence}`);
@@ -119,7 +125,14 @@ function roleMemory(cards: RoleCard[]): string {
  * structurally identical to the hand-written ones this replaces. With a
  * seat, the framing section leads, quoting lens/categories/honesty at
  * the seat's dose. An unprovided optional slot renders empty (never a
- * dangling {{marker}}); blank-line runs left by empty slots collapse.
+ * dangling {{marker}}); blank-line runs left by empty slots collapse,
+ * and a trailing run is trimmed — the standing rules land last, so an
+ * empty {{rules}} must not leave the brief ending in whitespace.
+ *
+ * Section order is the template's, not this function's: static framing
+ * first (the cacheable prefix), then issue and plan, then the dated
+ * seat memory, and the invariants last at the attention peak. Both files
+ * move together or the composed brief and the template disagree.
  *
  * :param input: seat (optional), issue content, plan excerpt, rules
  * :returns: the filled brief text, ready to hand a wave worker
@@ -144,17 +157,15 @@ export function composeBrief(input: BriefInput): string {
   // it mentions don't get filled as if they were live slots.
   text = text.replace(/^<!--[\s\S]*?-->\s*/, "");
 
-  // The framing slot stacks the seat section and the seat's memory —
-  // either part absent just drops out (no roleCards means the slot value
-  // is exactly what it was before roleCards existed).
-  const framingParts: string[] = [];
-  if (input.seat) framingParts.push(seatFraming(input.seat, input.seatBody));
-  if (input.roleCards?.length) framingParts.push(roleMemory(input.roleCards));
-
+  // Two slots, split on cacheability: the seat framing is the same bytes
+  // for every worker in a wave (prefix, keep it static), the seat's
+  // memory carries card dates and staleness marks (dynamic, keep it out
+  // of the prefix). Either absent just drops its slot out.
   const slots: Record<string, string> = {
-    seat_framing: framingParts.join("\n\n"),
+    seat_framing: input.seat ? seatFraming(input.seat, input.seatBody) : "",
     issue: input.issue,
     plan_excerpt: input.planExcerpt,
+    seat_memory: input.roleCards?.length ? roleMemory(input.roleCards) : "",
     rules: input.rules ?? "",
   };
   for (const [key, value] of Object.entries(slots)) {
@@ -162,5 +173,9 @@ export function composeBrief(input: BriefInput): string {
   }
 
   // Empty slots leave stacked blank lines behind — collapse, don't ship.
-  return text.replace(/\n{3,}/g, "\n\n").replace(/^\n+/, "");
+  // {{rules}} is the last line in the file now, so trim the tail too.
+  return text
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/^\n+/, "")
+    .replace(/\n+$/, "\n");
 }
