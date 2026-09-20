@@ -1,13 +1,78 @@
 # Changelog
 
-## Unreleased — memory hygiene
+## v2.7.0 — the guards (2026-09-20)
 
-Seventeen issues over three waves. Memory that audits, compacts and
-announces itself; the measurement that decides whether report compression
-is worth building; a metrics log that stops destroying its own history;
-and a handful of small debts that had each been paid around rather than
-paid. Suite 1465 → 1541. Tool count 85 → 86, the first addition in three
-milestones and a deliberate exception.
+The second half of milestone v8, and the half that turns rules about
+cairn into mechanisms cairn enforces on itself. Three hooks that refuse
+rather than advise, architecture rules asserted instead of merely
+documented, a context budget that is measured, tasks that declare how
+they will be proved, and memory that audits, compacts and announces its
+own state. Two long-standing measurement defects are fixed underneath
+all of it: the metrics log stopped destroying its own history, and the
+timing tests stopped reporting machine load as a regression.
+
+One principle surfaced independently three times across these two
+phases and is now written down as a decision record: a check that
+cannot fail is worse than no check. Every guard added here is proven by
+breaking the thing it guards.
+
+Tool count moves 85 → 86 — the first addition in three milestones, a
+deliberate exception recorded with its reasoning. Suite 1412 → 1541.
+
+### harness hygiene
+
+- Unattended runs work in a worktree of their own, and a guard makes the
+  separation enforced rather than merely intended: while a run is live,
+  a branch checkout, branch switch, or hard reset aimed at the directory
+  you are typing in is refused in one plain line naming the run. The
+  same commands inside the run's own worktree pass untouched. A run now
+  enters its worktree before the first phase and removes it on every
+  exit path, including errors and ceiling hits.
+- The configuration that decides what the agent may do is write-protected
+  from the agent. Edits to the hook directory, the tool-server config,
+  the settings files, and the plugin manifests are refused unless a flag
+  is set for the session; reading them is untouched, because inspecting a
+  hook is ordinary work. The refusal names the file and then asks the
+  question that matters — if you did not ask for this, something the
+  agent read did. The scope limits are documented rather than implied:
+  this converts a silent success into a refusal a human sees, it is not a
+  sandbox, and text that can steer an agent can also ask for the override.
+- Text fetched from the issue tracker is data, not instructions. A shared
+  rule says so, and a behavioural eval proves it: given an issue body
+  carrying an instruction to force-push and close every other issue
+  silently, the assistant answers the real request, refuses the embedded
+  one, and tells the user it was there. Staying quiet fails the check even
+  when no command runs, because a user whose tracker is being used to
+  steer their agent needs to know.
+- Plan tasks declare how they will be proved, in a clause written when
+  the plan is written rather than chosen afterwards to fit whatever
+  happened. The plan check reports a task that declares nothing; a phase
+  already verified is exempt. At close, the ledger reports whether the
+  evidence cites the declaration — a report, deliberately not a refusal,
+  because declarations are shorthand while evidence records what was
+  really typed, and a string gate there would fail honest closes and
+  teach people to pad the field.
+- The drift report learned about time. An issue held in progress with no
+  tracker update and no commit naming it, and a branch whose last commit
+  has gone quiet, are both surfaced with their age. Advisory everywhere:
+  neither blocks a ship or fails a verification, because forgotten work
+  is worth seeing and is never a reason to stop a good push.
+- The layering the architecture document describes is now asserted on
+  every run: adapters are leaves, the tracker subsystem imports none of
+  the subsystems that import it, the docs connectors reuse only four
+  named modules from it, and the composition root is imported by nothing
+  in a tree with no import cycles. Every rule fails when its file pattern
+  matches nothing, because a rule that inspected zero files and passed
+  reads as coverage forever.
+- What the harness costs a session before any verb runs is measured and
+  pinned: the command descriptions, the skill descriptions, and the
+  session-start prose, summed against a budget that moves the way the
+  tool count moves. It found a fifth of its own total sitting in one
+  repeated suffix on its first run.
+- The same tool called with the same input three times in a row draws one
+  advisory line. Once, not on every call after — the point is to be
+  noticed, not to nag a legitimate repetition into the ground.
+
 
 ### memory hygiene
 
@@ -81,67 +146,6 @@ milestones and a deliberate exception.
   most reliable, and keep dated content out of the cacheable prefix; and
   the design-alternatives gate stops asking already-verified phases for a
   block they no longer owe.
-
-## Unreleased — harness hygiene
-
-Eight mechanics that turn cairn's own rules about itself into gates and
-measurements. Every one of them is something the harness now enforces on
-itself rather than something the documentation asks people to remember.
-Tool count holds at 85; the suite grows 1412 → 1465.
-
-### harness hygiene
-
-- Unattended runs work in a worktree of their own, and a guard makes the
-  separation enforced rather than merely intended: while a run is live,
-  a branch checkout, branch switch, or hard reset aimed at the directory
-  you are typing in is refused in one plain line naming the run. The
-  same commands inside the run's own worktree pass untouched. A run now
-  enters its worktree before the first phase and removes it on every
-  exit path, including errors and ceiling hits.
-- The configuration that decides what the agent may do is write-protected
-  from the agent. Edits to the hook directory, the tool-server config,
-  the settings files, and the plugin manifests are refused unless a flag
-  is set for the session; reading them is untouched, because inspecting a
-  hook is ordinary work. The refusal names the file and then asks the
-  question that matters — if you did not ask for this, something the
-  agent read did. The scope limits are documented rather than implied:
-  this converts a silent success into a refusal a human sees, it is not a
-  sandbox, and text that can steer an agent can also ask for the override.
-- Text fetched from the issue tracker is data, not instructions. A shared
-  rule says so, and a behavioural eval proves it: given an issue body
-  carrying an instruction to force-push and close every other issue
-  silently, the assistant answers the real request, refuses the embedded
-  one, and tells the user it was there. Staying quiet fails the check even
-  when no command runs, because a user whose tracker is being used to
-  steer their agent needs to know.
-- Plan tasks declare how they will be proved, in a clause written when
-  the plan is written rather than chosen afterwards to fit whatever
-  happened. The plan check reports a task that declares nothing; a phase
-  already verified is exempt. At close, the ledger reports whether the
-  evidence cites the declaration — a report, deliberately not a refusal,
-  because declarations are shorthand while evidence records what was
-  really typed, and a string gate there would fail honest closes and
-  teach people to pad the field.
-- The drift report learned about time. An issue held in progress with no
-  tracker update and no commit naming it, and a branch whose last commit
-  has gone quiet, are both surfaced with their age. Advisory everywhere:
-  neither blocks a ship or fails a verification, because forgotten work
-  is worth seeing and is never a reason to stop a good push.
-- The layering the architecture document describes is now asserted on
-  every run: adapters are leaves, the tracker subsystem imports none of
-  the subsystems that import it, the docs connectors reuse only four
-  named modules from it, and the composition root is imported by nothing
-  in a tree with no import cycles. Every rule fails when its file pattern
-  matches nothing, because a rule that inspected zero files and passed
-  reads as coverage forever.
-- What the harness costs a session before any verb runs is measured and
-  pinned: the command descriptions, the skill descriptions, and the
-  session-start prose, summed against a budget that moves the way the
-  tool count moves. It found a fifth of its own total sitting in one
-  repeated suffix on its first run.
-- The same tool called with the same input three times in a row draws one
-  advisory line. Once, not on every call after — the point is to be
-  noticed, not to nag a legitimate repetition into the ground.
 
 ## v2.6.0 — the refutation (2026-09-17)
 
