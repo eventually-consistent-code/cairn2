@@ -43,5 +43,13 @@ export declare function findBoundaries(entries: TranscriptEntry[]): Boundary[];
  * :param entries: transcript entries in order
  * :param boundaries: output of findBoundaries over the same entries
  * :returns symptoms attributed to the nearest preceding boundary
+ *
+ * "Before" a boundary is unbounded -- everything up to it, since a file read
+ * long ago and re-read now is still evidence of that re-read, and a fact the
+ * user gave at any earlier point still counts as already supplied. "After"
+ * a boundary is bounded at the *next* boundary (or the end of the transcript
+ * for the last one), so a single re-read or repeated question is attributed
+ * to exactly one boundary -- the one it actually followed -- instead of to
+ * every boundary that happens to precede it.
  */
 export declare function detectSymptoms(entries: TranscriptEntry[], boundaries: Boundary[]): Symptom[];

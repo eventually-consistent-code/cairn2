@@ -100,3 +100,52 @@ describe("repeat_question tuning", () => {
     expect(detectSymptoms(entries, findBoundaries(entries))).toEqual([]);
   });
 });
+
+// Each symptom must be attributed to exactly one boundary -- the nearest
+// preceding one -- not to every boundary that precedes the evidence.
+describe("symptom attribution across multiple boundaries", () => {
+  it("attributes a reread only to the nearest preceding boundary, not every earlier one", () => {
+    const entries = [
+      read("/src/a.ts"),   // 0: original read, before both boundaries
+      boundaryEntry(),     // 1: first boundary
+      read("/src/b.ts"),   // 2: unrelated read between the boundaries
+      boundaryEntry(),     // 3: second boundary
+      read("/src/a.ts"),   // 4: reread, after both boundaries
+    ];
+    const out = detectSymptoms(entries, findBoundaries(entries));
+    expect(out).toEqual([
+      { kind: "reread", boundaryIndex: 3, evidence: "/src/a.ts" },
+    ]);
+  });
+
+  it("attributes a repeated question only to the nearest preceding boundary", () => {
+    const entries = [
+      userSays("The deploy target is the staging cluster."), // 0: fact, before both boundaries
+      boundaryEntry(),                                        // 1: first boundary
+      assistantSays("Just narrating progress, no question here."), // 2
+      boundaryEntry(),                                        // 3: second boundary
+      assistantSays("Which deploy target should I use?"),     // 4: question, after both boundaries
+    ];
+    const out = detectSymptoms(entries, findBoundaries(entries));
+    expect(out).toEqual([
+      { kind: "repeat_question", boundaryIndex: 3, evidence: "deploy target" },
+    ]);
+  });
+});
+
+// A transcript contains all sorts of shapes; a null or bare-string element
+// inside a content array must not crash the detectors.
+describe("malformed content blocks", () => {
+  it("does not throw on a content array containing a null and a non-object", () => {
+    const entries = [
+      { type: "user", message: { content: [null, "raw string", { type: "text", text: "The deploy target is prod." }] } },
+      boundaryEntry(),
+      { type: "assistant", message: { content: [null, { type: "text", text: "Which deploy target should I use?" }] } },
+    ];
+    let out: unknown;
+    expect(() => { out = detectSymptoms(entries, findBoundaries(entries)); }).not.toThrow();
+    expect(out).toEqual([
+      { kind: "repeat_question", boundaryIndex: 1, evidence: "deploy target" },
+    ]);
+  });
+});

@@ -37,10 +37,17 @@ export interface Symptom {
 
 const CLEARED_MARKER = "[Old tool result content cleared]";
 
-/** Content blocks of an entry, or an empty list for any other shape. */
+/**
+ * Content blocks of an entry, or an empty list for any other shape.
+ * A content array can hold anything -- null, a bare string, whatever a
+ * malformed line coughs up -- so only real objects pass through.
+ */
 function blocks(entry: TranscriptEntry): Array<Record<string, unknown>> {
   const content = entry?.message?.content;
-  return Array.isArray(content) ? content as Array<Record<string, unknown>> : [];
+  if (!Array.isArray(content)) return [];
+  return content.filter(
+    (b): b is Record<string, unknown> => typeof b === "object" && b !== null,
+  );
 }
 
 function textOf(block: Record<string, unknown>): string {
@@ -91,21 +98,23 @@ function readsByIndex(entries: TranscriptEntry[]): Map<number, string[]> {
  * "deploy target" and "database url" live. Crude on purpose -- a real parser
  * would be a dependency and a false sense of precision.
  *
- * Two things tuned against real transcripts, not just the fixture: contractions
- * and possessives are folded into one token (strip the apostrophe instead of
- * turning it into a space) so "doesn't" and "user's" don't fracture into a
- * stray "t" / "s" that collides with something unrelated a thousand lines
- * away; and slash-delimited paths are stripped before tokenizing, because a
- * path mentioned in prose ("the file at /Users/jsreed/foo.ts") otherwise
- * reads as English words ("users", "jsreed") and produces phantom topics.
- * The stop-word list is also wider than a first pass needs, because on a
- * real transcript -- tens of thousands of words on each side of a boundary --
+ * Two things tuned against real transcripts, not just the fixture:
+ * slash-delimited paths are stripped before tokenizing, because a path
+ * mentioned in prose ("the file at /Users/jsreed/foo.ts") otherwise reads as
+ * English words ("users", "jsreed") and produces phantom topics; and the
+ * stop-word list is wider than a first pass needs, because on a real
+ * transcript -- tens of thousands of words on each side of a boundary --
  * even a handful of missed connective words (rather, than, into, own, per,
  * still, one...) reliably collide by chance and drown out real matches.
+ * Including "s" and "t" as stop words also covers the fragment an apostrophe
+ * leaves behind ("doesn't" -> "doesn" + "t", "user's" -> "user" + "s")
+ * without needing to fold contractions into one token first -- tried that,
+ * and it changed nothing on either real transcript once the stop words were
+ * in place, so it stayed out.
  */
 function phrases(text: string): Set<string> {
   const noPaths = text.replace(/\/\S+/g, " ");
-  const words = noPaths.toLowerCase().replace(/'/g, "").replace(/[^a-z0-9\s]/g, " ")
+  const words = noPaths.toLowerCase().replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/).filter(Boolean);
   const out = new Set<string>();
   const stop = new Set(["the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
@@ -133,6 +142,14 @@ function phrases(text: string): Set<string> {
  * :param entries: transcript entries in order
  * :param boundaries: output of findBoundaries over the same entries
  * :returns symptoms attributed to the nearest preceding boundary
+ *
+ * "Before" a boundary is unbounded -- everything up to it, since a file read
+ * long ago and re-read now is still evidence of that re-read, and a fact the
+ * user gave at any earlier point still counts as already supplied. "After"
+ * a boundary is bounded at the *next* boundary (or the end of the transcript
+ * for the last one), so a single re-read or repeated question is attributed
+ * to exactly one boundary -- the one it actually followed -- instead of to
+ * every boundary that happens to precede it.
  */
 export function detectSymptoms(
   entries: TranscriptEntry[],
@@ -142,14 +159,16 @@ export function detectSymptoms(
   const out: Symptom[] = [];
   const reads = readsByIndex(entries);
 
-  for (const boundary of boundaries) {
+  boundaries.forEach((boundary, i) => {
+    const windowEnd = i + 1 < boundaries.length ? boundaries[i + 1].index : entries.length;
+
     const before = new Set<string>();
     for (const [index, paths] of reads) {
       if (index < boundary.index) for (const p of paths) before.add(p);
     }
     const seen = new Set<string>();
     for (const [index, paths] of reads) {
-      if (index <= boundary.index) continue;
+      if (index <= boundary.index || index >= windowEnd) continue;
       for (const p of paths) {
         if (before.has(p) && !seen.has(p)) {
           seen.add(p);
@@ -158,16 +177,17 @@ export function detectSymptoms(
       }
     }
 
-    // A question after the boundary about something the user already stated
-    // before it. Only the user's own words count as "already supplied" --
-    // the assistant restating a fact is not the user having given it.
+    // A question after the boundary (and before the next one) about
+    // something the user already stated before it. Only the user's own
+    // words count as "already supplied" -- the assistant restating a fact
+    // is not the user having given it.
     const supplied = new Set<string>();
     entries.slice(0, boundary.index).forEach((entry) => {
       if (entry?.type !== "user") return;
       for (const b of blocks(entry)) for (const p of phrases(textOf(b))) supplied.add(p);
     });
     const asked = new Set<string>();
-    entries.slice(boundary.index + 1).forEach((entry) => {
+    entries.slice(boundary.index + 1, windowEnd).forEach((entry) => {
       if (entry?.type !== "assistant") return;
       for (const b of blocks(entry)) {
         const text = textOf(b);
@@ -180,7 +200,7 @@ export function detectSymptoms(
         }
       }
     });
-  }
+  });
 
   return out;
 }
