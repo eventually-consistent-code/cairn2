@@ -27,10 +27,10 @@
 // want (moving prose OUT of the always-resident surface and INTO files
 // that load when needed).
 //
-// COUNTED as of #TBD-issue: MCP tool schemas. They are neither a slash
-// listing entry nor an on-demand body -- they are resident on every turn of
-// every session, and they are 83% of what cairn actually costs. The guard
-// watching only the descriptions was watching the small half.
+// COUNTED: MCP tool schemas. They are neither a slash listing entry nor an
+// on-demand body -- they are resident on every turn of every session, and
+// they are 83% of what cairn actually costs. The guard watching only the
+// descriptions was watching the small half.
 //
 // Exit 0 clean, exit 1 over budget.
 
@@ -55,12 +55,12 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 // owner makes, not a tidy-up; when it happens, this budget comes down with
 // it.
 //
-// It jumped from 2300 to 13712 when tool schemas came inside the fence
-// (#TBD-issue). Nothing got worse that day; the guard simply stopped
-// excluding 83% of what it was built to watch. The way this number comes
-// down is progressive disclosure for schemas -- deferring rarely-used tools
-// so they load on call instead of on every turn, the way skill bodies
-// already do -- not by moving the pin.
+// It jumped from 2300 to 13712 when tool schemas came inside the fence.
+// Nothing got worse that day; the guard simply stopped excluding 83% of
+// what it was built to watch. The way this number comes down is
+// progressive disclosure for schemas -- deferring rarely-used tools so they
+// load on call instead of on every turn, the way skill bodies already do --
+// not by moving the pin.
 const BUDGET_TOKENS = 13712;
 
 /** chars / 4 — see the note above on why this approximation is the right one. */
