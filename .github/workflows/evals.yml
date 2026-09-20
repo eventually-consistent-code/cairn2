@@ -60,8 +60,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      # Pinned to the release the suite was authored and proven against:
+      # `plugin eval` is early access and its registration has moved between
+      # builds (npm `latest` 2.1.278 reported "unknown command 'eval'" on
+      # 2026-09-20). Bump deliberately, after a green local run on the new
+      # version.
       - name: install claude code
-        run: npm install -g @anthropic-ai/claude-code
+        run: |
+          npm install -g @anthropic-ai/claude-code@2.1.267
+          claude --version
       - name: run the suite
         env:
           CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
