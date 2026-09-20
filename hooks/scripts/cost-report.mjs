@@ -6,6 +6,12 @@
  *   row per session_id -- summing every row would multiply-count. All numbers
  *   are approximate list-price estimates.
  *
+ *   The log is SEGMENTED (#229): one live file plus closed, append-only
+ *   segments beside it. A session can pick up another row days later, landing
+ *   in the live segment while its older rows sit in a closed one, so the merge
+ *   across segments resolves to the LATEST row per session -- concatenating
+ *   and summing would inflate every number that session touches.
+ *
  * Usage:
  *   node cost-report.mjs              # summary: total, by phase, by issue
  *   node cost-report.mjs --issue X    # one number: est. cost for issue X
@@ -15,23 +21,50 @@
  * Author(s): John Reed
  */
 
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { metricsPath } from "./lib.mjs";
 
-function latestPerSession(path) {
-  const bySession = new Map();
-  let raw;
+/** Every segment of the metrics log, oldest first, the live one last. Closed
+ *  segments are "<stem>.<stamp>.jsonl" with a fixed-width stamp, so a plain
+ *  lexical sort is chronological. Scheme mirrored in stop-costtracker.mjs,
+ *  which writes them, and in server/src/planning/token-estimate.ts. */
+function metricsSegments(current) {
+  const dir = dirname(current);
+  const stem = basename(current).replace(/\.jsonl$/, "");
+  let names;
   try {
-    raw = readFileSync(path, "utf8");
+    names = readdirSync(dir);
   } catch {
-    return [];
+    return [current];
   }
-  for (const line of raw.split("\n")) {
-    if (!line.trim()) continue;
+  const closed = names
+    .filter((n) => n !== `${stem}.jsonl` && n.startsWith(`${stem}.`) && n.endsWith(".jsonl"))
+    .sort();
+  return [...closed.map((n) => join(dir, n)), current];
+}
+
+/** The latest row per session_id across every segment, oldest segment first.
+ *  A later row REPLACES an earlier one for the same session rather than adding
+ *  to it -- rows are cumulative, so a session whose history straddles a
+ *  rotation must resolve to its newest row alone. */
+function latestPerSession(current) {
+  const bySession = new Map();
+  for (const segment of metricsSegments(current)) {
+    let raw;
     try {
-      const row = JSON.parse(line);
-      bySession.set(row.session_id, row); // later lines win -- append order
-    } catch { /* skip corrupt line */ }
+      raw = readFileSync(segment, "utf8");
+    } catch {
+      continue; // segment pruned or never written -- not an error
+    }
+    for (const line of raw.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        const row = JSON.parse(line);
+        if (typeof row?.session_id !== "string") continue; // unattributable -- skip
+        bySession.set(row.session_id, row); // later segment / later line wins
+      } catch { /* skip corrupt line */ }
+    }
   }
   return [...bySession.values()];
 }
