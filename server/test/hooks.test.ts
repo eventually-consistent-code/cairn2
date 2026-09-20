@@ -1377,6 +1377,51 @@ describe("stop-costtracker + cost-report", () => {
     expect(row.context.prefix_tokens).toBe(100_000);
     expect(row.context.bands).toEqual({ under150k: 1, to300k: 1, to500k: 1, over500k: 0 });
     expect(row.context.residency.tool_result).toBe(80_000);
+    // Counts alone cannot carry a rent share -- a high-band turn costs far
+    // more than a low-band one. The summed context per band rides alongside.
+    expect(row.context.band_tokens)
+      .toEqual({ under150k: 100_000, to300k: 200_000, to500k: 400_000, over500k: 0 });
+  });
+
+  it("counts user prose that arrives as a bare string, not a block array", () => {
+    const proj = freshDir("cairn-strcontent-");
+    const home = freshDir("cairn-strcontent-home-");
+    const transcript = join(proj, "t.jsonl");
+
+    // Most real user turns look like this on disk: message.content is a
+    // STRING. Reading only the array shape undercounted user_text by ~93%.
+    // 8000 chars / 4 = 2000 tokens, entering at turn 1, resident for the two
+    // turns that follow -> 2000 * 2 = 4000 token-turns.
+    const turn = (cacheRead: number) => JSON.stringify({
+      type: "assistant",
+      message: {
+        model: "claude-opus-5",
+        usage: { input_tokens: 0, output_tokens: 10,
+          cache_read_input_tokens: cacheRead, cache_creation_input_tokens: 0 },
+        content: [{ type: "text", text: "ok" }],
+      },
+    });
+    const stringTurn = JSON.stringify({
+      type: "user",
+      message: { role: "user", content: "p".repeat(8_000) },
+    });
+
+    writeFileSync(transcript, [
+      turn(100_000),   // turn 1
+      stringTurn,      // string-shaped user prose, entering at turn 1
+      turn(100_000),   // turn 2
+      turn(100_000),   // turn 3
+    ].join("\n") + "\n");
+
+    runHook(COSTTRACKER, proj, home, {
+      CLAUDE_PROJECT_DIR: proj,
+    }, JSON.stringify({ transcript_path: transcript, session_id: "s-strcontent" }));
+
+    const metricsDir = join(home, ".cairn", "metrics");
+    const file = join(metricsDir, readdirSync(metricsDir)[0]);
+    const row = JSON.parse(readFileSync(file, "utf8").trim().split("\n").pop()!);
+
+    expect(row.context.residency.user_text).toBe(4_000);
   });
 
   it("attributes an assistant's own tool_use to the turn it was produced on, not the one before", () => {

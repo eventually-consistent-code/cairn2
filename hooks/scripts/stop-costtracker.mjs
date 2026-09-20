@@ -38,6 +38,26 @@ const QUIESCENCE_MS = 90 * 24 * 60 * 60 * 1000;
 // Tools that fan work out to a subagent. Harnesses have called it both.
 const TASK_TOOLS = new Set(["Task", "Agent"]);
 
+// Context bands, ascending, upper bound exclusive. ONE source -- the
+// per-turn tally, the per-turn token sums, and the live meter's current-band
+// label all read this, so the thresholds cannot silently drift apart.
+const BANDS = [
+  { name: "under150k", below: 150_000 },
+  { name: "to300k", below: 300_000 },
+  { name: "to500k", below: 500_000 },
+  { name: "over500k", below: Infinity },
+];
+
+/** The band a context size falls in. */
+function bandFor(ctx) {
+  return BANDS.find((b) => ctx < b.below).name;
+}
+
+/** A fresh zeroed tally over every band. */
+function zeroBands() {
+  return Object.fromEntries(BANDS.map((b) => [b.name, 0]));
+}
+
 // $ per MTok, approximate list prices. Cache write ~1.25x input, read ~0.1x.
 // Unknown models price as sonnet -- the report labels everything approximate.
 const PRICES = [
@@ -95,7 +115,14 @@ function scanTranscript(transcriptPath) {
     // so exact residency needs no per-item memory -- only the turn count N,
     // which is known once the pass ends.
     turns: 0, turnsSidechain: 0, ctxSum: 0, prefixTokens: 0, ctxLast: 0,
-    bands: { under150k: 0, to300k: 0, to500k: 0, over500k: 0 },
+    // Two tallies per band, never one: `bands` counts TURNS, `bandTokens`
+    // sums the context those turns carried. A high band costs far more per
+    // turn, so a turn share understates it -- the rollup's rent share needs
+    // the tokens. Counts stay because they answer a different question
+    // ("how often does this session ride high"), and because every row
+    // written before bandTokens existed has only them.
+    bands: zeroBands(),
+    bandTokens: zeroBands(),
     residTok: Object.create(null),      // producer -> Σ tokens
     residTokTurn: Object.create(null),  // producer -> Σ (tokens x entry turn)
   };
@@ -130,7 +157,15 @@ function scanTranscript(transcriptPath) {
     // every entry's content, assistant or user, is seen exactly once -- and
     // the turn counter above is hoisted here for the same reason: this same
     // pass needs the turn already correct for both sides.
-    const blocks = Array.isArray(entry?.message?.content) ? entry.message.content : [];
+    // `message.content` arrives in TWO shapes and both are real context: the
+    // array of typed blocks, and a bare string -- which is what a plain typed
+    // turn looks like on disk, and where the large majority of user prose
+    // actually lives. Reading only the array shape undercounted
+    // `residency.user_text` by roughly 93%.
+    const rawContent = entry?.message?.content;
+    const blocks = typeof rawContent === "string"
+      ? [{ type: "text", text: rawContent }]
+      : Array.isArray(rawContent) ? rawContent : [];
     for (const b of blocks) {
       let kind = null;
       let chars = 0;
@@ -178,10 +213,9 @@ function scanTranscript(transcriptPath) {
         totals.ctxSum += ctx;
         totals.ctxLast = ctx;
         if (totals.turns === 1) totals.prefixTokens = cacheW;
-        if (ctx < 150_000) totals.bands.under150k += 1;
-        else if (ctx < 300_000) totals.bands.to300k += 1;
-        else if (ctx < 500_000) totals.bands.to500k += 1;
-        else totals.bands.over500k += 1;
+        const bandName = bandFor(ctx);
+        totals.bands[bandName] += 1;
+        totals.bandTokens[bandName] += ctx;
       }
       // Remember which calls fanned out, so their results are attributable.
       if (Array.isArray(entry.message?.content)) {
@@ -430,6 +464,7 @@ function main() {
       ctx_sum: totals.ctxSum,
       prefix_tokens: totals.prefixTokens,
       bands: totals.bands,
+      band_tokens: totals.bandTokens,
       residency: Object.fromEntries(
         Object.keys(totals.residTok).map((k) => [
           k, totals.turns * totals.residTok[k] - totals.residTokTurn[k],
@@ -448,9 +483,7 @@ function main() {
 
   // Live position, addressable without parsing the append-only log. The row
   // is history; this is where the session is standing right now.
-  const band = totals.ctxLast < 150_000 ? "under150k"
-    : totals.ctxLast < 300_000 ? "to300k"
-      : totals.ctxLast < 500_000 ? "to500k" : "over500k";
+  const band = bandFor(totals.ctxLast);
   atomicWriteJson(meterPath(projectDir), {
     session_id: payload.session_id,
     ts: row.ts,
