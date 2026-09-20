@@ -86,7 +86,13 @@ function writeHandoffFixture(home: string, projectDir: string, data: Record<stri
 }
 
 /** Runs a hook script with cwd=projectDir, HOME=home, plus any extra env (e.g. CLAUDE_PROJECT_DIR). Returns trimmed stdout. */
-function runHook(script: string, projectDir: string, home: string, extraEnv: Record<string, string> = {}): string {
+function runHook(
+  script: string,
+  projectDir: string,
+  home: string,
+  extraEnv: Record<string, string> = {},
+  stdin = "",
+): string {
   // Hermetic child env: some runners (context-mode sandbox, subagent shells)
   // export CLAUDE_PROJECT_DIR, which every hook script prefers over cwd --
   // inherited unstripped it silently redirects every fixture path to the
@@ -105,6 +111,7 @@ function runHook(script: string, projectDir: string, home: string, extraEnv: Rec
     env,
     encoding: "utf8",
     timeout: 5000,
+    input: stdin,
   }).trim();
 }
 
@@ -1294,6 +1301,105 @@ describe("stop-costtracker + cost-report", () => {
     );
     expect(marginal).toBeLessThan(MARGINAL_BUDGET_MS);
     rmSync(metrics, { force: true });
+  });
+
+  it("records residency, bands and prefix alongside the cost totals", () => {
+    const proj = freshDir("cairn-resid-");
+    const home = freshDir("cairn-resid-home-");
+    const transcript = join(proj, "t.jsonl");
+
+    // Three assistant turns. Contexts: 100k, 200k, 400k -> one turn in each of
+    // the first three bands. A 40k tool_result lands on turn 1, so it is
+    // resident for the two turns that follow: residency 40000 * 2 = 80000.
+    const turn = (cacheRead: number, cacheWrite: number, extra: object = {}) => JSON.stringify({
+      type: "assistant",
+      message: {
+        model: "claude-opus-5",
+        usage: { input_tokens: 0, output_tokens: 10,
+          cache_read_input_tokens: cacheRead, cache_creation_input_tokens: cacheWrite },
+        content: [{ type: "text", text: "ok" }],
+      },
+      ...extra,
+    });
+    const result = JSON.stringify({
+      type: "user",
+      message: { content: [{ type: "tool_result", tool_use_id: "t1", content: "x".repeat(160_000) }] },
+    });
+
+    writeFileSync(transcript, [
+      turn(0, 100_000),        // turn 1, ctx 100k
+      result,                  // 160k chars / 4 = 40k tokens, entering at turn 1
+      turn(200_000, 0),        // turn 2, ctx 200k
+      turn(400_000, 0),        // turn 3, ctx 400k
+    ].join("\n") + "\n");
+
+    runHook(COSTTRACKER, proj, home, {
+      CLAUDE_PROJECT_DIR: proj,
+    }, JSON.stringify({ transcript_path: transcript, session_id: "s-resid" }));
+
+    const metricsDir = join(home, ".cairn", "metrics");
+    const file = join(metricsDir, readdirSync(metricsDir)[0]);
+    const row = JSON.parse(readFileSync(file, "utf8").trim().split("\n").pop()!);
+
+    expect(row.context.turns).toBe(3);
+    expect(row.context.turns_sidechain).toBe(0);
+    expect(row.context.ctx_sum).toBe(700_000);
+    expect(row.context.prefix_tokens).toBe(100_000);
+    expect(row.context.bands).toEqual({ under150k: 1, to300k: 1, to500k: 1, over500k: 0 });
+    expect(row.context.residency.tool_result).toBe(80_000);
+  });
+
+  it("attributes an assistant's own tool_use to the turn it was produced on, not the one before", () => {
+    const proj = freshDir("cairn-resid-self-");
+    const home = freshDir("cairn-resid-self-home-");
+    const transcript = join(proj, "t.jsonl");
+
+    // JSON.stringify({ d: "y".repeat(4000) }) is 4008 chars -> round(4008/4)
+    // = 1002 tokens. It sits in turn 1's OWN tool_use block, not a later
+    // user tool_result -- the case the other test doesn't cover, because a
+    // user entry's turn count was already correct even before the counter
+    // was hoisted above the producer block.
+    const bigInput = { d: "y".repeat(4000) };
+    const turnWithToolUse = (cacheRead: number, cacheWrite: number) => JSON.stringify({
+      type: "assistant",
+      message: {
+        model: "claude-opus-5",
+        usage: { input_tokens: 0, output_tokens: 10,
+          cache_read_input_tokens: cacheRead, cache_creation_input_tokens: cacheWrite },
+        content: [{ type: "tool_use", id: "tu1", name: "Read", input: bigInput }],
+      },
+    });
+    const plainTurn = (cacheRead: number, cacheWrite: number) => JSON.stringify({
+      type: "assistant",
+      message: {
+        model: "claude-opus-5",
+        usage: { input_tokens: 0, output_tokens: 10,
+          cache_read_input_tokens: cacheRead, cache_creation_input_tokens: cacheWrite },
+        content: [{ type: "text", text: "ok" }],
+      },
+    });
+
+    writeFileSync(transcript, [
+      turnWithToolUse(0, 50_000),  // turn 1 -- the tool_use is measured HERE
+      plainTurn(100_000, 0),       // turn 2
+      plainTurn(150_000, 0),       // turn 3
+    ].join("\n") + "\n");
+
+    runHook(COSTTRACKER, proj, home, {
+      CLAUDE_PROJECT_DIR: proj,
+    }, JSON.stringify({ transcript_path: transcript, session_id: "s-resid-self" }));
+
+    const metricsDir = join(home, ".cairn", "metrics");
+    const file = join(metricsDir, readdirSync(metricsDir)[0]);
+    const row = JSON.parse(readFileSync(file, "utf8").trim().split("\n").pop()!);
+
+    // N=3 total turns, the tool_use entered at turn 1:
+    //   3 * 1002 - 1002 * 1 = 2004.
+    // Before the turn-counter hoist, the producer block ran ahead of
+    // `totals.turns += 1` inside the assistant branch, so this same turn
+    // read as turn 0 and residency came out to 3 * 1002 - 1002 * 0 = 3006 --
+    // one turn's worth of inflation, and only on the assistant side.
+    expect(row.context.residency.tool_call).toBe(2004);
   });
 });
 

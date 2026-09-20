@@ -89,6 +89,15 @@ function scanTranscript(transcriptPath) {
   const totals = {
     input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, models: new Set(),
     reportBytes: 0, reports: 0, reportTasks: 0, contextPeak: 0,
+    // Context economy: the same forward pass, two extra running sums per
+    // producer. Residency is tokens x turns-remaining, and
+    //   Σ tok_i x (N - turn_i)  ==  N x Σtok_i - Σ(tok_i x turn_i)
+    // so exact residency needs no per-item memory -- only the turn count N,
+    // which is known once the pass ends.
+    turns: 0, turnsSidechain: 0, ctxSum: 0, prefixTokens: 0,
+    bands: { under150k: 0, to300k: 0, to500k: 0, over500k: 0 },
+    residTok: Object.create(null),      // producer -> Σ tokens
+    residTokTurn: Object.create(null),  // producer -> Σ (tokens x entry turn)
   };
   const fanoutIds = new Set();   // tool-use ids of the Task/Agent calls seen so far
   const resultIds = new Set();   // those that answered with a tool_result
@@ -100,12 +109,48 @@ function scanTranscript(transcriptPath) {
     const hasUsage = line.includes('"usage"');
     // Cheap prefilter -- a full JSON.parse only for lines that could matter.
     if (!hasUsage && !line.includes("tool_result") && !line.includes("tool_use")
-      && !line.includes("task-notification")) continue;
+      && !line.includes("task-notification") && !line.includes('"type":"user"')) continue;
     let entry;
     try {
       entry = JSON.parse(line);
     } catch {
       continue;
+    }
+
+    // The turn in flight. An assistant entry carrying usage IS a turn, and
+    // its own content enters AT that turn -- so the counter moves here,
+    // ahead of producer accounting, rather than inside the branch below.
+    // Attributing an assistant's own blocks to turn N-1 would inflate their
+    // residency by one turn and skew them against user-side tool results.
+    if (entry?.type === "assistant" && entry.message?.usage) totals.turns += 1;
+
+    // Producer accounting. `totals.turns` is the turn index this content
+    // entered at -- content is always attributed to the turn in flight. Runs
+    // ahead of both branches below (each ends in an early `continue`) so
+    // every entry's content, assistant or user, is seen exactly once -- and
+    // the turn counter above is hoisted here for the same reason: this same
+    // pass needs the turn already correct for both sides.
+    const blocks = Array.isArray(entry?.message?.content) ? entry.message.content : [];
+    for (const b of blocks) {
+      let kind = null;
+      let chars = 0;
+      if (b?.type === "tool_result") {
+        kind = "tool_result";
+        chars = contentText(b.content).length;
+      } else if (b?.type === "tool_use") {
+        kind = "tool_call";
+        chars = JSON.stringify(b.input ?? {}).length;
+      } else if (b?.type === "text") {
+        kind = entry.type === "user" ? "user_text" : "assistant_text";
+        chars = (b.text ?? "").length;
+      } else if (b?.type === "thinking") {
+        kind = "thinking";
+        chars = (b.thinking ?? "").length;
+      }
+      if (!kind || !chars) continue;
+      const tok = Math.round(chars / 4);
+      totals.residTok[kind] = (totals.residTok[kind] ?? 0) + tok;
+      totals.residTokTurn[kind] = (totals.residTokTurn[kind] ?? 0) + tok * totals.turns;
     }
 
     if (entry?.type === "assistant") {
@@ -128,6 +173,14 @@ function scanTranscript(transcriptPath) {
         // were reports" -- the token SUMS multiply-count a replayed prefix
         // (one real session: 4k input, 19.6M cache writes, 957M cache reads).
         totals.contextPeak = Math.max(totals.contextPeak, inTok + cacheW + cacheR);
+        if (entry.isSidechain) totals.turnsSidechain += 1;
+        const ctx = inTok + cacheW + cacheR;
+        totals.ctxSum += ctx;
+        if (totals.turns === 1) totals.prefixTokens = cacheW;
+        if (ctx < 150_000) totals.bands.under150k += 1;
+        else if (ctx < 300_000) totals.bands.to300k += 1;
+        else if (ctx < 500_000) totals.bands.to500k += 1;
+        else totals.bands.over500k += 1;
       }
       // Remember which calls fanned out, so their results are attributable.
       if (Array.isArray(entry.message?.content)) {
@@ -368,6 +421,20 @@ function main() {
     report_count: totals.reports,
     report_tasks: totals.reportTasks,
     context_peak_tokens: totals.contextPeak,
+    // Context economy: residency is token-turns, the unit cache_read
+    // actually bills in. See the residency note in scanTranscript.
+    context: {
+      turns: totals.turns,
+      turns_sidechain: totals.turnsSidechain,
+      ctx_sum: totals.ctxSum,
+      prefix_tokens: totals.prefixTokens,
+      bands: totals.bands,
+      residency: Object.fromEntries(
+        Object.keys(totals.residTok).map((k) => [
+          k, totals.turns * totals.residTok[k] - totals.residTokTurn[k],
+        ]),
+      ),
+    },
     models: [...totals.models],
   };
   mkdirSync(dirname(path), { recursive: true });
