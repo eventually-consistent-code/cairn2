@@ -1545,6 +1545,29 @@ sharing a named symbol with a producer's but not matching it) and
 99.9%` — with no benchmark, fixture, spec, or measurement anchor nearby).
 Deterministically ordered, byte-equal across runs on an unchanged tree.
 
+**`audit memory` audits the card store**, and the finding it exists for is
+the one you cannot otherwise see. A card whose frontmatter will not parse
+is skipped silently by both `mem_card_list` and recall, so it disappears
+from every surface without announcing itself — the store looks healthy
+precisely because the broken card is invisible. The mode reads every file
+directly and reports what the normal path is hiding, alongside provenance
+whose file is gone or whose commit no longer resolves, near-duplicate card
+bodies, aged low-confidence cards, and counts by type and confidence.
+
+Severity follows the damage. A malformed card is important, because it is
+rot you would never otherwise find. Broken provenance is important when the
+file is gone and minor when only the commit is unresolvable. Near-duplicates
+and aged cards are minor and route to retro's compaction rather than to a
+fix in the audit — card bodies are immutable, so a correction is always a
+new card, never an edit.
+
+The evidence arrives under `cards` from `mem_stats` and is computed from
+plain files and git, deliberately not from the search index. The index needs
+a compiled native binding, and a plugin cache installed under a newer node
+runtime ships without one; an audit that died exactly when memory was
+unhealthy would be the wrong shape. If `indexUnavailable` appears beside the
+card block, the index is down and the card audit still ran.
+
 ### Peers
 
 External AI CLIs as reviewers, with three hard properties: cairn's own

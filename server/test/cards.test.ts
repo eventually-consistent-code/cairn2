@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCard, readCard, listCards, cardsDir, updateCard, updateCardConfidence } from "../src/memory/cards.js";
+import { auditMemory, AGED_DAYS, DUPLICATE_SIMILARITY } from "../src/memory/audit.js";
 
 const dir = () => mkdtempSync(join(tmpdir(), "cairn-cards-"));
 
@@ -187,5 +188,79 @@ describe("listCards", () => {
     const d = dir();
     const card = createCard(d, { type: "decision", body: "no confidence set" });
     expect(readCard(d, card.id).frontmatter.confidence).toBeUndefined();
+  });
+});
+
+describe("auditMemory (#171)", () => {
+  const DAY = 86_400_000;
+
+  it("surfaces the cards listCards silently skips — the whole point of the mode", () => {
+    const d = dir();
+    createCard(d, { type: "note", body: "a readable card with enough words to matter" });
+    mkdirSync(cardsDir(d), { recursive: true });
+    writeFileSync(join(cardsDir(d), "gotcha-broken.md"),
+      "---\ntype: not-a-real-type\ncreated: 2026-01-01\n---\n\nbody\n");
+
+    // The rot is invisible through the normal surface...
+    expect(listCards(d, {}).length).toBe(1);
+    // ...and visible through the audit.
+    const a = auditMemory(d);
+    expect(a.malformed).toHaveLength(1);
+    expect(a.malformed[0].file).toBe("gotcha-broken.md");
+    expect(a.malformed[0].error.length).toBeGreaterThan(0);
+    expect(a.counts.readable).toBe(1);
+    expect(a.counts.total).toBe(2);
+  });
+
+  it("counts by type and confidence, grouping cards that declare none", () => {
+    const d = dir();
+    createCard(d, { type: "note", body: "alpha beta gamma delta epsilon" });
+    createCard(d, { type: "gotcha", body: "zeta eta theta iota kappa", confidence: "high" });
+    const a = auditMemory(d);
+    expect(a.counts.byType).toEqual({ note: 1, gotcha: 1 });
+    expect(a.counts.byConfidence).toEqual({ unset: 1, high: 1 });
+  });
+
+  it("raises provenance whose evidence is GONE, not merely changed", () => {
+    const d = dir();
+    createCard(d, {
+      type: "decision", body: "provenance points at a file that does not exist",
+      provenance: [{ file: "server/src/nope.ts", commit: "a1b2c3d" }],
+    });
+    const a = auditMemory(d);
+    expect(a.provenanceBroken).toHaveLength(1);
+    expect(a.provenanceBroken[0].reasons[0]).toContain("no longer exists");
+  });
+
+  it("flags aged low-confidence cards only, newest excluded", () => {
+    const d = dir();
+    createCard(d, { type: "note", body: "old and unsure about everything here", confidence: "low" });
+    createCard(d, { type: "note", body: "old but certain about everything here", confidence: "high" });
+    const future = Date.now() + (AGED_DAYS + 5) * DAY;
+    const a = auditMemory(d, future);
+    expect(a.aged).toHaveLength(1);
+    expect(a.aged[0].confidence).toBe("low");
+    expect(a.aged[0].ageDays).toBeGreaterThanOrEqual(AGED_DAYS);
+    // Same cards, today: nothing has aged yet.
+    expect(auditMemory(d).aged).toEqual([]);
+  });
+
+  it("pairs near-duplicate bodies and leaves genuinely different ones alone", () => {
+    const d = dir();
+    const shared = "the leak guard blocks a compound command so nothing was staged at all";
+    createCard(d, { type: "gotcha", body: shared });
+    createCard(d, { type: "gotcha", body: shared + " and one extra clause" });
+    createCard(d, { type: "note", body: "completely unrelated prose concerning diagram rendering" });
+    const a = auditMemory(d);
+    expect(a.nearDuplicates).toHaveLength(1);
+    expect(a.nearDuplicates[0].similarity).toBeGreaterThanOrEqual(DUPLICATE_SIMILARITY);
+    const pair = [a.nearDuplicates[0].a, a.nearDuplicates[0].b];
+    expect(pair.some((id) => id.startsWith("gotcha-"))).toBe(true);
+  });
+
+  it("an empty or absent card store is not a finding", () => {
+    const a = auditMemory(dir());
+    expect(a).toMatchObject({ malformed: [], provenanceBroken: [], nearDuplicates: [], aged: [] });
+    expect(a.counts.total).toBe(0);
   });
 });

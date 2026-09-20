@@ -2,10 +2,10 @@ import { z } from "zod";
 export declare const CardFrontmatterSchema: z.ZodObject<{
     type: z.ZodEnum<{
         decision: "decision";
-        note: "note";
         constraint: "constraint";
         gotcha: "gotcha";
         reference: "reference";
+        note: "note";
     }>;
     scopePhase: z.ZodOptional<z.ZodString>;
     scopeIssue: z.ZodOptional<z.ZodString>;
