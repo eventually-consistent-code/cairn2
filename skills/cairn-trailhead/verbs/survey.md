@@ -61,7 +61,9 @@ stages; NOTHING mutates before stage 2's gate, in any mode.
    phase / rescope / new issues), then write the **Dispositions** footer
    into this run's block — one line per proposal, every proposal, in the
    spec's line shape.
-9. Wrap: `mem_index` the finished SURVEY.md (source: its path), close
-   the research issue (`issue_close`) with a plain summary of findings
-   and applied changes, report sections done/remaining, and suggest
-   `/cairn:plan <N>` for any new phase.
+9. Wrap: read the finished SURVEY.md yourself and pass its text as
+   `mem_index(content, source: its path)` — the tool indexes the string
+   you hand it, it never opens the file — then close the research issue
+   (`issue_close`) with a plain summary of findings and applied changes,
+   report sections done/remaining, and suggest `/cairn:plan <N>` for any
+   new phase.

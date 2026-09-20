@@ -31,8 +31,10 @@ end of this doc.
    EACH agent completes — a kill mid-run must lose at most the in-flight
    sections, never finished ones. A failed agent's section stays `pending`
    with a one-line failure note.
-5. `mem_index` the finished brief (source: the RESEARCH.md path). Report
-   sections done/remaining and suggest `/cairn:plan <N>`.
+5. Read the finished brief yourself and pass its text as
+   `mem_index(content, source: the RESEARCH.md path)` — the tool indexes
+   the string you hand it, it never opens the file. Report sections
+   done/remaining and suggest `/cairn:plan <N>`.
 
 ## Batch form — `scout <N> <N> ...` (cross-phase research fan-out)
 
@@ -64,7 +66,9 @@ interactively it behaves identically.
    time.
 4. Every selected phase's RESEARCH.md is complete — all sections `done`,
    or `pending` with a failure note — before the batch reports. Then
-   `mem_index` each finished brief and report per-phase done/remaining
+   read each finished brief yourself and pass its text as
+   `mem_index(content, source: that RESEARCH.md path)` — same contract,
+   the tool never opens the file — and report per-phase done/remaining
    plus the next step per phase (`/cairn:plan <N>`).
 5. Headless caveat: invoked from a headless batch run, the question round
    happens at STAGING time — before the user walks away — never mid-run.
