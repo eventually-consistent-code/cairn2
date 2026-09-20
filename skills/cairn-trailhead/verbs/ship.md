@@ -17,6 +17,12 @@ Pre-ship gate, then ship:
    `/cairn:audit security`" — the code and commit second.
 2. `plan_status()` — every phase with VERIFICATION.md must show all its issues
    closed (`issue_get` spot-check); report any still open and stop.
+   Roadmap rows ride along with that sweep: a phase holding a
+   VERIFICATION.md whose `roadmap.md` row still reads `planned` is a
+   stale row, not a failed gate — repair it with the plan-doc commit in
+   step 5 and name it in the push summary. Ship never flips a row to
+   `shipped (v<N>)`; a phase that pushed is still a phase `verified`,
+   and the shipped flip belongs to `summit` at the milestone archive.
 3. Engineer mode only (`user.mode: engineer` in cairn.json): no
    cairn-authored PR may still be awaiting human review — list any that
    are and stop. Human review is the merge gate; ship never overrides it.

@@ -51,6 +51,15 @@ Verify the given phase per the `cairn-planning` skill.
    generates docs, and a docs_drift error never blocks the verification
    result — skip silently on error, same posture as the outlook emit
    above. Nothing flagged → one line: docs are current.
+6b. Roadmap row (#184): once VERIFICATION.md exists, this phase's row in
+   `.cairn/plans/roadmap.md` must read `verified` — the two surfaces
+   make the same claim, and the roadmap is the one a reader actually
+   opens. Confirm the row reads `verified`; if it still reads `planned`,
+   repair it and say so in the report. Drift repairs the row on its own
+   where it can, so the usual outcome here is a one-line confirmation
+   and no edit at all — the step is the check, not the typing. A FAILED
+   verification leaves the row alone: nothing about a failure is
+   verified.
 7. Report pass/fail and next step (`/cairn:ship` or the fixes needed).
 8. FAILED verification routes to `trace` — MANDATORY (#726): open a trace
    (`trace_start` with the failure as the description), log the failing
