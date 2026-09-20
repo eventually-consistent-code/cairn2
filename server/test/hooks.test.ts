@@ -1303,6 +1303,36 @@ describe("stop-costtracker + cost-report", () => {
     rmSync(metrics, { force: true });
   });
 
+  it("writes a live meter state file naming the current band", () => {
+    const proj = freshDir("cairn-meter-");
+    const home = freshDir("cairn-meter-home-");
+    const transcript = join(proj, "t.jsonl");
+    const turn = (cacheRead: number, cacheWrite: number) => JSON.stringify({
+      type: "assistant",
+      message: {
+        model: "claude-opus-5",
+        usage: { input_tokens: 0, output_tokens: 5,
+          cache_read_input_tokens: cacheRead, cache_creation_input_tokens: cacheWrite },
+        content: [{ type: "text", text: "ok" }],
+      },
+    });
+    writeFileSync(transcript, [turn(0, 80_000), turn(420_000, 0)].join("\n") + "\n");
+
+    runHook(COSTTRACKER, proj, home, { CLAUDE_PROJECT_DIR: proj },
+      JSON.stringify({ transcript_path: transcript, session_id: "s-meter" }));
+
+    const { base, hash } = hashAndBaseForEnvDir(proj);
+    const meter = JSON.parse(readFileSync(
+      join(home, ".cairn", "state", `${base}-${hash}-meter.json`), "utf8"));
+
+    expect(meter.session_id).toBe("s-meter");
+    expect(meter.turns).toBe(2);
+    expect(meter.ctx_last).toBe(420_000);
+    expect(meter.band).toBe("to500k");
+    expect(meter.prefix_tokens).toBe(80_000);
+    expect(meter.transcript_path).toBe(transcript);
+  });
+
   it("records residency, bands and prefix alongside the cost totals", () => {
     const proj = freshDir("cairn-resid-");
     const home = freshDir("cairn-resid-home-");

@@ -20,7 +20,7 @@ import {
   appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { metricsPath } from "./lib.mjs";
+import { atomicWriteJson, meterPath, metricsPath } from "./lib.mjs";
 
 const THROTTLE_MS = 30_000;
 
@@ -94,7 +94,7 @@ function scanTranscript(transcriptPath) {
     //   Σ tok_i x (N - turn_i)  ==  N x Σtok_i - Σ(tok_i x turn_i)
     // so exact residency needs no per-item memory -- only the turn count N,
     // which is known once the pass ends.
-    turns: 0, turnsSidechain: 0, ctxSum: 0, prefixTokens: 0,
+    turns: 0, turnsSidechain: 0, ctxSum: 0, prefixTokens: 0, ctxLast: 0,
     bands: { under150k: 0, to300k: 0, to500k: 0, over500k: 0 },
     residTok: Object.create(null),      // producer -> Σ tokens
     residTokTurn: Object.create(null),  // producer -> Σ (tokens x entry turn)
@@ -176,6 +176,7 @@ function scanTranscript(transcriptPath) {
         if (entry.isSidechain) totals.turnsSidechain += 1;
         const ctx = inTok + cacheW + cacheR;
         totals.ctxSum += ctx;
+        totals.ctxLast = ctx;
         if (totals.turns === 1) totals.prefixTokens = cacheW;
         if (ctx < 150_000) totals.bands.under150k += 1;
         else if (ctx < 300_000) totals.bands.to300k += 1;
@@ -444,6 +445,21 @@ function main() {
   // that every turn would be the visible cost a hook must never be.
   if (rotate(path)) prune(metricsSegments(path), Date.now());
   appendFileSync(path, JSON.stringify(row) + "\n");
+
+  // Live position, addressable without parsing the append-only log. The row
+  // is history; this is where the session is standing right now.
+  const band = totals.ctxLast < 150_000 ? "under150k"
+    : totals.ctxLast < 300_000 ? "to300k"
+      : totals.ctxLast < 500_000 ? "to500k" : "over500k";
+  atomicWriteJson(meterPath(projectDir), {
+    session_id: payload.session_id,
+    ts: row.ts,
+    transcript_path: payload.transcript_path,
+    turns: totals.turns,
+    ctx_last: totals.ctxLast,
+    band,
+    prefix_tokens: totals.prefixTokens,
+  });
 }
 
 try {
