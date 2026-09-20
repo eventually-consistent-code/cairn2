@@ -16,6 +16,13 @@ Verify the given phase per the `cairn-planning` skill.
    then the commit it was stamped at. `stale-issue` and `stale-branch` do
    NOT fail verification: they describe work that went quiet elsewhere, not
    a claim this phase is making. Note them in the report and move on.
+2b. Declared verification (phase 24.5): `plan_check(phase: <N>)` must
+   report no `missing-verify` for this phase, and every ledger line's
+   evidence should cite the command PLAN.md declared for that task. A
+   mismatch is reported with both strings — what was promised, what was
+   run — and judged, not auto-failed: a declaration that turned out to be
+   the wrong check is a legitimate finding about the plan, as long as it
+   is written down rather than quietly ignored.
 3. `issue_list(phase: <tracker phase id>, state: "open")` — must be empty; report
    stragglers instead of closing them unexamined.
 4. TDD evidence: for every id in PLAN.md `tdd:` frontmatter, this phase's

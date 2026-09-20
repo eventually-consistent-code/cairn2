@@ -46,6 +46,19 @@ Plan the given phase per the `cairn-planning` skill's depth dial.
      honest wall-clock guess. Backends without estimate fields ignore them
      silently — always pass both. Worklog on close records the actual;
      together they make burndown/velocity/estimate-vs-actual reports real.
+   - **Every task declares how it will be proved.** End the task with a
+     backticked `` `verify: <command>` `` — the suite file, the guard
+     script, the eval case, the shell line someone will actually run. It is
+     written NOW, before the work starts, because criteria written
+     afterwards are chosen to fit whatever happened. `plan_check` flags a
+     planned, non-quick, unverified phase whose task lacks one
+     (`missing-verify`); a verified phase is exempt, its proving is already
+     written up. The clause may sit anywhere in the task's own paragraph,
+     so prose can still wrap. `work` quotes it when it claims the issue and
+     runs it at close; `ledger_append` reports whether the evidence cites
+     it. If a task genuinely cannot be proved by running anything, say so
+     in the clause (`` `verify: none — docs only` ``) rather than omitting
+     it: a written "nothing to run" is a decision, a blank is an oversight.
    - A task MAY name a roster seat for dispatch framing: end the task's
      first line with a backticked `` `seat: <name>` `` annotation, where
      `<name>` is a kebab-case seat name from `seat_roster` — at most one

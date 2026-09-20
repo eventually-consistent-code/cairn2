@@ -107,7 +107,9 @@ pairing overlay applies:
    and when `user.handle` is set in cairn.json, also pass
    `assignee: <handle>` so teammates see who holds it. Then post the
    claim comment: `issue_comment(id, ...)` — starting now, which wave and
-   PLAN.md task this is, base commit as a short ref on its own line.
+   PLAN.md task this is, the task's declared `verify:` command quoted back
+   (so the bar is visible before the work, not negotiated after it), and
+   the base commit as a short ref on its own line.
    Plain language throughout (leak-guard discipline, same as `trace`).
    Then `context_set(phase: <N>, issueId: id)`.
 5. Do the work the issue + PLAN.md describe. Track in-session with TaskCreate
@@ -130,7 +132,14 @@ pairing overlay applies:
    spun off. Several small steps batch into ONE `issue_comment`; tracker
    noise is a failure mode, not diligence. No silent state transitions,
    ever — if the tracker state changes, a comment says why.
-6. On completion **with tests passing**: post the close comment first —
+6. On completion: run the task's declared `verify:` command — that run IS
+   the close evidence. It disagreeing with the declaration is a finding,
+   not a formality: either the declaration was wrong (say so and why) or
+   the work is not done. `ledger_append` returns `declaredVerify` and
+   `evidenceCitesDeclared` so the mismatch is visible; it never refuses,
+   because a shorthand declaration and the real command line rarely match
+   character for character. Then, **with tests passing**: post the close
+   comment first —
    `issue_comment(id, ...)`: what shipped in plain language, the commit
    range as short refs on their own line, the test evidence (suite name +
    pass count), and "time spent: ~Xm" computed from

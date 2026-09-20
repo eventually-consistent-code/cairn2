@@ -1,4 +1,4 @@
-import { appendFileSync, existsSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CairnError } from "../errors.js";
 import { plansRoot } from "./artifacts.js";
@@ -61,6 +61,57 @@ function formatEntry(entry) {
         + `${shortSha(sanitize(entry.baseCommit))}..${shortSha(sanitize(entry.headCommit))} — `
         + `${tdd}${evidence}${sanitize(entry.issueId)} closed ${sanitize(entry.closedDate)}\n`;
 }
+/**
+ * The `verify:` command a phase's PLAN.md declared for one issue (#206),
+ * or null when the plan names none. The declaration may sit anywhere in
+ * that task's paragraph; the search stops at the next task bullet.
+ */
+export function declaredVerifyFor(projectDir, phaseDir, issueId) {
+    const planPath = join(plansRoot(projectDir), "phases", phaseDir, "PLAN.md");
+    if (!existsSync(planPath))
+        return null;
+    const lines = readFileSync(planPath, "utf8").split("\n");
+    const id = issueId.replace(/^#/, "");
+    const start = lines.findIndex((l) => new RegExp(`^-\\s+(?:\\*\\*#?|#)${id.replace(/[.*+?^$()|[\]\\]/g, "\\$&")}[\\s—-]`).test(l));
+    if (start === -1)
+        return null;
+    for (let i = start; i < lines.length; i++) {
+        if (i > start && /^(?:-\s+\*\*#|#{1,6}\s)/.test(lines[i]))
+            break;
+        const m = /`verify:\s*(\S[^`]*)`/i.exec(lines[i]);
+        if (m)
+            return m[1].trim();
+    }
+    return null;
+}
+/**
+ * Whether the evidence actually run cites what the plan declared.
+ *
+ * Deliberately a REPORT, never a refusal. Declared commands are written in
+ * shorthand ("npm test") while evidence records what was really typed
+ * ("npx vitest run --exclude '**\/*.live.test.ts'"), so a string gate here
+ * would fail honest closes constantly and teach people to pad the field.
+ * The comparison is loose on purpose — a shared significant token is
+ * enough to say "this is the same check" — and the judgement of whether a
+ * mismatch matters belongs to verify, where a human reads it.
+ */
+function citesDeclared(declared, evidenceCommand) {
+    const tokens = (t) => new Set(t.toLowerCase().match(/[a-z0-9][a-z0-9._/-]{2,}/g)?.filter((w) => !["run", "npm", "npx", "the", "and", "--exclude", "test"].includes(w)) ?? []);
+    const d = tokens(declared);
+    const e = tokens(evidenceCommand);
+    for (const t of d)
+        if (e.has(t))
+            return true;
+    // Nothing distinctive matched. "npm test" against "npx vitest run
+    // --exclude ..." is the common honest case: both name the suite, neither
+    // shares a distinctive token once the stoplist has done its work. Treat
+    // "both are the test suite" as the same check, then fall back to exact
+    // equality for anything else.
+    const SUITE = /\b(?:test|tests|vitest|jest|mocha|pytest|suite)\b/i;
+    if (SUITE.test(declared) && SUITE.test(evidenceCommand))
+        return true;
+    return declared.trim().toLowerCase() === evidenceCommand.trim().toLowerCase();
+}
 function ledgerHeader(phase) {
     return `# Phase ${phase.number}: ${phase.name} — Ledger\n\n`
         + `<!-- append-only; one line per verified task; server appends, never rewrites -->\n\n`;
@@ -85,5 +136,14 @@ export function appendLedger(projectDir, phaseDir, entry) {
     else {
         writeFileSync(path, ledgerHeader(phase) + line);
     }
-    return { path, line: line.trimEnd() };
+    const declaredVerify = declaredVerifyFor(projectDir, phaseDir, entry.issueId);
+    return {
+        path, line: line.trimEnd(),
+        ...(declaredVerify === null ? {} : {
+            declaredVerify,
+            evidenceCitesDeclared: entry.evidence
+                ? citesDeclared(declaredVerify, entry.evidence.command)
+                : false,
+        }),
+    };
 }

@@ -2030,7 +2030,9 @@ export function buildServer(deps: {
     {
       description:
         "Deterministic plan-quality scan (#2891): cross-plan contract drift " +
-        "(Produces/Consumes without a shared fixture) and unanchored quantitative thresholds",
+        "(Produces/Consumes without a shared fixture), unanchored quantitative thresholds, " +
+        "a planned phase whose CONTEXT.md lacks the approaches-considered block, and a task " +
+        "line that never declares how it will be proved (`verify: <command>`)",
       // CRN-40: widened from .int().positive() -- a decimal phase filter (1.5)
       // must match its real 01.5-slug dir instead of dying as a raw SDK -32602.
       inputSchema: z.object({ phase: z.number().optional() }),

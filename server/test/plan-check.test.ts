@@ -2,7 +2,7 @@ import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { judgeApproaches, planCheck } from "../src/planning/check.js";
+import { judgeApproaches, judgeVerifyDeclarations, planCheck } from "../src/planning/check.js";
 
 const fresh = () => mkdtempSync(join(tmpdir(), "cairn-plancheck-"));
 const plan = (dir: string, phaseDir: string, body: string) => {
@@ -15,8 +15,11 @@ const context = (dir: string, phaseDir: string, body: string) => {
   mkdirSync(base, { recursive: true });
   writeFileSync(join(base, "CONTEXT.md"), body);
 };
+// Task lines carry a `verify:` clause so these fixtures exercise the
+// approaches gate alone; the declared-verification gate has its own block
+// below, and a fixture that trips two gates tests neither clearly.
 const PLANNED = (depth?: string) =>
-  `---\nissues: [7]\n${depth ? `depth: ${depth}\n` : ""}---\n# Phase 1\n\n## Tasks\n- #7 do it\n`;
+  `---\nissues: [7]\n${depth ? `depth: ${depth}\n` : ""}---\n# Phase 1\n\n## Tasks\n- #7 do it \`verify: npm test\`\n`;
 const GOOD_BLOCK = [
   "# Phase 1 — Context", "", "## Locked decisions", "", "- x", "",
   "## Approaches considered", "",
@@ -180,6 +183,77 @@ describe("planCheck — approaches considered (phase 23)", () => {
     expect(findings).toHaveLength(1);
     expect(findings[0].type).toBe("unanchored-threshold");
     expect(findings[0].line).toBe(2);
+  });
+});
+
+describe("planCheck — declared verification (phase 24.5)", () => {
+  const TASKS = (body: string) =>
+    `---\nissues: [7]\n---\n# Phase 1\n\n## Tasks\n${body}`;
+
+  it("flags a task that never says how it will be proved, naming the issue", () => {
+    const dir = fresh();
+    plan(dir, "01-core", TASKS("- **#7 — the thing** (2pt). Does the thing.\n"));
+    context(dir, "01-core", GOOD_BLOCK);
+    const { findings } = planCheck(dir);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]).toMatchObject({ type: "missing-verify", line: 7 });
+    expect(findings[0].plan).toContain("01-core/PLAN.md");
+    expect(findings[0].detail).toContain("#7");
+    expect(findings[0].detail).toContain("verify:");
+  });
+
+  it("accepts a declaration anywhere in the task's own paragraph", () => {
+    const dir = fresh();
+    context(dir, "01-core", GOOD_BLOCK);
+    // On the bullet itself...
+    plan(dir, "01-core", TASKS("- **#7 — thing** `verify: npm test`\n"));
+    expect(planCheck(dir).findings).toEqual([]);
+    // ...or on a continuation line, because plan prose wraps.
+    plan(dir, "01-core", TASKS(
+      "- **#7 — thing** (2pt). A longer description that runs\n  onto another line.\n  `verify: node scripts/check-surface.mjs`\n"));
+    expect(planCheck(dir).findings).toEqual([]);
+  });
+
+  it("a declaration on the NEXT task does not cover this one", () => {
+    const dir = fresh();
+    context(dir, "01-core", GOOD_BLOCK);
+    plan(dir, "01-core", TASKS(
+      "- **#7 — undeclared**\n- **#8 — declared** `verify: npm test`\n"));
+    const findings = planCheck(dir).findings;
+    expect(findings).toHaveLength(1);
+    expect(findings[0].detail).toContain("#7");
+  });
+
+  it("a verified phase is exempt — its proving already happened", () => {
+    const dir = fresh();
+    plan(dir, "01-core", TASKS("- **#7 — the thing**\n"));
+    context(dir, "01-core", GOOD_BLOCK);
+    expect(planCheck(dir).findings).toHaveLength(1);
+    writeFileSync(join(dir, ".cairn", "plans", "phases", "01-core", "VERIFICATION.md"), "# done\n");
+    expect(planCheck(dir).findings).toEqual([]);
+  });
+
+  it("quick-depth and unplanned phases are never gated, as with approaches", () => {
+    const dir = fresh();
+    context(dir, "01-core", GOOD_BLOCK);
+    plan(dir, "01-core", `---\nissues: [7]\ndepth: quick\n---\n## Tasks\n- **#7 — thing**\n`);
+    expect(planCheck(dir).findings).toEqual([]);
+    plan(dir, "01-core", `---\nissues: []\n---\n## Tasks\n- **#7 — thing**\n`);
+    expect(planCheck(dir).findings).toEqual([]);
+  });
+
+  it("narrative bullets are not tasks and owe nothing", () => {
+    expect(judgeVerifyDeclarations([
+      "- 5 things to watch for here",
+      "- a plain bullet",
+      "  - nested note",
+    ])).toEqual([]);
+  });
+
+  it("reads bold and plain task lines alike", () => {
+    expect(judgeVerifyDeclarations(["- **#7 — bold**"])).toEqual([{ line: 1, issue: "7" }]);
+    expect(judgeVerifyDeclarations(["- #7 plain"])).toEqual([{ line: 1, issue: "7" }]);
+    expect(judgeVerifyDeclarations(["- **12.5 — decimal**"])).toEqual([{ line: 1, issue: "12.5" }]);
   });
 });
 

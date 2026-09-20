@@ -1,9 +1,9 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { scaffoldProject, scaffoldPhase } from "../src/planning/artifacts.js";
-import { appendLedger } from "../src/planning/ledger.js";
+import { appendLedger, declaredVerifyFor } from "../src/planning/ledger.js";
 import { CairnError } from "../src/errors.js";
 
 const dir = () => mkdtempSync(join(tmpdir(), "cairn-ledger-"));
@@ -164,5 +164,75 @@ describe("appendLedger", () => {
       });
       expect(line).toBe(`- [x] T5 — s — commits aaaaaaa..bbbbbbb — evidence npm test - full => 1408 passed 0 failed — GH-5 closed 2026-09-17`);
     });
+  });
+});
+
+describe("declared verification, reported at close (phase 24.5)", () => {
+  /** Project with one phase whose PLAN.md carries the given task lines. */
+  function projectWithTasks(tasks: string): { d: string; phaseDir: string } {
+    const d = dir();
+    scaffoldProject(d, "P");
+    const { dir: phaseDir } = scaffoldPhase(d, 1, "Core");
+    writeFileSync(join(d, ".cairn", "plans", "phases", phaseDir, "PLAN.md"),
+      `---\nissues: [PROJ-105]\n---\n# Phase 1\n\n## Tasks\n${tasks}`);
+    return { d, phaseDir };
+  }
+
+  it("reads the declaration back out of PLAN.md", () => {
+    const { d, phaseDir } = projectWithTasks(
+      "- **#PROJ-105 — thing** `verify: npx vitest run test/adapter.test.ts`\n");
+    expect(declaredVerifyFor(d, phaseDir, "PROJ-105"))
+      .toBe("npx vitest run test/adapter.test.ts");
+  });
+
+  it("returns null when the plan declares nothing, and the append still succeeds", () => {
+    const { d, phaseDir } = projectWithTasks("- **#PROJ-105 — thing**\n");
+    expect(declaredVerifyFor(d, phaseDir, "PROJ-105")).toBeNull();
+    const r = appendLedger(d, phaseDir, entry);
+    expect(r.declaredVerify).toBeUndefined();
+    expect(r.evidenceCitesDeclared).toBeUndefined();
+    expect(r.line).toContain(EV);
+  });
+
+  it("reports whether the evidence cites the declaration — it never refuses either way", () => {
+    const { d, phaseDir } = projectWithTasks(
+      "- **#PROJ-105 — thing** `verify: npx vitest run test/adapter.test.ts`\n");
+    const matched = appendLedger(d, phaseDir, {
+      ...entry,
+      evidence: { command: "npx vitest run test/adapter.test.ts", result: "12 passed" },
+    });
+    expect(matched.declaredVerify).toBe("npx vitest run test/adapter.test.ts");
+    expect(matched.evidenceCitesDeclared).toBe(true);
+
+    const mismatched = appendLedger(d, phaseDir, {
+      ...entry,
+      evidence: { command: "node scripts/check-surface.mjs", result: "clean" },
+    });
+    expect(mismatched.evidenceCitesDeclared).toBe(false);
+    // Reported, not enforced: the line is written either way.
+    expect(mismatched.line).toContain("evidence node scripts/check-surface.mjs");
+  });
+
+  it("shorthand still counts as citing the same check", () => {
+    const { d, phaseDir } = projectWithTasks(
+      "- **#PROJ-105 — thing** `verify: npm test`\n");
+    // The declaration says "npm test"; what actually gets typed is longer.
+    // Failing that honest close would only teach people to pad the field.
+    const r = appendLedger(d, phaseDir, {
+      ...entry,
+      evidence: { command: "npx vitest run --exclude '**/*.live.test.ts'", result: "1452 passed" },
+    });
+    expect(r.evidenceCitesDeclared).toBe(true);
+  });
+
+  it("a waived close reports the declaration and no citation", () => {
+    const { d, phaseDir } = projectWithTasks(
+      "- **#PROJ-105 — thing** `verify: npm test`\n");
+    const r = appendLedger(d, phaseDir, {
+      ...entry, evidence: undefined, evidenceWaived: "docs only",
+    });
+    expect(r.declaredVerify).toBe("npm test");
+    expect(r.evidenceCitesDeclared).toBe(false);
+    expect(r.line).toContain("waived docs only");
   });
 });

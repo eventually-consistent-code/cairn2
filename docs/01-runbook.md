@@ -1670,6 +1670,24 @@ command (mentioning the variable elsewhere — say, quoted inside the commit
 message — does not bypass). Accepted limitation: commits made outside
 Claude Code are unguarded.
 
+**Declared verification.** Every plan task says how it will be proved,
+in a backticked `verify: <command>` clause written when the plan is
+written — the suite file, the guard script, the eval case, whatever
+someone will actually run. The reason it goes in early is that criteria
+written afterwards get chosen to fit whatever happened. `plan_check`
+reports `missing-verify` for a task without one in a planned, non-quick,
+unverified phase; a verified phase is exempt because its proving is
+already written up. A task that genuinely cannot be proved by running
+anything says so in the clause (`verify: none — docs only`), because a
+written "nothing to run" is a decision and a blank is an oversight.
+
+At close, `ledger_append` returns `declaredVerify` and
+`evidenceCitesDeclared`. It reports; it does not refuse. Declarations are
+written in shorthand (`npm test`) while evidence records what was really
+typed, so a string gate there would fail honest closes and teach people
+to pad the field. Whether a mismatch matters is a judgement, and verify
+is where a human makes it.
+
 On `drift.staleDays`: `plan_drift` reports two advisory flags about work
 that has gone quiet. An issue held in progress that has had no tracker
 update and no commit naming it for that many days, and a branch whose

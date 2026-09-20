@@ -23,6 +23,12 @@ export interface LedgerEntryInput {
     evidenceWaived?: string;
 }
 /**
+ * The `verify:` command a phase's PLAN.md declared for one issue (#206),
+ * or null when the plan names none. The declaration may sit anywhere in
+ * that task's paragraph; the search stops at the next task bullet.
+ */
+export declare function declaredVerifyFor(projectDir: string, phaseDir: string, issueId: string): string | null;
+/**
  * Appends one formatted line to a phase's LEDGER.md, creating the file (with
  * header) on first append. Never rewrites existing content -- append-only,
  * so the ledger stays a trustworthy record even if a session crashes
@@ -32,4 +38,8 @@ export interface LedgerEntryInput {
 export declare function appendLedger(projectDir: string, phaseDir: string, entry: LedgerEntryInput): {
     path: string;
     line: string;
+    /** What PLAN.md said would prove this task (#206), when it said anything. */
+    declaredVerify?: string;
+    /** Whether the evidence run cites that declaration. Reported, never enforced. */
+    evidenceCitesDeclared?: boolean;
 };

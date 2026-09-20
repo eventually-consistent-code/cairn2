@@ -10,8 +10,12 @@ export interface PlanFinding {
    * CONTEXT.md lacks the "Approaches considered" block — two-plus
    * candidates and a chosen line — the divergent-design step the plan
    * verb owes before PLAN.md exists.
+   * missing-verify (phase 24.5): a task line in a planned, non-quick,
+   * unverified PLAN.md that never says how it will be proved. Criteria
+   * written after the fact are chosen to fit what happened.
    */
-  type: "contract-drift" | "unanchored-threshold" | "missing-approaches";
+  type: "contract-drift" | "unanchored-threshold" | "missing-approaches"
+    | "missing-verify";
   plan: string; line: number; detail: string;
   counterpart?: { plan: string; line: number };
 }
@@ -24,6 +28,47 @@ const CANDIDATE_HEADING = /^###\s+\S/;
 const CHOSEN_LINE = /^\s*(?:\*\*)?chosen(?:\*\*)?\s*:/i;
 const ANY_H2 = /^##\s+\S/;
 export const APPROACHES_MIN_CANDIDATES = 2;
+
+/**
+ * A plan task line: a top-level bullet naming the tracker issue it
+ * advances, e.g. `- **#216 — run guard** (2pt / ~1.5h). …`. Bold is the
+ * house style but not required — a plain `- #7 do the thing` is still a
+ * task and still owes a declaration. What is required is the issue
+ * reference, so that a narrative bullet opening with a number ("- 5 things
+ * to watch") is never mistaken for work.
+ */
+const TASK_LINE = /^-\s+(?:\*\*#?|#)(\d+(?:\.\d+)?)[\s—-]/;
+
+/** The declaration itself, wherever it sits in the task's paragraph. */
+const VERIFY_CLAUSE = /`verify:\s*(\S[^`]*)`/i;
+
+/** Where a task's text ends: the next task bullet, or any heading. */
+const TASK_ENDS = /^(?:-\s+\*\*#|#{1,6}\s)/;
+
+/**
+ * Task lines in a plan that never declare how they will be proved.
+ *
+ * The declaration may appear anywhere in the task's own paragraph, not
+ * only on the bullet's first line — plan prose wraps, and forcing the
+ * clause onto line one would push authors toward one-line tasks, which is
+ * worse writing for a marginal parsing gain.
+ *
+ * :param lines: PLAN.md split into lines
+ * :returns: one entry per undeclared task — the line to anchor on and the issue id
+ */
+export function judgeVerifyDeclarations(lines: string[]): { line: number; issue: string }[] {
+  const out: { line: number; issue: string }[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const m = TASK_LINE.exec(lines[i]);
+    if (!m) continue;
+    let declared = VERIFY_CLAUSE.test(lines[i]);
+    for (let j = i + 1; j < lines.length && !TASK_ENDS.test(lines[j]); j++) {
+      if (VERIFY_CLAUSE.test(lines[j])) { declared = true; break; }
+    }
+    if (!declared) out.push({ line: i + 1, issue: m[1] });
+  }
+  return out;
+}
 
 /**
  * Judges a CONTEXT.md's approaches block. Null when it satisfies the
@@ -170,6 +215,8 @@ interface ScannedPlan {
   contextPath: string;
   /** True when PLAN.md lists issues and depth is not quick — the gate applies. */
   gated: boolean;
+  /** VERIFICATION.md exists — the phase has already been proved. */
+  verified: boolean;
 }
 
 /**
@@ -211,6 +258,7 @@ export function planCheck(projectDir: string, phase?: number):
     plans.push({
       rel, lines, text, contracts: extractContracts(lines, rel),
       contextPath: join(phasesDir, entry, "CONTEXT.md"), gated: isGated(text),
+      verified: existsSync(join(phasesDir, entry, "VERIFICATION.md")),
     });
   }
 
@@ -229,6 +277,21 @@ export function planCheck(projectDir: string, phase?: number):
     if (verdict) {
       findings.push({ type: "missing-approaches", plan: relative(projectDir, p.contextPath),
         line: verdict.line, detail: verdict.detail });
+    }
+  }
+
+  // Declared verification (phase 24.5) — one finding per undeclared task
+  // in a gated plan. A VERIFIED phase is exempt: its proving already
+  // happened and is written up, so asking it to declare intent after the
+  // fact is noise on every scan until the milestone closes.
+  for (const p of plans) {
+    if (!p.gated || p.verified) continue;
+    for (const { line, issue } of judgeVerifyDeclarations(p.lines)) {
+      findings.push({
+        type: "missing-verify", plan: p.rel, line,
+        detail: `task #${issue} does not say how it will be proved — add a \`verify: <command>\` ` +
+          "clause; criteria written after the work are chosen to fit what happened",
+      });
     }
   }
 
