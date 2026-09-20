@@ -10,6 +10,7 @@ import { CairnError } from "./errors.js";
 import { loadConfig, writeConfigPatch } from "./config.js";
 import { auditMemory } from "./memory/audit.js";
 import { observationBacklog } from "./memory/observations.js";
+import { compactCards, proposeCompaction } from "./memory/compaction.js";
 import { ActiveContext } from "./active-context.js";
 import { forgetProject, readRegistry, registerProject, } from "./core/registry.js";
 import { emitOutlook, outlookAggregate } from "./core/outlook.js";
@@ -783,6 +784,33 @@ export function buildServer(deps) {
         });
         writeBanner(d);
         return card;
+    }));
+    server.registerTool("mem_compact", {
+        description: "Retro-gated card compaction (#172) -- the capacity guard's action. 'propose' reports " +
+            "the card store's token size against its threshold plus the aged low-confidence cards " +
+            "that would be retired, the exact archive body, and the provenance union, without " +
+            "touching anything. 'apply' writes ONE dated archive card carrying that union and then " +
+            "deletes the ids passed in -- exactly the ids given, never a re-derived batch, so what " +
+            "the human approved is what is retired. Card bodies stay immutable: the archive is a " +
+            "new card, the retired ones are deleted, never edited.",
+        inputSchema: z.object({
+            mode: z.enum(["propose", "apply"]),
+            // Required for 'apply': the approved batch. Ignored by 'propose'.
+            ids: z.array(z.string()).optional(),
+            threshold: z.number().int().positive().optional(),
+        }),
+    }, wrap((a) => {
+        const d = dir();
+        if (a.mode === "propose")
+            return proposeCompaction(d, { threshold: a.threshold });
+        if (a.ids === undefined || a.ids.length === 0) {
+            throw new CairnError("CONFIG_INVALID", "mode 'apply' needs the approved ids", "run mode 'propose' first and pass the ids it lists under 'retiring'");
+        }
+        const result = compactCards(d, a.ids);
+        // The banner prices and lists cards by id -- a retired card must stop
+        // being offered for recall the moment its file is gone.
+        writeBanner(d);
+        return result;
     }));
     server.registerTool("mem_timeline", {
         description: "Chronological neighbors around an anchor (a memory card id or an index chunk source) -- " +

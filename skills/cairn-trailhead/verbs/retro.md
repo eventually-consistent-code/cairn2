@@ -34,7 +34,29 @@ milestone (including just-archived `milestones/v<N>/`).
    → `mem_card_update` confidence up one step. Contradicted → down to
    `low`, and draft the corrected lesson as a NEW card (bodies are
    immutable — corrections are new cards, not edits).
-4. ONE AskUserQuestion approving the whole batch (new cards + re-grades),
-   then write via `mem_card_create` / `mem_card_update`.
-5. Report: cards written, cards re-graded (old → new confidence), and the
-   one-line reason each.
+4. Compaction check (#172) — the capacity guard's only action. Call
+   `mem_compact(mode: 'propose')`. It reports the card store's token size
+   against its threshold plus the aged low-confidence cards that would be
+   retired, taken from the same `aged` list `mem_stats`' `cards` block
+   reports — never re-derive "aged low-confidence" yourself, the copy that
+   drifts is the one that deletes cards. `triggered: false` → say the
+   one-line `reason` in the report and propose nothing. `triggered: true` →
+   fold the batch into the step 5 question as a third item: these N cards
+   retire into ONE dated archive card, ~X tok reclaimed, the archive
+   carrying the union of their provenance commits. Show the card ids and
+   the `archiveBody` it would write — the human approves real text, not a
+   count.
+5. ONE AskUserQuestion approving the whole batch (new cards + re-grades +
+   any retirements), then write via `mem_card_create` / `mem_card_update`,
+   and `mem_compact(mode: 'apply', ids: [...])` with exactly the ids that
+   were approved. No second question — a retirement the human did not see
+   in that one gate does not happen.
+6. Report: cards written, cards re-graded (old → new confidence), the
+   one-line reason each, and — when a compaction ran — the archive card id,
+   what it retired, and the tokens reclaimed.
+
+Compaction is rotation, not decay. Age only *selects* candidates; nothing
+leaves the store on a timer, no confidence rots on its own, and bodies stay
+immutable — the archive is a NEW card and the retired ones are deleted, never
+edited into a tombstone. The archive's provenance is the whole point: the
+bodies go, the commits that proved them stay.
