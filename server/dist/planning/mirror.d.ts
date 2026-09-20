@@ -39,7 +39,29 @@ export interface StaleWorkDrift {
     idleDays: number;
     detail: string;
 }
-export type DriftItem = IssueDrift | StaleAuditDrift | StaleWorkDrift;
+/**
+ * A roadmap Status cell that no longer matched the evidence on disk
+ * (#185) -- already rewritten by the scan that found it.
+ *
+ * The odd one out of the drift kinds on purpose: the others describe a
+ * problem for a human to fix, this one describes a fix already made. The
+ * Status column was the last piece of plan state nothing computed -- only
+ * the route verb wrote a cell, by hand -- so a phase could sit verified
+ * for a week with its row still saying "planned". Reporting the repair
+ * rather than silently doing it keeps the scan honest about what it
+ * touched; reporting nothing once the row is right keeps it quiet.
+ */
+export interface RoadmapRowDrift {
+    reason: "roadmap-row";
+    /** The phase whose row was patched. */
+    phase: number;
+    /** What the cell said. */
+    from: string;
+    /** What the phase dir says, now written. */
+    to: string;
+    detail: string;
+}
+export type DriftItem = IssueDrift | StaleAuditDrift | StaleWorkDrift | RoadmapRowDrift;
 /** Days of silence before work is called stale. `drift.staleDays` overrides. */
 export declare const DEFAULT_STALE_DAYS = 5;
 /**
@@ -63,6 +85,21 @@ export declare function staleBranchDrift(projectDir: string, staleDays?: number,
  * :returns: the flag, or null when the latest security audit is current
  */
 export declare function staleAuditDrift(projectDir: string): StaleAuditDrift | null;
+/**
+ * Flips `planned` -> `verified` for every phase whose directory carries a
+ * VERIFICATION.md, in place, and reports each flip (#185).
+ *
+ * Deliberately narrow on both sides. Only a row that still says exactly
+ * "planned" moves: any other wording is a human's -- "blocked", "shipped
+ * (v7)", a struck-through row from `route remove` -- and a scan that
+ * overwrote those would be a worse bug than the one it fixes. And only
+ * rows the table already holds move: inventing a row for an unlisted
+ * phase is route's job, not drift's.
+ *
+ * :param projectDir: repository root
+ * :returns: one item per row repaired; empty when the table already agrees
+ */
+export declare function roadmapRowDrift(projectDir: string): RoadmapRowDrift[];
 export declare function driftReport(tracker: Tracker, projectDir: string, opts?: {
     staleDays?: number;
     now?: number;
