@@ -74,7 +74,7 @@ import {
 import { resyncReport } from "./planning/resync.js";
 import { docsDriftReport } from "./planning/docs-drift.js";
 import { distillManifest } from "./planning/distill-manifest.js";
-import { estimatePhaseTokens } from "./planning/token-estimate.js";
+import { estimatePhaseTokens, metricsSegments } from "./planning/token-estimate.js";
 import { snapshotNote, trackerDelta } from "./planning/tracker-delta.js";
 import {
   MemoryIndex,
@@ -93,10 +93,14 @@ import {
   updateCard,
 } from "./memory/cards.js";
 import { checkCardStaleness } from "./memory/staleness.js";
-import { readHandoff, writeHandoff, clearHandoff } from "./core/continuity.js";
+import {
+  readHandoff, writeHandoff, clearHandoff, metricsPath, validateArtifacts,
+} from "./core/continuity.js";
+import { summarise, sessionSpans, type MetricsRow } from "./context/meter.js";
+import { thresholdDrift, type ThresholdDrift } from "./context/threshold.js";
 import { registerPlanResources } from "./core/resources.js";
 import { installedVersions, type InstalledVersions } from "./core/versions.js";
-import type { Handoff } from "./core/continuity.js";
+import type { Handoff, CheckpointArtifacts } from "./core/continuity.js";
 import { appendLedger } from "./planning/ledger.js";
 import {
   checkBudget,
@@ -372,6 +376,42 @@ export function buildServer(deps: {
       : undefined;
   };
 
+  // Reads every metrics segment for this project (the live one plus any
+  // closed, dated ones) and parses each line to a raw row. No collapse here
+  // -- summarise() and sessionSpans() each need the latest-per-session rule
+  // applied their own way, and sessionSpans additionally needs every row's
+  // timestamp, not just the winner's.
+  const readMetricsRows = (projectDir: string): MetricsRow[] => {
+    const rows: MetricsRow[] = [];
+    for (const segment of metricsSegments(metricsPath(projectDir))) {
+      let raw: string;
+      try {
+        raw = readFileSync(segment, "utf8");
+      } catch {
+        continue; // pruned or never written -- not an error
+      }
+      for (const line of raw.split("\n")) {
+        if (!line.trim()) continue;
+        try {
+          rows.push(JSON.parse(line));
+        } catch {
+          // corrupt line -- skip, never guess
+        }
+      }
+    }
+    return rows;
+  };
+
+  /**
+   * Rent rollup for this project. Reads the metrics log the Stop hook writes;
+   * returns zeros rather than throwing when no session has been recorded yet,
+   * because an empty meter is a true answer, not an error.
+   */
+  const contextMeterReport = (projectDir: string) => {
+    const rows = readMetricsRows(projectDir);
+    return { ...summarise(rows), spans: sessionSpans(rows).length };
+  };
+
   server.registerTool(
     "context_get",
     {
@@ -425,6 +465,15 @@ export function buildServer(deps: {
       writeBanner(d);
       return state;
     }),
+  );
+
+  server.registerTool(
+    "context_meter",
+    {
+      description: "Context rent rollup: per-turn average, bands, residency, prefix",
+      inputSchema: z.object({}),
+    },
+    wrap(() => contextMeterReport(dir())),
   );
 
   server.registerTool(
@@ -1402,9 +1451,19 @@ export function buildServer(deps: {
         next_action: z.string().optional(),
         notes: z.string().optional(),
         partial: z.boolean().optional(),
+        artifacts: z.object({
+          decisions: z.array(z.string()).default([]),
+          constraints: z.array(z.string()).default([]),
+          rejected: z.array(z.string()).default([]),
+          state: z.string().default(""),
+          filesTouched: z.array(z.string()).default([]),
+          nextSteps: z.array(z.string()).default([]),
+          requirements: z.string().default(""),
+          skills: z.array(z.string()).default([]),
+        }).optional(),
       }),
     },
-    wrap((a: Partial<Handoff>) => {
+    wrap((a: Partial<Handoff> & { artifacts?: Partial<CheckpointArtifacts> }) => {
       // writeHandoff doesn't independently validate -- unlike phaseDirName/
       // ensurePhase, there's no downstream CairnError to catch a bad phase
       // number here, so check explicitly before it ever reaches disk.
@@ -1414,6 +1473,10 @@ export function buildServer(deps: {
           PHASE_NUMBER_ERROR(a.phase.number),
         );
       }
+      // The abort rule: refuse a degraded checkpoint rather than persist it.
+      // Optional overall -- a caller that passes no artifacts gets the old
+      // behaviour -- but a caller that passes some must pass enough.
+      if (a.artifacts) validateArtifacts(a.artifacts);
       const d = dir();
       writeHandoff(d, { ...a, source: a.source ?? "tool" });
       return readHandoff(d);
@@ -1804,6 +1867,7 @@ export function buildServer(deps: {
         docs?: ProbeResult;
         versions?: InstalledVersions;
         native?: NativeProbe;
+        contextEconomy?: ThresholdDrift;
       } = {
         tracker: await safeProbe(async () => {
           const t = await getTracker(d);
@@ -1817,6 +1881,10 @@ export function buildServer(deps: {
           return connector.probe ? connector.probe() : { verdict: "ok" };
         });
       }
+      out.contextEconomy = thresholdDrift(
+        cfg.contextEconomy?.autocompactPct ?? null,
+        process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE,
+      );
       // Installed-version visibility (#82) -- never throws, npm lookup fails
       // soft to "unknown" so an offline probe stays green.
       out.versions = await installedVersions({

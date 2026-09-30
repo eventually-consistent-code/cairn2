@@ -2060,86 +2060,88 @@ Phase A is complete when: `npm test` passes, `npx tsc --noEmit` is clean, all si
 
 ---
 
-### Task 11: Apply the threshold and measure the boundary
+### Task 11: Apply the threshold and measure the boundary — KILLED
 
-Phase B. The 50% lands here — and so does the only real risk. This is a one-line configuration change wrapped in the evidence that says whether it was safe.
+**Status: killed 2026-09-29, not attempted as written. Do not run this task.
+Do not set `autocompactPct` to 0.2 anywhere.**
 
-**Files:**
-- Modify: `cairn.json` (machine-local, gitignored — set the desired value)
-- Create: `docs/notes/context-economy-phase-b.md`
-- Test: manual — a real session at the new threshold
+Phase B proposed dropping the autocompact threshold to 0.2 and measuring
+whether crossing boundaries that much more often actually hurt. It was always
+the riskiest task in the plan — the spec said so, and the amended gate below
+said so twice more.
 
-**Interfaces:**
-- Consumes: `thresholdDrift` (Task 7), `findBoundaries` / `detectSymptoms` (Task 8), the baseline (Task 10).
-- Produces: the phase-B result document; the gate for phases C, D and E.
+**Why it died.** The operator ran a session at the low threshold and reported
+that it caused massive problems doing ordinary work. That is a field report,
+not an instrumented measurement — no boundary analysis was run, no symptom
+count was taken, no rent comparison exists. It is recorded here as exactly
+what it is. The plan anticipated this outcome and named it the deciding one:
 
-- [ ] **Step 1: Record the desired threshold**
+> **Your own judgement outranks all three.** You ran the session. If the work
+> felt degraded — repeating yourself, re-establishing context, the model
+> losing the thread — that is evidence the detectors cannot see, and it counts.
 
-Add to the local `cairn.json` (gitignored, so this is a machine-local change and nothing to commit):
+So the gate fired on its strongest rung. The 50% saving was a simulation over
+recorded sessions; the one attempt to live at that threshold was unworkable,
+and a saving nobody can work under is not a saving. Killed rather than tuned
+upward, because nothing downstream is waiting on it — see the phase gates note
+below.
 
-```json
-  "contextEconomy": { "autocompactPct": 0.2 }
-```
+Nothing was left applied. Verified at kill time: `autocompactPct` is unset in
+`cairn.json`, `CLAUDE_AUTOCOMPACT_PCT_OVERRIDE` is absent from the session
+environment and from both settings files, and `config.ts` defaults the value
+to `null`, which leaves the harness default alone. cairn reports drift against
+this setting; it has never set it.
 
-- [ ] **Step 2: Confirm cairn reports the drift**
+The result write-up lives at `docs/notes/context-economy-phase-b.md`.
 
-Call `config_probe` through the MCP server and check the `contextEconomy` block reads `{"status":"drift","desired":0.2,"live":null}`. The env var is not set yet — the point is that cairn says so rather than assuming.
+#### What survives the kill
 
-- [ ] **Step 3: Run one real session at the threshold**
+**The threshold machinery stays.** Task 7's `thresholdDrift`, the
+`contextEconomy.autocompactPct` config key, and the `config_probe` drift
+report are all still correct and still shipped. They describe a desired
+threshold and report honestly when the live one disagrees. Killing one
+particular *value* is not a reason to tear out the reporting that would have
+caught it drifting back.
 
-```bash
-cd ~/repos/cairn2 && CLAUDE_AUTOCOMPACT_PCT_OVERRIDE=0.2 claude
-```
+**Two findings about the symptom detector, which outlive this task.** They
+came out of the Phase A whole-branch review and apply to any future use of
+`detectSymptoms`, threshold work or not:
 
-Do a normal piece of work — long enough to cross at least two boundaries. Do not do throwaway work: the measurement is only worth what the session was worth. Confirm mid-session that `config_probe` now reports `{"status":"match"}`.
+1. **The symptom detector is not a standalone gate.** Its first version could
+   not fire at all: it only read `message.content` when that field was an
+   array, and 94-100% of user prose in real transcripts is a bare string. The
+   "0 symptoms" it reported was blindness. That is fixed and proven — a
+   spliced repeat question now fires exactly once where the old code fired
+   zero times — but the measured transcripts contained only 6 and 4
+   post-boundary questions in total. **Zero symptoms against a denominator
+   that small is weak evidence of no harm.** Any future report must state the
+   denominator (post-boundary questions asked at all, and files re-read at
+   all) beside the symptom count, and judge the ratio. Never gate on
+   `symptoms.length === 0`.
 
-- [ ] **Step 4: Analyse that session's boundaries**
+2. **The detector matches repeated wording, not repeated meaning.** Phrase
+   matching is bigram-literal by design, so a paraphrased re-ask will not
+   fire. Treat a symptom as strong evidence of harm, and its absence as weak
+   evidence of safety. The asymmetry is the point.
 
-```bash
-cd ~/repos/cairn2/server && npx tsx -e '
-import { readFileSync } from "node:fs";
-import { findBoundaries, detectSymptoms } from "./src/context/boundary.js";
-const entries = readFileSync(process.argv[1], "utf8").split("\n").filter(Boolean)
-  .map((l) => { try { return JSON.parse(l); } catch { return {}; } });
-const b = findBoundaries(entries);
-const s = detectSymptoms(entries, b);
-console.log("boundaries", b.length, JSON.stringify(b));
-console.log("symptoms", s.length);
-for (const x of s) console.log(" ", x.kind, "@", x.boundaryIndex, "-", x.evidence);
-' "$(ls -t ~/.claude/projects/-Users-jsreed-repos-cairn2/*.jsonl | head -1)"
-```
+#### What this does to the later phases
 
-- [ ] **Step 5: Compare rent against the baseline**
-
-Re-run Task 10 Step 1 and compare `avgContextPerTurn` and `bandRentShare` against the baseline document. The simulation predicts average context falling from ~229k toward ~116k and `over500k` going to zero.
-
-- [ ] **Step 6: Write up the result and decide the gate**
-
-Create `docs/notes/context-economy-phase-b.md` recording: boundaries crossed, symptoms found per boundary, the rent comparison, and a plain judgement on whether output quality held. Include the symptoms that were *false positives* — a detector that cries wolf is a finding about the detector.
-
-Then apply the gate from the spec:
-
-- **Quality held or improved** → phase B succeeded. Phases C, D and E may be planned.
-- **Quality degraded** → raise `autocompactPct` (0.3, then 0.4), repeat from Step 3, and record the saving at whatever threshold quality allows. The spec's kill criterion is explicit: the threshold rises, the saving is whatever survives.
-
-- [ ] **Step 7: Commit**
-
-```bash
-cd ~/repos/cairn2
-git add docs/notes/context-economy-phase-b.md
-git commit -m "docs(context): phase B result — threshold at 0.2 measured
-
-The 50% claim was a simulation over recorded sessions. This is the
-session that tested it, with boundary symptoms counted and false
-positives recorded, because a detector that cries wolf is a finding
-about the detector."
-```
+Phase B was written as the gate for phases C, D and E. That gate is now
+resolved as **stop, do not lower the threshold** — it is not left hanging, and
+the later phases do not inherit a blocked precondition. C (band signal in the
+statusline and `additionalContext`, subagent report cap), D (bounded loops)
+and E (the context guard) all reduce what goes *into* the window rather than
+changing when the window gets cut, so none of them depend on this task having
+succeeded. Anyone picking them up should read the phase-B write-up first: the
+one thing Phase B established is that buying context economy by compacting
+harder is off the table for this operator, which raises the value of every
+approach that does not.
 
 ---
 
 ## Self-Review
 
-**Spec coverage.** Section 1's metric: Tasks 1, 3, 4, 10. Section 2's components: meter (1, 2), attribution (3), band signal — *partial*, the state file in Task 2 carries the band but the statusline and `additionalContext` emission belong to phase C and are deliberately absent; threshold management (7, 9, 11); context guard — phase E, absent by scope; footprint audit (5, 6); subagent report cap — phase C, absent by scope; bounded loops — phase D, absent by scope. Section 3's guard rules: phase E, out of scope. Section 4's phases A and B: Tasks 1-11, with explicit gates at Task 10 Step 5 and Task 11 Step 6.
+**Spec coverage.** Section 1's metric: Tasks 1, 3, 4, 10. Section 2's components: meter (1, 2), attribution (3), band signal — *partial*, the state file in Task 2 carries the band but the statusline and `additionalContext` emission belong to phase C and are deliberately absent; threshold management (7, 9, 11); context guard — phase E, absent by scope; footprint audit (5, 6); subagent report cap — phase C, absent by scope; bounded loops — phase D, absent by scope. Section 3's guard rules: phase E, out of scope. Section 4's phases A and B: Tasks 1-11, with explicit gates at Task 10 Step 5 and Task 11 Step 6. *Amended 2026-09-29:* Task 11 is killed, so threshold management is covered by Tasks 7 and 9 only — the machinery ships, the 0.2 value does not. Phase B's gate is resolved as stop rather than left open.
 
 **Deviation from the spec, recorded deliberately.** The spec lists three boundary symptoms; Task 8 implements two. A decision reversed without new evidence needs semantic judgement the detector cannot honestly fake, so boundary reports surface the turns for human labelling instead. This is written into the module docstring, not just here.
 

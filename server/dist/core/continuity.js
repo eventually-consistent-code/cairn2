@@ -158,3 +158,36 @@ export function clearHandoff(projectDir) {
     unlinkSync(path);
     return true;
 }
+/** Thrown instead of persisting a checkpoint that would not survive a resume. */
+export class DegradedCheckpointError extends Error {
+    missing;
+    constructor(missing) {
+        super(`checkpoint is degraded and was NOT written -- missing: ${missing.join(", ")}. ` +
+            "A bad checkpoint is worse than none: by the time it is written the " +
+            "context it replaced is already gone. Fill these in and retry.");
+        this.name = "DegradedCheckpointError";
+        this.missing = missing;
+    }
+}
+/** A state summary shorter than this cannot carry enough to resume from. */
+const MIN_STATE_CHARS = 20;
+/**
+ * The abort rule. Required: at least one decision, a usable state summary,
+ * and the user's requirements verbatim. Not required: rejected approaches,
+ * skills, next steps, files touched -- a session may genuinely have none of
+ * those, and demanding them would teach the caller to invent them.
+ *
+ * :param a: the artifacts a caller proposes to persist
+ * :throws DegradedCheckpointError naming every missing artifact at once
+ */
+export function validateArtifacts(a) {
+    const missing = [];
+    if (!a.decisions || a.decisions.filter((d) => d.trim()).length === 0)
+        missing.push("decisions");
+    if (!a.state || a.state.trim().length < MIN_STATE_CHARS)
+        missing.push("state");
+    if (!a.requirements || a.requirements.trim() === "")
+        missing.push("requirements");
+    if (missing.length > 0)
+        throw new DegradedCheckpointError(missing);
+}

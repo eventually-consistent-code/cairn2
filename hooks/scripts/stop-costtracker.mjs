@@ -20,7 +20,7 @@ import {
   appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync,
 } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { metricsPath } from "./lib.mjs";
+import { atomicWriteJson, meterPath, metricsPath } from "./lib.mjs";
 
 const THROTTLE_MS = 30_000;
 
@@ -37,6 +37,26 @@ const QUIESCENCE_MS = 90 * 24 * 60 * 60 * 1000;
 
 // Tools that fan work out to a subagent. Harnesses have called it both.
 const TASK_TOOLS = new Set(["Task", "Agent"]);
+
+// Context bands, ascending, upper bound exclusive. ONE source -- the
+// per-turn tally, the per-turn token sums, and the live meter's current-band
+// label all read this, so the thresholds cannot silently drift apart.
+const BANDS = [
+  { name: "under150k", below: 150_000 },
+  { name: "to300k", below: 300_000 },
+  { name: "to500k", below: 500_000 },
+  { name: "over500k", below: Infinity },
+];
+
+/** The band a context size falls in. */
+function bandFor(ctx) {
+  return BANDS.find((b) => ctx < b.below).name;
+}
+
+/** A fresh zeroed tally over every band. */
+function zeroBands() {
+  return Object.fromEntries(BANDS.map((b) => [b.name, 0]));
+}
 
 // $ per MTok, approximate list prices. Cache write ~1.25x input, read ~0.1x.
 // Unknown models price as sonnet -- the report labels everything approximate.
@@ -89,6 +109,22 @@ function scanTranscript(transcriptPath) {
   const totals = {
     input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, models: new Set(),
     reportBytes: 0, reports: 0, reportTasks: 0, contextPeak: 0,
+    // Context economy: the same forward pass, two extra running sums per
+    // producer. Residency is tokens x turns-remaining, and
+    //   Σ tok_i x (N - turn_i)  ==  N x Σtok_i - Σ(tok_i x turn_i)
+    // so exact residency needs no per-item memory -- only the turn count N,
+    // which is known once the pass ends.
+    turns: 0, turnsSidechain: 0, ctxSum: 0, prefixTokens: 0, ctxLast: 0,
+    // Two tallies per band, never one: `bands` counts TURNS, `bandTokens`
+    // sums the context those turns carried. A high band costs far more per
+    // turn, so a turn share understates it -- the rollup's rent share needs
+    // the tokens. Counts stay because they answer a different question
+    // ("how often does this session ride high"), and because every row
+    // written before bandTokens existed has only them.
+    bands: zeroBands(),
+    bandTokens: zeroBands(),
+    residTok: Object.create(null),      // producer -> Σ tokens
+    residTokTurn: Object.create(null),  // producer -> Σ (tokens x entry turn)
   };
   const fanoutIds = new Set();   // tool-use ids of the Task/Agent calls seen so far
   const resultIds = new Set();   // those that answered with a tool_result
@@ -100,12 +136,56 @@ function scanTranscript(transcriptPath) {
     const hasUsage = line.includes('"usage"');
     // Cheap prefilter -- a full JSON.parse only for lines that could matter.
     if (!hasUsage && !line.includes("tool_result") && !line.includes("tool_use")
-      && !line.includes("task-notification")) continue;
+      && !line.includes("task-notification") && !line.includes('"type":"user"')) continue;
     let entry;
     try {
       entry = JSON.parse(line);
     } catch {
       continue;
+    }
+
+    // The turn in flight. An assistant entry carrying usage IS a turn, and
+    // its own content enters AT that turn -- so the counter moves here,
+    // ahead of producer accounting, rather than inside the branch below.
+    // Attributing an assistant's own blocks to turn N-1 would inflate their
+    // residency by one turn and skew them against user-side tool results.
+    if (entry?.type === "assistant" && entry.message?.usage) totals.turns += 1;
+
+    // Producer accounting. `totals.turns` is the turn index this content
+    // entered at -- content is always attributed to the turn in flight. Runs
+    // ahead of both branches below (each ends in an early `continue`) so
+    // every entry's content, assistant or user, is seen exactly once -- and
+    // the turn counter above is hoisted here for the same reason: this same
+    // pass needs the turn already correct for both sides.
+    // `message.content` arrives in TWO shapes and both are real context: the
+    // array of typed blocks, and a bare string -- which is what a plain typed
+    // turn looks like on disk, and where the large majority of user prose
+    // actually lives. Reading only the array shape undercounted
+    // `residency.user_text` by roughly 93%.
+    const rawContent = entry?.message?.content;
+    const blocks = typeof rawContent === "string"
+      ? [{ type: "text", text: rawContent }]
+      : Array.isArray(rawContent) ? rawContent : [];
+    for (const b of blocks) {
+      let kind = null;
+      let chars = 0;
+      if (b?.type === "tool_result") {
+        kind = "tool_result";
+        chars = contentText(b.content).length;
+      } else if (b?.type === "tool_use") {
+        kind = "tool_call";
+        chars = JSON.stringify(b.input ?? {}).length;
+      } else if (b?.type === "text") {
+        kind = entry.type === "user" ? "user_text" : "assistant_text";
+        chars = (b.text ?? "").length;
+      } else if (b?.type === "thinking") {
+        kind = "thinking";
+        chars = (b.thinking ?? "").length;
+      }
+      if (!kind || !chars) continue;
+      const tok = Math.round(chars / 4);
+      totals.residTok[kind] = (totals.residTok[kind] ?? 0) + tok;
+      totals.residTokTurn[kind] = (totals.residTokTurn[kind] ?? 0) + tok * totals.turns;
     }
 
     if (entry?.type === "assistant") {
@@ -128,6 +208,14 @@ function scanTranscript(transcriptPath) {
         // were reports" -- the token SUMS multiply-count a replayed prefix
         // (one real session: 4k input, 19.6M cache writes, 957M cache reads).
         totals.contextPeak = Math.max(totals.contextPeak, inTok + cacheW + cacheR);
+        if (entry.isSidechain) totals.turnsSidechain += 1;
+        const ctx = inTok + cacheW + cacheR;
+        totals.ctxSum += ctx;
+        totals.ctxLast = ctx;
+        if (totals.turns === 1) totals.prefixTokens = cacheW;
+        const bandName = bandFor(ctx);
+        totals.bands[bandName] += 1;
+        totals.bandTokens[bandName] += ctx;
       }
       // Remember which calls fanned out, so their results are attributable.
       if (Array.isArray(entry.message?.content)) {
@@ -368,6 +456,21 @@ function main() {
     report_count: totals.reports,
     report_tasks: totals.reportTasks,
     context_peak_tokens: totals.contextPeak,
+    // Context economy: residency is token-turns, the unit cache_read
+    // actually bills in. See the residency note in scanTranscript.
+    context: {
+      turns: totals.turns,
+      turns_sidechain: totals.turnsSidechain,
+      ctx_sum: totals.ctxSum,
+      prefix_tokens: totals.prefixTokens,
+      bands: totals.bands,
+      band_tokens: totals.bandTokens,
+      residency: Object.fromEntries(
+        Object.keys(totals.residTok).map((k) => [
+          k, totals.turns * totals.residTok[k] - totals.residTokTurn[k],
+        ]),
+      ),
+    },
     models: [...totals.models],
   };
   mkdirSync(dirname(path), { recursive: true });
@@ -377,6 +480,19 @@ function main() {
   // that every turn would be the visible cost a hook must never be.
   if (rotate(path)) prune(metricsSegments(path), Date.now());
   appendFileSync(path, JSON.stringify(row) + "\n");
+
+  // Live position, addressable without parsing the append-only log. The row
+  // is history; this is where the session is standing right now.
+  const band = bandFor(totals.ctxLast);
+  atomicWriteJson(meterPath(projectDir), {
+    session_id: payload.session_id,
+    ts: row.ts,
+    transcript_path: payload.transcript_path,
+    turns: totals.turns,
+    ctx_last: totals.ctxLast,
+    band,
+    prefix_tokens: totals.prefixTokens,
+  });
 }
 
 try {

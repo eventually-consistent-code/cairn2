@@ -50,6 +50,12 @@ export function loopStatePath(projectDir) {
   return join(homedir(), ".cairn", "loop", `${base}-${hash}.json`);
 }
 
+/** Live context-meter state for one project: current band and turn count. */
+export function meterPath(projectDir) {
+  const { base, hash } = pathHash(projectDir);
+  return join(homedir(), ".cairn", "state", `${base}-${hash}-meter.json`);
+}
+
 /** (session_id, task_id) -> tracker issue id map the mirror worker keeps beside the spool. */
 export function spoolMapPath(projectDir) {
   const { base, hash } = pathHash(projectDir);
