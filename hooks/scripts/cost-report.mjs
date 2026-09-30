@@ -21,28 +21,8 @@
  * Author(s): John Reed
  */
 
-import { readFileSync, readdirSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
-import { metricsPath } from "./lib.mjs";
-
-/** Every segment of the metrics log, oldest first, the live one last. Closed
- *  segments are "<stem>.<stamp>.jsonl" with a fixed-width stamp, so a plain
- *  lexical sort is chronological. Scheme mirrored in stop-costtracker.mjs,
- *  which writes them, and in server/src/planning/token-estimate.ts. */
-function metricsSegments(current) {
-  const dir = dirname(current);
-  const stem = basename(current).replace(/\.jsonl$/, "");
-  let names;
-  try {
-    names = readdirSync(dir);
-  } catch {
-    return [current];
-  }
-  const closed = names
-    .filter((n) => n !== `${stem}.jsonl` && n.startsWith(`${stem}.`) && n.endsWith(".jsonl"))
-    .sort();
-  return [...closed.map((n) => join(dir, n)), current];
-}
+import { readFileSync } from "node:fs";
+import { metricsPath, metricsSegments } from "./lib.mjs";
 
 /** The latest row per session_id across every segment, oldest segment first.
  *  A later row REPLACES an earlier one for the same session rather than adding

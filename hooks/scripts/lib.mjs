@@ -12,7 +12,7 @@
 
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 
@@ -36,6 +36,37 @@ export function bannerPath(projectDir) {
 export function metricsPath(projectDir) {
   const { base, hash } = pathHash(projectDir);
   return join(homedir(), ".cairn", "metrics", `${base}-${hash}.jsonl`);
+}
+
+/**
+ * Every segment of the metrics log, oldest first, the live one last (#237).
+ *
+ * The log is SEGMENTED, never truncated (#229): a full segment is closed by
+ * renaming it to "<stem>.<stamp>.jsonl" with a fixed-width UTC stamp, so a
+ * plain lexical sort is chronological order. Readers depend on that order --
+ * rows are cumulative per session and the LATEST row wins, so a session that
+ * gets another row days later, landing in a newer segment while its older
+ * rows sit in an older one, must resolve to the newer row. Concatenating and
+ * summing instead would inflate every number that session touches.
+ *
+ * stop-costtracker.mjs owns the naming rule, being the writer. This is the
+ * hook side's only copy; the server's lives in server/src/core/metrics.ts,
+ * because hook scripts may never import server code. Two copies is the floor
+ * that boundary allows -- change one and the other must follow.
+ */
+export function metricsSegments(current) {
+  const dir = dirname(current);
+  const stem = basename(current).replace(/\.jsonl$/, "");
+  let names;
+  try {
+    names = readdirSync(dir);
+  } catch {
+    return [current]; // no metrics dir yet -- the live segment is the whole story
+  }
+  const closed = names
+    .filter((n) => n !== `${stem}.jsonl` && n.startsWith(`${stem}.`) && n.endsWith(".jsonl"))
+    .sort();
+  return [...closed.map((n) => join(dir, n)), current];
 }
 
 /** Per-project native-Task event spool (task-mirror-spool.mjs appends, task-mirror-worker.mjs drains). */

@@ -46,6 +46,7 @@ import {
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { CairnError } from "../errors.js";
+import { metricsSegments } from "../core/metrics.js";
 
 // Constants
 
@@ -277,33 +278,42 @@ function writeLedgerFile(path: string, state: BudgetLedgerState): void {
 
 /** Collapses the metrics jsonl to the LATEST row per session_id plus each
  * session's first-row ts. Missing file or corrupt lines contribute nothing,
- * same posture as cost-report. */
+ * same posture as cost-report.
+ *
+ * Every segment is read, oldest first (#237). That matters twice here. The
+ * latest row wins as before, so a spanning session is replaced rather than
+ * summed. But firstTs is what scopes a session to the run, and reading only
+ * the live segment put a pre-run session's FIRST row after the run opened —
+ * so its whole cumulative total counted against this run's ceiling. That is
+ * the one direction of this bug that inflates rather than under-reports. */
 function collapseMetrics(metricsPath: string): {
   firstTs: Map<string, number>;
   latest: Map<string, Record<string, unknown>>;
 } {
   const firstTs = new Map<string, number>();
   const latest = new Map<string, Record<string, unknown>>();
-  let raw: string;
-  try {
-    raw = readFileSync(metricsPath, "utf8");
-  } catch {
-    return { firstTs, latest };
-  }
-  for (const line of raw.split("\n")) {
-    if (!line.trim()) continue;
-    let row: Record<string, unknown>;
+  for (const segment of metricsSegments(metricsPath)) {
+    let raw: string;
     try {
-      row = JSON.parse(line);
+      raw = readFileSync(segment, "utf8");
     } catch {
-      continue; // skip corrupt line, same posture as cost-report
+      continue; // pruned or never written -- not an error
     }
-    const sid = row.session_id;
-    if (typeof sid !== "string") continue;
-    if (!firstTs.has(sid)) {
-      firstTs.set(sid, new Date(String(row.ts ?? "")).getTime());
+    for (const line of raw.split("\n")) {
+      if (!line.trim()) continue;
+      let row: Record<string, unknown>;
+      try {
+        row = JSON.parse(line);
+      } catch {
+        continue; // skip corrupt line, same posture as cost-report
+      }
+      const sid = row.session_id;
+      if (typeof sid !== "string") continue;
+      if (!firstTs.has(sid)) {
+        firstTs.set(sid, new Date(String(row.ts ?? "")).getTime());
+      }
+      latest.set(sid, row); // later lines win — append order
     }
-    latest.set(sid, row); // later lines win — append order
   }
   return { firstTs, latest };
 }
