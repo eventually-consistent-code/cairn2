@@ -76,6 +76,11 @@ export declare function metricsPathFor(projectDir: string, home?: string): strin
  * total is the sum of each session's LATEST row (cost-report.mjs contract).
  * Missing or corrupt metrics read as zero -- cost is decoration on the
  * board, never a reason a card fails.
+ *
+ * Segments are read oldest first (#237), so a session that opened in a closed
+ * segment and picked up a later row in the live one is REPLACED rather than
+ * summed. Reading the live segment alone made the board's spend figure shrink
+ * at each rotation, which reads as spend falling rather than as history lost.
  */
 export declare function projectCost(projectDir: string, home?: string): {
     costUsd: number;

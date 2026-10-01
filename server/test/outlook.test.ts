@@ -202,6 +202,37 @@ describe("cost rollup on cards (#92)", () => {
     expect(card.costByKind).toEqual({ issue: 2.5, probe: 0.75, other: 0.25 });
   });
 
+  it("counts closed segments, not just the live one (#237)", () => {
+    const home = dir();
+    const proj = project();
+    mkdirSync(join(home, ".cairn"), { recursive: true });
+    writeFileSync(join(home, ".cairn", "registry.json"), JSON.stringify({
+      version: 1,
+      projects: [{ name: proj.split("/").pop(), path: proj,
+        firstSeen: "2026-08-14T00:00:00Z", lastSeen: "2026-08-14T00:00:00Z" }],
+    }));
+    emitOutlook(proj, undefined, home);
+
+    const metrics = metricsPathFor(proj, home);
+    mkdirSync(join(home, ".cairn", "metrics"), { recursive: true });
+    const stem = metrics.replace(/\.jsonl$/, "");
+
+    // A session that started in an older segment and picked up a later row in
+    // the live one: the merge must REPLACE, not sum, or spend inflates.
+    writeFileSync(`${stem}.20260920-143000-01.jsonl`, [
+      JSON.stringify({ session_id: "old", est_cost_usd: 4.0, kind: "issue" }),
+      JSON.stringify({ session_id: "spanning", est_cost_usd: 1.0, kind: "probe" }),
+    ].join("\n") + "\n");
+    writeFileSync(`${stem}.20260921-090000-01.jsonl`,
+      JSON.stringify({ session_id: "middle", est_cost_usd: 2.0, kind: "issue" }) + "\n");
+    writeFileSync(metrics,
+      JSON.stringify({ session_id: "spanning", est_cost_usd: 3.0, kind: "probe" }) + "\n");
+
+    const card = outlookAggregate(home).projects[0];
+    expect(card.costUsd).toBe(9.0); // 4 + 2 + 3 (spanning's latest, not 1 + 3)
+    expect(card.costByKind).toEqual({ issue: 6.0, probe: 3.0 });
+  });
+
   it("no metrics file means no cost fields, not zero", () => {
     const home = dir();
     const proj = project();

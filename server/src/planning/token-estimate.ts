@@ -44,9 +44,10 @@
 // Author(s): John Reed
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { join } from "node:path";
 import { CairnError } from "../errors.js";
 import { metricsPath } from "../core/continuity.js";
+import { metricsSegments } from "../core/metrics.js";
 import {
   isValidPhaseNumber, PHASE_NUMBER_ERROR, parsePhaseDirName, plansRoot,
 } from "./artifacts.js";
@@ -144,24 +145,9 @@ interface MetricsRow {
   est_cost_usd?: number;
 }
 
-/** Every segment of the metrics log, oldest first, the live one last. The live
- *  segment keeps the canonical name; a closed one is "<stem>.<stamp>.jsonl"
- *  with a fixed-width stamp, so a plain lexical sort is chronological order.
- *  Scheme mirrored in hooks/scripts/stop-costtracker.mjs, which writes them. */
-export function metricsSegments(current: string): string[] {
-  const dir = dirname(current);
-  const stem = basename(current).replace(/\.jsonl$/, "");
-  let names: string[];
-  try {
-    names = readdirSync(dir);
-  } catch {
-    return [current]; // no metrics dir yet -- the live segment is the whole story
-  }
-  const closed = names
-    .filter((n) => n !== `${stem}.jsonl` && n.startsWith(`${stem}.`) && n.endsWith(".jsonl"))
-    .sort();
-  return [...closed.map((n) => join(dir, n)), current];
-}
+/** Re-exported so existing importers keep their path; the one copy lives in
+ *  core/metrics.ts (#237). */
+export { metricsSegments };
 
 /**
  * Latest row per session_id across every segment. Segments are read oldest

@@ -8,6 +8,7 @@ import { CairnError } from "../errors.js";
 import { loadConfig } from "../config.js";
 import { projectStatus } from "../planning/status.js";
 import { sessionLandscape } from "../sessions/store.js";
+import { metricsSegments } from "./metrics.js";
 import { readRegistry } from "./registry.js";
 
 /**
@@ -193,14 +194,25 @@ export function metricsPathFor(projectDir: string, home: string = homedir()): st
  * total is the sum of each session's LATEST row (cost-report.mjs contract).
  * Missing or corrupt metrics read as zero -- cost is decoration on the
  * board, never a reason a card fails.
+ *
+ * Segments are read oldest first (#237), so a session that opened in a closed
+ * segment and picked up a later row in the live one is REPLACED rather than
+ * summed. Reading the live segment alone made the board's spend figure shrink
+ * at each rotation, which reads as spend falling rather than as history lost.
  */
 export function projectCost(projectDir: string, home?: string):
     { costUsd: number; costByKind: Record<string, number> } | null {
   const path = metricsPathFor(projectDir, home);
   if (!existsSync(path)) return null;
   const latest = new Map<string, { cost: number; kind: string }>();
-  try {
-    for (const line of readFileSync(path, "utf8").split("\n")) {
+  for (const segment of metricsSegments(path)) {
+    let raw: string;
+    try {
+      raw = readFileSync(segment, "utf8");
+    } catch {
+      continue; // pruned or never written -- not an error
+    }
+    for (const line of raw.split("\n")) {
       if (!line.trim()) continue;
       try {
         const row = JSON.parse(line);
@@ -209,8 +221,6 @@ export function projectCost(projectDir: string, home?: string):
           { cost: row.est_cost_usd ?? 0, kind: row.kind ?? "other" });
       } catch { /* skip bad line */ }
     }
-  } catch {
-    return null;
   }
   let costUsd = 0;
   const costByKind: Record<string, number> = {};

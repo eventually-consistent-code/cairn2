@@ -19,8 +19,8 @@
 import {
   appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync,
 } from "node:fs";
-import { basename, dirname, join } from "node:path";
-import { atomicWriteJson, meterPath, metricsPath } from "./lib.mjs";
+import { dirname, join } from "node:path";
+import { atomicWriteJson, meterPath, metricsPath, metricsSegments } from "./lib.mjs";
 
 const THROTTLE_MS = 30_000;
 
@@ -290,35 +290,6 @@ function workKind(projectDir, ctx) {
   if (newest) return newest.kind;
   if (ctx.phase !== undefined) return "plan";
   return "other";
-}
-
-/**
- * Every segment of the metrics log, oldest first, the live one last.
- *
- * The live segment keeps the canonical name; a closed one is
- * "<stem>.<stamp>.jsonl" with a fixed-width stamp, so a plain lexical sort is
- * chronological order. Readers depend on that order: rows are cumulative per
- * session and the LATEST row wins, so a session that gets another row days
- * later -- landing in a newer segment while its older rows sit in an older
- * one -- must resolve to the newer row. Concatenating and summing instead
- * would inflate every number that session touches.
- *
- * Scheme mirrored in cost-report.mjs and server/src/planning/token-estimate.ts;
- * hook scripts may never import server code, so it lives on both sides.
- */
-function metricsSegments(current) {
-  const dir = dirname(current);
-  const stem = basename(current).replace(/\.jsonl$/, "");
-  let names;
-  try {
-    names = readdirSync(dir);
-  } catch {
-    return [current]; // no metrics dir yet -- the live segment is the whole story
-  }
-  const closed = names
-    .filter((n) => n !== `${stem}.jsonl` && n.startsWith(`${stem}.`) && n.endsWith(".jsonl"))
-    .sort();
-  return [...closed.map((n) => join(dir, n)), current];
 }
 
 /** Fixed-width UTC stamp for a closed segment: 20260920-143000. Fixed width

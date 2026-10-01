@@ -43,9 +43,10 @@
 //   calibration curve ends up fitted to a parser bug.
 // Author(s): John Reed
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { basename, dirname, join } from "node:path";
+import { join } from "node:path";
 import { CairnError } from "../errors.js";
 import { metricsPath } from "../core/continuity.js";
+import { metricsSegments } from "../core/metrics.js";
 import { isValidPhaseNumber, PHASE_NUMBER_ERROR, parsePhaseDirName, plansRoot, } from "./artifacts.js";
 import { parsePlanDoc } from "./frontmatter.js";
 // -- published wide defaults (no-history fallback) ----------------------------
@@ -80,25 +81,9 @@ function cushionFor(n) {
 // and dropped on the floor, which is the whole reason seven of nine backends
 // had a points corpus and no minutes corpus at all.
 const ESTIMATE_LINE_RE = /^Estimate:\s*(\d+(?:\.\d+)?)\s*points?(?:\s*\/\s*~\s*(\d+(?:\.\d+)?)\s*h)?\.?\s*$/im;
-/** Every segment of the metrics log, oldest first, the live one last. The live
- *  segment keeps the canonical name; a closed one is "<stem>.<stamp>.jsonl"
- *  with a fixed-width stamp, so a plain lexical sort is chronological order.
- *  Scheme mirrored in hooks/scripts/stop-costtracker.mjs, which writes them. */
-export function metricsSegments(current) {
-    const dir = dirname(current);
-    const stem = basename(current).replace(/\.jsonl$/, "");
-    let names;
-    try {
-        names = readdirSync(dir);
-    }
-    catch {
-        return [current]; // no metrics dir yet -- the live segment is the whole story
-    }
-    const closed = names
-        .filter((n) => n !== `${stem}.jsonl` && n.startsWith(`${stem}.`) && n.endsWith(".jsonl"))
-        .sort();
-    return [...closed.map((n) => join(dir, n)), current];
-}
+/** Re-exported so existing importers keep their path; the one copy lives in
+ *  core/metrics.ts (#237). */
+export { metricsSegments };
 /**
  * Latest row per session_id across every segment. Segments are read oldest
  * first and rows within one are in append order, so a later row simply

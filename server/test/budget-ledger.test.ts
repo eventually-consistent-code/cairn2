@@ -169,6 +169,40 @@ describe("cumulative-row collapse", () => {
   });
 });
 
+describe("segmented metrics log (#237)", () => {
+  it("collapses across closed segments, not just the live one", () => {
+    const { ledger, metrics } = setup({
+      ceilingTokens: 10_000,
+      metricsLines: [row("live", "2026-09-01T03:00:00.000Z", 300, 3)],
+    });
+    const stem = metrics.replace(/\.jsonl$/, "");
+    writeFileSync(`${stem}.20260901-010000-01.jsonl`,
+      row("closed", "2026-09-01T01:00:00.000Z", 500, 5));
+
+    const check = checkBudget(refreshSpend(ledger));
+    expect(check.spentTokens).toBe(800); // 500 from the closed segment + 300
+    expect(check.spentUsd).toBeCloseTo(8, 4);
+  });
+
+  it("reads a session's FIRST ts from the oldest segment, so a pre-run session stays excluded", () => {
+    // The dangerous direction: this session opened before the run, so it must
+    // not count. Its opening row sits in a closed segment — read only the live
+    // one and it looks like a session that began mid-run, and its whole
+    // cumulative total lands on the run's ceiling.
+    const { ledger, metrics } = setup({
+      ceilingTokens: 10_000,
+      metricsLines: [row("old", "2026-09-01T02:00:00.000Z", 9_500, 95)],
+    });
+    const stem = metrics.replace(/\.jsonl$/, "");
+    writeFileSync(`${stem}.20260831-220000-01.jsonl`,
+      row("old", "2026-08-31T23:00:00.000Z", 9_000, 90));
+
+    const check = checkBudget(refreshSpend(ledger));
+    expect(check.spentTokens).toBe(0);
+    expect(check.spentUsd).toBeCloseTo(0, 4);
+  });
+});
+
 describe("token unit (#152) — input+output only, the estimator's unit", () => {
   it("charges only input+output tokens on a cache-heavy session; USD reflects everything", () => {
     // the live incident shape: 40.4M metered tokens, nearly all cache reads,
