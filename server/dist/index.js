@@ -1521,15 +1521,14 @@ export function buildServer(deps) {
         return planCheck(dir(), a.phase);
     }));
     server.registerTool("audit_record", {
-        description: "Write the audit record file (.cairn/audit/<scope>-<date>.md) — single writer; " +
-            "same scope+date supersedes, prior dates immutable. Every finding carries a typed " +
-            "failure_scenario (concrete inputs/state → wrong output/crash) — the write refuses one without it. " +
-            "Critical/important findings carry a refutation `panel` (>=1 vote, >=2 on a security scope); " +
-            "the quorum is computed here: REFUTED strict majority kills the finding (stays in the record, " +
-            "never filed — `results[].survived` false), CONFIRMED > REFUTED confirms, else plausible. " +
-            "Survivors credit their raising `seats` in the yield store. A staged `patch` (path + one " +
-            "verifier's three claims) is apply-eligible only when the finding survived and all three claims " +
-            "are true — `results[].applyEligible` decides, the verb only offers",
+        description: "Write the audit record (.cairn/audit/<scope>-<date>.md) — single writer; same scope+date " +
+            "supersedes, prior dates immutable. Every finding needs a failure_scenario (inputs/state → wrong " +
+            "output/crash). Critical/important need a refutation `panel` (>=1 vote, >=2 on security); quorum " +
+            "computed here: REFUTED strict majority kills it (kept in the record, never filed — " +
+            "`results[].survived` false), CONFIRMED > REFUTED confirms, else plausible. Survivors credit " +
+            "their `seats`' yield. A staged `patch` is apply-eligible only if the finding survived and its " +
+            "verifier's three claims are true (`results[].applyEligible`). A sweep-<YYYY-MM-DD> scope is a " +
+            "manifest: `legs` index leg records; returns `delta` vs the prior sweep",
         inputSchema: z.object({
             scope: z.string(),
             verdict: z.enum(["pass", "findings"]),
@@ -1565,8 +1564,11 @@ export function buildServer(deps) {
                     .optional(),
             }))
                 .default([]),
+            legs: z
+                .array(z.object({ scope: z.string().min(1), path: z.string().min(1) }))
+                .optional(),
         }),
-    }, wrap((a) => writeAuditRecord(dir(), a.scope, a.verdict, a.findings)));
+    }, wrap((a) => writeAuditRecord(dir(), a.scope, a.verdict, a.findings, { legs: a.legs })));
     server.registerTool("map_set", {
         description: "Merge-patch the project knowledge graph (.cairn/map/map.json) -- nodes merge by id " +
             "(null deletes). Edge ops: edgesAdd/edgesRemove patch by exact from+to+type triple (removes " +
