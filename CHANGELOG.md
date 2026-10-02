@@ -1,15 +1,68 @@
 # Changelog
 
-## Unreleased — measured actuals
+## v2.8.0 — the sweep (2026-10-02)
 
-Every closed task used to record a duration the agent made up, and the
-ones checked against tracker timestamps ran six to fourteen times high.
-That isn't a discipline problem: a model has no reliable sense of its own
-elapsed time, so asking more firmly can't fix it. The server now measures
-duration from timestamps it already controls and labels where each
-number came from. The agent's figure survives as a claim, stored beside
-the measurement instead of replacing it. Tool count holds at 87; the
-suite grows 1605 → 1630.
+Milestone v8 closes on its capstone: one audit mode that runs every
+improvement check cairn has across a whole project, files only what
+survives a refutation panel, and writes a dated baseline so the next
+sweep says what is new, what persisted, what got fixed, and what came
+back. Underneath it, cairn stops recording numbers it cannot stand
+behind. Durations are measured, not asked for. Eval results that split
+across runs say "inconclusive" instead of averaging into a score.
+Context cost is metered where it lands. And the guard that protects
+cairn's own configuration now refuses what a command writes, not what it
+happens to mention.
+
+Two claims are deliberately not made here. The sweep ships tested but
+not yet run in anger: its first real baseline is taken on this release,
+because the comparison it reports lives in this release's server. And
+the context-economy experiment that would have halved average context
+was killed at its gate, so nothing in this release claims that saving.
+
+Tool count moves 86 → 87. Suite 1541 → 1680.
+
+### the sweep
+
+- `audit sweep` runs every leg in order (security, the security surface
+  check, tests, docs, plans, simplify, memory, and the milestone view
+  last), each through its own closing discipline unchanged. Duplicates
+  collapse, a refutation panel judges every serious finding, and only
+  survivors reach the tracker, labelled with the leg that found them.
+- One dated manifest per sweep records the cairn version, the commit, and
+  every leg's record. Against the previous manifest it classifies each
+  finding as new, persisting, fixed, or regressed, matching by exact title
+  first and then by the failure the finding describes, so a reworded
+  finding is still the same finding. The first sweep says "first
+  baseline".
+- The report is one prioritized backlog (regressions first, then new,
+  then persisting, criticals ahead of the rest), followed by the latest
+  eval verdicts with any failing gate first, then approximate spend, and
+  it updates the portfolio board. `--fix` stages patches leg by leg, never
+  across legs. "Rescan this project" routes here through the confirm
+  path.
+- The security surface check now maps every imperative rule (never, do
+  not, always, must) in the project's instructions, procedures and hook
+  prose to the deterministic controls that could back it, and reports the
+  rules nothing enforces. The scan only proposes candidates; the auditor
+  decides whether a control truly backs a rule. Run on cairn itself, it
+  found 58 of 258 rules with nothing behind them.
+- Every decision record, server gate and hook now states what would make
+  it unnecessary, in a `removeWhen:` line, or says `never` and why. The
+  milestone audit lists the ones whose condition has plausibly arrived,
+  for a human to judge. Harness components exist because the model or
+  the platform cannot do something yet; this writes the expiry down.
+
+### eval semantics
+
+- Every behavioural eval case is now either regression (must pass every
+  run, and is a gate) or capability (an improvement target that never
+  blocks). One mixed score produced wrong priorities.
+- A verdict script reads a run's results and reports PASS, FAIL, or
+  INCONCLUSIVE when runs split. A split is "we don't know yet, add runs",
+  not a fractional score. A case's tier comes from its current definition,
+  so results recorded before tiers existed still read correctly. The
+  nightly lane prints the verdicts and stays advisory until a variance
+  baseline exists.
 
 ### measured actuals
 
@@ -45,6 +98,42 @@ suite grows 1605 → 1630.
   retry.
 - The work, trace, fast and audit procedures open claims with "Starting
   now." and no longer ask the agent for a time spent.
+
+
+### context economy
+
+- What a piece of work costs in context is now measured where it lands.
+  Every turn's residency is accounted per producer, rent is attributed to
+  the work item that spent it, and one tool reports the layer's whole
+  bill. Compaction boundaries are detected along with what crossing them
+  cost.
+- A first symptom detector looks for evidence a compaction hurt, such as
+  a repeated question or a re-read file. Its first version could not fire
+  at all, because almost all real user prose arrives as a bare string;
+  that is fixed and proven. A symptom is strong evidence of harm, but its
+  absence is weak evidence of safety, so no gate keys on zero symptoms.
+- The experiment to halve average context by compacting far earlier was
+  run and killed: at that threshold ordinary work became unworkable. The
+  predicted saving is withdrawn and nothing should cite it. The reporting
+  that would catch a threshold creeping back stays.
+- The context-footprint guard now counts tool schemas it was silently
+  omitting, and no longer counts header comments as if they were injected
+  into every session. Its budget is re-pinned to each corrected reading,
+  never loosened by a fix.
+
+### fixes
+
+- The guard protecting cairn's own configuration refused ordinary reads:
+  any `>` counted as a write, including `2>/dev/null`, and any mention of
+  a protected path counted as an edit. It now finds what a command
+  actually writes (redirect targets, and the files that cp, mv, rm, tee,
+  sed -i and their kin change) and refuses only those. Quoted text and
+  heredoc bodies are data. Writes passed as a string to another shell,
+  which the old check missed, are now caught.
+- The portfolio board and the budget ledger read only the live segment of
+  the metrics log, so after the first rotation the board's spend appeared
+  to drop and the ledger could charge a run for a session that started
+  before it. Both now read every segment.
 
 ## v2.7.0 — the guards (2026-09-20)
 
