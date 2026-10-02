@@ -11,6 +11,9 @@
  *   fails stays in the spool for the next run (offline durability). This is
  *   the only mirror piece that imports server code -- it runs detached, so
  *   it can afford to.
+ *
+ * removeWhen: the platform mirrors native tasks to an external tracker
+ *   itself.
  * Author(s): John Reed
  */
 

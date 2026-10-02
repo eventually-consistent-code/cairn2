@@ -18,6 +18,9 @@
  *   node cost-report.mjs --phase N    # one number: est. cost for phase N
  *   node cost-report.mjs --reports    # report bytes per coordinator session
  *   node cost-report.mjs --json      # machine-readable summary
+ *
+ * removeWhen: the platform exposes per-session cumulative spend through
+ *   an API cairn can read.
  * Author(s): John Reed
  */
 

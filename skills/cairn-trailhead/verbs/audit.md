@@ -91,9 +91,9 @@ If `n` is archived, read artifacts from `milestones/v<n>/` instead of live
 **Milestone sunset sweep.** Every harness component exists because the
 model or platform can't do something yet, and each one says what would
 retire it: a `removeWhen:` line under the status line of every
-`docs/adr/*.md`, and in the module header of every server gate
-(`grep -rn "removeWhen:" docs/adr server/src`). Hooks carry no line yet;
-skip them. For each line, ask whether its condition has plausibly
+`docs/adr/*.md`, and in the module header of every server gate and
+hook script (`grep -rn "removeWhen:" docs/adr server/src hooks/scripts`).
+For each line, ask whether its condition has plausibly
 arrived since the last milestone — a model release, a platform feature,
 a measurement the line names — and cite the evidence (release note,
 changelog entry, the measurement). `removeWhen: never — …` lines are

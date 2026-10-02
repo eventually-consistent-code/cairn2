@@ -12,6 +12,10 @@
  *   them; the guard protects outbound text, not the implementation. All
  *   other patterns still apply to those files, and every other path keeps
  *   full strictness. See leak-patterns.mjs for the full rationale.
+ *
+ * removeWhen: never for the scan itself; this hook can retire if the
+ *   platform offers a pre-commit content policy cairn can register
+ *   patterns with.
  * Author(s): John Reed
  */
 

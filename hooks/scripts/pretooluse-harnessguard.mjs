@@ -20,6 +20,9 @@
  *   best-effort text matching over the command -- it catches the shapes an
  *   agent actually writes (redirect, sed -i, tee, cp, mv) and makes no
  *   claim to be a shell parser.
+ *
+ * removeWhen: the platform isolates agent config at the OS level, so the
+ *   agent process cannot write its own hooks or settings (ADR 0016).
  * Author(s): John Reed
  */
 

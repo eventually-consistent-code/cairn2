@@ -8,6 +8,9 @@
  *   one-line task-mirror advisory in cairn projects when
  *   CLAUDE_CODE_ENABLE_TODO_TOOLS isn't set (#107). Fire-and-forget:
  *   any error, or nothing to show, is a silent no-op.
+ *
+ * removeWhen: the platform persists working context across compaction
+ *   and /clear natively.
  * Author(s): John Reed
  */
 
