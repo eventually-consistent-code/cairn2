@@ -24,6 +24,7 @@ same way: a record, then tracker issues for anything that matters.
 | `docs [scope]` | sweep README/docs claims against the codebase | read every claim a README or `docs/**` file makes about what's shipped (tool counts, verb lists, table shapes, file paths, commands) and check each one against the real codebase — `check-surface.mjs`'s numbers, `server/src/index.ts`'s registry, the actual files on disk. A claim that's drifted from what's actually there is a finding, same severity scale as every other mode. No `scope` means sweep every README + `docs/**` file; a `scope` narrows to one file or directory. |
 | `memory` | the card store's health | `mem_stats` returns the evidence under `cards`: cards that FAIL TO PARSE (the rot that matters — `mem_card_list` and recall skip them silently, so a corrupted card vanishes from every surface without announcing itself), provenance whose file is gone or whose commit no longer resolves, near-duplicate bodies, aged low-confidence cards, and counts by type and confidence. Score against the rubric below, report before editing, and propose edits with a diff and a why — never rewrite a card body (they are immutable; a correction is a NEW card). A malformed card is `important`: it is invisible rot. Broken provenance is `important` when the file is gone, `minor` when only the commit is unresolvable. Near-duplicates and aged cards are `minor` and route to retro's compaction rather than to a fix here. The card health block reads plain files and git, so it survives a broken index binding — if `indexUnavailable` appears alongside it, report that separately and carry on |
 | `simplify [phase]` | quality-only sweep over what recently changed | refine, never rewrite: the target is the files touched in the phase's ledgered commit ranges (no phase → the most recently active one); the clarity and architecture seats supply the eye — nesting that hides the happy path, redundant abstraction, misleading names, work in the wrong layer — and every finding names the exact behavior that must NOT change as its `failure_scenario` ("after the change, X still does Y"). Clarity over brevity; fewer lines is never the goal. Quality findings are `minor` unless the complexity demonstrably hides a defect (then it's a normal finding at its real severity). A BUG found mid-sweep is filed as a finding, never fixed in-band — `review` stays the bug hunt. `--fix` runs the staged-patch discipline over EVERY finding of the sweep (minors included — the sweep IS the apply), one patch per finding, `behavior_unchanged` the claim the verifier must actually run the tests to state |
+| `sweep [--fix]` | the whole project, every leg, against the last sweep | the full-project rescan: the legs below in order, each closing exactly as its own mode does, then ONE `sweep-<date>` manifest record whose server-computed delta says what is new, persisting, fixed, or regressed since the previous sweep — see **Sweep** below |
 
 **Rule-to-control coverage (`security --surface`):** a "never" in
 CLAUDE.md is a wish until something deterministic refuses the act. The
@@ -78,7 +79,8 @@ round: its eye IS the roster — the `clarity` and `architecture` seats
 dose over the recently-changed files; no other seat walks a simplify
 sweep, and a roster with neither seat valid says so in one line and
 stops. The other modes (`uat`, `milestone`, `tests`, `plans`, `docs`)
-aren't viewpoint-shaped and never consult the roster.
+aren't viewpoint-shaped and never consult the roster. `sweep` adds no eye
+of its own — each leg consults the roster exactly as its mode does.
 Framing, same as everywhere seats appear: internal seats are framing
 lenses — cheap, same-model; `peers` remains the genuinely adversarial
 external council.
@@ -230,6 +232,93 @@ working tree at all. The sequence, per `--fix` run:
    them.
 
 No `--fix` flag → none of this runs; the verb behaves exactly as before.
+
+## Sweep — the whole-project rescan
+
+For the maintainer who wants one answer to "what is wrong with this
+project right now, and is it better or worse than last time" — before a
+release, after a stretch of out-of-band work, or on a cadence. What they
+do with it: work the backlog top-down, and read the delta to see whether
+the last round of fixes actually held. A sweep composes the existing
+modes; it never invents a check of its own and never re-judges a leg.
+
+**Legs, in this order** — each one runs exactly as its mode row says,
+with its default target, and closes through its own closing discipline
+unchanged: dedup → refutation panel → its own `audit_record` under its
+normal `<mode>-<target>` scope → each surviving critical/important
+finding filed with the `cairn:audit` label PLUS `cairn:sweep`, so one
+tracker filter shows everything a sweep raised.
+
+1. `security`, then `security --surface` (which carries the
+   rule-to-control coverage leg).
+2. `tests` — it writes the missing tests as that mode always does;
+   commit them before the next leg so every later leg judges one tree.
+3. `docs`
+4. `plans`
+5. `simplify`
+6. `memory` — a project with no card store (no `mem_stats`) gets one
+   line, "leg skipped: memory — no card store here", and the sweep
+   carries on.
+7. `milestone` last — the closing view, sunset sweep included.
+
+Keep `{ scope, path }` from each leg's `audit_record` result — that is
+the leg index. A leg that stops on its own terms (simplify with no valid
+seats, a tool error) is one "leg skipped: <mode> — <why>" line in the
+report and is left out of the index; never write a stand-in record for a
+leg that didn't run.
+
+**The manifest — one write, no re-panel.** After the last leg:
+`audit_record(scope: "sweep-<YYYY-MM-DD>", verdict, findings, legs)`.
+`findings` is the union of every leg's SURVIVORS, each carried verbatim
+from its leg — title, severity, `failure_scenario`, `panel`, `seats`,
+`issue` — so the server re-reads the same votes and lands the same
+outcome; refuted findings stay in their leg's record and out of the
+union. `verdict` is `pass` only when the union is empty. The server
+stamps the cairn version, writes the leg index, attributes each finding
+to its leg, and returns `delta` — `null` on the first sweep (this run IS
+the baseline), otherwise `{ baseline, codeCommitsSince, new, persisting,
+fixed, regressed }`. It matches findings across sweeps by exact title,
+then by scenario similarity, so carry a leg's titles unedited: a
+reworded title over a reworded scenario reads as one fixed plus one new.
+The verb never computes the delta itself.
+
+**Report — one prioritized backlog, then the context.**
+
+1. Header: date, legs run / skipped, and the baseline it was diffed
+   against (its date, commit, and `codeCommitsSince`) — or "first sweep:
+   this is the baseline".
+2. Backlog, in exactly this order, one line per finding (title, leg,
+   issue): regressed critical → new critical → persisting critical →
+   regressed important → new important → persisting important. Minors as
+   counts only (regressed / new / persisting). Then "fixed since the
+   baseline: N" with their titles — that line is the payoff, so never
+   drop it. On a first sweep every survivor is new; say so once instead
+   of labelling each line. Close with the panel line summed across legs:
+   "panel: N confirmed, N plausible, N refuted (not filed)".
+3. Eval table — reported, never run: the latest
+   `evals/results/*/aggregate-result.json` (or a CI artifact path the
+   user names) through `node scripts/eval-verdicts.mjs <that file>
+   --json`. Lead with any row whose `gate` is true and `gateOk` false,
+   then one row per case: case, tier, passed/runs, verdict, regression
+   rows marked as gates. No results, or no script in this project → one
+   line saying so; never an error.
+4. Spend: for each issue filed this sweep,
+   `node "$CLAUDE_PLUGIN_ROOT/hooks/scripts/cost-report.mjs" --issue <id>`;
+   print the sum as "agent cost: ~$X (approximate)", or one line saying
+   the cost log has no rows for them.
+5. `outlook_emit(tracker: {open, inProgress, blocked, nextVerb, asOf})`
+   — counts from an `issue_list`, `nextVerb` the step you are about to
+   suggest (usually the top backlog line), `asOf` today. Skip silently
+   only if the emit tool errors — a snapshot problem never fails a sweep.
+
+**`sweep --fix`:** the staged-patch discipline, leg by leg — after each
+leg's record and filing, that leg's `--fix` runs over that leg's
+findings in its own scratch dir (`fix/<leg-scope>-<date>/`), with its
+own verifier round and its own apply ask, before the next leg starts.
+Never one patch spanning two legs' findings, never one ask across legs.
+The manifest still lists findings as their legs found them; a fix
+applied here reads as `fixed` in the NEXT sweep's delta. `docs`' prose exception and `simplify`'s
+every-finding scope apply inside their own legs as usual.
 
 ## Paper trail
 

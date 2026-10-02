@@ -17,6 +17,9 @@ purpose column and dispatch.
    directly.
 4. Mutating verb (`new plan work verify ship import remember`) or low
    confidence → confirm first: "Sounds like `/cairn:plan 4 --deep` — run it?"
-5. Matches a reserved verb's purpose → say which tier ships it and offer the
+5. "Rescan this project" / "sweep" / "audit everything" → `/cairn:audit
+   sweep` (add `--fix` only when the request asks for fixes) — always
+   through the confirm path in 4: a sweep files issues and can run long.
+6. Matches a reserved verb's purpose → say which tier ships it and offer the
    nearest live alternative.
-6. No plausible match → `verbs/help.md`.
+7. No plausible match → `verbs/help.md`.
