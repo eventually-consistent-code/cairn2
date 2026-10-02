@@ -2,6 +2,8 @@
 
 Date: 2026-09-13. Status: accepted.
 
+removeWhen: never — when a viewpoint is useful (against a draft plan or against a diff) is a property of the work, not of model capability.
+
 ## Context
 
 A roster built for diff review has no place for viewpoints whose

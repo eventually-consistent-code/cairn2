@@ -2,6 +2,8 @@
 
 Status: accepted (v2, 2026-07-24)
 
+removeWhen: every supported docs product lets a page carry a caller-supplied stable key that publish can look up, so identity can live on the page instead of being inferred from title and parent.
+
 ## Context
 
 Re-publishing must update pages in place, never duplicate. Candidates for

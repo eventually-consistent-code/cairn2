@@ -2,6 +2,8 @@
 
 Date: 2026-09-01. Status: accepted.
 
+removeWhen: never — hand-written prose deserves a structural guard against any writer, script or model. A writer that follows instructions better makes a clobber rarer, not acceptable.
+
 ## Context
 
 Doc synthesis merges generated content into files that also hold
