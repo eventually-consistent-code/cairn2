@@ -1,5 +1,51 @@
 # Changelog
 
+## Unreleased — measured actuals
+
+Every closed task used to record a duration the agent made up, and the
+ones checked against tracker timestamps ran six to fourteen times high.
+That isn't a discipline problem: a model has no reliable sense of its own
+elapsed time, so asking more firmly can't fix it. The server now measures
+duration from timestamps it already controls and labels where each
+number came from. The agent's figure survives as a claim, stored beside
+the measurement instead of replacing it. Tool count holds at 87; the
+suite grows 1605 → 1630.
+
+### measured actuals
+
+- The server measures how long a task took, down a fixed ladder, and
+  records which rung produced the number: the claim comment's timestamp
+  to the close, where the backend can list comments; otherwise the moment
+  the server itself saw the issue go in progress; otherwise the first to
+  last commit across the task's commits; otherwise nothing, recorded as
+  nothing. The rungs measure different spans, and the label is what stops
+  a later reader pooling them as if they were one measurement.
+- A claim comment is recognised strictly, by a first line that opens
+  "Starting now". A missed hand-written claim only drops the measurement
+  one rung. A loose match would start the clock early and inflate the
+  very number this replaces. On both of the first two rungs the earliest
+  claim wins, so a task picked back up after a pause still measures from
+  its first pickup.
+- The agent's own time is kept as a claim beside the measurement, and the
+  gap between the two is kept on purpose, because it says something about
+  the reporter. Worklogs on backends that support them get the measured
+  minutes. The close comment carries the measurement and its source in
+  the same comment as the test evidence.
+- Closing an issue and writing its ledger line happen in two different
+  tools, and each held half of the record. The close now leaves a small
+  local receipt with the estimate it saw (each number tagged as a real
+  tracker field or a line scraped from the issue body), the claimed
+  minutes and the worklog outcome. The ledger append folds the receipt
+  into one short actuals segment on the line, then deletes it. Receipts
+  live in a folder that ignores itself, so no repo ever commits one.
+- A missing receipt never costs the line. It is written anyway with a
+  named degraded marker instead of silent blanks, and the duration still
+  comes from git. Nothing about receipts can fail a close or an append,
+  and an append the ledger refuses leaves its receipt in place for the
+  retry.
+- The work, trace, fast and audit procedures open claims with "Starting
+  now." and no longer ask the agent for a time spent.
+
 ## v2.7.0 — the guards (2026-09-20)
 
 The second half of milestone v8, and the half that turns rules about
