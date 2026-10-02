@@ -7,6 +7,9 @@
  * it in future pipelines — same precedent as composeBrief in brief.ts.
  * Dependency-free and deterministic on purpose: shuffled input, same
  * output, every time.
+ *
+ * removeWhen: one call can produce the whole panel's findings already
+ *   merged, matching this engine's output on a recorded corpus (ADR 0012).
  * Author(s): John Reed
  */
 // Constants

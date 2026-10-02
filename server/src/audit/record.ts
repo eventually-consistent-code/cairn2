@@ -11,6 +11,9 @@
  * previous manifest (new / persisting / fixed / regressed) — computed
  * here, in the writer, never by a reader tool. parseAuditRecord reads any
  * record back.
+ *
+ * removeWhen: verifier votes reliably agree with human triage across a
+ *   milestone, so the server-computed quorum can become advisory.
  * Author(s): John Reed
  */
 
