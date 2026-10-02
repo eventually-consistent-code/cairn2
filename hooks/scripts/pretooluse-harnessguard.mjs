@@ -24,6 +24,9 @@
  *   READ -- run, grepped, piped to head -- passes (#240). It is still not a
  *   full shell parser: a write hidden inside an interpreter (python -c,
  *   node -e) or a $(...) substitution is not seen.
+ *
+ * removeWhen: the platform isolates agent config at the OS level, so the
+ *   agent process cannot write its own hooks or settings (ADR 0016).
  * Author(s): John Reed
  */
 
