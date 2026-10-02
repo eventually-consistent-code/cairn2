@@ -98,14 +98,38 @@ function frontmatterTags(md) {
 
 
 /**
+ * The case's CURRENT definition, when it can be found. A tier is a
+ * property of the case, not of the run: a result recorded before the
+ * case was tiered still embeds the old prompt, and gating it on stale
+ * frontmatter would refuse every pre-tier result as a load error. So the
+ * live evals/<case>/prompt.md wins, looked up from the working directory
+ * and then from the run's recorded suite root; the embedded copy is the
+ * fallback for a results file read away from its repo.
+ * :param c  a cases[] entry
+ * :param roots  directories to resolve c.dir against, in order
+ * :returns the prompt markdown, or null when no live copy exists
+ */
+function currentPrompt(c, roots) {
+  if (typeof c?.dir !== "string" || !c.dir) return null;
+  for (const root of roots) {
+    const p = resolve(root, c.dir, "prompt.md");
+    if (existsSync(p)) {
+      try { return readFileSync(p, "utf8"); } catch { /* try the next root */ }
+    }
+  }
+  return null;
+}
+
+
+/**
  * Turn one aggregate case into its verdict row.
  * :param c  a cases[] entry from aggregate-result.json
  * :param idx  its position (names a case that carries no name)
  * :returns { case, tier, runs, passed, verdict, gate, gateOk }
  */
-function verdictFor(c, idx) {
+function verdictFor(c, idx, roots) {
   const name = c?.name ?? c?.case ?? c?.id ?? `cases[${idx}]`;
-  const tags = frontmatterTags(c?.promptMarkdown);
+  const tags = frontmatterTags(currentPrompt(c, roots) ?? c?.promptMarkdown);
   const tiers = TIERS.filter((t) => tags.includes(t));
   if (tiers.length !== 1) {
     throw new LoadError(
@@ -141,7 +165,9 @@ function evaluate(arg) {
   }
   const raw = Array.isArray(doc?.cases) ? doc.cases : [];
   if (raw.length === 0) throw new LoadError(`no cases in ${source}`);
-  const cases = raw.map(verdictFor);
+  const roots = [process.cwd()];
+  if (typeof doc?.suite?.root === "string" && doc.suite.root) roots.push(doc.suite.root);
+  const cases = raw.map((c, i) => verdictFor(c, i, roots));
   return { source, cases, gateOk: cases.every((c) => c.gateOk) };
 }
 

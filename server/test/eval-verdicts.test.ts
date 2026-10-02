@@ -87,6 +87,25 @@ describe("eval-verdicts", () => {
     expect(r.stderr).toContain("untiered-case");
   });
 
+  it("a pre-tier result takes its tier from the case's current definition", () => {
+    // Every result recorded before tiers existed embeds an untiered prompt.
+    // The tier is a property of the case, so the live prompt.md decides —
+    // found here through the run's recorded suite root.
+    const repo = mkdtempSync(join(tmpdir(), "cairn-eval-verdicts-repo-"));
+    dirs.push(repo);
+    mkdirSync(join(repo, "evals", "01-old"), { recursive: true });
+    writeFileSync(join(repo, "evals", "01-old", "prompt.md"),
+      "---\nname: old\ntags: [do, regression]\nruns: 3\n---\nprompt body\n");
+    const stale = { ...(kase("old", ["do"], [true, true, false]) as object), dir: "evals/01-old" };
+    const results = mkdtempSync(join(tmpdir(), "cairn-eval-verdicts-"));
+    dirs.push(results);
+    writeFileSync(join(results, "aggregate-result.json"),
+      JSON.stringify({ suite: { root: repo }, cases: [stale], aggregates: {} }));
+    const r = run(results);
+    expect(r.status).toBe(1);
+    expect(r.out.cases[0]).toMatchObject({ case: "old", tier: "regression", verdict: "INCONCLUSIVE", gateOk: false });
+  });
+
   it("a case carrying both tiers is a load error too", () => {
     const r = run(fixture([kase("both-case", ["regression", "capability"], [true])]));
     expect(r.status).toBe(2);
