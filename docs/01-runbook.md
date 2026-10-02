@@ -65,6 +65,7 @@ decision, which stops for you).
 | Compare design variants on a shared theme | `/cairn:draft "<question>"` |
 | Keep long-running context alive across `/clear` | `/cairn:thread "<name>"` |
 | Run a cross-phase quality audit (uat/security/tests/docs/…) | `/cairn:audit <mode>` |
+| Rescan the whole project and diff it against the last rescan | `/cairn:audit sweep` |
 | Five-axis code review of a diff, branch, or phase | `/cairn:review [target]` |
 | Sweep open issues for hygiene problems | `/cairn:triage` |
 | Build/query the project knowledge graph | `/cairn:map build` |
@@ -677,7 +678,9 @@ for contract drift and unanchored thresholds, translated to plain language),
 — against the real codebase; drifted claims are findings), `security
 --surface` (the agent-config attack surface — `.claude/` hooks and
 settings, plugin manifests, MCP configs, permission allowlists, credential
-literals in tool configs — the layer code audits never see). No target on a
+literals in tool configs — the layer code audits never see), `sweep`
+(the whole-project rescan — every leg above in one pass, diffed against the
+last sweep; see "The sweep" in section 8). No target on a
 phase-scoped mode = the most recently active phase. Closing discipline,
 every mode, no exceptions: write the audit record (the record is the source
 of truth; the tracker is the summary — and a clean `pass` still gets a
@@ -1594,6 +1597,45 @@ a compiled native binding, and a plugin cache installed under a newer node
 runtime ships without one; an audit that died exactly when memory was
 unhealthy would be the wrong shape. If `indexUnavailable` appears beside the
 card block, the index is down and the card audit still ran.
+
+### The sweep — `audit sweep [--fix]`
+
+What's wrong with this project right now, and is it better or worse than
+last time? That's the question the sweep answers, in one run. Reach for it
+before a release, after a long stretch of out-of-band work, or on a
+cadence — `/cairn:do "rescan this project"` routes here too, through the
+usual confirm.
+
+It runs the existing modes as legs, in a fixed order: `security` and
+`security --surface` (rule-to-control coverage included), `tests`, `docs`,
+`plans`, `simplify`, `memory` (one "leg skipped" line in a project with no
+card store), and `milestone` last as the closing view, sunset sweep and
+all. Each leg closes exactly the way its mode always does — dedup, the
+refutation panel, its own record, survivors filed with `cairn:audit` plus
+`cairn:sweep` — so a tracker filter on `cairn:sweep` shows everything one
+sweep raised.
+
+Then one manifest: an `audit_record` under a `sweep-<date>` scope that
+lists every leg's record and carries the union of the legs' surviving
+findings, panel votes and all. Nothing is re-judged there. The server
+stamps the cairn version and the commit, and diffs the findings against the
+previous sweep — **new**, **persisting**, **fixed**, and **regressed**
+(fixed last time, back now), plus how many code commits landed in between.
+The first sweep has no delta; it's the baseline the next one is measured
+against.
+
+The report is one prioritized backlog: regressed critical, new critical,
+persisting critical, then important in the same order, minors as counts,
+and a "fixed since the baseline" line — the payoff. Below it: the latest
+eval results as a per-case table (read from the last run, never started by
+the sweep, regression rows marked as gates and any failing gate first), the
+approximate agent spend on the issues the sweep filed, and a portfolio
+snapshot so `/cairn:outlook` sees where the project stands.
+
+`--fix` runs the staged-patch discipline leg by leg — each leg's patches in
+its own scratch directory, its own verifier round, its own apply question —
+never one patch or one ask across legs. A fix applied during a sweep shows
+up as `fixed` in the next sweep's delta.
 
 ### Peers
 
