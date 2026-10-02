@@ -546,7 +546,7 @@ describe("cairn MCP server", () => {
     });
     expect(res.isError).toBeFalsy();
     expect(res.json.line).toBe(
-      "- [x] task-1 — wire the tool — commits a1b2c3d..d4e5f6a — evidence npm test => 3 passed — actuals degraded=no_receipt — PROJ-1 closed 2026-07-16",
+      "- [x] task-1 — wire the tool — commits a1b2c3d..d4e5f6a — evidence npm test => 3 passed — actuals wall=none degraded=no_receipt — PROJ-1 closed 2026-07-16",
     );
     // Phase 23: neither evidence nor a waiver is refused at the tool.
     const bare = await call("ledger_append", {
@@ -593,7 +593,8 @@ describe("cairn MCP server", () => {
     expect(closed.json.state).toBe("closed");
     expect(closed.json.evidenceCommented).toBe(true);
     expect(fakeTracker.comments(made.json.id).map((c) => c.text))
-      .toContain("evidence: `npm test` → 1408 passed");
+      .toContain("evidence: `npm test` → 1408 passed\n"
+        + "measured: not derivable at close (the ledger append takes it from the commit range)");
   });
 
   it("claiming an unassigned issue auto-assigns the working user", async () => {
@@ -738,7 +739,7 @@ describe("cairn MCP server", () => {
     });
     expect(appended.isError).toBeFalsy();
     expect(appended.json.line).toContain(
-      `— actuals claimed=15m est=3pt:field,90m:field worklog=unsupported — ${made.json.id} closed`);
+      `— actuals wall=none claimed=15m est=3pt:field,90m:field worklog=unsupported — ${made.json.id} closed`);
     expect(appended.json.degraded).toBeUndefined();
     // Consumed: a second append for the same issue has nothing to read.
     const again = await call("ledger_append", {

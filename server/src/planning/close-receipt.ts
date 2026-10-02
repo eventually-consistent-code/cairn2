@@ -34,11 +34,22 @@ export interface CloseReceipt {
   closedAt: string;
   /** When the work was claimed, when the close could find out; null otherwise. */
   claimedAt: string | null;
+  /** The duration the close could measure (#232) -- the first two rungs of
+   *  the ladder. Absent or `none` leaves the git rung to the append, which
+   *  is the only tool holding the commit range. */
+  measured?: Measured;
   /** The agent's own number -- a claim to check, never the measurement. */
   claimedMinutes: number | null;
   estimate: ReceiptEstimate;
   worklog: WorklogOutcome;
 }
+
+/** Which rung of the duration ladder produced a number (#232). They are
+ *  different measurements of different spans -- the label is what stops a
+ *  later reader pooling them as if they were one. */
+export type DurationSource = "claim_comment" | "observed_claim" | "git_span" | "none";
+
+export interface Measured { minutes: number | null; source: DurationSource }
 
 /** Why the append is working without a receipt. Always named, never implied. */
 export type ReceiptDegraded = "no_receipt" | "receipt_unreadable";
@@ -57,9 +68,10 @@ function idKey(issueId: string): string {
   return issueId.trim().replace(/^#/, "");
 }
 
-function receiptPath(projectDir: string, issueId: string): string {
+function receiptPath(projectDir: string, issueId: string,
+  kind: "close" | "claim" = "close"): string {
   const safe = idKey(issueId).replace(/[^A-Za-z0-9._-]/g, "_");
-  return join(receiptsDir(projectDir), `${safe}.close.json`);
+  return join(receiptsDir(projectDir), `${safe}.${kind}.json`);
 }
 
 function ensureDir(projectDir: string): void {
@@ -92,8 +104,49 @@ function isReceipt(v: unknown, issueId: string): v is CloseReceipt {
     && typeof r.worklog === "string";
 }
 
+/**
+ * Rung two's evidence: the moment this server moved the issue to in
+ * progress. The FIRST claim wins -- a re-claim after a parked stretch is
+ * still the same piece of work, and cycle time runs from its start. Never
+ * throws; a claim must not fail because instrumentation could not write.
+ */
+export function recordClaim(projectDir: string, issueId: string, at: string): boolean {
+  try {
+    ensureDir(projectDir);
+    const path = receiptPath(projectDir, issueId, "claim");
+    if (existsSync(path)) return true;
+    writeFileSync(path, JSON.stringify({ issueId, at }) + "\n");
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** The claim stamp, without consuming it; null when absent or unreadable.
+ *  The close reads it BEFORE closing and clears it only once the close
+ *  succeeded -- a close that throws must leave the clock where it was. */
+export function readClaim(projectDir: string, issueId: string): string | null {
+  try {
+    const raw = readFileSync(receiptPath(projectDir, issueId, "claim"), "utf8");
+    const at = (JSON.parse(raw) as { at?: unknown }).at;
+    return typeof at === "string" && !Number.isNaN(Date.parse(at)) ? at : null;
+  } catch {
+    return null;
+  }
+}
+
+export function clearClaim(projectDir: string, issueId: string): void {
+  try { unlinkSync(receiptPath(projectDir, issueId, "claim")); } catch { /* absent is fine */ }
+}
+
 function minutes(n: number | null): string {
   return n === null ? "none" : `${n}m`;
+}
+
+// `wall=12m:claim_comment` -- the number never travels without its rung.
+function wallField(w: Measured): string {
+  return w.minutes === null || w.source === "none"
+    ? "wall=none" : `wall=${w.minutes}m:${w.source}`;
 }
 
 function estimateField(e: ReceiptEstimate): string {
@@ -111,12 +164,14 @@ function estimateField(e: ReceiptEstimate): string {
  * carrying only its degraded marker -- absence is stated, not implied.
  */
 export function actualsSegment(
-  from: { receipt: CloseReceipt } | { degraded: ReceiptDegraded },
+  from: ({ receipt: CloseReceipt } | { degraded: ReceiptDegraded }) & { wall: Measured },
 ): string {
-  if ("degraded" in from) return `actuals degraded=${from.degraded} — `;
+  if ("degraded" in from) {
+    return `actuals ${wallField(from.wall)} degraded=${from.degraded} — `;
+  }
   const r = from.receipt;
-  return `actuals claimed=${minutes(r.claimedMinutes)} est=${estimateField(r.estimate)} `
-    + `worklog=${r.worklog} — `;
+  return `actuals ${wallField(from.wall)} claimed=${minutes(r.claimedMinutes)} `
+    + `est=${estimateField(r.estimate)} worklog=${r.worklog} — `;
 }
 
 /**

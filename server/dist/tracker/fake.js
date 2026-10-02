@@ -11,6 +11,9 @@ export class FakeTracker {
     phases = new Map();
     milestones = new Map();
     issueComments = new Map();
+    /** Clock for comment timestamps -- tests move it to put minutes between a
+     *  claim comment and the close without waiting for them (#232). */
+    now = () => new Date();
     issueAttachments = new Map();
     seq = 0;
     async attachFile(id, filename, _data, _mediaType) {
@@ -103,7 +106,7 @@ export class FakeTracker {
     async commentIssue(id, text) {
         await this.getIssue(id); // NOT_FOUND on unknown
         const list = this.issueComments.get(id) ?? [];
-        const comment = { id: `FC-${++this.seq}`, text };
+        const comment = { id: `FC-${++this.seq}`, text, at: this.now().toISOString() };
         list.push(comment);
         this.issueComments.set(id, list);
         return { id: comment.id, url: `fake://comment/${comment.id}` };
@@ -152,7 +155,7 @@ export class FakeTracker {
             : this.links.filter((l) => l.from === id || l.to === id);
     }
     async listComments(id) {
-        return (this.issueComments.get(id) ?? []).map((c) => ({ text: c.text }));
+        return (this.issueComments.get(id) ?? []).map((c) => ({ text: c.text, at: c.at }));
     }
     /** Test accessor: comments posted to an issue, in order. */
     comments(id) {

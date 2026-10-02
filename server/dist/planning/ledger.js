@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { CairnError } from "../errors.js";
 import { plansRoot } from "./artifacts.js";
 import { actualsSegment, takeReceipt } from "./close-receipt.js";
+import { gitSpan } from "./duration.js";
 import { projectStatus } from "./status.js";
 /** Short-SHA form used in the ledger line -- matches `git log --abbrev=7` convention. */
 function shortSha(commit) {
@@ -140,8 +141,15 @@ export function appendLedger(projectDir, phaseDir, entry) {
     // writable. takeReceipt never throws -- a missing or broken receipt
     // degrades the segment, it never fails the append.
     const taken = takeReceipt(projectDir, sanitize(entry.issueId));
+    // Duration ladder (#232): the close measured rungs one and two when it
+    // could; rung three needs the commit range, which only this append holds.
+    // A missing receipt does not cost the duration -- git still has it.
+    const fromClose = taken.receipt?.measured;
+    const wall = fromClose && fromClose.source !== "none" && fromClose.minutes !== null
+        ? fromClose
+        : gitSpan(projectDir, sanitize(entry.baseCommit), sanitize(entry.headCommit));
     const line = formatEntry(entry, actualsSegment(taken.receipt
-        ? { receipt: taken.receipt } : { degraded: taken.degraded }));
+        ? { receipt: taken.receipt, wall } : { degraded: taken.degraded, wall }));
     if (existsSync(path)) {
         appendFileSync(path, line);
     }
@@ -152,6 +160,7 @@ export function appendLedger(projectDir, phaseDir, entry) {
     return {
         path, line: line.trimEnd(),
         ...(taken.degraded ? { degraded: [taken.degraded] } : {}),
+        measured: wall,
         ...(declaredVerify === null ? {} : {
             declaredVerify,
             evidenceCitesDeclared: entry.evidence

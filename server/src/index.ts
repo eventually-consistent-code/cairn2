@@ -33,6 +33,7 @@ import { probeVerdictForError } from "./tracker/probe.js";
 import type {
   Tracker,
   Issue,
+  IssueComment,
   IssuePatch,
   IssueState,
   LinkType,
@@ -75,7 +76,10 @@ import { resyncReport } from "./planning/resync.js";
 import { docsDriftReport } from "./planning/docs-drift.js";
 import { distillManifest } from "./planning/distill-manifest.js";
 import { estimatePhaseTokens, issueEstimate, metricsSegments } from "./planning/token-estimate.js";
-import { writeReceipt, type WorklogOutcome } from "./planning/close-receipt.js";
+import {
+  clearClaim, readClaim, recordClaim, writeReceipt, type WorklogOutcome,
+} from "./planning/close-receipt.js";
+import { measureAtClose, measuredText } from "./planning/duration.js";
 import { snapshotNote, trackerDelta } from "./planning/tracker-delta.js";
 import {
   MemoryIndex,
@@ -279,8 +283,12 @@ export function buildServer(deps: {
   // through to the real lazy require; tests inject a thrower to simulate a
   // missing compiled binding without breaking the real one.
   loadSqlite?: SqliteLoader;
+  // Test seam for the clock (#232) -- measured durations need a close that
+  // happens minutes after its claim without the test waiting minutes.
+  now?: () => Date;
 }): McpServer {
   const server = new McpServer({ name: "cairn", version: VERSION });
+  const now = deps.now ?? (() => new Date());
 
   // Workspace resolution: the injected projectDir is the LAUNCH dir, fixed for the
   // server's lifetime. Every tool call resolves its effective project dir
@@ -622,6 +630,12 @@ export function buildServer(deps: {
         const { estimateSkipped: partialSkip, ...issue } = result as Issue & {
           estimateSkipped?: string;
         };
+        // Rung two of the duration ladder (#232): the server was there when
+        // the issue went in progress, so it keeps the time. First claim
+        // wins; recordClaim never throws.
+        if (patch.state !== undefined && issue.category === "in_progress") {
+          recordClaim(d, id, now().toISOString());
+        }
         snapshotNote(d, issue);
         refreshHandoff({ source: "tool", issue: id }, d);
         // mirrors the worklogError note on issue_close -- a silently dropped
@@ -818,10 +832,10 @@ export function buildServer(deps: {
     "issue_close",
     {
       description:
-        "Close an issue; optionally log time spent (worklog on supporting " +
-        "backends, otherwise the caller folds time into the close comment). Optional typed close " +
-        "evidence `{ command, result }` is posted as one standardized comment before the close — " +
-        "comments are the one carrier every backend has",
+        "Close an issue. The server measures the duration itself (claim comment, else the claim " +
+        "it saw; result `measured` names the rung) — `timeSpentMinutes` is only the caller's claim, " +
+        "kept beside it. Optional typed close evidence `{ command, result }` is posted with the " +
+        "measured line as one standardized comment before the close",
       inputSchema: z.object({
         id: z.string(),
         timeSpentMinutes: z.number().int().positive().optional(),
@@ -831,29 +845,48 @@ export function buildServer(deps: {
     wrap(async (a: { id: string; timeSpentMinutes?: number; evidence?: { command: string; result: string } }) => {
       const d = dir();
       const tracker = await getTracker(d);
+      // Measured duration (#232), rungs one and two. Comment enumeration is
+      // optional on the SPI; a backend without it, or a listing that fails,
+      // just starts the ladder one rung down.
+      const closedAt = now().toISOString();
+      let comments: IssueComment[] | undefined;
+      if (tracker.listComments) {
+        try { comments = await tracker.listComments(a.id); } catch { comments = undefined; }
+      }
+      const { claimedAt, ...measured } = measureAtClose({
+        comments, observedClaimAt: readClaim(d, a.id), closedAt,
+      });
+      const measuredLine = measuredText(measured);
       // Typed close evidence (phase 23): one standard line, same shape on
       // every backend, posted before the state change so the close reads
-      // "here is what proved it" in order. Best-effort — the close is the
-      // state change that matters.
+      // "here is what proved it" in order. The measured duration rides in
+      // the same comment -- one comment per close, not two. Best-effort —
+      // the close is the state change that matters.
       let evidenceCommented = false;
-      if (a.evidence) {
-        try {
-          await tracker.commentIssue(a.id,
-            `evidence: \`${a.evidence.command.trim()}\` → ${a.evidence.result.trim()}`);
-          evidenceCommented = true;
-        } catch { /* the ledger line still carries it */ }
-      }
+      try {
+        await tracker.commentIssue(a.id, a.evidence
+          ? `evidence: \`${a.evidence.command.trim()}\` → ${a.evidence.result.trim()}\n${measuredLine}`
+          : measuredLine);
+        if (a.evidence) evidenceCommented = true;
+      } catch { /* the ledger line still carries both */ }
       const result = await tracker.closeIssue(a.id);
+      clearClaim(d, a.id);
       snapshotNote(d, result);
       let worklogLogged = false;
       let worklogError: string | undefined;
+      // The worklog gets the measurement when there is one; the claim is
+      // only the fallback. Logging the claim and reading it back later is
+      // how the fiction this replaces got recorded in the first place.
+      const worklogMinutes = measured.minutes !== null && measured.minutes > 0
+        ? measured.minutes : a.timeSpentMinutes;
       if (
         a.timeSpentMinutes &&
+        worklogMinutes &&
         tracker.capabilities.hasWorklog &&
         tracker.logWork
       ) {
         try {
-          await tracker.logWork(a.id, a.timeSpentMinutes);
+          await tracker.logWork(a.id, worklogMinutes);
           worklogLogged = true;
         } catch (e) {
           // worklog is best-effort — the close comment already carries the time
@@ -879,8 +912,9 @@ export function buildServer(deps: {
       const receiptWritten = writeReceipt(d, {
         version: 1,
         issueId: a.id,
-        closedAt: new Date().toISOString(),
-        claimedAt: null,
+        closedAt,
+        claimedAt,
+        measured,
         claimedMinutes: a.timeSpentMinutes ?? null,
         estimate: {
           points: est.points, pointsSource: est.pointsSource,
@@ -894,6 +928,8 @@ export function buildServer(deps: {
         worklogLogged,
         ...(worklogError ? { worklogError } : {}),
         ...(a.evidence ? { evidenceCommented } : {}),
+        measured,
+        claimedMinutes: a.timeSpentMinutes ?? null,
         receiptWritten,
       };
     }),

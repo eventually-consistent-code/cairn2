@@ -23,7 +23,7 @@ const entry = {
 // The exact segments the fixture renders to — every pinned line below
 // carries them between the commit range and the issue id. No close ran in
 // these fixtures, so there is no receipt and the actuals segment says so.
-const EV = "evidence npm test => 12 passed — actuals degraded=no_receipt — ";
+const EV = "evidence npm test => 12 passed — actuals wall=none degraded=no_receipt — ";
 
 function ledgerPath(d: string, phaseDir: string): string {
   return join(d, ".cairn", "plans", "phases", phaseDir, "LEDGER.md");
@@ -118,7 +118,7 @@ describe("appendLedger", () => {
       evidence: { command: "vitest run t2.test.ts", result: "4 passed" },
     });
     // tdd first, then evidence, then the close — one grammar.
-    expect(line).toContain("— tdd ccccccc..ddddddd — evidence vitest run t2.test.ts => 4 passed — actuals degraded=no_receipt — GH-2 closed");
+    expect(line).toContain("— tdd ccccccc..ddddddd — evidence vitest run t2.test.ts => 4 passed — actuals wall=none degraded=no_receipt — GH-2 closed");
   });
 
   it("rejects a lone red or green commit", () => {
@@ -153,7 +153,7 @@ describe("appendLedger", () => {
     it("renders a waiver with its reason; an empty reason or empty evidence field is refused; both is a contradiction", () => {
       const { d, phaseDir } = ready();
       const { line } = appendLedger(d, phaseDir, { ...base, evidenceWaived: "docs only — no runnable change" });
-      expect(line).toBe(`- [x] T5 — s — commits aaaaaaa..bbbbbbb — waived docs only - no runnable change — actuals degraded=no_receipt — GH-5 closed 2026-09-17`);
+      expect(line).toBe(`- [x] T5 — s — commits aaaaaaa..bbbbbbb — waived docs only - no runnable change — actuals wall=none degraded=no_receipt — GH-5 closed 2026-09-17`);
       expect(() => appendLedger(d, phaseDir, { ...base, evidenceWaived: "  " })).toThrowError(/needs a reason/);
       expect(() => appendLedger(d, phaseDir, { ...base, evidence: { command: "npm test", result: " " } }))
         .toThrowError(/both a command .* and a result/);
@@ -166,7 +166,7 @@ describe("appendLedger", () => {
       const { line } = appendLedger(d, phaseDir, {
         ...base, evidence: { command: "npm test — full", result: "1408 passed\n0 failed" },
       });
-      expect(line).toBe(`- [x] T5 — s — commits aaaaaaa..bbbbbbb — evidence npm test - full => 1408 passed 0 failed — actuals degraded=no_receipt — GH-5 closed 2026-09-17`);
+      expect(line).toBe(`- [x] T5 — s — commits aaaaaaa..bbbbbbb — evidence npm test - full => 1408 passed 0 failed — actuals wall=none degraded=no_receipt — GH-5 closed 2026-09-17`);
     });
   });
 });
@@ -265,7 +265,7 @@ describe("close receipt consumed at append (#233)", () => {
     expect(writeReceipt(d, receipt("PROJ-105"))).toBe(true);
     const r = appendLedger(d, phaseDir, entry);
     expect(r.line).toContain(
-      "— actuals claimed=128m est=2pt:body,90m:body worklog=unsupported — PROJ-105 closed");
+      "— actuals wall=none claimed=128m est=2pt:body,90m:body worklog=unsupported — PROJ-105 closed");
     expect(r.degraded).toBeUndefined();
     expect(existsSync(receiptFile(d, "PROJ-105"))).toBe(false);
   });
@@ -282,7 +282,7 @@ describe("close receipt consumed at append (#233)", () => {
     const { d, phaseDir } = phase();
     const r = appendLedger(d, phaseDir, entry);
     expect(r.degraded).toEqual(["no_receipt"]);
-    expect(r.line).toContain("— actuals degraded=no_receipt — PROJ-105 closed");
+    expect(r.line).toContain("— actuals wall=none degraded=no_receipt — PROJ-105 closed");
   });
 
   it("a corrupt receipt degrades, never fails, and is cleared", () => {
@@ -299,7 +299,7 @@ describe("close receipt consumed at append (#233)", () => {
     writeReceipt(d, receipt("233"));
     const r = appendLedger(d, phaseDir, { ...entry, issueId: "#233" });
     expect(r.degraded).toBeUndefined();
-    expect(r.line).toContain("actuals claimed=128m");
+    expect(r.line).toContain("actuals wall=none claimed=128m");
   });
 
   it("the receipts folder ignores itself, so no repo ever commits one", () => {
@@ -320,6 +320,7 @@ describe("close receipt consumed at append (#233)", () => {
       ...receipt("X"), claimedMinutes: null,
       estimate: { points: null, pointsSource: null, minutes: null, minutesSource: null },
       worklog: "not_requested",
-    } })).toBe("actuals claimed=none est=none worklog=not_requested — ");
+    }, wall: { minutes: null, source: "none" } }))
+      .toBe("actuals wall=none claimed=none est=none worklog=not_requested — ");
   });
 });

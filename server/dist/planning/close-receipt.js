@@ -25,9 +25,9 @@ export function receiptsDir(projectDir) {
 function idKey(issueId) {
     return issueId.trim().replace(/^#/, "");
 }
-function receiptPath(projectDir, issueId) {
+function receiptPath(projectDir, issueId, kind = "close") {
     const safe = idKey(issueId).replace(/[^A-Za-z0-9._-]/g, "_");
-    return join(receiptsDir(projectDir), `${safe}.close.json`);
+    return join(receiptsDir(projectDir), `${safe}.${kind}.json`);
 }
 function ensureDir(projectDir) {
     const d = receiptsDir(projectDir);
@@ -58,8 +58,51 @@ function isReceipt(v, issueId) {
         && typeof r.estimate === "object" && r.estimate !== null
         && typeof r.worklog === "string";
 }
+/**
+ * Rung two's evidence: the moment this server moved the issue to in
+ * progress. The FIRST claim wins -- a re-claim after a parked stretch is
+ * still the same piece of work, and cycle time runs from its start. Never
+ * throws; a claim must not fail because instrumentation could not write.
+ */
+export function recordClaim(projectDir, issueId, at) {
+    try {
+        ensureDir(projectDir);
+        const path = receiptPath(projectDir, issueId, "claim");
+        if (existsSync(path))
+            return true;
+        writeFileSync(path, JSON.stringify({ issueId, at }) + "\n");
+        return true;
+    }
+    catch {
+        return false;
+    }
+}
+/** The claim stamp, without consuming it; null when absent or unreadable.
+ *  The close reads it BEFORE closing and clears it only once the close
+ *  succeeded -- a close that throws must leave the clock where it was. */
+export function readClaim(projectDir, issueId) {
+    try {
+        const raw = readFileSync(receiptPath(projectDir, issueId, "claim"), "utf8");
+        const at = JSON.parse(raw).at;
+        return typeof at === "string" && !Number.isNaN(Date.parse(at)) ? at : null;
+    }
+    catch {
+        return null;
+    }
+}
+export function clearClaim(projectDir, issueId) {
+    try {
+        unlinkSync(receiptPath(projectDir, issueId, "claim"));
+    }
+    catch { /* absent is fine */ }
+}
 function minutes(n) {
     return n === null ? "none" : `${n}m`;
+}
+// `wall=12m:claim_comment` -- the number never travels without its rung.
+function wallField(w) {
+    return w.minutes === null || w.source === "none"
+        ? "wall=none" : `wall=${w.minutes}m:${w.source}`;
 }
 function estimateField(e) {
     const parts = [];
@@ -77,11 +120,12 @@ function estimateField(e) {
  * carrying only its degraded marker -- absence is stated, not implied.
  */
 export function actualsSegment(from) {
-    if ("degraded" in from)
-        return `actuals degraded=${from.degraded} — `;
+    if ("degraded" in from) {
+        return `actuals ${wallField(from.wall)} degraded=${from.degraded} — `;
+    }
     const r = from.receipt;
-    return `actuals claimed=${minutes(r.claimedMinutes)} est=${estimateField(r.estimate)} `
-        + `worklog=${r.worklog} — `;
+    return `actuals ${wallField(from.wall)} claimed=${minutes(r.claimedMinutes)} `
+        + `est=${estimateField(r.estimate)} worklog=${r.worklog} — `;
 }
 /**
  * Reads and deletes the receipt for one issue. Exactly one of `receipt` /

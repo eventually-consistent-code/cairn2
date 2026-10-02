@@ -5,6 +5,9 @@ export declare class FakeTracker implements Tracker {
     private phases;
     private milestones;
     private issueComments;
+    /** Clock for comment timestamps -- tests move it to put minutes between a
+     *  claim comment and the close without waiting for them (#232). */
+    now: () => Date;
     readonly issueAttachments: Map<string, string[]>;
     private seq;
     attachFile(id: string, filename: string, _data: Buffer, _mediaType?: string): Promise<{
@@ -41,5 +44,6 @@ export declare class FakeTracker implements Tracker {
     comments(id: string): Array<{
         id: string;
         text: string;
+        at: string;
     }>;
 }

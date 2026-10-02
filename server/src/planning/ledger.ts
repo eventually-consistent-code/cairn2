@@ -2,7 +2,8 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs
 import { join } from "node:path";
 import { CairnError } from "../errors.js";
 import { plansRoot } from "./artifacts.js";
-import { actualsSegment, takeReceipt } from "./close-receipt.js";
+import { actualsSegment, takeReceipt, type Measured } from "./close-receipt.js";
+import { gitSpan } from "./duration.js";
 import { projectStatus } from "./status.js";
 
 /** Typed close evidence (phase 23): what was run, and what it showed. */
@@ -177,6 +178,8 @@ export function appendLedger(projectDir: string, phaseDir: string,
     path: string; line: string;
     /** Why this line carries no receipt facts, when it doesn't (#233). */
     degraded?: string[];
+    /** The duration on the line and the rung that produced it (#232). */
+    measured: Measured;
     /** What PLAN.md said would prove this task (#206), when it said anything. */
     declaredVerify?: string;
     /** Whether the evidence run cites that declaration. Reported, never enforced. */
@@ -195,8 +198,15 @@ export function appendLedger(projectDir: string, phaseDir: string,
   // writable. takeReceipt never throws -- a missing or broken receipt
   // degrades the segment, it never fails the append.
   const taken = takeReceipt(projectDir, sanitize(entry.issueId));
+  // Duration ladder (#232): the close measured rungs one and two when it
+  // could; rung three needs the commit range, which only this append holds.
+  // A missing receipt does not cost the duration -- git still has it.
+  const fromClose = taken.receipt?.measured;
+  const wall: Measured = fromClose && fromClose.source !== "none" && fromClose.minutes !== null
+    ? fromClose
+    : gitSpan(projectDir, sanitize(entry.baseCommit), sanitize(entry.headCommit));
   const line = formatEntry(entry, actualsSegment(taken.receipt
-    ? { receipt: taken.receipt } : { degraded: taken.degraded! }));
+    ? { receipt: taken.receipt, wall } : { degraded: taken.degraded!, wall }));
   if (existsSync(path)) {
     appendFileSync(path, line);
   } else {
@@ -206,6 +216,7 @@ export function appendLedger(projectDir: string, phaseDir: string,
   return {
     path, line: line.trimEnd(),
     ...(taken.degraded ? { degraded: [taken.degraded] } : {}),
+    measured: wall,
     ...(declaredVerify === null ? {} : {
       declaredVerify,
       evidenceCitesDeclared: entry.evidence
