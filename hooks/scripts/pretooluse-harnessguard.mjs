@@ -20,6 +20,14 @@
  *   best-effort text matching over the command -- it catches the shapes an
  *   agent actually writes (redirect, sed -i, tee, cp, mv) and makes no
  *   claim to be a shell parser.
+ *   isolation is the operating system's job. The Bash coverage reads the
+ *   command the way a shell would, closely enough to find what it WRITES:
+ *   redirect targets, and the path operands of commands that change files
+ *   (tee, mv, rm, sed -i, the destination of cp, and so on). Quoted text,
+ *   heredoc bodies and here-strings are data. A protected path that is only
+ *   READ -- run, grepped, piped to head -- passes (#240). It is still not a
+ *   full shell parser: a write hidden inside an interpreter (python -c,
+ *   node -e) or a $(...) substitution is not seen.
  *
  * removeWhen: the platform isolates agent config at the OS level, so the
  *   agent process cannot write its own hooks or settings (ADR 0016).
@@ -68,14 +76,167 @@ function protectedBy(rawPath, projectDir) {
 }
 
 /**
- * Best-effort: the path-ish tokens of a shell command. Quoted strings keep
- * their contents; bare words are taken whole. Redirect targets (`> path`)
- * are split off so `foo>hooks/x` is seen. Deliberately generous -- a false
- * positive costs one override, a false negative costs the control.
+ * Splits a shell command into simple-command segments, each with its words
+ * and its output-redirect targets. Quotes and backslashes are honoured, so a
+ * `>` inside a quoted pattern is text. `N>&M` duplicates a descriptor and has
+ * no file target; `<` and `<<<` operands are input; a heredoc body is skipped
+ * to its delimiter line. Segments break at `;` `&&` `||` `|` `|&` `&` and
+ * newlines. (#240)
  */
-function candidatePaths(command) {
-  const tokens = command.match(/"(?:[^"\\]|\\.)*"|'[^']*'|[^\s<>|;&]+/g) ?? [];
-  return tokens.map((t) => t.replace(/^["']|["']$/g, "")).filter(Boolean);
+function shellSegments(command) {
+  const segs = [];
+  let words = [];
+  let redirects = [];
+  let cur = null;
+  let next = "word"; // what the next completed word is: word | redirect | skip | heredoc
+  let heredocStrip = false;
+  const heredocs = [];
+  const pushWord = () => {
+    if (cur === null) return;
+    if (next === "redirect") redirects.push(cur);
+    else if (next === "heredoc") heredocs.push({ delim: cur, strip: heredocStrip });
+    else if (next === "word") words.push(cur);
+    next = "word";
+    cur = null;
+  };
+  const endSeg = () => {
+    pushWord();
+    if (words.length || redirects.length) segs.push({ words, redirects });
+    words = [];
+    redirects = [];
+  };
+  let i = 0;
+  while (i < command.length) {
+    const c = command[i];
+    const n = command[i + 1];
+    if (c === "'") {
+      const j = command.indexOf("'", i + 1);
+      const end = j < 0 ? command.length : j;
+      cur = (cur ?? "") + command.slice(i + 1, end);
+      i = end + 1;
+      continue;
+    }
+    if (c === '"') {
+      let j = i + 1;
+      let str = "";
+      while (j < command.length && command[j] !== '"') {
+        if (command[j] === "\\" && j + 1 < command.length) { str += command[j + 1]; j += 2; continue; }
+        str += command[j];
+        j++;
+      }
+      cur = (cur ?? "") + str;
+      i = j + 1;
+      continue;
+    }
+    if (c === "\\" && n !== undefined && n !== "\n") { cur = (cur ?? "") + n; i += 2; continue; }
+    if (c === "\n") {
+      endSeg();
+      // Heredoc bodies begin on the next line; they are data, so skip each
+      // one through its delimiter line.
+      while (heredocs.length) {
+        const h = heredocs.shift();
+        let k = i + 1;
+        for (;;) {
+          const nl = command.indexOf("\n", k);
+          const line = command.slice(k, nl < 0 ? command.length : nl);
+          if ((h.strip ? line.replace(/^\t+/, "") : line) === h.delim || nl < 0) {
+            i = nl < 0 ? command.length : nl;
+            break;
+          }
+          k = nl + 1;
+        }
+      }
+      i++;
+      continue;
+    }
+    if (c === " " || c === "\t") { pushWord(); i++; continue; }
+    if (c === ">" || (c === "&" && n === ">")) {
+      // a bare number right before `>` is the descriptor, not a word
+      if (cur !== null && /^\d+$/.test(cur)) cur = null; else pushWord();
+      let j = i + (c === "&" ? 2 : 1);
+      if (command[j] === ">" || command[j] === "|") j++;
+      if (command[j] === "&") { next = "skip"; i = j + 1; continue; } // >&2: a descriptor
+      next = "redirect";
+      i = j;
+      continue;
+    }
+    if (c === "<") {
+      pushWord();
+      if (command.startsWith("<<<", i)) { next = "skip"; i += 3; continue; }
+      if (n === "<") {
+        heredocStrip = command[i + 2] === "-";
+        next = "heredoc";
+        i += heredocStrip ? 3 : 2;
+        continue;
+      }
+      next = "skip"; // `< file` is read
+      i++;
+      continue;
+    }
+    if (c === ";" || c === "|" || c === "&") {
+      endSeg();
+      i += (n === c || (c === "|" && n === "&")) ? 2 : 1;
+      continue;
+    }
+    cur = (cur ?? "") + c;
+    i++;
+  }
+  endSeg();
+  return segs;
+}
+
+// Commands that change every path operand they are given.
+const WRITES_ALL = new Set([
+  "tee", "mv", "rm", "rmdir", "unlink", "truncate", "chmod", "chown", "chgrp",
+  "touch", "mkdir", "shred",
+]);
+// Commands that only READ their sources and write the last operand (or -t).
+const WRITES_DEST = new Set(["cp", "install", "ln", "rsync"]);
+// Shells whose -c string is a command of its own.
+const SHELLS = new Set(["bash", "sh", "zsh", "dash", "ksh"]);
+// Prefixes that run the next word as the real command.
+const WRAPPERS = new Set(["sudo", "command", "env", "nice", "nohup", "time", "exec"]);
+
+/** The paths one segment would write to. Generous inside a write command;
+ *  silent for a command that only reads. */
+function writeTargets(seg, depth = 0) {
+  const targets = seg.redirects.filter((r) => !/^\/dev\/(null|stdout|stderr|fd\/\d+)$/.test(r));
+  const w = seg.words.slice();
+  while (w.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w[0]) || WRAPPERS.has(w[0]))) w.shift();
+  if (!w.length) return targets;
+  const cmd = w[0].split("/").pop();
+  const args = w.slice(1);
+  const operands = args.filter((a) => !a.startsWith("-"));
+  // A command handed to another shell as a string is still a command: read
+  // it the same way, one level down. (The old text-match missed these too.)
+  if (depth < 3 && (SHELLS.has(cmd) || cmd === "eval")) {
+    const inner = cmd === "eval" ? args.join(" ") : args[args.indexOf("-c") + 1];
+    if (inner && (cmd === "eval" || args.includes("-c"))) {
+      for (const s of shellSegments(inner)) targets.push(...writeTargets(s, depth + 1));
+    }
+    return targets;
+  }
+  if (WRITES_ALL.has(cmd)) {
+    targets.push(...operands);
+  } else if (WRITES_DEST.has(cmd)) {
+    const t = args.indexOf("-t");
+    if (t >= 0 && args[t + 1]) targets.push(args[t + 1]);
+    else if (operands.length) targets.push(operands[operands.length - 1]);
+  } else if ((cmd === "sed" || cmd === "perl") &&
+      args.some((a) => /^-[A-Za-z]*i/.test(a) || a.startsWith("--in-place"))) {
+    targets.push(...operands);
+  } else if (cmd === "dd") {
+    for (const a of args) if (a.startsWith("of=")) targets.push(a.slice(3));
+  } else if (cmd === "git") {
+    // skip git's own -C <dir> / -c <k=v> before the subcommand
+    const rest = args.slice();
+    while (rest.length && (rest[0] === "-C" || rest[0] === "-c")) rest.splice(0, 2);
+    const sub = rest[0];
+    if (["checkout", "restore", "rm", "mv"].includes(sub)) {
+      targets.push(...rest.slice(1).filter((a) => !a.startsWith("-")));
+    }
+  }
+  return targets;
 }
 
 try {
@@ -98,13 +259,13 @@ try {
   let hitWhat = null;
 
   if (tool === "Bash") {
-    // Only commands that can WRITE are worth scanning; reading a hook file
-    // is ordinary work and must stay frictionless.
-    const writes = /(^|[\s;&|])(sed\s+[^|;&]*-i|tee|cp|mv|install|truncate|dd|chmod|chown|rm)\b|>>?/;
-    if (!writes.test(command)) process.exit(0);
-    for (const t of candidatePaths(command)) {
-      const what = protectedBy(t, projectDir);
-      if (what) { hitPath = t; hitWhat = what; break; }
+    // Only what the command WRITES is checked; reading a hook file is
+    // ordinary work and must stay frictionless (#240).
+    outer: for (const seg of shellSegments(command)) {
+      for (const t of writeTargets(seg)) {
+        const what = protectedBy(t, projectDir);
+        if (what) { hitPath = t; hitWhat = what; break outer; }
+      }
     }
   } else {
     const p = payload?.tool_input?.file_path ?? payload?.tool_input?.notebook_path;
