@@ -92,6 +92,30 @@ jobs:
             --runs 3 \
             --threshold 0.7 \
             --max-cost-usd 12
+      # Per-tier verdicts (#209): regression cases must pass every run
+      # (pass^k), capability cases never gate, split runs read INCONCLUSIVE.
+      # ADVISORY like the rest of the lane — the regression gate becomes
+      # blocking only after a variance baseline exists, a later decision.
+      # Until then its exit 1 is logged, and the job stays allowed to fail.
+      - name: eval verdicts
+        if: always()
+        run: |
+          if [ ! -f evals/results/ci/aggregate-result.json ]; then
+            echo "no aggregate-result.json — the suite did not produce results." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          set +e
+          node scripts/eval-verdicts.mjs evals/results/ci > verdicts.txt 2>&1
+          rc=$?
+          set -e
+          cat verdicts.txt
+          {
+            echo "## Eval verdicts (regression gate advisory)"
+            echo '```'
+            cat verdicts.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$rc"
       - name: upload results
         if: always()
         uses: actions/upload-artifact@v4

@@ -1,6 +1,6 @@
 ---
 name: mark-holds
-tags: [trigger, mark]
+tags: [trigger, mark, capability]
 runs: 3
 max_turns: 4
 allowed_tools: [Read, Glob, Grep, Skill, ToolSearch, AskUserQuestion]

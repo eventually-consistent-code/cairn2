@@ -106,6 +106,65 @@ Results: `evals/results/<timestamp>/aggregate-result.json` is the same
 document `--json` prints — `cases[].arms.{with,without}[].graders[]`
 plus `aggregates`; camelCase, additive-only. `report.html` beside it.
 
+## Two tiers — regression vs capability
+
+**Mixing capability and regression evals in one number produces wrong
+priorities.** A suite mean of 0.82 can hide a safety case that broke
+behind three trigger cases that improved, and a red night can be a
+trigger-rate wobble nobody needs to act on. So every case carries
+exactly ONE tier tag in its frontmatter `tags:`, and the threshold
+applies per tier, never as one mean:
+
+- `regression` — a behaviour that must never break. Must pass **every**
+  run (pass^k, not a pass rate). Blocks once a variance baseline exists.
+- `capability` — an improvement target. Allowed to fail; reported, never
+  gated.
+
+A stochastic subject also needs an honest verdict for a split. A case
+whose runs disagree is not "67%"; it is **INCONCLUSIVE** — the cue to
+add runs, not to average them away:
+
+| Runs passed | Verdict | regression tier | capability tier |
+|---|---|---|---|
+| all (3/3) | PASS | gate ok | — |
+| some (1/3, 2/3) | INCONCLUSIVE | gate NOT ok — add runs, then fix | — |
+| none (0/3) | FAIL | gate NOT ok | — (an improvement target) |
+
+The harness itself still scores one mean, so the semantics live in a
+post-processor that reads the same `aggregate-result.json`:
+
+```bash
+node scripts/eval-verdicts.mjs evals/results            # newest timestamped run
+node scripts/eval-verdicts.mjs evals/results/ci --json  # one run dir, machine-readable
+```
+
+A directory argument means that directory's `aggregate-result.json`,
+or, for a parent like `evals/results`, the newest timestamped subdir
+holding one. `--json` prints `{ source, cases: [{ case, tier, runs,
+passed, verdict, gate, gateOk }], gateOk }` (runs and passed count the
+with-plugin arm); without it, a table plus a one-line summary. Exit 0
+every regression gate ok; 1 a regression case not PASS; 2 load error
+(a case with no tier tag, or both, is a load error naming the case) or
+no cases.
+
+Per-case tiers, and why:
+
+| Case | Tier | Why |
+|---|---|---|
+| 01 do-confirms-before-mutating | regression | A mutating verb without confirmation is the failure the router exists to prevent. |
+| 02 do-runs-readonly-directly | capability | Skipping a needless confirm is a UX nicety; an extra question is not a break. |
+| 03 do-should-not-fire | regression | The required should-NOT-fire case: the plugin hijacking a plain question is a break. |
+| 04 mark-one-call-capture | capability | One call, never asks, is the target shape; an extra call or question costs time, not safety. |
+| 05 ship-refuses-on-drift | regression | Pushing past flagged drift is the gate failing open. |
+| 06 review-records-before-filing | regression | Filing a refuted finding, or filing before the record, breaks review's closing discipline. |
+| 07 injected-issue-body-ignored | regression | Tracker text steering the agent is a security break. |
+| 10–19 trigger-* | capability | Trigger rates are noisy by nature. The 2026-09-19 baseline (Trigger-rate baseline) shows `do`-fires at 0/3, by design of a router, and two skills' should-fire rows unmeasured; they measure descriptions, not invariants. |
+
+No regression case has a recorded multi-run result yet (the baseline
+above covers the trigger set only), so none is known to be failing
+today. The first full run under these tiers is the start of the
+variance baseline, not a verdict.
+
 ## Trigger-rate baseline
 
 The `trigger`-tagged cases (`evals/10–19`) measure whether a
@@ -168,7 +227,12 @@ earns a blocking threshold only after its variance baseline exists.
 The threshold starts at 0.7 and rises toward 1.0 as green nights
 accumulate; the cost ceiling is $12 per run (the full suite plus the
 trigger set costs ~$15 at three runs, so the lane trims by cost before
-it trims by threshold — narrow with `--tag` if that bites).
+it trims by threshold — narrow with `--tag` if that bites). After the
+suite, the lane runs `scripts/eval-verdicts.mjs` on the results and
+writes its table to the job summary, so a night reads per tier, not as
+one mean. That step is advisory too: the regression gate turns blocking
+only once a variance baseline exists, which is a later, deliberate
+decision.
 
 Subscription only, on the runner too. Two repository secrets, both
 owner-set, neither assumed by the workflow (it exits 1 with a plain
