@@ -3,6 +3,9 @@ import {
   dedupFindings,
   LINE_WINDOW,
   CLAIM_SIMILARITY_THRESHOLD,
+  claimsMatch,
+  normalizeClaim,
+  textsMatch,
   type SeatFinding,
 } from "../src/seats/dedup.js";
 
@@ -218,5 +221,31 @@ describe("seats/dedup", () => {
       expect(out[0].claim).toBe("unchecked null return from lookup");
       expect(out[0].failure_scenario).toBe(scenario);
     });
+  });
+});
+
+describe("exported matcher (#215 — sweep baseline delta)", () => {
+  it("normalizeClaim lowercases and collapses punctuation runs", () => {
+    expect(normalizeClaim("  Lookup(undefined) → NULL!! ")).toBe("lookup undefined null");
+  });
+
+  it("claimsMatch: exact fast path, Jaccard >= 0.5 matches, below does not", () => {
+    const form = (s: string) => {
+      const n = normalizeClaim(s);
+      return [n, new Set(n.split(" ").filter(Boolean))] as const;
+    };
+    const [a, aSet] = form("lookup undefined returns null then crashes");
+    const [b, bSet] = form("lookup undefined returns null and crashes");
+    const [c, cSet] = form("settings footer shows the wrong year");
+    expect(claimsMatch(a, aSet, a, aSet)).toBe(true);
+    // 5 shared of 7 distinct tokens — over the floor.
+    expect(claimsMatch(a, aSet, b, bSet)).toBe(true);
+    expect(claimsMatch(a, aSet, c, cSet)).toBe(false);
+  });
+
+  it("textsMatch applies the same rule to raw strings and never matches empty text", () => {
+    expect(textsMatch("POST /checkout cart=[] → 500", "post checkout cart 500")).toBe(true);
+    expect(textsMatch("POST /checkout cart=[] → 500", "GET /settings → stale footer")).toBe(false);
+    expect(textsMatch("→", "!!")).toBe(false);
   });
 });

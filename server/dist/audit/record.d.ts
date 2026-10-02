@@ -6,7 +6,11 @@
  * whose quorum is computed here (never model-asserted), REFUTED findings
  * stay in the record but never reach the tracker, and survivors credit
  * the raising seats' yield. The record is stamped with the commit it
- * judged.
+ * judged. Since #215 a `sweep-<YYYY-MM-DD>` scope is a sweep MANIFEST:
+ * it carries the cairn version, a leg index, and a delta against the
+ * previous manifest (new / persisting / fixed / regressed) — computed
+ * here, in the writer, never by a reader tool. parseAuditRecord reads any
+ * record back.
  * Author(s): John Reed
  */
 export type AuditSeverity = "critical" | "important" | "minor";
@@ -77,6 +81,37 @@ export interface FindingResult {
      */
     applyEligible?: boolean;
 }
+/** One leg of a sweep — the per-mode record the manifest indexes. */
+export interface SweepLeg {
+    /** The leg's own audit scope ("security-25", "review-working"). */
+    scope: string;
+    /** Where that leg's record lives (absolute, or relative to the project). */
+    path: string;
+}
+/** One finding as the delta sees it. */
+export interface DeltaFinding {
+    title: string;
+    severity: AuditSeverity;
+    failure_scenario: string;
+    /** The leg that raised it, when the manifest could attribute one. */
+    leg?: string;
+}
+/** The sweep manifest's baseline delta (#215). */
+export interface SweepDelta {
+    baseline: {
+        path: string;
+        commit?: string;
+        cairn?: string;
+        created?: string;
+    };
+    /** Code commits between the baseline's stamp and HEAD; null when unknowable. */
+    codeCommitsSince: number | null;
+    new: DeltaFinding[];
+    persisting: DeltaFinding[];
+    fixed: DeltaFinding[];
+    /** Fixed in the previous manifest's own delta, present again now. */
+    regressed: DeltaFinding[];
+}
 export interface AuditRecordResult {
     path: string;
     /** Total findings written, refuted ones included. */
@@ -90,7 +125,11 @@ export interface AuditRecordResult {
     dirty?: boolean;
     /** Advisory: the yield store couldn't be credited (never fails the write). */
     note?: string;
+    /** Sweep scopes only: the baseline delta; null on the first sweep. */
+    delta?: SweepDelta | null;
 }
+/** A sweep manifest's scope — the only shape that gets the #215 treatment. */
+export declare const SWEEP_SCOPE_RE: RegExp;
 /** Panel votes a critical/important finding needs before the record accepts it. */
 export declare function requiredVotes(scope: string, severity: AuditSeverity): number;
 /**
@@ -115,12 +154,14 @@ export declare function patchClaimsHold(c: PatchClaims): boolean;
  * :param verdict: "pass" (no findings) or "findings"
  * :param findings: the full finding list, refuted-to-be included
  * :param opts.yieldBaseDir: yield store root override (test seam)
- * :returns: path, counts, per-finding outcomes, stamp
+ * :param opts.legs: sweep scopes only — the leg records this manifest indexes
+ * :returns: path, counts, per-finding outcomes, stamp (+ delta on a sweep)
  * :raises CairnError: UNSUPPORTED on shape errors; PRECONDITION_FAILED
  *   on verdict mismatch, a missing failure_scenario, or a missing panel
  */
 export declare function writeAuditRecord(projectDir: string, scope: string, verdict: "pass" | "findings", findings: AuditFinding[], opts?: {
     yieldBaseDir?: string;
+    legs?: SweepLeg[];
 }): AuditRecordResult;
 export interface AuditRecordSummary {
     scope: string;
@@ -132,3 +173,34 @@ export interface AuditRecordSummary {
     dirty?: boolean;
 }
 export declare function listAuditRecords(projectDir: string): AuditRecordSummary[];
+/** One finding as read back from a record. */
+export interface ParsedFinding {
+    title: string;
+    severity: AuditSeverity;
+    failure_scenario: string;
+    outcome: FindingOutcome;
+    /** Sweep manifests: the leg that raised it, when attributed. */
+    leg?: string;
+}
+export interface ParsedAuditRecord {
+    frontmatter: Record<string, string | string[]>;
+    findings: ParsedFinding[];
+    /** Sweep manifests: the leg index. Empty elsewhere. */
+    legs: SweepLeg[];
+    /** Sweep manifests: what this record's own delta called fixed — the
+     *  next manifest's regression baseline. Empty elsewhere. */
+    deltaFixed: DeltaFinding[];
+    /** Blocks skipped on the way in (legacy bodies), in plain words. */
+    notes: string[];
+}
+/**
+ * Reads a record back into frontmatter + findings. Tolerant of every
+ * shape the writer has ever produced: a pre-phase-21 block with no
+ * scenario is skipped with a note (it was a hunch then, and a delta can't
+ * match on it now), never an error.
+ *
+ * :param path: the record file
+ * :returns: frontmatter, findings, leg index, the record's own fixed list, notes
+ * :raises CairnError: CONFIG_INVALID only on a broken frontmatter block
+ */
+export declare function parseAuditRecord(path: string): ParsedAuditRecord;

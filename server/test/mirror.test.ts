@@ -251,6 +251,20 @@ describe("staleAuditDrift (#195)", () => {
   });
 });
 
+describe("staleAuditDrift and sweep manifests (#215)", () => {
+  it("a sweep-* manifest never raises stale-audit, even behind code commits or over a dirty tree", async () => {
+    const d = repo();
+    writeAuditRecord(d, "sweep-2026-01-01", "pass", []);
+    commit(d, "src/b.ts", "code moved");
+    expect(staleAuditDrift(d)).toBeNull();
+    writeFileSync(join(d, "src/a.ts"), "edited, not committed\n");
+    writeAuditRecord(d, "sweep-2026-01-02", "pass", []);
+    expect(staleAuditDrift(d)).toBeNull();
+    const report = await driftReport(new FakeTracker(), d);
+    expect(report.flagged.filter((f) => f.reason === "stale-audit")).toEqual([]);
+  });
+});
+
 describe("staleBranchDrift (#218)", () => {
   /** Commits a file on a new branch with a back-dated committer date. */
   function branchAt(d: string, name: string, daysAgo: number): void {

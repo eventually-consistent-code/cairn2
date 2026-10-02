@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { listAuditRecords, writeAuditRecord } from "../src/audit/record.js";
+import { listAuditRecords, parseAuditRecord, writeAuditRecord, type AuditFinding } from "../src/audit/record.js";
 import { loadYield } from "../src/seats/yield.js";
 
 const fresh = () => mkdtempSync(join(tmpdir(), "cairn-audit-"));
@@ -208,5 +208,139 @@ describe("writeAuditRecord", () => {
     expect(all).toHaveLength(2);
     expect(all[0].scope).toBe("review-diff");
     expect(all[1].verdict).toBe("findings");
+  });
+});
+
+describe("sweep manifest + baseline delta (#215)", () => {
+  const VERSION = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version as string;
+  const minor = (title: string, failure_scenario: string): AuditFinding =>
+    ({ severity: "minor", title, failure_scenario });
+  const NULL_DEREF = minor("lookup dereferences null", "lookup(undefined) returns null then the caller crashes with TypeError");
+  const STALE_FOOTER = minor("settings footer is stale", "open /settings and the footer still says 2025");
+  const RETRY_LOOP = minor("retry loop never backs off", "tracker 429 makes the client retry with zero delay forever");
+  const commitCode = (repo: string, file: string) => {
+    writeFileSync(join(repo, file), `${file}\n`);
+    git(repo, "add", file); git(repo, "commit", "-q", "-m", `code ${file}`, "--no-gpg-sign");
+  };
+  /** Writes the two leg records, then a manifest over them. */
+  function sweep(repo: string, date: string, sec: AuditFinding[], rev: AuditFinding[]) {
+    const s = writeAuditRecord(repo, "security-25", sec.length ? "findings" : "pass", sec);
+    const r = writeAuditRecord(repo, "review-working", rev.length ? "findings" : "pass", rev);
+    const all = [...sec, ...rev];
+    return writeAuditRecord(repo, `sweep-${date}`, all.length ? "findings" : "pass", all, {
+      legs: [{ scope: "security-25", path: s.path }, { scope: "review-working", path: r.path }],
+    });
+  }
+
+  it("first sweep: cairn + commit stamped, legs indexed, findings carry their leg, delta null", () => {
+    const repo = freshRepo();
+    const out = sweep(repo, "2026-01-01", [NULL_DEREF], [STALE_FOOTER]);
+    expect(out.delta).toBeNull();
+    const raw = readFileSync(out.path, "utf8");
+    expect(raw).toContain(`cairn: ${VERSION}`);
+    expect(raw).toContain(`commit: ${git(repo, "rev-parse", "HEAD")}`);
+    expect(raw).toMatch(/^leg: security-25 => .*security-25-.*\.md$/m);
+    expect(raw).toMatch(/^leg: review-working => .*review-working-.*\.md$/m);
+    expect(raw).toContain("first baseline");
+    expect(raw).toMatch(/lookup dereferences null\nscenario: [^\n]*\nsource leg: security-25/);
+    expect(raw).toMatch(/settings footer is stale\nscenario: [^\n]*\nsource leg: review-working/);
+  });
+
+  it("two sweeps across a code commit: new / persisting (title and scenario) / fixed; a third re-raise is regressed", () => {
+    const repo = freshRepo();
+    const first = sweep(repo, "2026-01-01", [NULL_DEREF], [STALE_FOOTER]);
+    commitCode(repo, "b.ts");
+
+    // Same null-deref under a new headline + paraphrased scenario; footer gone; retry loop arrives.
+    const renamed = minor("caller crashes on missing key",
+      "lookup(undefined) returns null and the caller crashes with a TypeError");
+    const second = sweep(repo, "2026-01-02", [renamed, RETRY_LOOP], []);
+    const d2 = second.delta!;
+    expect(d2.baseline).toMatchObject({ path: first.path, commit: first.commit, cairn: VERSION, created: today });
+    expect(d2.codeCommitsSince).toBe(1);
+    expect(d2.persisting.map((f) => f.title)).toEqual(["caller crashes on missing key"]);
+    expect(d2.new.map((f) => f.title)).toEqual(["retry loop never backs off"]);
+    expect(d2.fixed.map((f) => [f.title, f.leg])).toEqual([["settings footer is stale", "review-working"]]);
+    expect(d2.regressed).toEqual([]);
+    const raw2 = readFileSync(second.path, "utf8");
+    expect(raw2).toContain(`## delta vs sweep-2026-01-01-${today}`);
+    expect(raw2).toContain("code commits since: 1");
+    expect(raw2).toContain("- fixed — minor: settings footer is stale\n  scenario: open /settings");
+
+    // The footer comes back: fixed in sweep 2's own delta, present now -> regressed, not new.
+    const third = sweep(repo, "2026-01-03", [renamed, RETRY_LOOP], [STALE_FOOTER]);
+    const d3 = third.delta!;
+    expect(d3.baseline.path).toBe(second.path);
+    expect(d3.codeCommitsSince).toBe(0);
+    expect(d3.regressed.map((f) => f.title)).toEqual(["settings footer is stale"]);
+    expect(d3.new).toEqual([]);
+    expect(d3.persisting.map((f) => f.title).sort()).toEqual(
+      ["caller crashes on missing key", "retry loop never backs off"]);
+    expect(d3.fixed).toEqual([]);
+    expect(readFileSync(third.path, "utf8")).toContain("- regressed — minor: settings footer is stale");
+  });
+
+  it("refuted findings are neither carried nor compared; a non-sweep scope has no delta and refuses legs", () => {
+    const repo = freshRepo();
+    const killed: AuditFinding = { severity: "important", title: "phantom race",
+      failure_scenario: "two writers interleave and lose an update",
+      panel: [{ seat: "v", verdict: "REFUTED", evidence: "single writer by construction" }] };
+    writeAuditRecord(repo, "sweep-2026-01-01", "findings", [killed, NULL_DEREF]);
+    const second = writeAuditRecord(repo, "sweep-2026-01-02", "findings", [NULL_DEREF]);
+    expect(second.delta).toMatchObject({ new: [], fixed: [], regressed: [] });
+    expect(second.delta!.persisting.map((f) => f.title)).toEqual(["lookup dereferences null"]);
+
+    const plain = writeAuditRecord(repo, "review-working", "pass", []);
+    expect(plain).not.toHaveProperty("delta");
+    expect(readFileSync(plain.path, "utf8")).not.toContain("cairn:");
+    expect(() => writeAuditRecord(repo, "review-working", "pass", [],
+      { legs: [{ scope: "x", path: "y.md" }] })).toThrow(/not sweep-/);
+  });
+
+  it("parseAuditRecord round-trips the writer's output", () => {
+    const repo = freshRepo();
+    const first = sweep(repo, "2026-01-01", [NULL_DEREF], [STALE_FOOTER]);
+    const back = parseAuditRecord(first.path);
+    expect(back.frontmatter).toMatchObject({ scope: "sweep-2026-01-01", verdict: "findings", cairn: VERSION });
+    expect(back.legs.map((l) => l.scope)).toEqual(["security-25", "review-working"]);
+    expect(back.findings).toEqual([
+      { title: NULL_DEREF.title, severity: "minor", failure_scenario: NULL_DEREF.failure_scenario,
+        outcome: "unpanelled", leg: "security-25" },
+      { title: STALE_FOOTER.title, severity: "minor", failure_scenario: STALE_FOOTER.failure_scenario,
+        outcome: "unpanelled", leg: "review-working" },
+    ]);
+    expect(back.notes).toEqual([]);
+
+    // A panelled, refuted, detailed record reads back with its outcomes; detail is not parsed as keys.
+    const dir = fresh();
+    const out = writeAuditRecord(dir, "review-working", "findings", [
+      { severity: "important", title: "dies", failure_scenario: "s1",
+        detail: "scenario: not a key line\noutcome: confirmed",
+        panel: [{ seat: "v", verdict: "REFUTED", evidence: "e" }] },
+      { severity: "critical", title: "lives", failure_scenario: "s2", issue: "GH-1",
+        panel: [{ seat: "v", verdict: "CONFIRMED", evidence: "e" }] },
+    ]);
+    expect(parseAuditRecord(out.path).findings).toEqual([
+      { title: "dies", severity: "important", failure_scenario: "s1", outcome: "refuted" },
+      { title: "lives", severity: "critical", failure_scenario: "s2", outcome: "confirmed" },
+    ]);
+  });
+
+  it("parseAuditRecord skips a legacy (pre-phase-21) block with a note, keeping the rest", () => {
+    const dir = fresh();
+    const legacy = join(dir, "legacy.md");
+    writeFileSync(legacy, [
+      "---", "scope: uat-phase-1", "verdict: findings", "created: 2020-01-01", "---",
+      "# Audit: uat-phase-1", "",
+      "## finding — critical", "checkout 500s", "issue: GH-9", "",
+      "## finding — minor", "copy stale", "scenario: open /settings → old year", "",
+    ].join("\n"));
+    const back = parseAuditRecord(legacy);
+    expect(back.findings).toEqual([
+      { title: "copy stale", severity: "minor", failure_scenario: "open /settings → old year", outcome: "unpanelled" },
+    ]);
+    expect(back.notes).toEqual(["skipped critical finding 'checkout 500s' — no scenario (pre-phase-21 body)"]);
+    expect(back.legs).toEqual([]);
+    expect(back.deltaFixed).toEqual([]);
   });
 });
