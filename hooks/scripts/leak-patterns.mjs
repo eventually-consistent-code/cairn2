@@ -16,6 +16,10 @@
  *   strength. This lives in code rather than cairn.json `leakGuard.allow`
  *   because allow is all-or-nothing per path: allowlisting server/src/**
  *   would silently drop tracker-id and label scanning there too.
+ *
+ * removeWhen: never for the scan itself; the hook that calls it can
+ *   retire if the platform offers a pre-commit content policy cairn can
+ *   register patterns with.
  * Author(s): John Reed
  */
 

@@ -2,6 +2,8 @@
 
 Date: 2026-09-11. Status: accepted.
 
+removeWhen: running the full panel on every diff costs little enough in tokens and time that gating saves nothing worth the risk of muting a seat; then the dial stays at off and the yield gate can be retired.
+
 ## Context
 
 A full panel on every diff wastes tokens on viewpoints with nothing to

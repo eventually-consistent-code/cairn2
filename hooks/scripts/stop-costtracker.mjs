@@ -13,6 +13,9 @@
  *   is subagent task results rather than its own work. Measurement only: it
  *   tells us whether report compression is worth building, nothing more.
  *   Fire-and-forget and throttled -- a hook must never be visible or block.
+ *
+ * removeWhen: the platform exposes per-session cumulative spend through
+ *   an API cairn can read.
  * Author(s): John Reed
  */
 

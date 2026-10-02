@@ -2,6 +2,8 @@
 
 Status: accepted (v2, 2026-07-24)
 
+removeWhen: the team space stops organizing work as one top-level folder per project. This mirrors a house convention, not a model or platform limit.
+
 ## Context
 
 The team's Confluence space organizes work by top-level folders, one per

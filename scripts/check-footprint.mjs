@@ -92,7 +92,12 @@ const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 // far too small to hide a real schema change -- these eight fields alone
 // cost 135, well clear of it -- so a genuinely added tool or field still
 // fails immediately, which is the whole point.
-const BUDGET_TOKENS = 13885;
+//
+// Re-pinned DOWN to 13784 (2026-10-02): the SessionStart measure used to
+// count header-comment prose the hook never injects (see section 3). The
+// corrected reading is 13746; the budget follows it with the same ~38
+// cushion, so a measurement fix never becomes room nobody paid for.
+const BUDGET_TOKENS = 13784;
 
 /** chars / 4 — see the note above on why this approximation is the right one. */
 const estimateTokens = (chars) => Math.ceil(chars / 4);
@@ -146,7 +151,13 @@ parts.push({ what: `${skillCount} skill descriptions`, chars: skillChars });
 const hookPath = join(root, "hooks", "scripts", "sessionstart-continuity.mjs");
 let injectionChars = 0;
 if (existsSync(hookPath)) {
-  const src = readFileSync(hookPath, "utf8");
+  // Comments are never injected, so they come out first. Before they did, a
+  // short quoted word in the header comment ("off") left the next quote
+  // unpaired, and the match ran on through the rest of the comment -- 544
+  // characters of prose that no session ever received, counted as rent.
+  const src = readFileSync(hookPath, "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
   // String literals long enough to be prose rather than a key or a path.
   for (const m of src.matchAll(/"((?:[^"\\]|\\.){40,})"/g)) injectionChars += m[1].length;
 }

@@ -17,6 +17,9 @@
  *   "The owner's checkout" is the main working tree. A worktree's git dir
  *   resolves under <main>/.git/worktrees/<name>, so the run's own worktree
  *   is recognised and left alone.
+ *
+ * removeWhen: headless runs execute in platform-provided isolated
+ *   checkouts that cannot reach the human's working directory.
  * Author(s): John Reed
  */
 

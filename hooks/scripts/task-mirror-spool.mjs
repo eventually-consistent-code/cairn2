@@ -7,6 +7,9 @@
  *   tracker I/O: one atomic append, then it spawns the detached mirror
  *   worker (if one isn't already running) and exits 0. The worker does the
  *   slow networked part on its own time.
+ *
+ * removeWhen: the platform mirrors native tasks to an external tracker
+ *   itself.
  * Author(s): John Reed
  */
 

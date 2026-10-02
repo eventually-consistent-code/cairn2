@@ -7,6 +7,9 @@
  *   boundary. Unlike the PostToolUse breadcrumb, this one is unthrottled --
  *   compaction is rare enough that every occurrence deserves a fresh write.
  *   Fire-and-forget: any error, or no handoff to patch, is a silent no-op.
+ *
+ * removeWhen: the platform persists working context across compaction
+ *   and /clear natively.
  * Author(s): John Reed
  */
 

@@ -2,6 +2,8 @@
 
 Date: 2026-09-04. Status: accepted.
 
+removeWhen: the platform's in-run budget becomes a hard, cross-session spend ceiling that stops headless work at a clean checkpoint and reports what was spent, so the outer boundary ledger duplicates it.
+
 ## Context
 
 A headless run needs a token/cost ceiling the user can trust, but agent

@@ -16,6 +16,10 @@
  *   never smuggle authority in. Status walks a one-way lifecycle:
  *   staged → running → complete|stopped (staged may also go straight to
  *   stopped when a run is abandoned before it starts).
+ *
+ * removeWhen: never — push authority is an owner-decided policy gate, not
+ *   a workaround for a model limit; a stronger agent does not change who
+ *   decides what leaves the machine (ADR 0007).
  * Author(s): John Reed
  */
 // Imports

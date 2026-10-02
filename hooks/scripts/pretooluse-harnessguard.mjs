@@ -16,6 +16,10 @@
  *   silent success into a refusal the human sees. It is NOT a sandbox: the
  *   CAIRN_HARNESS_EDIT=1 escape exists for the human, and text that can
  *   steer the agent can also ask for the prefix. Visibility is the control;
+ *   isolation is the operating system's job. The Bash coverage is
+ *   best-effort text matching over the command -- it catches the shapes an
+ *   agent actually writes (redirect, sed -i, tee, cp, mv) and makes no
+ *   claim to be a shell parser.
  *   isolation is the operating system's job. The Bash coverage reads the
  *   command the way a shell would, closely enough to find what it WRITES:
  *   redirect targets, and the path operands of commands that change files

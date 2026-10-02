@@ -2,6 +2,8 @@
 
 Date: 2026-09-20. Status: accepted.
 
+removeWhen: the search index moves to a runtime-bundled SQLite (Node's built-in sqlite module, once stable on every supported runtime) and the compiled native binding is gone, so the index is no more fragile than the files.
+
 ## Context
 
 The memory subsystem has two halves that fail independently. Cards are
