@@ -1,3 +1,10 @@
+// The plan check: reports PLAN.md findings -- contract drift, unanchored
+// thresholds, a missing approaches block, a task that never says how it
+// will be proved. It reports; it never refuses (ADR 0017).
+//
+// removeWhen: models write plans that anchor thresholds, weigh approaches
+// and declare their proving command unprompted -- shown by a milestone of
+// planned phases where this check finds nothing.
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { phaseDirPrefix, plansRoot } from "./artifacts.js";

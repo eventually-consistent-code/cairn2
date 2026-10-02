@@ -4,6 +4,9 @@
 //   is preserved byte-for-byte. A section that is missing or unmarked throws,
 //   never silently appends or clobbers -- hand-written prose is untouchable
 //   by construction. Generalizes the research marker grammar to 'docs:'.
+// removeWhen: never -- hand-written prose deserves a structural guard
+//   against any writer, script or model; better instruction-following makes
+//   a clobber rarer, not acceptable (ADR 0006).
 // Author(s): John Reed
 
 import { readFileSync, renameSync, writeFileSync } from "node:fs";

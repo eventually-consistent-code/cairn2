@@ -1,3 +1,12 @@
+// The ledger append: the evidence gate a close must pass (a typed record of
+// what was run and what it showed, or a written waiver) and the line that
+// records it.
+//
+// removeWhen: never for the record -- a commit range and its evidence are
+// the audit trail, not a model workaround. The refusal on missing evidence
+// can soften to a report once agents attach evidence unprompted on every
+// close across a milestone.
+
 import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CairnError } from "../errors.js";

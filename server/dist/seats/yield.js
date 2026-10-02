@@ -12,6 +12,10 @@
  * (missing evidence means no pruning; it must never break a review).
  * That's a deliberate divergence from budget-ledger, where a corrupt
  * ledger guards real money and fails loud.
+ *
+ * removeWhen: a full panel on every diff costs little enough that gating
+ * saves nothing worth the risk of muting a seat — the dial then stays at
+ * off and this store has no reader (ADR 0011).
  * Author(s): John Reed
  */
 // Imports
