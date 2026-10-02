@@ -900,6 +900,54 @@ describe("harness guard hook", () => {
     }
   });
 
+  // #240: the guard used to treat ANY `>` as a write (2>/dev/null, 2>&1, a
+  // `=>` inside a quoted pattern) and then refuse if ANY token named a
+  // protected path. Each pair below is one protected path: the write must
+  // still be refused, the read must pass. The reads are the real commands
+  // that were refused while doing ordinary work.
+  it("refuses the write and passes the read, path by path (#240)", () => {
+    const p = proj();
+    const pairs: Array<[write: string, read: string]> = [
+      ["node gen.mjs > hooks/scripts/cost-report.mjs",
+        "node hooks/scripts/cost-report.mjs --issue 233 2>/dev/null | tail -3"],
+      ["echo x &> .mcp.json",
+        'grep -rn -E "evidence\\|waived|=> " server/src hooks/scripts scripts | head'],
+      ["cat a | tee hooks/hooks.json",
+        "cat hooks/hooks.json 2>&1 | head -20"],
+      ["cp /tmp/evil.mjs hooks/scripts/pretooluse-leakguard.mjs",
+        "cp hooks/scripts/pretooluse-leakguard.mjs /tmp/review-copy.mjs"],
+      ["ls > /dev/null; sed -i '' 's/a/b/' .claude/settings.json",
+        "ls hooks/scripts > /tmp/listing.txt"],
+      ["dd if=/tmp/x of=.claude-plugin/plugin.json",
+        "dd if=.claude-plugin/plugin.json of=/tmp/plugin-copy.json"],
+      ["git checkout -- hooks/hooks.json",
+        "git diff --stat -- hooks/hooks.json"],
+      ["node hooks/scripts/leak-patterns.mjs a.md && rm hooks/scripts/lib.mjs",
+        "node hooks/scripts/leak-patterns.mjs a.md && echo clean"],
+    ];
+    for (const [write, read] of pairs) {
+      expect(runHookRaw(HARNESSGUARD, p, bashPayload(write)).status, write).toBe(2);
+      expect(runHookRaw(HARNESSGUARD, p, bashPayload(read)).status, read).toBe(0);
+    }
+  });
+
+  it("text that is data, not a command, never reads as a write (#240)", () => {
+    const p = proj();
+    for (const c of [
+      // a commit message naming a hook path, carried in a heredoc
+      "git commit -F - <<'EOF'\nfix: tidy hooks/scripts/lib.mjs > old wording\nEOF",
+      // a quoted pattern containing a redirect-looking arrow and a hook path
+      "grep -n 'x > hooks/hooks.json' docs/notes.md",
+      // a here-string
+      "grep -c hooks <<< 'cat > hooks/hooks.json'",
+    ]) {
+      expect(runHookRaw(HARNESSGUARD, p, bashPayload(c)).status, c).toBe(0);
+    }
+    // ...but a real write after a heredoc is still seen
+    expect(runHookRaw(HARNESSGUARD, p, bashPayload(
+      "cat <<'EOF' > hooks/hooks.json\n{}\nEOF")).status).toBe(2);
+  });
+
   it("CAIRN_HARNESS_EDIT=1 overrides, by env for any tool and by prefix for Bash", () => {
     const p = proj();
     expect(runHookRaw(HARNESSGUARD, p, editPayload(join(p, "hooks/hooks.json")),
