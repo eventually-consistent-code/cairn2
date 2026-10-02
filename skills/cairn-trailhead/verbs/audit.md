@@ -13,7 +13,7 @@ same way: a record, then tracker issues for anything that matters.
 | mode | scope | how |
 |---|---|---|
 | `uat [phase]` | walk shipped flows as a user would | pick the flows a user actually runs, walk each one end to end on a named platform matrix (desktop + mobile viewport at minimum), capture evidence and a pass/fail verdict per flow; sweep requirement traceability (map edges) and name any untraced requirement as an important finding — dispatch to the `cairn-uat` agent as the specialist |
-| `milestone [n]` | every phase in the milestone | goals vs delivered, phase by phase: `plan_status` for what was planned and what artifacts exist, `issue_list` for what's still open, ledger entries for what's actually verified |
+| `milestone [n]` | every phase in the milestone | goals vs delivered, phase by phase: `plan_status` for what was planned and what artifacts exist, `issue_list` for what's still open, ledger entries for what's actually verified; then the sunset sweep below |
 | `security [phase]` | retro-audit against the phase's own bar | re-check the phase's stated security criteria against what shipped — not a generic scan, the criteria the phase itself committed to |
 | `security --surface` | the agent-config attack surface | sweep the layer code audits never see: `.claude/` settings + hooks (commands that curl-pipe, write outside the project, or run with `dangerouslyDisableSandbox`), plugin manifests and their hook definitions, `.mcp.json` / MCP configs (servers pulled from unpinned or untrusted sources, env-var names that leak secrets into args), permission allowlists broader than the project needs, and any credential literal in config files (`cairn.json` refuses them; other tools' configs don't). Severity scale unchanged; every Critical/Important finding mirrors as a tracker issue like any other audit |
 | `ui [phase]` | same, against the phase's UI criteria | includes the fidelity contract: compare shipped UI against the draft session's decided direction and `tokens.json`; a divergence is a finding citing the specific decision entry it violates — the `cairn-uat` agent hands these off when its walk turns one up |
@@ -57,6 +57,21 @@ external council.
 both current and archived milestones). No `n` means audit the current milestone.
 If `n` is archived, read artifacts from `milestones/v<n>/` instead of live
 `plan_status` phases.
+
+**Milestone sunset sweep.** Every harness component exists because the
+model or platform can't do something yet, and each one says what would
+retire it: a `removeWhen:` line under the status line of every
+`docs/adr/*.md`, and in the module header of every server gate
+(`grep -rn "removeWhen:" docs/adr server/src`). Hooks carry no line yet;
+skip them. For each line, ask whether its condition has plausibly
+arrived since the last milestone — a model release, a platform feature,
+a measurement the line names — and cite the evidence (release note,
+changelog entry, the measurement). `removeWhen: never — …` lines are
+skipped. Each plausible hit is a `minor` finding in the record under a
+"Sunset candidates" heading, naming the component, its stated
+condition, and the evidence; it is for the human to judge, never a
+removal done here, and it closes like any other minor finding. Nothing
+plausible → one line saying so.
 
 No target on a phase-scoped mode means: figure out the most recently
 active phase from `plan_status` and audit that.
