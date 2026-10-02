@@ -38,6 +38,8 @@ export declare function declaredVerifyFor(projectDir: string, phaseDir: string, 
 export declare function appendLedger(projectDir: string, phaseDir: string, entry: LedgerEntryInput): {
     path: string;
     line: string;
+    /** Why this line carries no receipt facts, when it doesn't (#233). */
+    degraded?: string[];
     /** What PLAN.md said would prove this task (#206), when it said anything. */
     declaredVerify?: string;
     /** Whether the evidence run cites that declaration. Reported, never enforced. */

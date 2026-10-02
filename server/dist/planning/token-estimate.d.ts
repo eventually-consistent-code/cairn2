@@ -77,6 +77,13 @@ export interface IssueEstimateRead {
     pointsSource: EstimateSource | null;
     minutesSource: EstimateSource | null;
 }
+/** Points AND minutes for one issue: native estimate field first, the
+ *  body-line convention as the GitHub-class fallback. The two numbers resolve
+ *  INDEPENDENTLY -- a backend that persists points natively can still have its
+ *  hours sitting in the prose line, and vice versa. Provenance rides along
+ *  with each number so a later consumer never has to guess whether it is
+ *  holding a tracker field or a regex scrape. */
+export declare function issueEstimate(issue: Issue): IssueEstimateRead;
 /**
  * Estimate a phase's agent-token spend as a range, before it runs.
  *

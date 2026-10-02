@@ -30,7 +30,8 @@ import { milestoneCreate, milestoneList, milestoneComplete, } from "./planning/m
 import { resyncReport } from "./planning/resync.js";
 import { docsDriftReport } from "./planning/docs-drift.js";
 import { distillManifest } from "./planning/distill-manifest.js";
-import { estimatePhaseTokens, metricsSegments } from "./planning/token-estimate.js";
+import { estimatePhaseTokens, issueEstimate, metricsSegments } from "./planning/token-estimate.js";
+import { writeReceipt } from "./planning/close-receipt.js";
 import { snapshotNote, trackerDelta } from "./planning/tracker-delta.js";
 import { MemoryIndex, indexDbPath, } from "./memory/index-store.js";
 import { probeNativeBindings, } from "./memory/native.js";
@@ -585,12 +586,34 @@ export function buildServer(deps) {
                 ? "tracker advertises hasWorklog but exposes no logWork method"
                 : "backend has no worklog support; time recorded in the close comment only";
         }
+        // Close receipt (#233): hand the tracker facts this close saw to the
+        // ledger append that runs later and holds the commit range. The
+        // estimate is read off the issue the close already returned -- no
+        // second network call. writeReceipt never throws.
+        const worklog = worklogLogged ? "logged"
+            : a.timeSpentMinutes === undefined ? "not_requested"
+                : tracker.capabilities.hasWorklog && tracker.logWork ? "failed"
+                    : "unsupported";
+        const est = issueEstimate(result);
+        const receiptWritten = writeReceipt(d, {
+            version: 1,
+            issueId: a.id,
+            closedAt: new Date().toISOString(),
+            claimedAt: null,
+            claimedMinutes: a.timeSpentMinutes ?? null,
+            estimate: {
+                points: est.points, pointsSource: est.pointsSource,
+                minutes: est.minutes, minutesSource: est.minutesSource,
+            },
+            worklog,
+        });
         refreshHandoff({ source: "tool", issue: a.id }, d);
         return {
             ...result,
             worklogLogged,
             ...(worklogError ? { worklogError } : {}),
             ...(a.evidence ? { evidenceCommented } : {}),
+            receiptWritten,
         };
     }));
     server.registerTool("issue_list", {

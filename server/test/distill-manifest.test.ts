@@ -7,6 +7,7 @@ import {
 } from "../src/planning/artifacts.js";
 import { distillManifest } from "../src/planning/distill-manifest.js";
 import { appendLedger } from "../src/planning/ledger.js";
+import { writeReceipt } from "../src/planning/close-receipt.js";
 
 // Full-width fake shas -- appendLedger's writer shortens them to 7 chars,
 // and the manifest must hand back exactly what the writer wrote.
@@ -62,6 +63,23 @@ describe("distillManifest", () => {
     expect(m.commitRange).toEqual({
       base: SHA_A.slice(0, 7), head: SHA_C.slice(0, 7),
     });
+    expect(m.skipped).toEqual([]);
+  });
+
+  it("a line carrying a full actuals segment still parses to the right issue (#233)", () => {
+    writeReceipt(dir, {
+      version: 1, issueId: "GH-3", closedAt: "2026-01-03T00:00:00.000Z",
+      claimedAt: null, claimedMinutes: 40, worklog: "unsupported",
+      estimate: { points: 2, pointsSource: "body", minutes: 90, minutesSource: "body" },
+    });
+    const { line } = appendLedger(dir, "01-core", {
+      taskRef: "T3", summary: "measured", baseCommit: SHA_C, headCommit: SHA_D,
+      issueId: "GH-3", closedDate: "2026-01-03",
+      evidence: { command: "npm test", result: "9 passed" },
+    });
+    expect(line).toContain("actuals claimed=40m est=2pt:body,90m:body");
+    const m = distillManifest(dir, 1);
+    expect(m.ledgerEntries.at(-1)).toMatchObject({ issueId: "GH-3", closedDate: "2026-01-03" });
     expect(m.skipped).toEqual([]);
   });
 

@@ -1,10 +1,13 @@
 import { describe, it, expect } from "vitest";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { scaffoldProject, scaffoldPhase } from "../src/planning/artifacts.js";
 import { appendLedger, declaredVerifyFor } from "../src/planning/ledger.js";
 import { CairnError } from "../src/errors.js";
+import {
+  actualsSegment, receiptsDir, takeReceipt, writeReceipt, type CloseReceipt,
+} from "../src/planning/close-receipt.js";
 
 const dir = () => mkdtempSync(join(tmpdir(), "cairn-ledger-"));
 
@@ -17,9 +20,10 @@ const entry = {
   closedDate: "2026-07-14",
   evidence: { command: "npm test", result: "12 passed" },
 };
-// The exact segment the fixture's evidence renders to — every pinned line
-// below carries it between the commit range and the issue id.
-const EV = "evidence npm test => 12 passed — ";
+// The exact segments the fixture renders to — every pinned line below
+// carries them between the commit range and the issue id. No close ran in
+// these fixtures, so there is no receipt and the actuals segment says so.
+const EV = "evidence npm test => 12 passed — actuals degraded=no_receipt — ";
 
 function ledgerPath(d: string, phaseDir: string): string {
   return join(d, ".cairn", "plans", "phases", phaseDir, "LEDGER.md");
@@ -114,7 +118,7 @@ describe("appendLedger", () => {
       evidence: { command: "vitest run t2.test.ts", result: "4 passed" },
     });
     // tdd first, then evidence, then the close — one grammar.
-    expect(line).toContain("— tdd ccccccc..ddddddd — evidence vitest run t2.test.ts => 4 passed — GH-2 closed");
+    expect(line).toContain("— tdd ccccccc..ddddddd — evidence vitest run t2.test.ts => 4 passed — actuals degraded=no_receipt — GH-2 closed");
   });
 
   it("rejects a lone red or green commit", () => {
@@ -149,7 +153,7 @@ describe("appendLedger", () => {
     it("renders a waiver with its reason; an empty reason or empty evidence field is refused; both is a contradiction", () => {
       const { d, phaseDir } = ready();
       const { line } = appendLedger(d, phaseDir, { ...base, evidenceWaived: "docs only — no runnable change" });
-      expect(line).toBe(`- [x] T5 — s — commits aaaaaaa..bbbbbbb — waived docs only - no runnable change — GH-5 closed 2026-09-17`);
+      expect(line).toBe(`- [x] T5 — s — commits aaaaaaa..bbbbbbb — waived docs only - no runnable change — actuals degraded=no_receipt — GH-5 closed 2026-09-17`);
       expect(() => appendLedger(d, phaseDir, { ...base, evidenceWaived: "  " })).toThrowError(/needs a reason/);
       expect(() => appendLedger(d, phaseDir, { ...base, evidence: { command: "npm test", result: " " } }))
         .toThrowError(/both a command .* and a result/);
@@ -162,7 +166,7 @@ describe("appendLedger", () => {
       const { line } = appendLedger(d, phaseDir, {
         ...base, evidence: { command: "npm test — full", result: "1408 passed\n0 failed" },
       });
-      expect(line).toBe(`- [x] T5 — s — commits aaaaaaa..bbbbbbb — evidence npm test - full => 1408 passed 0 failed — GH-5 closed 2026-09-17`);
+      expect(line).toBe(`- [x] T5 — s — commits aaaaaaa..bbbbbbb — evidence npm test - full => 1408 passed 0 failed — actuals degraded=no_receipt — GH-5 closed 2026-09-17`);
     });
   });
 });
@@ -234,5 +238,88 @@ describe("declared verification, reported at close (phase 24.5)", () => {
     expect(r.declaredVerify).toBe("npm test");
     expect(r.evidenceCitesDeclared).toBe(false);
     expect(r.line).toContain("waived docs only");
+  });
+});
+
+describe("close receipt consumed at append (#233)", () => {
+  const receipt = (issueId: string): CloseReceipt => ({
+    version: 1,
+    issueId,
+    closedAt: "2026-10-01T12:00:00.000Z",
+    claimedAt: null,
+    claimedMinutes: 128,
+    estimate: { points: 2, pointsSource: "body", minutes: 90, minutesSource: "body" },
+    worklog: "unsupported",
+  });
+  const phase = () => {
+    const d = dir();
+    scaffoldProject(d, "P");
+    const { dir: phaseDir } = scaffoldPhase(d, 3, "Receipt Phase");
+    return { d, phaseDir };
+  };
+  const receiptFile = (d: string, id: string) =>
+    join(receiptsDir(d), `${id}.close.json`);
+
+  it("renders the receipt into the actuals segment and deletes it", () => {
+    const { d, phaseDir } = phase();
+    expect(writeReceipt(d, receipt("PROJ-105"))).toBe(true);
+    const r = appendLedger(d, phaseDir, entry);
+    expect(r.line).toContain(
+      "— actuals claimed=128m est=2pt:body,90m:body worklog=unsupported — PROJ-105 closed");
+    expect(r.degraded).toBeUndefined();
+    expect(existsSync(receiptFile(d, "PROJ-105"))).toBe(false);
+  });
+
+  it("a refused append leaves the receipt for the retry", () => {
+    const { d, phaseDir } = phase();
+    writeReceipt(d, receipt("PROJ-105"));
+    expect(() => appendLedger(d, phaseDir, { ...entry, evidence: undefined }))
+      .toThrow(CairnError);
+    expect(existsSync(receiptFile(d, "PROJ-105"))).toBe(true);
+  });
+
+  it("no receipt: the line is still written and names what was missing", () => {
+    const { d, phaseDir } = phase();
+    const r = appendLedger(d, phaseDir, entry);
+    expect(r.degraded).toEqual(["no_receipt"]);
+    expect(r.line).toContain("— actuals degraded=no_receipt — PROJ-105 closed");
+  });
+
+  it("a corrupt receipt degrades, never fails, and is cleared", () => {
+    const { d, phaseDir } = phase();
+    writeReceipt(d, receipt("PROJ-105"));
+    writeFileSync(receiptFile(d, "PROJ-105"), "{ not json");
+    const r = appendLedger(d, phaseDir, entry);
+    expect(r.degraded).toEqual(["receipt_unreadable"]);
+    expect(existsSync(receiptFile(d, "PROJ-105"))).toBe(false);
+  });
+
+  it("a receipt written for '233' is found by an append naming '#233'", () => {
+    const { d, phaseDir } = phase();
+    writeReceipt(d, receipt("233"));
+    const r = appendLedger(d, phaseDir, { ...entry, issueId: "#233" });
+    expect(r.degraded).toBeUndefined();
+    expect(r.line).toContain("actuals claimed=128m");
+  });
+
+  it("the receipts folder ignores itself, so no repo ever commits one", () => {
+    const { d } = phase();
+    writeReceipt(d, receipt("PROJ-105"));
+    expect(readFileSync(join(receiptsDir(d), ".gitignore"), "utf8")).toBe("*\n");
+  });
+
+  it("an unwritable state folder makes writeReceipt return false, not throw", () => {
+    const { d } = phase();
+    writeFileSync(join(d, ".cairn", "state"), "a file where the folder should be");
+    expect(writeReceipt(d, receipt("PROJ-105"))).toBe(false);
+    expect(takeReceipt(d, "PROJ-105")).toEqual({ degraded: "no_receipt" });
+  });
+
+  it("an absent estimate and claim render as none, not as zero", () => {
+    expect(actualsSegment({ receipt: {
+      ...receipt("X"), claimedMinutes: null,
+      estimate: { points: null, pointsSource: null, minutes: null, minutesSource: null },
+      worklog: "not_requested",
+    } })).toBe("actuals claimed=none est=none worklog=not_requested — ");
   });
 });

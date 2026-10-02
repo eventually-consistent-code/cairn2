@@ -2,6 +2,7 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs
 import { join } from "node:path";
 import { CairnError } from "../errors.js";
 import { plansRoot } from "./artifacts.js";
+import { actualsSegment, takeReceipt } from "./close-receipt.js";
 import { projectStatus } from "./status.js";
 
 /** Typed close evidence (phase 23): what was run, and what it showed. */
@@ -87,19 +88,25 @@ function evidenceSegment(entry: LedgerEntryInput): string {
       + "or evidenceWaived: \"<why no run was needed>\" for docs/planning-only issues");
 }
 
-function formatEntry(entry: LedgerEntryInput): string {
+/** Every refusal the line can raise, checked before anything is consumed --
+ *  a refused append must leave the close receipt where it found it. */
+function validateEntry(entry: LedgerEntryInput): void {
   if ((entry.redCommit === undefined) !== (entry.greenCommit === undefined)) {
     throw new CairnError("CONFIG_INVALID",
       "redCommit/greenCommit: both or neither",
       "pass the failing-test commit AND the passing commit, or omit both");
   }
+  evidenceSegment(entry);
+}
+
+function formatEntry(entry: LedgerEntryInput, actuals: string): string {
   const tdd = entry.redCommit
     ? `tdd ${shortSha(sanitize(entry.redCommit))}..${shortSha(sanitize(entry.greenCommit!))} — `
     : "";
   const evidence = evidenceSegment(entry);
   return `- [x] ${sanitize(entry.taskRef)} — ${sanitize(entry.summary)} — commits `
     + `${shortSha(sanitize(entry.baseCommit))}..${shortSha(sanitize(entry.headCommit))} — `
-    + `${tdd}${evidence}${sanitize(entry.issueId)} closed ${sanitize(entry.closedDate)}\n`;
+    + `${tdd}${evidence}${actuals}${sanitize(entry.issueId)} closed ${sanitize(entry.closedDate)}\n`;
 }
 
 /**
@@ -168,6 +175,8 @@ function ledgerHeader(phase: { number: number; name: string }): string {
 export function appendLedger(projectDir: string, phaseDir: string,
   entry: LedgerEntryInput): {
     path: string; line: string;
+    /** Why this line carries no receipt facts, when it doesn't (#233). */
+    degraded?: string[];
     /** What PLAN.md said would prove this task (#206), when it said anything. */
     declaredVerify?: string;
     /** Whether the evidence run cites that declaration. Reported, never enforced. */
@@ -181,7 +190,13 @@ export function appendLedger(projectDir: string, phaseDir: string,
   }
 
   const path = join(plansRoot(projectDir), "phases", phaseDir, "LEDGER.md");
-  const line = formatEntry(entry);
+  validateEntry(entry);
+  // The close receipt (#233): consumed only once the line is known to be
+  // writable. takeReceipt never throws -- a missing or broken receipt
+  // degrades the segment, it never fails the append.
+  const taken = takeReceipt(projectDir, sanitize(entry.issueId));
+  const line = formatEntry(entry, actualsSegment(taken.receipt
+    ? { receipt: taken.receipt } : { degraded: taken.degraded! }));
   if (existsSync(path)) {
     appendFileSync(path, line);
   } else {
@@ -190,6 +205,7 @@ export function appendLedger(projectDir: string, phaseDir: string,
   const declaredVerify = declaredVerifyFor(projectDir, phaseDir, entry.issueId);
   return {
     path, line: line.trimEnd(),
+    ...(taken.degraded ? { degraded: [taken.degraded] } : {}),
     ...(declaredVerify === null ? {} : {
       declaredVerify,
       evidenceCitesDeclared: entry.evidence

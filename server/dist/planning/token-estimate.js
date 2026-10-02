@@ -181,7 +181,7 @@ function planIssuesAt(base) {
  *  hours sitting in the prose line, and vice versa. Provenance rides along
  *  with each number so a later consumer never has to guess whether it is
  *  holding a tracker field or a regex scrape. */
-function issueEstimate(issue) {
+export function issueEstimate(issue) {
     const m = ESTIMATE_LINE_RE.exec(issue.body ?? "");
     const bodyPoints = m ? Number(m[1]) : null;
     // The hours half -- optional in the convention, so absent is normal, not a
