@@ -87,18 +87,20 @@ export interface DedupedFinding {
 
 /**
  * Lowercases and collapses every non-alphanumeric run to a single space —
- * the normalized form two claims are compared in.
+ * the normalized form two claims are compared in. Exported (#215) so the
+ * sweep manifest's baseline delta matches findings by the same rule.
  *
  * :param claim: raw claim text
  * :returns: normalized claim string
  */
-function normalizeClaim(claim: string): string {
+export function normalizeClaim(claim: string): string {
   return claim.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
 /**
  * Token-set Jaccard similarity between two normalized claims, with an
- * exact-match fast path. Deterministic, dependency-free.
+ * exact-match fast path. Deterministic, dependency-free. Exported (#215)
+ * for the sweep manifest's scenario-similarity delta.
  *
  * :param aNorm: first normalized claim
  * :param aSet: its token set
@@ -106,7 +108,7 @@ function normalizeClaim(claim: string): string {
  * :param bSet: its token set
  * :returns: true when the claims describe the same finding
  */
-function claimsMatch(
+export function claimsMatch(
   aNorm: string,
   aSet: Set<string>,
   bNorm: string,
@@ -123,6 +125,25 @@ function claimsMatch(
   }
   const union = aSet.size + bSet.size - intersection;
   return intersection / union >= CLAIM_SIMILARITY_THRESHOLD;
+}
+
+
+/**
+ * Convenience over normalizeClaim + claimsMatch for two raw strings —
+ * normalizes both, builds the token sets, and applies the same rule.
+ *
+ * :param a: first raw claim (or failure scenario)
+ * :param b: second raw claim
+ * :returns: true when the two describe the same finding
+ */
+export function textsMatch(a: string, b: string): boolean {
+  const aNorm = normalizeClaim(a);
+  const bNorm = normalizeClaim(b);
+  // Two texts with nothing comparable left after normalization are not
+  // "the same finding" — the exact fast path would otherwise say so.
+  if (aNorm === "" || bNorm === "") return false;
+  return claimsMatch(aNorm, new Set(aNorm.split(" ").filter(Boolean)),
+    bNorm, new Set(bNorm.split(" ").filter(Boolean)));
 }
 
 
