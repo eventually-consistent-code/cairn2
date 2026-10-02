@@ -13,6 +13,10 @@
 //
 // Every function here returns a value instead of throwing: a measurement
 // that can fail a close is worse than no measurement.
+//
+// removeWhen: the harness hands the model trustworthy wall-clock stamps per
+// turn and self-reports land within measured error across a milestone --
+// and even then this is cheaper, so expect it to stay (ADR 0020).
 import { execFileSync } from "node:child_process";
 const NONE = { minutes: null, source: "none" };
 /** Whole minutes from start to end; null when either stamp is unparseable

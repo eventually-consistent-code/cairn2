@@ -1,3 +1,10 @@
+// Docs drift: a deterministic, LLM-free report of verified phases whose
+// changelog entry or docs movement never landed (ADR 0005).
+//
+// removeWhen: never -- a deterministic staleness signal stays cheap and
+// useful at any model strength; it is the generation step it triggers that
+// can retire once the model keeps docs current unprompted.
+
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";

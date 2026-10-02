@@ -34,6 +34,11 @@
  *   the executor passes checkBudget().innerBudgetSuggestion down as the
  *   invoking run's budget (#133 wires it); this ledger stays the outer
  *   authority across phases.
+ *
+ * removeWhen: the platform's in-run budget becomes a hard, cross-session
+ *   spend ceiling that stops headless work at a clean checkpoint and
+ *   reports what it spent — then this outer ledger only duplicates it
+ *   (ADR 0008).
  * Author(s): John Reed
  */
 

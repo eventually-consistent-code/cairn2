@@ -2,6 +2,8 @@
 
 Date: 2026-09-04. Status: accepted.
 
+removeWhen: never — the push confirmation is an owner-decided policy gate, not a workaround for a model limit. A more capable agent does not change who decides what leaves the machine.
+
 ## Context
 
 The ship step's push confirmation is a council-adopted, owner-decided

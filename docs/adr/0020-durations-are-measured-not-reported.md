@@ -2,6 +2,8 @@
 
 Date: 2026-10-02. Status: accepted.
 
+removeWhen: the harness hands the model trustworthy wall-clock timestamps per turn and self-reported durations land within measured error across a milestone. Even then the server's measurement is cheaper, so expect this to stay.
+
 ## Context
 
 Every closed task recorded how long it took, and that number came from

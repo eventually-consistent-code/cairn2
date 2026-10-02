@@ -11,6 +11,9 @@
 //   - a missing or unreadable receipt is reported as a named `degraded`
 //     marker, never as silent nulls, so no later reader has to guess whether
 //     a null means zero or unknown.
+//
+// removeWhen: the durable per-task outcome record lands and the close and
+// the ledger append both write into it directly (ADR 0021).
 import { existsSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 /** Receipts live in local state, never in git: the directory ignores itself,

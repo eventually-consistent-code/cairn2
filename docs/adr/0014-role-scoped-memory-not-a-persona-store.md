@@ -2,6 +2,8 @@
 
 Date: 2026-09-13. Status: accepted.
 
+removeWhen: the platform ships per-agent persistent memory with provenance and staleness that cairn can read, write and filter by role, making the role scope a second store.
+
 ## Context
 
 Consultable viewpoints need continuity — a security reviewer that

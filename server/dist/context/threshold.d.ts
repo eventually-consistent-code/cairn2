@@ -5,6 +5,10 @@
  * running, and it will not edit a user's settings behind their back. So it
  * records a desired value and REPORTS the mismatch (ADR 0017) -- the fix is
  * the user's to apply, and probe output is where they learn it is needed.
+ *
+ * removeWhen: the harness lets a plugin declare its preferred compaction
+ * threshold for the sessions it runs in, or its default lands at the
+ * fraction cairn wants -- either makes the drift report moot.
  */
 export interface ContextEconomyConfig {
     /**

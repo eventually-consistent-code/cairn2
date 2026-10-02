@@ -2,6 +2,8 @@
 
 Date: 2026-09-20. Status: accepted.
 
+removeWhen: the platform isolates agent configuration at the operating-system level — the agent process cannot write its own hooks or settings, and the human edits them through a channel the agent cannot reach — so the visible-refusal hooks become redundant.
+
 ## Context
 
 An agent that can rewrite its own hooks or tool configuration can switch

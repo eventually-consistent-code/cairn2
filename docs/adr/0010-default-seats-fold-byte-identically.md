@@ -2,6 +2,8 @@
 
 Date: 2026-09-11. Status: accepted.
 
+removeWhen: a major version deliberately drops the promise that unconfigured projects see the pre-roster review output, and the byte-identical pin goes with it.
+
 ## Context
 
 Adding a roster mechanism to an existing review verb risks two

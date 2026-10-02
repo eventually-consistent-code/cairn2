@@ -35,7 +35,12 @@ is incremental — scoped to what phase N alone changed.
    - docs/adr/NNNN-<slug>.md — one ADR per locked decision that shaped
      code (next free NNNN; context/decision/consequences; reference
      commits, not phase dirs). Per-phase mode: only THAT phase's locked
-     decisions — existing ADRs stay untouched.
+     decisions — existing ADRs stay untouched. Every new ADR carries a
+     `removeWhen:` line under its status line: the capability or
+     platform condition that would make the decision unnecessary, or
+     `never — <why>`. ARCHITECTURE.md carries each ADR's `removeWhen:`
+     beside the component it describes, so the sunset condition survives
+     into the public picture.
    - CHANGELOG.md — prepend-only, no markers. Entries from ledger
      summaries grouped by milestone or phase, newest first; per-phase
      mode prepends one block covering just that phase's ledger entries.

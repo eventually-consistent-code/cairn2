@@ -6,6 +6,11 @@
  * Seat files carry flat frontmatter (the plugin's agents/*.md shape); this
  * module owns the flat→nested mapping and the human-first validation errors
  * that name the file and the field.
+ *
+ * removeWhen: the REQUIRED dose check can go once models reliably size a
+ * viewpoint brief themselves — minimal and full doses of one seat yielding
+ * equivalent findings across a milestone. The schema itself stays
+ * (ADR 0009).
  * Author(s): John Reed
  */
 import { z } from "zod";

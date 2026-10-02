@@ -2,6 +2,8 @@
 
 Date: 2026-10-02. Status: accepted.
 
+removeWhen: the durable per-task outcome record lands and both the close and the ledger append write into it directly, leaving the bridge receipt nothing to carry.
+
 ## Context
 
 A closed task's record is split between two tools that can't see each

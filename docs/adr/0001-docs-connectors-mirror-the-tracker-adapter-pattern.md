@@ -2,6 +2,8 @@
 
 Status: accepted (v2, 2026-07-24)
 
+removeWhen: wiki vendors ship their own maintained servers for page find/create/update with declared capabilities, so cairn can call those directly instead of keeping a second adapter registry of its own.
+
 ## Context
 
 Cairn needed to publish repo documentation to team wikis (Confluence first,
