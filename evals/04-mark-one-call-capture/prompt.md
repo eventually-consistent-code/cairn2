@@ -1,6 +1,6 @@
 ---
 name: mark-one-call-capture
-tags: [mark, capture]
+tags: [mark, capture, capability]
 runs: 3
 max_turns: 18
 allowed_tools: [Read, Glob, Grep, Skill, ToolSearch, AskUserQuestion]

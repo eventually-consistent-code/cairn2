@@ -1,6 +1,6 @@
 ---
 name: ship-fires
-tags: [trigger, ship]
+tags: [trigger, ship, capability]
 runs: 3
 max_turns: 12
 allowed_tools: [Read, Glob, Grep, Skill, ToolSearch, AskUserQuestion]

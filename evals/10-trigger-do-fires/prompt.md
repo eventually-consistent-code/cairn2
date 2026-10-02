@@ -1,6 +1,6 @@
 ---
 name: do-fires
-tags: [trigger, do]
+tags: [trigger, do, capability]
 runs: 3
 max_turns: 14
 allowed_tools: [Read, Glob, Grep, Skill, ToolSearch, AskUserQuestion]

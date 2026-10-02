@@ -1,6 +1,6 @@
 ---
 name: review-records-before-filing
-tags: [review, closing]
+tags: [review, closing, regression]
 runs: 3
 max_turns: 30
 allowed_tools: [Read, Glob, Grep, Skill, ToolSearch, AskUserQuestion]
