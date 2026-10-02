@@ -948,6 +948,20 @@ describe("harness guard hook", () => {
       "cat <<'EOF' > hooks/hooks.json\n{}\nEOF")).status).toBe(2);
   });
 
+  it("a write handed to another shell as a string is still a write (#240)", () => {
+    const p = proj();
+    // The old text-match missed all three; reading writes properly closes them.
+    for (const c of [
+      'bash -c "echo > hooks/hooks.json"',
+      "sh -c 'rm hooks/hooks.json'",
+      'eval "rm .mcp.json"',
+    ]) {
+      expect(runHookRaw(HARNESSGUARD, p, bashPayload(c)).status, c).toBe(2);
+    }
+    expect(runHookRaw(HARNESSGUARD, p,
+      bashPayload('bash -c "cat hooks/hooks.json | head"')).status).toBe(0);
+  });
+
   it("CAIRN_HARNESS_EDIT=1 overrides, by env for any tool and by prefix for Bash", () => {
     const p = proj();
     expect(runHookRaw(HARNESSGUARD, p, editPayload(join(p, "hooks/hooks.json")),
