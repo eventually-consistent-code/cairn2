@@ -15,7 +15,10 @@ export class FakeTracker implements Tracker {
   private issues = new Map<string, Issue>();
   private phases = new Map<string, Phase>();
   private milestones = new Map<string, Milestone>();
-  private issueComments = new Map<string, Array<{ id: string; text: string }>>();
+  private issueComments = new Map<string, Array<{ id: string; text: string; at: string }>>();
+  /** Clock for comment timestamps -- tests move it to put minutes between a
+   *  claim comment and the close without waiting for them (#232). */
+  now: () => Date = () => new Date();
   readonly issueAttachments = new Map<string, string[]>();
   private seq = 0;
 
@@ -119,7 +122,7 @@ export class FakeTracker implements Tracker {
   async commentIssue(id: string, text: string): Promise<{ id: string; url?: string }> {
     await this.getIssue(id); // NOT_FOUND on unknown
     const list = this.issueComments.get(id) ?? [];
-    const comment = { id: `FC-${++this.seq}`, text };
+    const comment = { id: `FC-${++this.seq}`, text, at: this.now().toISOString() };
     list.push(comment);
     this.issueComments.set(id, list);
     return { id: comment.id, url: `fake://comment/${comment.id}` };
@@ -172,11 +175,11 @@ export class FakeTracker implements Tracker {
   }
 
   async listComments(id: string): Promise<IssueComment[]> {
-    return (this.issueComments.get(id) ?? []).map((c) => ({ text: c.text }));
+    return (this.issueComments.get(id) ?? []).map((c) => ({ text: c.text, at: c.at }));
   }
 
   /** Test accessor: comments posted to an issue, in order. */
-  comments(id: string): Array<{ id: string; text: string }> {
+  comments(id: string): Array<{ id: string; text: string; at: string }> {
     return [...(this.issueComments.get(id) ?? [])];
   }
 }

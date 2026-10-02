@@ -24,10 +24,10 @@ pairing overlay applies:
   first. Then wait — do not write further code for that issue.
 - **Human says done** (or `resync`/`plan_tracker_delta` shows their
   commits landed): run the tests and the phase's verify posture against
-  their work, then the standard close — close comment with evidence and
-  approximate time ("logged by cairn for <handle>"),
-  `issue_close(timeSpentMinutes: ...)`, ledger entry with their commit
-  range. Offer `/cairn:review` on their diff — offer, not force; a
+  their work, then the standard close — close comment with evidence
+  ("logged by cairn for <handle>"), `issue_close` (it measures the
+  duration from the claim; pass no time of your own), ledger entry with
+  their commit range. Offer `/cairn:review` on their diff — offer, not force; a
   decline is recorded in the close comment as "review declined".
 - Wave ordering, TDD gates, and the failed-issue stop rule apply
   identically regardless of who holds an issue.
@@ -127,12 +127,13 @@ pairing overlay applies:
    cairn.json, only when it's set there — if unset, there are no ownership
    checks), say so and skip unless the user overrides.
 4. Before starting an issue: record `git rev-parse HEAD` as this issue's
-   `baseCommit` and the current time as its `startedAt` (both feed the
-   close in steps 6-7). Then `issue_update(id, state: "in_progress")` —
+   `baseCommit` (it feeds the ledger in step 7). Then `issue_update(id, state: "in_progress")` —
    and when `user.handle` is set in cairn.json, also pass
    `assignee: <handle>` so teammates see who holds it. Then post the
-   claim comment: `issue_comment(id, ...)` — starting now, which wave and
-   PLAN.md task this is, the task's declared `verify:` command quoted back
+   claim comment: `issue_comment(id, ...)` — its first line opens with
+   exactly "Starting now." (the server reads that opening as the start of
+   the clock — anything else and the measurement falls back a rung), then
+   which wave and PLAN.md task this is, the task's declared `verify:` command quoted back
    (so the bar is visible before the work, not negotiated after it), and
    the base commit as a short ref on its own line.
    Plain language throughout (leak-guard discipline, same as `trace`).
@@ -167,18 +168,21 @@ pairing overlay applies:
    comment first —
    `issue_comment(id, ...)`: what shipped in plain language, the commit
    range as short refs on their own line, the test evidence (suite name +
-   pass count), and "time spent: ~Xm" computed from
-   `startedAt`. When the cost log has rows for this issue
+   pass count). Do NOT compute a time spent: you have no reliable sense
+   of elapsed time, and self-reports measured 6x-14x high. When the cost
+   log has rows for this issue
    (`node "$CLAUDE_PLUGIN_ROOT/hooks/scripts/cost-report.mjs" --issue <id>`
-   returns > 0), add "agent cost: ~$X (approximate)" beside the time
-   line — estimate vs actual vs spend in one comment.
-   Then `issue_close(id, timeSpentMinutes: <X>, evidence: { command,
-   result })` — `evidence` is the SAME run that justified the close, as
-   data: `command` = the suite or shell line you ran, `result` = what it
-   showed ("1408 passed"). The tool posts it as one standard comment
-   before the state change; backends with worklog support
-   (`worklogLogged: true` in the result) get a real worklog entry; the
-   comment line covers the rest. On stopping early: leave in_progress
+   returns > 0), add "agent cost: ~$X (approximate)".
+   Then `issue_close(id, evidence: { command, result })` — `evidence` is
+   the SAME run that justified the close, as data: `command` = the suite
+   or shell line you ran, `result` = what it showed ("1408 passed"). The
+   tool measures the duration itself (claim comment, else the claim it
+   saw, else — at `ledger_append` — the commit range) and posts it with
+   the evidence as one standard comment before the state change; quote
+   its `measured` result when you report the close. `timeSpentMinutes`
+   is optional and is stored only as a claim beside the measurement,
+   never in place of it; backends with worklog support log the measured
+   minutes. On stopping early: leave in_progress
    and post a parked comment — why it stopped, what remains.
 7. On `issue_close`: `ledger_append(phaseDir: <NN-slug>, taskRef: id, summary:
    <one line — what shipped>, baseCommit: <HEAD when this issue started>,

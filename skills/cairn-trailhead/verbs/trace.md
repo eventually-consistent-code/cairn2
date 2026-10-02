@@ -42,8 +42,9 @@ plain language a manager reads (#726). Never debug a routed failure inline.
 ## Paper trail
 
 Every tracker state transition this verb makes carries a comment — claim
-("starting: <one line of intent>"), close (what shipped, evidence, "time
-spent: ~Xm (approximate)" from claim to close, passed to `issue_close` as
-`timeSpentMinutes`), or parked (why, what remains). Milestone progress
+(opening "Starting now. <one line of intent>" -- that exact opening is what
+the server reads as the start of the clock), close (what shipped, evidence;
+`issue_close` measures the duration itself and posts it, so compute none),
+or parked (why, what remains). Milestone progress
 comments where the work is long enough to have milestones; batch small
 steps into one comment. Leak-guard discipline applies to every comment.

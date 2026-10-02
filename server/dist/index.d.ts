@@ -9,4 +9,5 @@ export declare function buildServer(deps: {
     docsConnector?: DocsConnector;
     fetchLatestVersion?: () => Promise<string>;
     loadSqlite?: SqliteLoader;
+    now?: () => Date;
 }): McpServer;

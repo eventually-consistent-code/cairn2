@@ -2,6 +2,8 @@ import { appendFileSync, existsSync, readFileSync, writeFileSync } from "node:fs
 import { join } from "node:path";
 import { CairnError } from "../errors.js";
 import { plansRoot } from "./artifacts.js";
+import { actualsSegment, takeReceipt } from "./close-receipt.js";
+import { gitSpan } from "./duration.js";
 import { projectStatus } from "./status.js";
 /** Short-SHA form used in the ledger line -- matches `git log --abbrev=7` convention. */
 function shortSha(commit) {
@@ -49,17 +51,22 @@ function evidenceSegment(entry) {
     throw new CairnError("PRECONDITION_FAILED", "close evidence missing: state what was run and what it showed, or waive with a reason", "ledger_append(evidence: { command, result }) from the run that justified the close, "
         + "or evidenceWaived: \"<why no run was needed>\" for docs/planning-only issues");
 }
-function formatEntry(entry) {
+/** Every refusal the line can raise, checked before anything is consumed --
+ *  a refused append must leave the close receipt where it found it. */
+function validateEntry(entry) {
     if ((entry.redCommit === undefined) !== (entry.greenCommit === undefined)) {
         throw new CairnError("CONFIG_INVALID", "redCommit/greenCommit: both or neither", "pass the failing-test commit AND the passing commit, or omit both");
     }
+    evidenceSegment(entry);
+}
+function formatEntry(entry, actuals) {
     const tdd = entry.redCommit
         ? `tdd ${shortSha(sanitize(entry.redCommit))}..${shortSha(sanitize(entry.greenCommit))} — `
         : "";
     const evidence = evidenceSegment(entry);
     return `- [x] ${sanitize(entry.taskRef)} — ${sanitize(entry.summary)} — commits `
         + `${shortSha(sanitize(entry.baseCommit))}..${shortSha(sanitize(entry.headCommit))} — `
-        + `${tdd}${evidence}${sanitize(entry.issueId)} closed ${sanitize(entry.closedDate)}\n`;
+        + `${tdd}${evidence}${actuals}${sanitize(entry.issueId)} closed ${sanitize(entry.closedDate)}\n`;
 }
 /**
  * The `verify:` command a phase's PLAN.md declared for one issue (#206),
@@ -129,7 +136,20 @@ export function appendLedger(projectDir, phaseDir, entry) {
         throw new CairnError("NOT_FOUND", `no phase dir '${phaseDir}' found under .cairn/plans/phases`, "run plan_scaffold_phase (or plan_status to list known phases), then retry ledger_append");
     }
     const path = join(plansRoot(projectDir), "phases", phaseDir, "LEDGER.md");
-    const line = formatEntry(entry);
+    validateEntry(entry);
+    // The close receipt (#233): consumed only once the line is known to be
+    // writable. takeReceipt never throws -- a missing or broken receipt
+    // degrades the segment, it never fails the append.
+    const taken = takeReceipt(projectDir, sanitize(entry.issueId));
+    // Duration ladder (#232): the close measured rungs one and two when it
+    // could; rung three needs the commit range, which only this append holds.
+    // A missing receipt does not cost the duration -- git still has it.
+    const fromClose = taken.receipt?.measured;
+    const wall = fromClose && fromClose.source !== "none" && fromClose.minutes !== null
+        ? fromClose
+        : gitSpan(projectDir, sanitize(entry.baseCommit), sanitize(entry.headCommit));
+    const line = formatEntry(entry, actualsSegment(taken.receipt
+        ? { receipt: taken.receipt, wall } : { degraded: taken.degraded, wall }));
     if (existsSync(path)) {
         appendFileSync(path, line);
     }
@@ -139,6 +159,8 @@ export function appendLedger(projectDir, phaseDir, entry) {
     const declaredVerify = declaredVerifyFor(projectDir, phaseDir, entry.issueId);
     return {
         path, line: line.trimEnd(),
+        ...(taken.degraded ? { degraded: [taken.degraded] } : {}),
+        measured: wall,
         ...(declaredVerify === null ? {} : {
             declaredVerify,
             evidenceCitesDeclared: entry.evidence

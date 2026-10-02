@@ -1,3 +1,4 @@
+import { type Measured } from "./close-receipt.js";
 /** Typed close evidence (phase 23): what was run, and what it showed. */
 export interface CloseEvidence {
     /** The proving command — a suite name or the shell line ("npm test", "vitest run x.test.ts"). */
@@ -38,6 +39,10 @@ export declare function declaredVerifyFor(projectDir: string, phaseDir: string, 
 export declare function appendLedger(projectDir: string, phaseDir: string, entry: LedgerEntryInput): {
     path: string;
     line: string;
+    /** Why this line carries no receipt facts, when it doesn't (#233). */
+    degraded?: string[];
+    /** The duration on the line and the rung that produced it (#232). */
+    measured: Measured;
     /** What PLAN.md said would prove this task (#206), when it said anything. */
     declaredVerify?: string;
     /** Whether the evidence run cites that declaration. Reported, never enforced. */

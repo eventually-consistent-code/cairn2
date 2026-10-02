@@ -15,14 +15,16 @@ import { parsePlanDoc } from "./frontmatter.js";
 import { projectStatus } from "./status.js";
 // The exact shape ledger.ts formatEntry writes -- em dashes and all:
 //   - [x] <taskRef> — <summary> — commits <base7>..<head7> — [tdd <r>..<g> — ]
-//     [evidence <cmd> => <result> — | waived <reason> — ]<issueId> closed <date>
+//     [evidence <cmd> => <result> — | waived <reason> — ][actuals <k=v ...> — ]
+//     <issueId> closed <date>
 // taskRef and summary match lazily so the "commits <sha>..<sha>" anchor, not
 // an em dash inside a summary, decides where the fields end. The evidence
 // segment (phase 23) is optional so pre-gate lines keep parsing; the writer
 // strips em dashes from evidence text so the segment can't swallow issueId.
+// The actuals segment (phase 24.7) is optional for the same reason.
 const LEDGER_LINE_RE = new RegExp("^- \\[x\\] (.+?) — (.+?) — commits ([0-9a-f]{7,40})\\.\\.([0-9a-f]{7,40}) — "
     + "(?:tdd [0-9a-f]{7,40}\\.\\.[0-9a-f]{7,40} — )?"
-    + "(?:(?:evidence|waived) [^—]*? — )?(.+?) closed (.+)$");
+    + "(?:(?:evidence|waived) [^—]*? — )?(?:actuals [^—]*? — )?(.+?) closed (.+)$");
 // Live phases win; among archived copies (a number can recur across
 // milestones) the newest vN wins -- that's the copy summit archived last.
 function resolvePhase(projectDir, phaseNumber) {

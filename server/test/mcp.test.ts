@@ -546,7 +546,7 @@ describe("cairn MCP server", () => {
     });
     expect(res.isError).toBeFalsy();
     expect(res.json.line).toBe(
-      "- [x] task-1 — wire the tool — commits a1b2c3d..d4e5f6a — evidence npm test => 3 passed — PROJ-1 closed 2026-07-16",
+      "- [x] task-1 — wire the tool — commits a1b2c3d..d4e5f6a — evidence npm test => 3 passed — actuals wall=none degraded=no_receipt — PROJ-1 closed 2026-07-16",
     );
     // Phase 23: neither evidence nor a waiver is refused at the tool.
     const bare = await call("ledger_append", {
@@ -593,7 +593,8 @@ describe("cairn MCP server", () => {
     expect(closed.json.state).toBe("closed");
     expect(closed.json.evidenceCommented).toBe(true);
     expect(fakeTracker.comments(made.json.id).map((c) => c.text))
-      .toContain("evidence: `npm test` → 1408 passed");
+      .toContain("evidence: `npm test` → 1408 passed\n"
+        + "measured: not derivable at close (the ledger append takes it from the commit range)");
   });
 
   it("claiming an unassigned issue auto-assigns the working user", async () => {
@@ -722,6 +723,46 @@ describe("cairn MCP server", () => {
     expect(closed.json.state).toBe("closed");
     expect(closed.json.worklogLogged).toBe(false);
     expect(closed.json.worklogError).toMatch(/no worklog support/);
+  });
+
+  it("issue_close leaves a receipt that ledger_append folds into the line (#233)", async () => {
+    const made = await call("issue_create", {
+      title: "receipted close", estimatePoints: 3, estimateMinutes: 90,
+    });
+    const closed = await call("issue_close", { id: made.json.id, timeSpentMinutes: 15 });
+    expect(closed.json.receiptWritten).toBe(true);
+    const appended = await call("ledger_append", {
+      phaseDir: "01-core", taskRef: "r1", summary: "receipted",
+      baseCommit: "a1b2c3d4e5f6", headCommit: "d4e5f6a1b2c3",
+      issueId: made.json.id, closedDate: "2026-10-01",
+      evidence: { command: "npm test", result: "1 passed" },
+    });
+    expect(appended.isError).toBeFalsy();
+    expect(appended.json.line).toContain(
+      `— actuals wall=none claimed=15m est=3pt:field,90m:field worklog=unsupported — ${made.json.id} closed`);
+    expect(appended.json.degraded).toBeUndefined();
+    // Consumed: a second append for the same issue has nothing to read.
+    const again = await call("ledger_append", {
+      phaseDir: "01-core", taskRef: "r1b", summary: "again",
+      baseCommit: "a1b2c3d4e5f6", headCommit: "d4e5f6a1b2c3",
+      issueId: made.json.id, closedDate: "2026-10-01", evidenceWaived: "repeat",
+    });
+    expect(again.json.degraded).toEqual(["no_receipt"]);
+  });
+
+  it("an unwritable receipt folder never fails a close (#233)", async () => {
+    const state = join(projectDir, ".cairn", "state", "receipts");
+    rmSync(state, { recursive: true, force: true });
+    writeFileSync(state, "a file squatting on the folder");
+    try {
+      const made = await call("issue_create", { title: "close regardless" });
+      const closed = await call("issue_close", { id: made.json.id });
+      expect(closed.isError).toBeFalsy();
+      expect(closed.json.state).toBe("closed");
+      expect(closed.json.receiptWritten).toBe(false);
+    } finally {
+      rmSync(state, { force: true });
+    }
   });
 
   it("issue_create passes an estimate through on a hasEstimates backend, no skip note", async () => {

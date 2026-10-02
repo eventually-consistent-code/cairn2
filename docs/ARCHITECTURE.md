@@ -75,6 +75,18 @@ reason.
   plan-quality scan reports contract drift, unanchored thresholds, a
   phase that never wrote down its design alternatives, and a task that
   never declared how it would be proved.
+
+  Closing a task measures it as well. The close derives the duration
+  from timestamps it already controls (the claim comment, else the
+  claim the server saw) and leaves a local receipt carrying that
+  measurement with its source, the estimate with each number's
+  provenance, and the caller's own figure as a claim. The ledger
+  append consumes the receipt into one key=value segment on the line,
+  and falls back to git dates across the commit range when the close
+  measured nothing, since it is the only tool holding that range. A
+  missing receipt is written as a named degraded marker, never as
+  blanks, and no part of this can fail a close or an append (ADRs 0020,
+  0021).
 - `memory/` — disposable FTS index + git-committed memory cards with
   provenance, staleness checking, and phase/issue/role scopes.
 - `docs/` — documentation connectors (below) plus the marked-section
