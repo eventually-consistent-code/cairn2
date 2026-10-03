@@ -347,10 +347,13 @@ export function writeAuditRecord(projectDir: string, scope: string,
   // Yield credit (#196): a raising seat earns findingsSurvived only for a
   // finding that went through a panel and came out alive — "survived"
   // now means survived verification, not survived triage. Advisory:
-  // a yield-store problem never fails the record.
+  // a yield-store problem never fails the record. A sweep manifest earns
+  // nothing (#255): its findings are its legs' survivors carried verbatim,
+  // and each leg's own write already credited them — crediting here too
+  // would count every sweep finding twice.
   const credit = new Map<string, number>();
   findings.forEach((f, i) => {
-    if (!results[i].survived || results[i].outcome === "unpanelled") return;
+    if (sweep || !results[i].survived || results[i].outcome === "unpanelled") return;
     for (const seat of f.seats ?? []) credit.set(seat, (credit.get(seat) ?? 0) + 1);
   });
   let note: string | undefined;

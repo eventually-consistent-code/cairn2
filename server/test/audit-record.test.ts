@@ -297,6 +297,20 @@ describe("sweep manifest + baseline delta (#215)", () => {
       { legs: [{ scope: "x", path: "y.md" }] })).toThrow(/not sweep-/);
   });
 
+  it("a sweep manifest credits no seat yield — its legs already did (#255)", () => {
+    const repo = freshRepo();
+    const yieldBase = fresh();
+    const carried: AuditFinding = { severity: "important", title: "lookup dereferences null",
+      failure_scenario: "lookup(undefined) returns null then the caller crashes with TypeError",
+      seats: ["correctness"], panel: [{ seat: "v", verdict: "CONFIRMED", evidence: "reproduced" }] };
+    const leg = writeAuditRecord(repo, "review-working", "findings", [carried], { yieldBaseDir: yieldBase });
+    expect(loadYield(repo, yieldBase).state.seats.correctness?.findingsSurvived).toBe(1);
+    const manifest = writeAuditRecord(repo, "sweep-2026-01-01", "findings", [carried],
+      { yieldBaseDir: yieldBase, legs: [{ scope: "review-working", path: leg.path }] });
+    expect(manifest.survived).toBe(1);
+    expect(loadYield(repo, yieldBase).state.seats.correctness?.findingsSurvived).toBe(1);
+  });
+
   it("parseAuditRecord round-trips the writer's output", () => {
     const repo = freshRepo();
     const first = sweep(repo, "2026-01-01", [NULL_DEREF], [STALE_FOOTER]);
