@@ -2110,7 +2110,7 @@ describe("docs tools over an injected fake connector", () => {
 
       const pub = await c.callTool({
         name: "docs_publish",
-        arguments: { projectName: "proj" },
+        arguments: { projectName: "proj", confirm: true },
       });
       const pubJson = JSON.parse(
         (pub.content as Array<{ text: string }>)[0].text,
@@ -2130,6 +2130,53 @@ describe("docs tools over an injected fake connector", () => {
       expect(statusJson.configured).toBe(true);
       expect(statusJson.connector).toBe("confluence");
       expect(statusJson.root.title).toBe("proj");
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("docs_publish refuses without the owner's confirm and publishes nothing (#253)", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cairn-docs-confirm-"));
+    writeFileSync(
+      join(dir, "cairn.json"),
+      JSON.stringify({
+        tracker: { type: "github", config: { repo: "o/r" } },
+        docs: {
+          connector: "confluence",
+          config: { baseUrl: "https://x.atlassian.net/wiki", spaceKey: "D" },
+        },
+      }),
+    );
+    writeFileSync(join(dir, "README.md"), "# Landing");
+    const { FakeDocsConnector } = await import("../src/docs/fake.js");
+    const fake = new FakeDocsConnector();
+    try {
+      const server = buildServer({
+        projectDir: dir,
+        tracker: new FakeTracker(),
+        docsConnector: fake,
+      });
+      const [ct, st] = InMemoryTransport.createLinkedPair();
+      const c = new Client({ name: "docs-confirm-test", version: "0.0.0" });
+      await Promise.all([server.connect(st), c.connect(ct)]);
+
+      // No confirm, and an explicit false -- both refused, nothing published
+      for (const args of [{ projectName: "proj" }, { projectName: "proj", confirm: false }]) {
+        const res = await c.callTool({ name: "docs_publish", arguments: args });
+        const text = (res.content as Array<{ text: string }>)[0].text;
+        expect(res.isError).toBe(true);
+        expect(text).toContain("PRECONDITION_FAILED");
+        expect(text).toContain("owner");
+        expect(fake.pages.size).toBe(0);
+      }
+
+      // The owner's yes -- publishes
+      const ok = await c.callTool({
+        name: "docs_publish",
+        arguments: { projectName: "proj", confirm: true },
+      });
+      expect(ok.isError).toBeFalsy();
+      expect(fake.pages.size).toBe(1);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
