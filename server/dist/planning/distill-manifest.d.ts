@@ -6,6 +6,16 @@ export interface DistillLedgerEntry {
     issueId: string;
     closedDate: string;
 }
+/** An evidence-only ledger line (#256): work recorded against an issue
+ *  that this line does NOT claim closed. */
+export interface DistillEvidenceEntry {
+    taskRef: string;
+    summary: string;
+    baseCommit: string;
+    headCommit: string;
+    issueId: string;
+    loggedDate: string;
+}
 export interface DistillManifest {
     /** `dir` is the phase's path relative to the plans root minus the live
      *  "phases/" prefix -- "01-core" live, "milestones/v1/01-core" archived --
@@ -17,9 +27,16 @@ export interface DistillManifest {
         archived: boolean;
     };
     issues: string[];
+    /** Closure lines still standing -- a closure later superseded by an
+     *  evidence line for the same taskRef is moved to `superseded`. */
     ledgerEntries: DistillLedgerEntry[];
-    /** Union range the ledger lines span: first entry's base to last entry's
-     *  head (the ledger is append-only, so file order IS chronological order).
+    /** Evidence-only lines: never closures, in file order. */
+    evidenceEntries: DistillEvidenceEntry[];
+    /** Closure lines an evidence line for the same taskRef later corrected --
+     *  the issue reads NOT closed. */
+    superseded: DistillLedgerEntry[];
+    /** Union range the ledger lines span (closure and evidence lines alike --
+     *  both landed commits): first line's base to last line's head (the ledger is append-only, so file order IS chronological order).
      *  Null when the ledger has no parsed entries. */
     commitRange: {
         base: string;

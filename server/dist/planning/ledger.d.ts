@@ -22,7 +22,21 @@ export interface LedgerEntryInput {
      */
     evidence?: CloseEvidence;
     evidenceWaived?: string;
+    /**
+     * "close" (default) writes the closure line `<issueId> closed <date>`.
+     * "evidence" (#256) records evidence for an issue that is NOT being
+     * closed -- `audit tests` logging what it wrote, or correcting a closure
+     * line that claimed an issue still open. It renders `- [ ] … evidence for
+     * <issueId> <date>` (closedDate is then the logged date), consumes no
+     * close receipt, and every ledger reader treats it as not-a-closure. An
+     * evidence line for the same taskRef as an EARLIER closure line
+     * supersedes that closure: readers report the issue not closed.
+     */
+    kind?: LedgerKind;
+    /** Free-text note on an evidence line (e.g. "supersedes the closure line"). Evidence kind only. */
+    note?: string;
 }
+export type LedgerKind = "close" | "evidence";
 /**
  * The `verify:` command a phase's PLAN.md declared for one issue (#206),
  * or null when the plan names none. The declaration may sit anywhere in

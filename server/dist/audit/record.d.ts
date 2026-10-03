@@ -159,8 +159,10 @@ export declare function patchClaimsHold(c: PatchClaims): boolean;
  * :param opts.yieldBaseDir: yield store root override (test seam)
  * :param opts.legs: sweep scopes only — the leg records this manifest indexes
  * :returns: path, counts, per-finding outcomes, stamp (+ delta on a sweep)
- * :raises CairnError: UNSUPPORTED on shape errors; PRECONDITION_FAILED
- *   on verdict mismatch, a missing failure_scenario, or a missing panel
+ * :raises CairnError: UNSUPPORTED on shape errors or a leg path outside
+ *   the audit dir; PRECONDITION_FAILED on verdict mismatch, a missing
+ *   failure_scenario, a missing panel, or (sweeps) a finding its leg
+ *   refuted or carried with fewer votes than its leg required
  */
 export declare function writeAuditRecord(projectDir: string, scope: string, verdict: "pass" | "findings", findings: AuditFinding[], opts?: {
     yieldBaseDir?: string;

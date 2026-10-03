@@ -1064,10 +1064,10 @@ export function buildServer(deps) {
         inputSchema: z.object({}),
     }, wrap(() => ({ cleared: clearHandoff(dir()) })));
     server.registerTool("ledger_append", {
-        description: "Append a verified-task line to a phase's LEDGER.md (append-only; creates the file with a header " +
-            "on first write). Requires typed close evidence — `evidence: { command, result }` (what was run, " +
-            "what it showed) — or an explicit `evidenceWaived` reason for docs/planning-only issues; neither " +
-            "is refused. verify fails a phase whose ledger lines carry neither",
+        description: "Append a verified-task line to a phase's LEDGER.md (append-only). Requires typed evidence " +
+            "`{ command, result }` or an `evidenceWaived` reason (docs/planning-only); neither is refused, " +
+            "and verify fails a phase whose lines carry neither. kind \"evidence\" logs evidence with no " +
+            "closure claim; one for the same taskRef supersedes a mistaken closure line",
         inputSchema: z.object({
             phaseDir: z.string(),
             taskRef: z.string(),
@@ -1080,6 +1080,8 @@ export function buildServer(deps) {
             greenCommit: z.string().optional(),
             evidence: z.object({ command: z.string().min(1), result: z.string().min(1) }).optional(),
             evidenceWaived: z.string().min(1).optional(),
+            kind: z.enum(["close", "evidence"]).optional(),
+            note: z.string().min(1).optional(),
         }),
     }, wrap((a) => {
         const d = dir();
@@ -1920,11 +1922,18 @@ export function buildServer(deps) {
         return { path: rel, flipped: heading, sections };
     }));
     server.registerTool("docs_publish", {
-        description: "Publish project documentation to the configured docs connector — " +
-            "README.md becomes the landing page, docs/ (+ CHANGELOG.md) becomes the child " +
-            "page tree, and the landing page gains a Documentation contents section. Idempotent",
-        inputSchema: z.object({ projectName: z.string().optional() }),
+        description: "Publish project docs to the configured docs connector: README.md as the landing page " +
+            "(with a contents section), docs/ (+ CHANGELOG.md) as its child page tree. Idempotent. " +
+            "Refused unless confirm: true — the owner's explicit yes",
+        inputSchema: z.object({
+            projectName: z.string().optional(),
+            confirm: z.boolean().optional(),
+        }),
     }, wrap(async (a) => {
+        // Never auto-publish -- the owner's explicit yes is the only key
+        if (a.confirm !== true) {
+            throw new CairnError("PRECONDITION_FAILED", "docs_publish refused: publishing pushes repo docs to an external site and needs the owner's explicit yes", "ask the project owner whether to publish the docs; on an explicit yes, call docs_publish again with confirm: true");
+        }
         const d = dir();
         return publishTree(await getDocsConnector(d), d, a.projectName);
     }));

@@ -17,8 +17,8 @@
  * Author(s): John Reed
  */
 // Imports
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, writeFileSync } from "node:fs";
+import { isAbsolute, join, relative, resolve, sep } from "node:path";
 import { CairnError } from "../errors.js";
 import { parseFrontmatter, serializeFrontmatter } from "../planning/frontmatter.js";
 import { codeCommitsSince, revisionStamp } from "../planning/resync.js";
@@ -79,8 +79,10 @@ export function patchClaimsHold(c) {
  * :param opts.yieldBaseDir: yield store root override (test seam)
  * :param opts.legs: sweep scopes only — the leg records this manifest indexes
  * :returns: path, counts, per-finding outcomes, stamp (+ delta on a sweep)
- * :raises CairnError: UNSUPPORTED on shape errors; PRECONDITION_FAILED
- *   on verdict mismatch, a missing failure_scenario, or a missing panel
+ * :raises CairnError: UNSUPPORTED on shape errors or a leg path outside
+ *   the audit dir; PRECONDITION_FAILED on verdict mismatch, a missing
+ *   failure_scenario, a missing panel, or (sweeps) a finding its leg
+ *   refuted or carried with fewer votes than its leg required
  */
 export function writeAuditRecord(projectDir, scope, verdict, findings, opts = {}) {
     if (!/^[a-z0-9][a-z0-9-]*$/.test(scope)) {
@@ -142,14 +144,32 @@ export function writeAuditRecord(projectDir, scope, verdict, findings, opts = {}
             r.applyEligible = survived && patchClaimsHold(f.patch.verifier.claims);
         return r;
     });
+    // Sweep manifest (#215): attribute each finding to the leg that raised
+    // it. Since #248 the leg's own judgment binds the manifest — a finding
+    // its leg refuted can't be resurrected here by a friendlier panel, and
+    // a security leg's two-vote bar travels with its findings.
+    const attributed = sweep ? attributeLegs(projectDir, legs, findings) : [];
+    attributed.forEach((a, i) => {
+        if (!a)
+            return;
+        const f = findings[i];
+        if (a.match.outcome === "refuted" && results[i].survived) {
+            throw new CairnError("PRECONDITION_FAILED", `finding '${f.title}' was refuted in leg '${a.leg}' — a sweep manifest carries survivors only`, "leave refuted findings in their leg's record and out of the manifest's union");
+        }
+        const need = Math.max(requiredVotes(a.leg, f.severity), requiredVotes(a.recordScope, f.severity));
+        const have = f.panel?.length ?? 0;
+        if (have < need) {
+            throw new CairnError("PRECONDITION_FAILED", `${f.severity} finding '${f.title}' has ${have} panel vote${have === 1 ? "" : "s"}; ` +
+                `its leg '${a.leg}' needs ${need} — the manifest carries the leg's votes verbatim`, "carry the finding from its leg record unedited — title, severity, scenario, panel, seats");
+        }
+    });
+    const sourceLeg = attributed.map((a) => a?.leg);
     mkdirSync(auditDir(projectDir), { recursive: true });
     const path = join(auditDir(projectDir), `${scope}-${today()}.md`);
     // Revision stamp (#195): which tree this record judged, captured by the
     // server at write time. Absent outside git — never invented.
     const stamp = revisionStamp(projectDir);
-    // Sweep manifest (#215): attribute each finding to the leg that raised
-    // it, and diff the survivors against the previous manifest.
-    const sourceLeg = sweep ? attributeLegs(projectDir, legs, findings) : [];
+    // ...and diff the survivors against the previous manifest.
     let delta = null;
     if (sweep) {
         const current = [];
@@ -207,10 +227,13 @@ export function writeAuditRecord(projectDir, scope, verdict, findings, opts = {}
     // Yield credit (#196): a raising seat earns findingsSurvived only for a
     // finding that went through a panel and came out alive — "survived"
     // now means survived verification, not survived triage. Advisory:
-    // a yield-store problem never fails the record.
+    // a yield-store problem never fails the record. A sweep manifest earns
+    // nothing (#255): its findings are its legs' survivors carried verbatim,
+    // and each leg's own write already credited them — crediting here too
+    // would count every sweep finding twice.
     const credit = new Map();
     findings.forEach((f, i) => {
-        if (!results[i].survived || results[i].outcome === "unpanelled")
+        if (sweep || !results[i].survived || results[i].outcome === "unpanelled")
             return;
         for (const seat of f.seats ?? [])
             credit.set(seat, (credit.get(seat) ?? 0) + 1);
@@ -499,6 +522,41 @@ function renderDelta(delta) {
     }
     return out;
 }
+/** True when `p` sits strictly below `base` (both already resolved). */
+function under(base, p) {
+    const rel = relative(base, p);
+    return rel !== "" && rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
+}
+/**
+ * Where a leg's record may be read from: a regular file under the
+ * project's audit dir, symlinks resolved — the leg index is caller input,
+ * and the manifest must not become a reader of arbitrary files. A path
+ * that doesn't exist yet is not refused; it attributes nothing.
+ *
+ * :param projectDir: repository root (relative leg paths resolve here)
+ * :param leg: one leg index entry
+ * :returns: the absolute record path, or null when the file is absent
+ * :raises CairnError: UNSUPPORTED when the path escapes the audit dir or isn't a regular file
+ */
+function legRecordPath(projectDir, leg) {
+    const dir = resolve(auditDir(projectDir));
+    const p = resolve(projectDir, leg.path.trim());
+    const refuse = (why) => new CairnError("UNSUPPORTED", `leg '${leg.scope.trim()}' path ${why} — a leg is a record under the project's audit dir`, "pass the path the leg's own audit_record call returned");
+    if (!under(dir, p))
+        throw refuse("is outside the audit dir");
+    let st;
+    try {
+        st = lstatSync(p);
+    }
+    catch {
+        return null;
+    }
+    if (!st.isFile())
+        throw refuse("is not a regular file");
+    if (!under(realpathSync(dir), realpathSync(p)))
+        throw refuse("resolves outside the audit dir");
+    return p;
+}
 /**
  * Which leg raised each finding: read every leg record back and match by
  * the delta's identity rule. A leg whose record can't be read attributes
@@ -507,23 +565,38 @@ function renderDelta(delta) {
  * :param projectDir: repository root (relative leg paths resolve here)
  * :param legs: the leg index
  * :param findings: the manifest's findings
- * :returns: leg scope per finding index (undefined when unattributed)
+ * :returns: leg attribution per finding index (undefined when unattributed)
+ * :raises CairnError: UNSUPPORTED on a leg path outside the audit dir
  */
 function attributeLegs(projectDir, legs, findings) {
-    const legFindings = legs.map((l) => {
-        const p = isAbsolute(l.path.trim()) ? l.path.trim() : join(projectDir, l.path.trim());
+    const records = legs.map((l) => {
+        const p = legRecordPath(projectDir, l);
+        if (!p)
+            return null;
         try {
-            return parseAuditRecord(p).findings;
+            return parseAuditRecord(p);
         }
         catch {
-            return [];
+            return null;
         }
     });
+    const legFindings = records.map((r) => r?.findings ?? []);
+    // Within a leg, a surviving copy wins over a refuted one of the same identity.
+    const pick = (fs, same) => fs.find((x) => same(x) && x.outcome !== "refuted") ?? fs.find(same);
     return findings.map((f) => {
         // An exact title in any leg wins over a fuzzy scenario match in an earlier one.
-        let k = legFindings.findIndex((fs) => fs.some((x) => x.title.trim() === f.title.trim()));
-        if (k < 0)
-            k = legFindings.findIndex((fs) => fs.some((x) => sameFinding(x, f)));
-        return k >= 0 ? legs[k].scope.trim() : undefined;
+        const exact = (x) => x.title.trim() === f.title.trim();
+        const fuzzy = (x) => sameFinding(x, f);
+        let same = exact;
+        let k = legFindings.findIndex((fs) => fs.some(exact));
+        if (k < 0) {
+            same = fuzzy;
+            k = legFindings.findIndex((fs) => fs.some(fuzzy));
+        }
+        const match = k >= 0 ? pick(legFindings[k], same) : undefined;
+        if (!match)
+            return undefined;
+        const fm = records[k]?.frontmatter.scope;
+        return { leg: legs[k].scope.trim(), recordScope: typeof fm === "string" ? fm : "", match };
     });
 }

@@ -1565,14 +1565,10 @@ export function buildServer(deps: {
     "ledger_append",
     {
       description:
-        "Append a verified-task line to a phase's LEDGER.md (append-only; creates the file with a header " +
-        "on first write). Requires typed close evidence — `evidence: { command, result }` (what was run, " +
-        "what it showed) — or an explicit `evidenceWaived` reason for docs/planning-only issues; neither " +
-        "is refused. verify fails a phase whose ledger lines carry neither. " +
-        "kind \"close\" (default) writes '<issueId> closed <closedDate>'. kind \"evidence\" records evidence " +
-        "WITHOUT claiming closure ('- [ ] … evidence for <issueId> <closedDate>', closedDate = the logged " +
-        "date; optional `note`) — use it for audit tests evidence on an open issue. A mistaken closure line " +
-        "is corrected by appending an evidence line for the SAME taskRef: readers then treat that issue as not closed",
+        "Append a verified-task line to a phase's LEDGER.md (append-only). Requires typed evidence " +
+        "`{ command, result }` or an `evidenceWaived` reason (docs/planning-only); neither is refused, " +
+        "and verify fails a phase whose lines carry neither. kind \"evidence\" logs evidence with no " +
+        "closure claim; one for the same taskRef supersedes a mistaken closure line",
       inputSchema: z.object({
         phaseDir: z.string(),
         taskRef: z.string(),
@@ -2884,16 +2880,12 @@ export function buildServer(deps: {
     "docs_publish",
     {
       description:
-        "Publish project documentation to the configured docs connector — " +
-        "README.md becomes the landing page, docs/ (+ CHANGELOG.md) becomes the child " +
-        "page tree, and the landing page gains a Documentation contents section. Idempotent. " +
-        "Publishes OUTSIDE the repo, so it requires confirm: true — pass it only after the " +
-        "project owner explicitly said yes; without it the call is refused and nothing is published",
+        "Publish project docs to the configured docs connector: README.md as the landing page " +
+        "(with a contents section), docs/ (+ CHANGELOG.md) as its child page tree. Idempotent. " +
+        "Refused unless confirm: true — the owner's explicit yes",
       inputSchema: z.object({
         projectName: z.string().optional(),
-        confirm: z.boolean().optional().describe(
-          "must be true — the owner's explicit yes to publishing docs externally",
-        ),
+        confirm: z.boolean().optional(),
       }),
     },
     wrap(async (a: { projectName?: string; confirm?: boolean }) => {
