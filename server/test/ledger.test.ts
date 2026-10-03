@@ -324,3 +324,49 @@ describe("close receipt consumed at append (#233)", () => {
       .toBe("actuals wall=none claimed=none est=none worklog=not_requested — ");
   });
 });
+
+describe("evidence-only lines (#256)", () => {
+  const phase = () => {
+    const d = dir();
+    scaffoldProject(d, "P");
+    const { dir: phaseDir } = scaffoldPhase(d, 3, "Evidence Phase");
+    return { d, phaseDir };
+  };
+
+  it("renders with no closure claim: unchecked box, 'evidence for', no 'closed', no actuals", () => {
+    const { d, phaseDir } = phase();
+    const r = appendLedger(d, phaseDir, { ...entry, kind: "evidence", note: "issue stays open" });
+    expect(r.line).toBe(
+      "- [ ] task-3 — wire adapter retries — commits a1b2c3d..d4e5f6a — "
+        + "evidence npm test => 12 passed — note issue stays open — evidence for PROJ-105 2026-07-14");
+    expect(r.line).not.toMatch(/closed/);
+    expect(r.degraded).toBeUndefined();
+  });
+
+  it("does not consume a waiting close receipt", () => {
+    const { d, phaseDir } = phase();
+    writeReceipt(d, {
+      version: 1, issueId: "PROJ-105", closedAt: "2026-10-01T12:00:00.000Z",
+      claimedAt: null, claimedMinutes: null,
+      estimate: { points: null, pointsSource: null, minutes: null, minutesSource: null },
+      worklog: "unsupported",
+    } as CloseReceipt);
+    appendLedger(d, phaseDir, { ...entry, kind: "evidence" });
+    expect(existsSync(join(receiptsDir(d), "PROJ-105.close.json"))).toBe(true);
+  });
+
+  it("still requires evidence or a waiver; a note on a closure line is refused", () => {
+    const { d, phaseDir } = phase();
+    expect(() => appendLedger(d, phaseDir, { ...entry, kind: "evidence", evidence: undefined }))
+      .toThrowError(/close evidence missing/);
+    expect(() => appendLedger(d, phaseDir, { ...entry, note: "x" }))
+      .toThrowError(/only written on evidence lines/);
+  });
+
+  it("default kind still writes the closure line byte-for-byte as before", () => {
+    const { d, phaseDir } = phase();
+    const r = appendLedger(d, phaseDir, entry);
+    expect(r.line).toBe(
+      "- [x] task-3 — wire adapter retries — commits a1b2c3d..d4e5f6a — " + EV + "PROJ-105 closed 2026-07-14");
+  });
+});

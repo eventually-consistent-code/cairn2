@@ -1568,7 +1568,11 @@ export function buildServer(deps: {
         "Append a verified-task line to a phase's LEDGER.md (append-only; creates the file with a header " +
         "on first write). Requires typed close evidence — `evidence: { command, result }` (what was run, " +
         "what it showed) — or an explicit `evidenceWaived` reason for docs/planning-only issues; neither " +
-        "is refused. verify fails a phase whose ledger lines carry neither",
+        "is refused. verify fails a phase whose ledger lines carry neither. " +
+        "kind \"close\" (default) writes '<issueId> closed <closedDate>'. kind \"evidence\" records evidence " +
+        "WITHOUT claiming closure ('- [ ] … evidence for <issueId> <closedDate>', closedDate = the logged " +
+        "date; optional `note`) — use it for audit tests evidence on an open issue. A mistaken closure line " +
+        "is corrected by appending an evidence line for the SAME taskRef: readers then treat that issue as not closed",
       inputSchema: z.object({
         phaseDir: z.string(),
         taskRef: z.string(),
@@ -1581,6 +1585,8 @@ export function buildServer(deps: {
         greenCommit: z.string().optional(),
         evidence: z.object({ command: z.string().min(1), result: z.string().min(1) }).optional(),
         evidenceWaived: z.string().min(1).optional(),
+        kind: z.enum(["close", "evidence"]).optional(),
+        note: z.string().min(1).optional(),
       }),
     },
     wrap(
@@ -1596,6 +1602,8 @@ export function buildServer(deps: {
         greenCommit?: string;
         evidence?: { command: string; result: string };
         evidenceWaived?: string;
+        kind?: "close" | "evidence";
+        note?: string;
       }) => {
         const d = dir();
         const { phaseDir, ...entry } = a;

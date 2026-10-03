@@ -26,15 +26,33 @@ export interface DistillLedgerEntry {
   closedDate: string;
 }
 
+/** An evidence-only ledger line (#256): work recorded against an issue
+ *  that this line does NOT claim closed. */
+export interface DistillEvidenceEntry {
+  taskRef: string;
+  summary: string;
+  baseCommit: string;
+  headCommit: string;
+  issueId: string;
+  loggedDate: string;
+}
+
 export interface DistillManifest {
   /** `dir` is the phase's path relative to the plans root minus the live
    *  "phases/" prefix -- "01-core" live, "milestones/v1/01-core" archived --
    *  the same id convention docs-drift reports use. */
   phase: { number: number; name: string; dir: string; archived: boolean };
   issues: string[];
+  /** Closure lines still standing -- a closure later superseded by an
+   *  evidence line for the same taskRef is moved to `superseded`. */
   ledgerEntries: DistillLedgerEntry[];
-  /** Union range the ledger lines span: first entry's base to last entry's
-   *  head (the ledger is append-only, so file order IS chronological order).
+  /** Evidence-only lines: never closures, in file order. */
+  evidenceEntries: DistillEvidenceEntry[];
+  /** Closure lines an evidence line for the same taskRef later corrected --
+   *  the issue reads NOT closed. */
+  superseded: DistillLedgerEntry[];
+  /** Union range the ledger lines span (closure and evidence lines alike --
+   *  both landed commits): first line's base to last line's head (the ledger is append-only, so file order IS chronological order).
    *  Null when the ledger has no parsed entries. */
   commitRange: { base: string; head: string } | null;
   /** One note per ledger line that LOOKED like an entry but didn't match the
@@ -51,6 +69,15 @@ export interface DistillManifest {
 // segment (phase 23) is optional so pre-gate lines keep parsing; the writer
 // strips em dashes from evidence text so the segment can't swallow issueId.
 // The actuals segment (phase 24.7) is optional for the same reason.
+//
+// An evidence line (#256) makes no closure claim: unchecked box, optional
+// note segment, and an "evidence for <issueId> <date>" tail. It is matched
+// FIRST -- its free-text note could otherwise satisfy the closure pattern.
+const EVIDENCE_LINE_RE = new RegExp(
+  "^- \\[ \\] (.+?) — (.+?) — commits ([0-9a-f]{7,40})\\.\\.([0-9a-f]{7,40}) — "
+  + "(?:tdd [0-9a-f]{7,40}\\.\\.[0-9a-f]{7,40} — )?"
+  + "(?:(?:evidence|waived) [^—]*? — )?(?:note [^—]*? — )?evidence for (.+?) (.+)$",
+);
 const LEDGER_LINE_RE = new RegExp(
   "^- \\[x\\] (.+?) — (.+?) — commits ([0-9a-f]{7,40})\\.\\.([0-9a-f]{7,40}) — "
   + "(?:tdd [0-9a-f]{7,40}\\.\\.[0-9a-f]{7,40} — )?"
@@ -105,17 +132,39 @@ function planIssuesAt(base: string): string[] {
 }
 
 function parseLedger(base: string): {
-  entries: DistillLedgerEntry[]; skipped: string[];
+  entries: DistillLedgerEntry[]; evidence: DistillEvidenceEntry[];
+  superseded: DistillLedgerEntry[]; skipped: string[];
+  range: { base: string; head: string } | null;
 } {
   const entries: DistillLedgerEntry[] = [];
+  const evidence: DistillEvidenceEntry[] = [];
+  const superseded: DistillLedgerEntry[] = [];
   const skipped: string[] = [];
+  let range: { base: string; head: string } | null = null;
+  // File order IS chronological order (append-only): keep the first base, move the head.
+  const extend = (b: string, h: string): void => { range = { base: range ? range.base : b, head: h }; };
   const path = join(base, "LEDGER.md");
-  if (!existsSync(path)) return { entries, skipped };
+  if (!existsSync(path)) return { entries, evidence, superseded, skipped, range };
   const lines = readFileSync(path, "utf8").split("\n");
   for (const [i, line] of lines.entries()) {
     // Only list lines are candidate entries; the header and the append-only
     // comment are the file's own furniture.
     if (!line.startsWith("- ")) continue;
+    const ev = EVIDENCE_LINE_RE.exec(line);
+    if (ev) {
+      evidence.push({
+        taskRef: ev[1], summary: ev[2], baseCommit: ev[3], headCommit: ev[4],
+        issueId: ev[5], loggedDate: ev[6],
+      });
+      extend(ev[3], ev[4]);
+      // A closure EARLIER in the file for the same taskRef was wrong: the
+      // evidence line is the correction, so that closure stops standing.
+      // (A closure written AFTER this line is a real later close and stays.)
+      for (let j = entries.length - 1; j >= 0; j--) {
+        if (entries[j].taskRef === ev[1]) superseded.push(...entries.splice(j, 1));
+      }
+      continue;
+    }
     const m = LEDGER_LINE_RE.exec(line);
     if (!m) {
       skipped.push(`LEDGER.md line ${i + 1} does not match the ledger entry `
@@ -126,8 +175,9 @@ function parseLedger(base: string): {
       taskRef: m[1], summary: m[2], baseCommit: m[3], headCommit: m[4],
       issueId: m[5], closedDate: m[6],
     });
+    extend(m[3], m[4]);
   }
-  return { entries, skipped };
+  return { entries, evidence, superseded, skipped, range };
 }
 
 /**
@@ -148,11 +198,7 @@ export function distillManifest(projectDir: string,
     throw new CairnError("CONFIG_INVALID", PHASE_NUMBER_ERROR(phaseNumber));
   }
   const phase = resolvePhase(projectDir, phaseNumber);
-  const { entries, skipped } = parseLedger(phase.base);
-  const commitRange = entries.length === 0 ? null : {
-    base: entries[0].baseCommit,
-    head: entries[entries.length - 1].headCommit,
-  };
+  const { entries, evidence, superseded, skipped, range } = parseLedger(phase.base);
   return {
     phase: {
       number: phase.number, name: phase.name,
@@ -160,7 +206,9 @@ export function distillManifest(projectDir: string,
     },
     issues: planIssuesAt(phase.base),
     ledgerEntries: entries,
-    commitRange,
+    evidenceEntries: evidence,
+    superseded,
+    commitRange: range,
     skipped,
   };
 }

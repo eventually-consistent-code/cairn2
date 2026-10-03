@@ -39,7 +39,22 @@ export interface LedgerEntryInput {
    */
   evidence?: CloseEvidence;
   evidenceWaived?: string;
+  /**
+   * "close" (default) writes the closure line `<issueId> closed <date>`.
+   * "evidence" (#256) records evidence for an issue that is NOT being
+   * closed -- `audit tests` logging what it wrote, or correcting a closure
+   * line that claimed an issue still open. It renders `- [ ] … evidence for
+   * <issueId> <date>` (closedDate is then the logged date), consumes no
+   * close receipt, and every ledger reader treats it as not-a-closure. An
+   * evidence line for the same taskRef as an EARLIER closure line
+   * supersedes that closure: readers report the issue not closed.
+   */
+  kind?: LedgerKind;
+  /** Free-text note on an evidence line (e.g. "supersedes the closure line"). Evidence kind only. */
+  note?: string;
 }
+
+export type LedgerKind = "close" | "evidence";
 
 /** Short-SHA form used in the ledger line -- matches `git log --abbrev=7` convention. */
 function shortSha(commit: string): string {
@@ -101,6 +116,16 @@ function evidenceSegment(entry: LedgerEntryInput): string {
 /** Every refusal the line can raise, checked before anything is consumed --
  *  a refused append must leave the close receipt where it found it. */
 function validateEntry(entry: LedgerEntryInput): void {
+  const kind = entry.kind ?? "close";
+  if (kind !== "close" && kind !== "evidence") {
+    throw new CairnError("CONFIG_INVALID",
+      `kind '${String(kind)}' is not a ledger line kind`, "pass kind: \"close\" or \"evidence\"");
+  }
+  if (entry.note !== undefined && kind !== "evidence") {
+    throw new CairnError("CONFIG_INVALID",
+      "note is only written on evidence lines",
+      "pass kind: \"evidence\" with the note, or drop the note from the closure line");
+  }
   if ((entry.redCommit === undefined) !== (entry.greenCommit === undefined)) {
     throw new CairnError("CONFIG_INVALID",
       "redCommit/greenCommit: both or neither",
@@ -114,6 +139,16 @@ function formatEntry(entry: LedgerEntryInput, actuals: string): string {
     ? `tdd ${shortSha(sanitize(entry.redCommit))}..${shortSha(sanitize(entry.greenCommit!))} — `
     : "";
   const evidence = evidenceSegment(entry);
+  if ((entry.kind ?? "close") === "evidence") {
+    // No closure claim anywhere on the line: an unchecked box, no actuals
+    // (nothing closed, so no receipt to render), and an "evidence for" tail
+    // in place of "<issueId> closed". The readers key off exactly this tail.
+    const note = entry.note !== undefined && sanitizeSegment(entry.note)
+      ? `note ${sanitizeSegment(entry.note)} — ` : "";
+    return `- [ ] ${sanitize(entry.taskRef)} — ${sanitize(entry.summary)} — commits `
+      + `${shortSha(sanitize(entry.baseCommit))}..${shortSha(sanitize(entry.headCommit))} — `
+      + `${tdd}${evidence}${note}evidence for ${sanitize(entry.issueId)} ${sanitize(entry.closedDate)}\n`;
+  }
   return `- [x] ${sanitize(entry.taskRef)} — ${sanitize(entry.summary)} — commits `
     + `${shortSha(sanitize(entry.baseCommit))}..${shortSha(sanitize(entry.headCommit))} — `
     + `${tdd}${evidence}${actuals}${sanitize(entry.issueId)} closed ${sanitize(entry.closedDate)}\n`;
@@ -203,19 +238,30 @@ export function appendLedger(projectDir: string, phaseDir: string,
 
   const path = join(plansRoot(projectDir), "phases", phaseDir, "LEDGER.md");
   validateEntry(entry);
-  // The close receipt (#233): consumed only once the line is known to be
-  // writable. takeReceipt never throws -- a missing or broken receipt
-  // degrades the segment, it never fails the append.
-  const taken = takeReceipt(projectDir, sanitize(entry.issueId));
-  // Duration ladder (#232): the close measured rungs one and two when it
-  // could; rung three needs the commit range, which only this append holds.
-  // A missing receipt does not cost the duration -- git still has it.
-  const fromClose = taken.receipt?.measured;
-  const wall: Measured = fromClose && fromClose.source !== "none" && fromClose.minutes !== null
-    ? fromClose
-    : gitSpan(projectDir, sanitize(entry.baseCommit), sanitize(entry.headCommit));
-  const line = formatEntry(entry, actualsSegment(taken.receipt
-    ? { receipt: taken.receipt, wall } : { degraded: taken.degraded!, wall }));
+  const span = () => gitSpan(projectDir, sanitize(entry.baseCommit), sanitize(entry.headCommit));
+  let line: string;
+  let wall: Measured;
+  let degraded: string | undefined;
+  if ((entry.kind ?? "close") === "evidence") {
+    // An evidence line closes nothing (#256), so it must not eat the close
+    // receipt a real close of this issue may still be waiting to render.
+    wall = span();
+    line = formatEntry(entry, "");
+  } else {
+    // The close receipt (#233): consumed only once the line is known to be
+    // writable. takeReceipt never throws -- a missing or broken receipt
+    // degrades the segment, it never fails the append.
+    const taken = takeReceipt(projectDir, sanitize(entry.issueId));
+    // Duration ladder (#232): the close measured rungs one and two when it
+    // could; rung three needs the commit range, which only this append holds.
+    // A missing receipt does not cost the duration -- git still has it.
+    const fromClose = taken.receipt?.measured;
+    wall = fromClose && fromClose.source !== "none" && fromClose.minutes !== null
+      ? fromClose : span();
+    line = formatEntry(entry, actualsSegment(taken.receipt
+      ? { receipt: taken.receipt, wall } : { degraded: taken.degraded!, wall }));
+    degraded = taken.degraded;
+  }
   if (existsSync(path)) {
     appendFileSync(path, line);
   } else {
@@ -224,7 +270,7 @@ export function appendLedger(projectDir: string, phaseDir: string,
   const declaredVerify = declaredVerifyFor(projectDir, phaseDir, entry.issueId);
   return {
     path, line: line.trimEnd(),
-    ...(taken.degraded ? { degraded: [taken.degraded] } : {}),
+    ...(degraded ? { degraded: [degraded] } : {}),
     measured: wall,
     ...(declaredVerify === null ? {} : {
       declaredVerify,
