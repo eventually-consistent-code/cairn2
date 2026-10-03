@@ -44,6 +44,9 @@ Pre-ship gate, then ship:
    tracker mutations the gate itself performed (reassignments, ledger
    repairs) — and ask ONE AskUserQuestion
    (push / hold). Push only on "push"; on "hold", stop and report.
+   Any commit made after step 1 (plan docs, step-4 distill) moves HEAD
+   past the drift stamp the run guard checks, so re-run `plan_drift()`
+   just before the push — anything newly flagged stops the ship.
    `ship.confirm: false` in cairn.json skips the ask (silent flow).
    After the push: `outlook_emit(tracker: {open, inProgress, blocked,
    nextVerb, asOf})` FIRST — the snapshot outlives the handoff, so the
@@ -55,4 +58,7 @@ Pre-ship gate, then ship:
    > accepted by the project owner over cairn's no-action recommendation.
    > Vibe mode's silent-judgment rule explicitly does NOT apply to this ask.
 
-Never push with flagged drift or open issues on a verified phase.
+Never push with flagged drift or open issues on a verified phase. The run
+guard enforces the drift half: an agent push to the default branch is
+refused unless the last `plan_drift()` came back clean for that exact
+commit; the open-issues half is still this verb's job.
