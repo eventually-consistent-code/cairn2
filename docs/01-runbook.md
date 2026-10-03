@@ -1192,7 +1192,7 @@ or Zed (verbs run by name), and the cost tracker stays Claude Code-only
 everywhere — it reads Claude's transcript JSONL for token usage, which no
 other harness produces (Cursor exposes a transcript_path, but not in that
 format). Grok Build claims Claude hook compatibility (untested). Everything the
-SERVER owns — all 79 tools, mirroring, drift math, estimates, attachments,
+SERVER owns — all 87 tools, mirroring, drift math, estimates, attachments,
 custom states — works identically everywhere, which is the point: the
 tracker paper trail doesn't care which model wrote it.
 
@@ -2012,9 +2012,10 @@ you need to know what actually happened versus what the docs claim.
 | `~/.cairn/handoff/<project>-<hash>.json` | session handoff — ephemeral, per-machine | every state-changing tool + hooks |
 | `~/.cairn/banner/<project>-<hash>.md` | pre-rendered recall banner | re-rendered on card/context changes |
 
-### The 79 MCP tools, by subsystem
+### The 87 MCP tools, by subsystem
 
-**Active context (2):** `context_get` · `context_set`
+**Active context (3):** `context_get` · `context_set` · `context_meter`
+(context rent rollup: per-turn average, bands, residency, prefix)
 
 **Tracker / issues (14):** `issue_create` · `issue_get` · `issue_update` ·
 `issue_close` · `issue_list` · `issue_comment` · `issue_attach` ·
@@ -2029,9 +2030,10 @@ you need to know what actually happened versus what the docs claim.
 `plan_meta_set` · `plan_resync` · `plan_tracker_delta` · `plan_unplanned` ·
 `plan_import`
 
-**Memory (8):** `mem_index` · `mem_search` · `mem_stats` ·
+**Memory (9):** `mem_index` · `mem_search` · `mem_stats` ·
 `mem_card_create` · `mem_card_list` · `mem_card_recall` ·
-`mem_card_update` · `mem_timeline`
+`mem_card_update` · `mem_timeline` · `mem_compact`
+(retro-gated card compaction, the capacity guard's action)
 
 **Continuity (4):** `continuity_checkpoint` · `continuity_get` ·
 `continuity_clear` · `ledger_append`
@@ -2057,7 +2059,20 @@ you need to know what actually happened versus what the docs claim.
 **Outlook / portfolio (4):** `outlook_emit` · `outlook_get` ·
 `outlook_refresh` · `outlook_forget`
 
-**Docs connector (2):** `docs_publish` · `docs_status`
+**Docs connector (3):** `docs_publish` · `docs_status` · `docs_drift`
+(deterministic report of verified phases the public docs have drifted from)
+
+**Budget (2):** `budget_check` · `token_estimate`
+(spend ledger gate for headless batch runs; predicted phase token spend as a range)
+
+**Run manifest (1):** `run_manifest`
+(staging interview output and manifest for headless batch runs)
+
+**Seats (1):** `seat_roster`
+(merged roster: shipped default seats overridden by project seats)
+
+**Distill (1):** `distill_manifest`
+(one phase's manifest: the scope an incremental distill run may touch)
 
 ---
 
