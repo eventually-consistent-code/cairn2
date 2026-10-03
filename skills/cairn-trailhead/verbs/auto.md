@@ -125,8 +125,8 @@ batch-specific loop.
    worktree on EVERY exit path: normal completion, ceiling hit, hard
    stop, and error; a run that leaves its worktree behind is a run the
    next one trips over. While the manifest reads `running`, a
-   PreToolUse guard refuses `git checkout`, `git switch` and `git reset
-   --hard` aimed at the owner's checkout — if that refusal ever fires,
+   PreToolUse guard refuses `git checkout` and `git switch` aimed at the
+   owner's checkout (`git reset --hard` is refused in every session) — if that refusal ever fires,
    the run escaped its worktree and the fix is to re-enter it, never to
    override.
 
@@ -205,7 +205,8 @@ batch-specific loop.
      scope-limited to the manifest's phases — REC-5's confirmation
      moved to run start, never silently skipped (record that line in
      the push summary). `pushAuth.granted: false` → the phase ends
-     verified-not-pushed, recorded for the report; nothing pushes.
+     verified-not-pushed, recorded for the report; nothing pushes
+     (enforced by the run guard, which refuses `git push` mid-run).
 3. **Tracker-first visibility.** Per-issue claim/close comments already
    come from work's lifecycle — never duplicate them. ADD, on the
    umbrella issue, ONE comment per phase transition: phase N started /
