@@ -16,14 +16,12 @@
  *   silent success into a refusal the human sees. It is NOT a sandbox: the
  *   CAIRN_HARNESS_EDIT=1 escape exists for the human, and text that can
  *   steer the agent can also ask for the prefix. Visibility is the control;
- *   isolation is the operating system's job. The Bash coverage is
- *   best-effort text matching over the command -- it catches the shapes an
- *   agent actually writes (redirect, sed -i, tee, cp, mv) and makes no
- *   claim to be a shell parser.
  *   isolation is the operating system's job. The Bash coverage reads the
  *   command the way a shell would, closely enough to find what it WRITES:
  *   redirect targets, and the path operands of commands that change files
- *   (tee, mv, rm, sed -i, the destination of cp, and so on). Quoted text,
+ *   (tee, mv, rm, sed -i, the destination of cp, and so on), seen through
+ *   wrappers and their flags (sudo -u root, env -i, timeout 5) and through
+ *   a shell's -c string (bash -lc counts, #254). Quoted text,
  *   heredoc bodies and here-strings are data. A protected path that is only
  *   READ -- run, grepped, piped to head -- passes (#240). It is still not a
  *   full shell parser: a write hidden inside an interpreter (python -c,
@@ -194,15 +192,117 @@ const WRITES_ALL = new Set([
 const WRITES_DEST = new Set(["cp", "install", "ln", "rsync"]);
 // Shells whose -c string is a command of its own.
 const SHELLS = new Set(["bash", "sh", "zsh", "dash", "ksh"]);
-// Prefixes that run the next word as the real command.
-const WRAPPERS = new Set(["sudo", "command", "env", "nice", "nohup", "time", "exec"]);
+// Shell options that take the next word as their value (-o pipefail).
+const SHELL_VALUE_OPTS = new Set(["-o", "+o", "-O", "+O", "--rcfile", "--init-file"]);
+
+/**
+ * Prefixes that run a later word as the real command, each with the flags
+ * that swallow a value (`sudo -u root`, `env -u NAME`, `nice -n 5`). A
+ * wrapper's other flags are skipped as plain switches. `positional` counts
+ * the bare words a wrapper takes before the command (timeout's duration).
+ * Missing these flags is how `sudo -u root tee hooks/a` slipped past (#254).
+ */
+const WRAPPERS = new Map([
+  ["sudo", { short: "ugpChDRTUrt", long: ["--user", "--group", "--host", "--prompt",
+    "--close-from", "--chdir", "--role", "--type", "--other-user", "--command-timeout"] }],
+  ["doas", { short: "uC", long: [] }],
+  ["env", { short: "uCS", long: ["--unset", "--chdir", "--split-string"] }],
+  ["nice", { short: "n", long: ["--adjustment"] }],
+  ["timeout", { short: "sk", long: ["--signal", "--kill-after"], positional: 1 }],
+  ["xargs", { short: "ILnPsdEa", long: ["--max-args", "--max-procs", "--max-chars",
+    "--delimiter", "--arg-file", "--eof", "--replace", "--max-lines"] }],
+  ["exec", { short: "a", long: [] }],
+  ["time", { short: "fo", long: ["--format", "--output"] }],
+  ["command", { short: "", long: [] }],
+  ["nohup", { short: "", long: [] }],
+  ["builtin", { short: "", long: [] }],
+  ["setsid", { short: "", long: [] }],
+  ["stdbuf", { short: "ioe", long: ["--input", "--output", "--error"] }],
+]);
+
+/**
+ * Peels assignments and wrappers (with their flags) off the front of a
+ * word list, leaving the real command first. Returns the remaining words
+ * plus any file a wrapper itself writes (GNU `time -o FILE`).
+ */
+function unwrap(words) {
+  let w = words.slice();
+  const writes = [];
+  for (;;) {
+    while (w.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(w[0])) w.shift();
+    if (!w.length) break;
+    const name = w[0].split("/").pop();
+    const spec = WRAPPERS.get(name);
+    if (!spec) break;
+    w.shift();
+    let positional = spec.positional ?? 0;
+    // Read the wrapper's own options, stopping at its first bare word.
+    while (w.length) {
+      const a = w[0];
+      if (a === "--") { w.shift(); break; }
+      if (a === "-") { w.shift(); continue; } // `env -` is `env -i`
+      if (a.startsWith("--")) {
+        w.shift();
+        const eq = a.indexOf("=");
+        const flag = eq < 0 ? a : a.slice(0, eq);
+        let val = eq < 0 ? null : a.slice(eq + 1);
+        if (eq < 0 && spec.long.includes(flag) && w.length) val = w.shift();
+        if (val !== null && name === "env" && flag === "--split-string") w = splitWords(val).concat(w);
+        if (val !== null && name === "time" && flag === "--output") writes.push(val);
+        continue;
+      }
+      if (a.startsWith("-") && a.length > 1) {
+        w.shift();
+        // A short cluster: the first value-taking letter eats the rest of
+        // the cluster, or the next word when it ends the cluster.
+        for (let k = 1; k < a.length; k++) {
+          if (!spec.short.includes(a[k])) continue;
+          const val = k + 1 < a.length ? a.slice(k + 1) : (w.length ? w.shift() : null);
+          if (val !== null && name === "env" && a[k] === "S") w = splitWords(val).concat(w);
+          if (val !== null && name === "time" && a[k] === "o") writes.push(val);
+          break;
+        }
+        continue;
+      }
+      break;
+    }
+    while (positional-- > 0 && w.length) w.shift();
+  }
+  return { words: w, writes };
+}
+
+/** Words of a string as the shell would split them (env -S). */
+function splitWords(str) {
+  return shellSegments(str).flatMap((s) => s.words);
+}
+
+/**
+ * The command string a shell runs with -c, or null when there is none.
+ * Any short cluster carrying `c` counts (-c, -lc, -ec); the string is the
+ * first bare word after the options, never a guess at an index (#254).
+ */
+function shellCommandString(args) {
+  let sawC = false;
+  for (let k = 0; k < args.length; k++) {
+    const a = args[k];
+    if (a === "--" || a === "-") return sawC ? (args[k + 1] ?? null) : null;
+    if (SHELL_VALUE_OPTS.has(a)) { k++; continue; }
+    if (a.startsWith("--")) continue;
+    if (/^[-+][A-Za-z]+$/.test(a)) {
+      if (a[0] === "-" && a.includes("c")) sawC = true;
+      continue;
+    }
+    return sawC ? a : null; // first bare word: the -c string, or a script path
+  }
+  return null;
+}
 
 /** The paths one segment would write to. Generous inside a write command;
  *  silent for a command that only reads. */
 function writeTargets(seg, depth = 0) {
   const targets = seg.redirects.filter((r) => !/^\/dev\/(null|stdout|stderr|fd\/\d+)$/.test(r));
-  const w = seg.words.slice();
-  while (w.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(w[0]) || WRAPPERS.has(w[0]))) w.shift();
+  const { words: w, writes } = unwrap(seg.words);
+  targets.push(...writes);
   if (!w.length) return targets;
   const cmd = w[0].split("/").pop();
   const args = w.slice(1);
@@ -210,8 +310,8 @@ function writeTargets(seg, depth = 0) {
   // A command handed to another shell as a string is still a command: read
   // it the same way, one level down. (The old text-match missed these too.)
   if (depth < 3 && (SHELLS.has(cmd) || cmd === "eval")) {
-    const inner = cmd === "eval" ? args.join(" ") : args[args.indexOf("-c") + 1];
-    if (inner && (cmd === "eval" || args.includes("-c"))) {
+    const inner = cmd === "eval" ? args.join(" ") : shellCommandString(args);
+    if (inner) {
       for (const s of shellSegments(inner)) targets.push(...writeTargets(s, depth + 1));
     }
     return targets;
