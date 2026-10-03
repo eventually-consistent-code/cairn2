@@ -125,3 +125,51 @@ describe("run guard: hard reset refused in every session (#249)", () => {
     expect(r.status).toBe(0);
   });
 });
+
+describe("run guard: force-push refused in every session (#250)", () => {
+  it("refuses every force shape with no run, naming the override", () => {
+    const { proj, home } = fixture();
+    for (const c of [
+      "git push --force",
+      "git push origin main --force",
+      "git push -f",
+      "git push -fu origin main",
+      "git push -uf origin main",
+      "git push --force-with-lease",
+      "git push --force-with-lease=main:abc123 origin main",
+      "git push --force-if-includes origin main",
+      "git push origin +main",
+      "git push origin +HEAD:refs/heads/main",
+      "git -C . push -f",
+      "git fetch && git push --force",
+    ]) {
+      const r = guard(proj, home, c);
+      expect(r.status, c).toBe(2);
+      expect(r.stderr, c).toContain("CAIRN_ALLOW_DESTRUCTIVE_GIT=1");
+    }
+  });
+
+  it("plain pushes and quoted mentions pass outside a run", () => {
+    const { proj, home } = fixture();
+    for (const c of [
+      "git push",
+      "git push origin main",
+      "git push -u origin feature",
+      "git push -o ci.skip origin main",
+      "git push --follow-tags",
+      'git commit -m "never git push --force"',
+      "echo git push -f",
+    ]) {
+      expect(guard(proj, home, c).status, c).toBe(0);
+    }
+  });
+
+  it("CAIRN_ALLOW_DESTRUCTIVE_GIT=1 overrides from env or as the leading assignment", () => {
+    const { proj, home } = fixture();
+    expect(guard(proj, home, "git push --force", { CAIRN_ALLOW_DESTRUCTIVE_GIT: "1" }).status)
+      .toBe(0);
+    expect(guard(proj, home, "CAIRN_ALLOW_DESTRUCTIVE_GIT=1 git push origin +main").status)
+      .toBe(0);
+    expect(guard(proj, home, "git push -f -m CAIRN_ALLOW_DESTRUCTIVE_GIT=1").status).toBe(2);
+  });
+});

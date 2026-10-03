@@ -1,14 +1,15 @@
 #!/usr/bin/env node
 
 /**
- * Purpose: PreToolUse run guard (#216, #249) -- refuses the git commands that
- *   rewrite a working tree or its history out from under whoever is in it.
- *   Exit 2 blocks the tool call; ANY internal error exits 0 -- never block
- *   work because the guard itself broke.
+ * Purpose: PreToolUse run guard (#216, #249, #250) -- refuses the git
+ *   commands that rewrite a working tree or its history out from under
+ *   whoever is in it. Exit 2 blocks the tool call; ANY internal error exits
+ *   0 -- never block work because the guard itself broke.
  *
  *   Always, in every session: `git reset --hard` (any flag order, any -C
- *   target) is refused. It throws away uncommitted work with no undo, and
- *   no cairn verb ever needs it. The owner's escape is
+ *   target) and force-pushes (--force, -f / -fu, --force-with-lease,
+ *   --force-if-includes, a `+refspec`) are refused. They throw away work
+ *   with no undo, and no cairn verb ever needs them. The owner's escape is
  *   CAIRN_ALLOW_DESTRUCTIVE_GIT=1 -- set for the session, or as the leading
  *   assignment of the one command it unlocks.
  *
@@ -212,6 +213,34 @@ function liveRun(projectDir, baseDir) {
   return null;
 }
 
+// git push options that eat the following word as their value.
+const PUSH_VALUE_OPTS = new Set(["-o", "--push-option", "--repo", "--receive-pack", "--exec"]);
+
+/**
+ * True when `git push <args>` overwrites remote history: --force, -f
+ * (alone or clustered, e.g. -fu), --force-with-lease[=...],
+ * --force-if-includes, or any refspec with a leading `+`.
+ */
+function isForcePush(args) {
+  for (let k = 0; k < args.length; k++) {
+    const a = args[k];
+    if (PUSH_VALUE_OPTS.has(a)) { k++; continue; }
+    if (a === "--force" || a === "--force-if-includes" || /^--force-with-lease(=|$)/.test(a)) {
+      return true;
+    }
+    if (/^-[^-]/.test(a)) {
+      // short cluster -- `o` takes the rest of the word as its value
+      for (const ch of a.slice(1)) {
+        if (ch === "o") break;
+        if (ch === "f") return true;
+      }
+      continue;
+    }
+    if (a.startsWith("+")) return true; // +refspec forces that ref
+  }
+  return false;
+}
+
 /** Prints the refusal for an always-on destructive command and blocks. */
 function refuseDestructive(name, why) {
   console.error(`cairn run guard: \`${name}\` is refused in every session — ${why}`);
@@ -246,6 +275,13 @@ try {
     if (hardReset && !allowDestructive && !prefixed(DESTRUCTIVE_ENV)) {
       refuseDestructive("git reset --hard",
         "it discards uncommitted work with no undo.");
+    }
+
+    // #250 -- force-push, every session
+    if (inv.sub === "push" && isForcePush(inv.args) && !allowDestructive
+      && !prefixed(DESTRUCTIVE_ENV)) {
+      refuseDestructive("git push --force",
+        "it overwrites remote history other people may already have pulled.");
     }
 
     // #216 -- tree-rewriting commands aimed at the owner's checkout mid-run

@@ -56,7 +56,7 @@ reviewed and accepted.
   Enforced by the run guard hook in every session.
 - **NEVER force-push.** `--apply` operates on the local branch; getting
   the reverts onto the remote is a normal push, and that push is the
-  user's call to make, not this verb's.
+  user's call to make, not this verb's. Enforced by the run guard hook.
 - **NEVER touches anything outside the ledgered manifest.** Only commits
   the ledger attributes to the named phase/plan are ever candidates for
   the revert set — no "while I'm in here" scope creep.
