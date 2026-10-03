@@ -125,8 +125,8 @@ batch-specific loop.
    worktree on EVERY exit path: normal completion, ceiling hit, hard
    stop, and error; a run that leaves its worktree behind is a run the
    next one trips over. While the manifest reads `running`, a
-   PreToolUse guard refuses `git checkout`, `git switch` and `git reset
-   --hard` aimed at the owner's checkout — if that refusal ever fires,
+   PreToolUse guard refuses `git checkout` and `git switch` aimed at the
+   owner's checkout (`git reset --hard` is refused in every session) — if that refusal ever fires,
    the run escaped its worktree and the fix is to re-enter it, never to
    override.
 

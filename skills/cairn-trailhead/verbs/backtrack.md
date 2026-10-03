@@ -53,6 +53,7 @@ reviewed and accepted.
 
 - **NEVER `git reset --hard`.** A backtrack is additive — it reverts, it
   does not rewrite history out from under anyone who already pulled it.
+  Enforced by the run guard hook in every session.
 - **NEVER force-push.** `--apply` operates on the local branch; getting
   the reverts onto the remote is a normal push, and that push is the
   user's call to make, not this verb's.
