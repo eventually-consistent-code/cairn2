@@ -96,6 +96,37 @@ describe("run guard: hard reset refused in every session (#249)", () => {
     }
   });
 
+  it("command substitution inside double quotes is a command, not text (#257)", () => {
+    const { proj, home } = fixture();
+    for (const c of [
+      'echo "$(git reset --hard)"',
+      'echo "result: $(git reset --hard HEAD~1) done"',
+      'echo "`git reset --hard`"',
+      'git commit -m "$(git reset --hard)"',
+      'echo "$(echo "$(git reset --hard)")"',
+      'echo "$(cd sub && (true) && git reset --hard)"',
+      'echo "$(echo ")" ; git reset --hard)"',
+      'echo "$(git push --force)"',
+    ]) {
+      const r = guard(proj, home, c);
+      expect(r.status, c).toBe(2);
+      expect(r.stderr, c).toContain("CAIRN_ALLOW_DESTRUCTIVE_GIT=1");
+    }
+  });
+
+  it("literal text that only looks like a substitution still passes (#257)", () => {
+    const { proj, home } = fixture();
+    for (const c of [
+      'git commit -m "explain git reset --hard"',
+      "git commit -m '$(git reset --hard)'",
+      'git commit -m "escaped \\$(git reset --hard) is text"',
+      'git commit -m "escaped \\`git reset --hard\\` is text"',
+      'echo "$(git log --oneline -1) says git reset --hard"',
+    ]) {
+      expect(guard(proj, home, c).status, c).toBe(0);
+    }
+  });
+
   it("CAIRN_ALLOW_DESTRUCTIVE_GIT=1 overrides from env or as the leading assignment only", () => {
     const { proj, home } = fixture();
     expect(guard(proj, home, "git reset --hard", { CAIRN_ALLOW_DESTRUCTIVE_GIT: "1" }).status)

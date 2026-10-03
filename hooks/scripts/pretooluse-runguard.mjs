@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Purpose: PreToolUse run guard (#216, #249, #250, #252) -- refuses the git
+ * Purpose: PreToolUse run guard (#216, #249, #250, #252, #257) -- refuses the git
  *   commands that rewrite a working tree or its history out from under
  *   whoever is in it. Exit 2 blocks the tool call; ANY internal error exits
  *   0 -- never block work because the guard itself broke.
@@ -26,7 +26,9 @@
  *
  *   Commands are matched on parsed shell words, not a raw regex over the
  *   line -- quoted text (`git commit -m "explain git reset --hard"`) is a
- *   commit message, never a refusal.
+ *   commit message, never a refusal. Command substitution inside double
+ *   quotes (`"$(...)"`, backticks) is not text -- the shell runs it, so its
+ *   body is checked as a command of its own (#257).
  *
  *   "A run is live" is read from the run manifests in the per-machine cairn
  *   home (the `runs` subdirectory there) -- file state, not an environment
@@ -73,15 +75,56 @@ const SHELLS = new Set(["sh", "bash", "zsh", "dash", "ksh"]);
 const DESTRUCTIVE_ENV = "CAIRN_ALLOW_DESTRUCTIVE_GIT";
 
 /**
+ * Index of the `)` closing a `$(` whose body starts at `i` -- nesting-aware,
+ * so parens inside quotes, inner substitutions and backticks don't close it
+ * early. Unterminated runs to the end of the line.
+ */
+function closeParen(line, i) {
+  let depth = 1;
+  for (; i < line.length; i++) {
+    const c = line[i];
+    if (c === "\\") { i++; continue; }
+    if (c === "'") { const j = line.indexOf("'", i + 1); i = j < 0 ? line.length : j; continue; }
+    if (c === "`") { i = closeTick(line, i + 1); continue; }
+    if (c === '"') {
+      for (i++; i < line.length && line[i] !== '"'; i++) {
+        if (line[i] === "\\") i++;
+        else if (line[i] === "$" && line[i + 1] === "(") i = closeParen(line, i + 2);
+        else if (line[i] === "`") i = closeTick(line, i + 1);
+      }
+      continue;
+    }
+    if (c === "(") depth++;
+    else if (c === ")" && --depth === 0) return i;
+  }
+  return line.length;
+}
+
+/** Index of the unescaped backtick closing one whose body starts at `i`. */
+function closeTick(line, i) {
+  for (; i < line.length; i++) {
+    if (line[i] === "\\") i++;
+    else if (line[i] === "`") return i;
+  }
+  return line.length;
+}
+
+/**
  * Splits a shell line into segments (one per simple command) of words,
  * honouring single/double quotes and backslash escapes. Quoted text stays
  * inside its word, so `git commit -m "explain git reset --hard"` is one git
  * commit with a message -- never a reset. Separators: ; & | ( ) ` and
  * newlines; an unquoted # at a word start comments out the rest of its line.
+ *
+ * Command substitution inside double quotes (`"$(...)"`, `"`...`"`) is NOT
+ * plain text -- the shell really runs it (#257). Its body is split as a
+ * command line of its own and its segments join the result, so
+ * `echo "$(git reset --hard)"` is still seen as a reset.
  * Not a full shell grammar -- just enough to find the command words.
  */
 function shellSegments(line) {
   const segs = [];
+  const subs = []; // bodies of quoted command substitutions, split at the end
   let words = [];
   let cur = null;
   const endWord = () => { if (cur !== null) { words.push(cur); cur = null; } };
@@ -103,6 +146,22 @@ function shellSegments(line) {
           i += 2;
           continue;
         }
+        // "$( ... )" and "` ... `" run a command -- keep the text in the
+        // word, and queue the body to be checked as a command line itself
+        if (line[i] === "$" && line[i + 1] === "(") {
+          const end = closeParen(line, i + 2);
+          subs.push(line.slice(i + 2, end));
+          s += line.slice(i, end + 1);
+          i = end + 1;
+          continue;
+        }
+        if (line[i] === "`") {
+          const end = closeTick(line, i + 1);
+          subs.push(line.slice(i + 1, end).replace(/\\([`\\$])/g, "$1"));
+          s += line.slice(i, end + 1);
+          i = end + 1;
+          continue;
+        }
         s += line[i];
         i++;
       }
@@ -122,6 +181,7 @@ function shellSegments(line) {
     }
   }
   endSeg();
+  for (const body of subs) segs.push(...shellSegments(body));
   return segs;
 }
 
