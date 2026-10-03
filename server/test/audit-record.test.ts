@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { mkdtempSync, readFileSync, symlinkSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -295,6 +295,87 @@ describe("sweep manifest + baseline delta (#215)", () => {
     expect(readFileSync(plain.path, "utf8")).not.toContain("cairn:");
     expect(() => writeAuditRecord(repo, "review-working", "pass", [],
       { legs: [{ scope: "x", path: "y.md" }] })).toThrow(/not sweep-/);
+  });
+
+  it("a sweep manifest credits no seat yield — its legs already did (#255)", () => {
+    const repo = freshRepo();
+    const yieldBase = fresh();
+    const carried: AuditFinding = { severity: "important", title: "lookup dereferences null",
+      failure_scenario: "lookup(undefined) returns null then the caller crashes with TypeError",
+      seats: ["correctness"], panel: [{ seat: "v", verdict: "CONFIRMED", evidence: "reproduced" }] };
+    const leg = writeAuditRecord(repo, "review-working", "findings", [carried], { yieldBaseDir: yieldBase });
+    expect(loadYield(repo, yieldBase).state.seats.correctness?.findingsSurvived).toBe(1);
+    const manifest = writeAuditRecord(repo, "sweep-2026-01-01", "findings", [carried],
+      { yieldBaseDir: yieldBase, legs: [{ scope: "review-working", path: leg.path }] });
+    expect(manifest.survived).toBe(1);
+    expect(loadYield(repo, yieldBase).state.seats.correctness?.findingsSurvived).toBe(1);
+  });
+
+  describe("the manifest honours its legs' outcomes (#248)", () => {
+    const vote = (seat: string, verdict: "CONFIRMED" | "PLAUSIBLE" | "REFUTED") =>
+      ({ seat, verdict, evidence: `${seat} checked it` });
+    const TOKEN_LEAK: AuditFinding = { severity: "critical", title: "Token leak",
+      failure_scenario: "GITHUB_TOKEN echoed into the tracker comment body on adapter error",
+      panel: [vote("a", "REFUTED"), vote("b", "REFUTED"), vote("c", "CONFIRMED")] };
+    const SECRET_LOG: AuditFinding = { severity: "critical", title: "Secret in debug log",
+      failure_scenario: "CAIRN debug logging prints the bearer header on a 401",
+      panel: [vote("a", "CONFIRMED"), vote("b", "PLAUSIBLE")] };
+    const STALE_CACHE: AuditFinding = { severity: "important", title: "Stale map cache",
+      failure_scenario: "map_get after map_set returns the pre-write node",
+      panel: [vote("a", "CONFIRMED")] };
+    function legs(repo: string) {
+      const s = writeAuditRecord(repo, "security-25", "findings", [TOKEN_LEAK, SECRET_LOG]);
+      const r = writeAuditRecord(repo, "review-working", "findings", [STALE_CACHE]);
+      return [{ scope: "security-25", path: s.path }, { scope: "review-working", path: r.path }];
+    }
+
+    it("refuses a finding its leg refuted, whatever panel the manifest carries", () => {
+      const repo = freshRepo();
+      const idx = legs(repo);
+      expect(() => writeAuditRecord(repo, "sweep-2026-01-01", "findings",
+        [{ ...TOKEN_LEAK, panel: [vote("a", "CONFIRMED")] }], { legs: idx }))
+        .toThrow(/'Token leak' was refuted in leg 'security-25'/);
+      expect(() => writeAuditRecord(repo, "sweep-2026-01-01", "findings",
+        [{ ...TOKEN_LEAK, panel: [vote("a", "CONFIRMED"), vote("b", "CONFIRMED")] }], { legs: idx }))
+        .toThrow(/refuted in leg/);
+      expect(listAuditRecords(repo).some((r) => r.scope.startsWith("sweep-"))).toBe(false);
+    });
+
+    it("a security leg's two-vote bar travels with its findings; other legs keep theirs", () => {
+      const repo = freshRepo();
+      const idx = legs(repo);
+      expect(() => writeAuditRecord(repo, "sweep-2026-01-01", "findings",
+        [{ ...SECRET_LOG, panel: [vote("a", "CONFIRMED")] }], { legs: idx }))
+        .toThrow(/has 1 panel vote; its leg 'security-25' needs 2/);
+      // A leg mislabelled in the index still answers to its record's own scope.
+      expect(() => writeAuditRecord(repo, "sweep-2026-01-01", "findings",
+        [{ ...SECRET_LOG, panel: [vote("a", "CONFIRMED")] }],
+        { legs: [{ scope: "review-working", path: idx[0].path }] })).toThrow(/needs 2/);
+      // Verbatim survivors — 2 votes from the security leg, 1 from review — are accepted.
+      const ok = writeAuditRecord(repo, "sweep-2026-01-01", "findings", [SECRET_LOG, STALE_CACHE], { legs: idx });
+      expect(ok.results.map((r) => [r.title, r.survived])).toEqual(
+        [["Secret in debug log", true], ["Stale map cache", true]]);
+      expect(readFileSync(ok.path, "utf8")).toMatch(/Stale map cache\nscenario: [^\n]*\nsource leg: review-working/);
+    });
+
+    it("refuses leg paths that aren't regular files under the audit dir", () => {
+      const repo = freshRepo();
+      const idx = legs(repo);
+      const outside = join(repo, "a.txt");
+      expect(() => writeAuditRecord(repo, "sweep-2026-01-01", "pass", [],
+        { legs: [{ scope: "x", path: outside }] })).toThrow(/outside the audit dir/);
+      expect(() => writeAuditRecord(repo, "sweep-2026-01-01", "pass", [],
+        { legs: [{ scope: "x", path: join(".cairn", "audit", "..", "..", "a.txt") }] })).toThrow(/outside/);
+      const link = join(repo, ".cairn", "audit", "link.md");
+      symlinkSync(outside, link);
+      expect(() => writeAuditRecord(repo, "sweep-2026-01-01", "pass", [],
+        { legs: [{ scope: "x", path: link }] })).toThrow(/not a regular file/);
+      // A relative path under the audit dir, and a missing one, are both fine.
+      const rel = idx[1].path.slice(repo.length + 1);
+      expect(writeAuditRecord(repo, "sweep-2026-01-01", "findings", [STALE_CACHE],
+        { legs: [{ scope: "review-working", path: rel },
+          { scope: "gone", path: join(repo, ".cairn", "audit", "gone.md") }] }).survived).toBe(1);
+    });
   });
 
   it("parseAuditRecord round-trips the writer's output", () => {
