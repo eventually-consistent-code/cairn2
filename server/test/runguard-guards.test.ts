@@ -30,6 +30,7 @@ function guard(proj: string, home: string, command: string, extraEnv: Record<str
     ...process.env, CLAUDE_PROJECT_DIR: proj, CAIRN_HOME: home, ...extraEnv,
   };
   if (!("CAIRN_ALLOW_DESTRUCTIVE_GIT" in extraEnv)) delete env.CAIRN_ALLOW_DESTRUCTIVE_GIT;
+  if (!("CAIRN_ALLOW_UNSHIPPED_PUSH" in extraEnv)) delete env.CAIRN_ALLOW_UNSHIPPED_PUSH;
   const r = spawnSync(process.execPath, [RUNGUARD], {
     cwd: proj, env, encoding: "utf8", timeout: 5000,
     input: JSON.stringify({ tool_name: "Bash", tool_input: { command }, cwd }),
@@ -37,24 +38,44 @@ function guard(proj: string, home: string, command: string, extraEnv: Record<str
   return { status: r.status, stderr: r.stderr ?? "" };
 }
 
-/** A committed git repo plus an isolated cairn home, optionally with one run manifest. */
-function fixture(manifest?: Record<string, unknown>): { proj: string; home: string } {
+/** Same plain-resolve() project hash the guard derives from CLAUDE_PROJECT_DIR. */
+function projKey(proj: string): string {
+  const abs = resolve(proj);
+  return `${basename(abs)}-${createHash("sha256").update(abs).digest("hex").slice(0, 16)}`;
+}
+
+const git = (proj: string, ...args: string[]) =>
+  execFileSync("git", args, { cwd: proj, encoding: "utf8" }).trim();
+
+/** Writes the ship-gate stamp plan_drift would leave (#251). */
+function stamp(proj: string, home: string, s: { head?: string; clean?: boolean } = {}): void {
+  mkdirSync(join(home, "ship-gate"), { recursive: true });
+  writeFileSync(join(home, "ship-gate", `${projKey(proj)}.json`), JSON.stringify({
+    head: s.head ?? git(proj, "rev-parse", "HEAD"), clean: s.clean ?? true,
+    at: "2026-10-02T00:00:00Z",
+  }));
+}
+
+/**
+ * A committed git repo on `main` plus an isolated cairn home, optionally
+ * with one run manifest. A clean ship-gate stamp at HEAD is written unless
+ * `stamped` is false, so the older push tests aren't about the gate.
+ */
+function fixture(manifest?: Record<string, unknown>, stamped = true): { proj: string; home: string } {
   const proj = freshDir("cairn-runguard-proj-");
-  execFileSync("git", ["init", "-q"], { cwd: proj });
-  execFileSync("git", ["config", "user.email", "t@t"], { cwd: proj });
-  execFileSync("git", ["config", "user.name", "t"], { cwd: proj });
+  git(proj, "init", "-q", "-b", "main");
+  git(proj, "config", "user.email", "t@t");
+  git(proj, "config", "user.name", "t");
   writeFileSync(join(proj, "seed.txt"), "seed\n");
-  execFileSync("git", ["add", "seed.txt"], { cwd: proj });
-  execFileSync("git", ["commit", "-q", "-m", "init"], { cwd: proj });
+  git(proj, "add", "seed.txt");
+  git(proj, "commit", "-q", "-m", "init", "--no-gpg-sign");
   const home = freshDir("cairn-runguard-home-");
   if (manifest) {
-    // Same plain-resolve() hash the guard derives from CLAUDE_PROJECT_DIR
-    const abs = resolve(proj);
-    const hash = createHash("sha256").update(abs).digest("hex").slice(0, 16);
     mkdirSync(join(home, "runs"), { recursive: true });
-    writeFileSync(join(home, "runs", `${basename(abs)}-${hash}-run-x.json`),
+    writeFileSync(join(home, "runs", `${projKey(proj)}-run-x.json`),
       JSON.stringify({ version: 1, runId: "run-x", ...manifest }));
   }
+  if (stamped) stamp(proj, home);
   return { proj, home };
 }
 
@@ -256,5 +277,114 @@ describe("run guard: mid-run push needs manifest push authority (#252)", () => {
     }
     const { proj, home } = fixture({ status: "running", phases, pushAuth: { granted: false } });
     expect(guard(proj, home, 'git commit -m "git push later"').status).toBe(0);
+  });
+});
+
+describe("run guard: default-branch push needs a clean drift stamp (#251)", () => {
+  /** Unstamped repo with a `feature` branch one commit ahead of main. */
+  function branched(): { proj: string; home: string } {
+    const f = fixture(undefined, false);
+    git(f.proj, "checkout", "-q", "-b", "feature");
+    writeFileSync(join(f.proj, "f.txt"), "f\n");
+    git(f.proj, "add", "f.txt");
+    git(f.proj, "commit", "-q", "-m", "feature", "--no-gpg-sign");
+    git(f.proj, "checkout", "-q", "main");
+    return f;
+  }
+
+  it("missing stamp: every default-branch push shape is refused, naming ship and the override", () => {
+    const { proj, home } = branched();
+    for (const c of [
+      "git push",
+      "git push origin",
+      "git push origin main",
+      "git push -u origin main",
+      "git push origin HEAD",
+      "git push origin HEAD:main",
+      "git push origin feature:refs/heads/main",
+      "git push origin master",
+      "git push --all origin",
+      "git push origin --delete main",
+      'echo "$(git push origin main)"',
+    ]) {
+      const r = guard(proj, home, c);
+      expect(r.status, c).toBe(2);
+      expect(r.stderr, c).toContain("/cairn:ship");
+      expect(r.stderr, c).toContain("CAIRN_ALLOW_UNSHIPPED_PUSH=1");
+    }
+  });
+
+  it("stale head or a dirty stamp is refused", () => {
+    const { proj, home } = branched();
+    stamp(proj, home, { head: git(proj, "rev-parse", "feature") });
+    const stale = guard(proj, home, "git push origin main");
+    expect(stale.status).toBe(2);
+    expect(stale.stderr).toContain("not the commit being pushed");
+    stamp(proj, home, { clean: false });
+    const dirty = guard(proj, home, "git push origin main");
+    expect(dirty.status).toBe(2);
+    expect(dirty.stderr).toContain("flagged drift");
+  });
+
+  it("a clean stamp at the pushed commit passes -- and checks the source, not just HEAD", () => {
+    const { proj, home } = branched();
+    stamp(proj, home);
+    for (const c of ["git push", "git push origin main", "git push origin HEAD:main"]) {
+      expect(guard(proj, home, c).status, c).toBe(0);
+    }
+    // the stamp is for main's tip; pushing feature onto main is another commit
+    expect(guard(proj, home, "git push origin feature:main").status).toBe(2);
+  });
+
+  it("pushes to any other branch, and tags, are untouched with no stamp", () => {
+    const { proj, home } = branched();
+    for (const c of [
+      "git push origin feature",
+      "git push -u origin feature",
+      "git push origin main:feature",
+      "git push origin v1.0.0",
+      "git push --tags",
+      "git push origin --tags",
+    ]) {
+      expect(guard(proj, home, c).status, c).toBe(0);
+    }
+    git(proj, "checkout", "-q", "feature");
+    expect(guard(proj, home, "git push").status).toBe(0);
+    expect(guard(proj, home, "git push origin HEAD").status).toBe(0);
+  });
+
+  it("the remote's HEAD branch counts as default when git knows it", () => {
+    const { proj, home } = branched();
+    git(proj, "update-ref", "refs/remotes/origin/trunk", "HEAD");
+    git(proj, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/trunk");
+    expect(guard(proj, home, "git push origin feature:trunk").status).toBe(2);
+  });
+
+  it("CAIRN_ALLOW_UNSHIPPED_PUSH=1 overrides from env or as the leading assignment only", () => {
+    const { proj, home } = branched();
+    expect(guard(proj, home, "git push origin main", { CAIRN_ALLOW_UNSHIPPED_PUSH: "1" }).status)
+      .toBe(0);
+    expect(guard(proj, home, "CAIRN_ALLOW_UNSHIPPED_PUSH=1 git push origin main").status).toBe(0);
+    expect(guard(proj, home, "git push origin main -o CAIRN_ALLOW_UNSHIPPED_PUSH=1").status)
+      .toBe(2);
+  });
+
+  it("the live-run push-authority rule still applies on top of a clean stamp", () => {
+    const { proj, home } = fixture({ status: "running", phases: [], pushAuth: { granted: false } });
+    const r = guard(proj, home, "git push origin main");
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain("run-x");
+    expect(guard(proj, home, "git push origin main", { CAIRN_ALLOW_UNSHIPPED_PUSH: "1" }).status)
+      .toBe(2);
+  });
+
+  it("an unreadable stamp dir fails open; a corrupt stamp refuses", () => {
+    const { proj, home } = branched();
+    writeFileSync(join(home, "ship-gate"), "a file where the dir should be");
+    expect(guard(proj, home, "git push origin main").status).toBe(0);
+    rmSync(join(home, "ship-gate"));
+    mkdirSync(join(home, "ship-gate"));
+    writeFileSync(join(home, "ship-gate", `${projKey(proj)}.json`), "{ nope");
+    expect(guard(proj, home, "git push origin main").status).toBe(2);
   });
 });

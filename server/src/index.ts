@@ -65,6 +65,7 @@ import {
   ensurePhase,
   resolvePhaseParam,
 } from "./planning/mirror.js";
+import { writeShipGateStamp } from "./planning/ship-gate.js";
 import { unplannedReport } from "./planning/collab.js";
 import { importPhase } from "./planning/import.js";
 import {
@@ -1037,8 +1038,11 @@ export function buildServer(deps: {
     },
     wrap(async () => {
       const d = dir();
-      return driftReport(await getTracker(d), d,
+      const report = await driftReport(await getTracker(d), d,
         { staleDays: loadConfig(d).drift.staleDays });
+      // Stamp the result for the run guard's default-branch push gate (#251)
+      writeShipGateStamp(d, report.flagged);
+      return report;
     }),
   );
 

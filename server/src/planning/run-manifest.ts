@@ -45,8 +45,9 @@ const STATUS_TRANSITIONS: Record<RunStatus, RunStatus[]> = {
 
 // Paths
 
-/** Same per-machine hashing scheme as continuity.ts / budget-ledger.ts. */
-function pathHash(projectDir: string): { base: string; hash: string } {
+/** Same per-machine hashing scheme as continuity.ts / budget-ledger.ts --
+ * exported so the ship-gate stamp keys the same way the manifests do. */
+export function pathHash(projectDir: string): { base: string; hash: string } {
   const abs = resolve(projectDir);
   const hash = createHash("sha256").update(abs).digest("hex").slice(0, 16);
   return { base: basename(abs), hash };
