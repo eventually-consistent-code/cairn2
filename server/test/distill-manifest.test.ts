@@ -129,6 +129,64 @@ describe("distillManifest", () => {
     });
   });
 
+  describe("evidence-only lines (#256)", () => {
+    const evidenceLine = (over: Partial<Parameters<typeof appendLedger>[2]> = {}) =>
+      appendLedger(dir, "01-core", {
+        taskRef: "audit tests 1", summary: "wrote the missing frobnicator tests",
+        baseCommit: SHA_C, headCommit: SHA_D,
+        issueId: "GH-9", closedDate: "2026-01-03",
+        evidence: { command: "npx vitest run", result: "4 passed" },
+        kind: "evidence", ...over,
+      });
+
+    it("is never reported as a closure, and does not land in skipped", () => {
+      evidenceLine({ note: "issue stays open — more to come" });
+      const m = distillManifest(dir, 1);
+      expect(m.ledgerEntries.map((e) => e.issueId)).toEqual(["GH-1", "GH-2"]);
+      expect(m.evidenceEntries).toEqual([{
+        taskRef: "audit tests 1", summary: "wrote the missing frobnicator tests",
+        baseCommit: SHA_C.slice(0, 7), headCommit: SHA_D.slice(0, 7),
+        issueId: "GH-9", loggedDate: "2026-01-03",
+      }]);
+      expect(m.superseded).toEqual([]);
+      expect(m.skipped).toEqual([]);
+      // the evidence work landed commits too -- the union range covers it
+      expect(m.commitRange).toEqual({ base: SHA_A.slice(0, 7), head: SHA_D.slice(0, 7) });
+    });
+
+    it("a closure followed later by evidence for the SAME taskRef reads not-closed", () => {
+      appendLedger(dir, "01-core", {
+        taskRef: "audit tests 1", summary: "audit evidence, mis-logged as a close",
+        baseCommit: SHA_C, headCommit: SHA_D, issueId: "GH-9", closedDate: "2026-01-03",
+        evidence: { command: "npx vitest run", result: "4 passed" },
+      });
+      expect(distillManifest(dir, 1).ledgerEntries.map((e) => e.issueId))
+        .toEqual(["GH-1", "GH-2", "GH-9"]);
+      evidenceLine({ note: "supersedes the closure line; GH-9 is still open" });
+      const m = distillManifest(dir, 1);
+      expect(m.ledgerEntries.map((e) => e.issueId)).toEqual(["GH-1", "GH-2"]);
+      expect(m.superseded.map((e) => [e.taskRef, e.issueId])).toEqual([["audit tests 1", "GH-9"]]);
+      expect(m.evidenceEntries.length).toBe(1);
+    });
+
+    it("a closure written AFTER the evidence line is a real close and stands", () => {
+      evidenceLine();
+      appendLedger(dir, "01-core", {
+        taskRef: "audit tests 1", summary: "closed for real",
+        baseCommit: SHA_C, headCommit: SHA_D, issueId: "GH-9", closedDate: "2026-01-04",
+        evidence: { command: "npm test", result: "all passed" },
+      });
+      const m = distillManifest(dir, 1);
+      expect(m.ledgerEntries.map((e) => e.issueId)).toEqual(["GH-1", "GH-2", "GH-9"]);
+      expect(m.superseded).toEqual([]);
+    });
+
+    it("evidence for a DIFFERENT taskRef leaves existing closures alone", () => {
+      evidenceLine({ taskRef: "T9" });
+      expect(distillManifest(dir, 1).ledgerEntries.map((e) => e.taskRef)).toEqual(["T1", "T2"]);
+    });
+  });
+
   it("unknown phase number is NOT_FOUND", () => {
     expect(() => distillManifest(dir, 9)).toThrowError(/no phase 9/);
   });

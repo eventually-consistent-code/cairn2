@@ -36,6 +36,12 @@ Verify the given phase per the `cairn-planning` skill.
    written before the gate existed (pre-phase-23 ledgers) are exempt
    only in phases already verified; a live phase re-verified after the
    gate is held to it.
+   4c. Evidence-only lines (`- [ ] … evidence for <id> <date>`, written by
+   `ledger_append kind: "evidence"`) are never closures — they don't
+   satisfy 4/4b as the issue's closing line, and a closure line followed
+   later by an evidence line for the SAME taskRef reads as NOT closed
+   (the evidence line is its correction; `distill_manifest` lists it
+   under `superseded`).
 5. Write `.cairn/plans/phases/<NN-dir>/VERIFICATION.md`: what was checked, what
    passed, deviations. (Its presence marks the phase verified — drift treats
    closed issues in verified phases as normal.)
