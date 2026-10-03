@@ -38,8 +38,9 @@ const STATUS_TRANSITIONS = {
     stopped: [],
 };
 // Paths
-/** Same per-machine hashing scheme as continuity.ts / budget-ledger.ts. */
-function pathHash(projectDir) {
+/** Same per-machine hashing scheme as continuity.ts / budget-ledger.ts --
+ * exported so the ship-gate stamp keys the same way the manifests do. */
+export function pathHash(projectDir) {
     const abs = resolve(projectDir);
     const hash = createHash("sha256").update(abs).digest("hex").slice(0, 16);
     return { base: basename(abs), hash };

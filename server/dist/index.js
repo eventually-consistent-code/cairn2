@@ -24,6 +24,7 @@ import { defaultProjectName, publishTree } from "./docs/publish.js";
 import { scaffoldProject, scaffoldPhase, writePlanIssues, readPlanMeta, writePlanMeta, isValidPhaseNumber, parsePhaseDirName, PHASE_NUMBER_ERROR, } from "./planning/artifacts.js";
 import { projectStatus } from "./planning/status.js";
 import { driftReport, ensurePhase, resolvePhaseParam, } from "./planning/mirror.js";
+import { writeShipGateStamp } from "./planning/ship-gate.js";
 import { unplannedReport } from "./planning/collab.js";
 import { importPhase } from "./planning/import.js";
 import { milestoneCreate, milestoneList, milestoneComplete, } from "./planning/milestones.js";
@@ -705,7 +706,10 @@ export function buildServer(deps) {
         inputSchema: z.object({}),
     }, wrap(async () => {
         const d = dir();
-        return driftReport(await getTracker(d), d, { staleDays: loadConfig(d).drift.staleDays });
+        const report = await driftReport(await getTracker(d), d, { staleDays: loadConfig(d).drift.staleDays });
+        // Stamp the result for the run guard's default-branch push gate (#251)
+        writeShipGateStamp(d, report.flagged);
+        return report;
     }));
     server.registerTool("plan_issues_set", {
         description: "Set the tracker issue ids a phase's PLAN.md advances",

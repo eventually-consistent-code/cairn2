@@ -23,6 +23,12 @@
  * Author(s): John Reed
  */
 import { z } from "zod";
+/** Same per-machine hashing scheme as continuity.ts / budget-ledger.ts --
+ * exported so the ship-gate stamp keys the same way the manifests do. */
+export declare function pathHash(projectDir: string): {
+    base: string;
+    hash: string;
+};
 /** ~/.cairn/runs/<project>-<hash>-<runId>.json — one manifest per run,
  * outside the repo. baseDir injectable for tests (budget-ledger convention). */
 export declare function runManifestPath(projectDir: string, runId: string, baseDir?: string): string;
