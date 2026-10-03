@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Purpose: PreToolUse run guard (#216, #249, #250) -- refuses the git
+ * Purpose: PreToolUse run guard (#216, #249, #250, #252) -- refuses the git
  *   commands that rewrite a working tree or its history out from under
  *   whoever is in it. Exit 2 blocks the tool call; ANY internal error exits
  *   0 -- never block work because the guard itself broke.
@@ -18,7 +18,11 @@
  *   own checkout are refused too. A run works in its own worktree; a
  *   checkout in the directory the human is typing in changes their files
  *   underneath them, silently, mid-edit. CAIRN_RUN_OK=1 as the leading
- *   assignment overrides that once.
+ *   assignment overrides that once. And `git push`, from any worktree, is
+ *   refused unless the run manifest's pushAuth is granted (scope is always
+ *   the manifest's own phases -- the manifest records no per-push phase,
+ *   so granted + a non-empty phase list is the whole test). No override:
+ *   push authority is the owner's staging-gate decision (ADR 0007).
  *
  *   Commands are matched on parsed shell words, not a raw regex over the
  *   line -- quoted text (`git commit -m "explain git reset --hard"`) is a
@@ -191,26 +195,41 @@ function isMainWorktree(dir) {
   }
 }
 
-/** The runId of a manifest for this project whose status is `running`, else null. */
-function liveRun(projectDir, baseDir) {
+/** Every manifest for this project whose status is `running`, as { runId, state }. */
+function liveRuns(projectDir, baseDir) {
   const { base, hash } = pathHash(projectDir);
   const prefix = `${base}-${hash}-`;
   let entries;
   try {
     entries = readdirSync(join(baseDir, "runs"));
   } catch {
-    return null; // no runs dir -- this machine has never staged a batch run
+    return []; // no runs dir -- this machine has never staged a batch run
   }
+  const live = [];
   for (const name of entries) {
     if (!name.startsWith(prefix) || !name.endsWith(".json")) continue;
     try {
       const state = JSON.parse(readFileSync(join(baseDir, "runs", name), "utf8"));
-      if (state?.status === "running") return state.runId ?? name.slice(prefix.length, -5);
+      if (state?.status === "running") {
+        live.push({ runId: state.runId ?? name.slice(prefix.length, -5), state });
+      }
     } catch {
       continue; // a corrupt manifest is not evidence of a live run
     }
   }
-  return null;
+  return live;
+}
+
+/**
+ * True when a running manifest authorizes pushes. The manifest records
+ * push authority as granted + a scope that is always "manifest-phases" --
+ * it stores no per-push phase, so "covers the phase being pushed" reduces
+ * to: granted, scoped to the manifest, and the manifest has phases at all.
+ */
+function pushAuthorized(state) {
+  const auth = state?.pushAuth;
+  return auth?.granted === true && auth.scope === "manifest-phases"
+    && Array.isArray(state.phases) && state.phases.length > 0;
 }
 
 // git push options that eat the following word as their value.
@@ -262,8 +281,8 @@ try {
   const allowDestructive = process.env[DESTRUCTIVE_ENV] === "1";
 
   // Read the run manifests at most once, and only if a command needs them
-  let runId;
-  const currentRun = () => (runId === undefined ? (runId = liveRun(projectDir, baseDir)) : runId);
+  let runs;
+  const currentRuns = () => (runs ??= liveRuns(projectDir, baseDir));
 
   for (const inv of gitInvocations(command)) {
     // Overrides only count as the leading assignment of THIS command, so a
@@ -284,15 +303,31 @@ try {
         "it overwrites remote history other people may already have pulled.");
     }
 
+    // #252 -- mid-run, a push needs the authority granted at the staging
+    // gate. From ANY worktree -- the run's own is exactly where it pushes.
+    if (inv.sub === "push") {
+      const unauthorized = currentRuns().find((r) => !pushAuthorized(r.state));
+      if (unauthorized) {
+        console.error(
+          `cairn run guard: a batch run (${unauthorized.runId}) is in flight without push ` +
+          "authority for its phases — nothing pushes until the owner grants it at staging.",
+        );
+        console.error("  the phase ends verified-not-pushed; push it yourself from your own");
+        console.error("  terminal once the run is done, or stage a run with push authority.");
+        process.exit(2);
+      }
+      continue;
+    }
+
     // #216 -- tree-rewriting commands aimed at the owner's checkout mid-run
     if (!hardReset && inv.sub !== "checkout" && inv.sub !== "switch") continue;
     if (prefixed("CAIRN_RUN_OK")) continue;
-    if (!currentRun()) continue; // no unattended run in flight -- ordinary work
+    if (!currentRuns().length) continue; // no unattended run in flight -- ordinary work
     if (!isMainWorktree(targetDir(inv.dirs, cwd))) continue; // the run's own worktree
 
     const name = hardReset ? "git reset --hard" : `git ${inv.sub}`;
     console.error(
-      `cairn run guard: a batch run (${runId}) is in flight, and this \`${name}\` targets ` +
+      `cairn run guard: a batch run (${runs[0].runId}) is in flight, and this \`${name}\` targets ` +
       "the checkout you work in — it would change your files underneath you.",
     );
     console.error("  run the command inside the run's own worktree, wait for the run to finish,");

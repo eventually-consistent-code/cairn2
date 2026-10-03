@@ -173,3 +173,57 @@ describe("run guard: force-push refused in every session (#250)", () => {
     expect(guard(proj, home, "git push -f -m CAIRN_ALLOW_DESTRUCTIVE_GIT=1").status).toBe(2);
   });
 });
+
+describe("run guard: mid-run push needs manifest push authority (#252)", () => {
+  const phases = [{ number: 3, name: "p3", estimate: { low: 1, high: 2, estUsd: { low: 0, high: 0 } } }];
+  const granted = { granted: true, scope: "manifest-phases", grantedAt: "2026-10-01T00:00:00Z" };
+
+  it("refuses git push while running without granted authority, naming the run", () => {
+    const { proj, home } = fixture({
+      status: "running", phases, pushAuth: { granted: false, scope: "manifest-phases" },
+    });
+    for (const c of ["git push", "git push origin main", "git -C . push -u origin run-branch"]) {
+      const r = guard(proj, home, c);
+      expect(r.status, c).toBe(2);
+      expect(r.stderr, c).toContain("run-x");
+      expect(r.stderr, c).toContain("push");
+    }
+  });
+
+  it("refuses from the run's own worktree too -- that is where a run pushes", () => {
+    const { proj, home } = fixture({
+      status: "running", phases, pushAuth: { granted: false, scope: "manifest-phases" },
+    });
+    const wt = join(freshDir("cairn-runguard-wt-"), "tree");
+    execFileSync("git", ["worktree", "add", "-q", "-b", "runbranch", wt], { cwd: proj });
+    expect(guard(proj, home, "git push origin runbranch", {}, wt).status).toBe(2);
+  });
+
+  it("allows git push while running when authority is granted for the manifest's phases", () => {
+    const { proj, home } = fixture({ status: "running", phases, pushAuth: granted });
+    expect(guard(proj, home, "git push origin main").status).toBe(0);
+  });
+
+  it("granted authority over no phases, or a foreign scope, covers nothing", () => {
+    const empty = fixture({ status: "running", phases: [], pushAuth: granted });
+    expect(guard(empty.proj, empty.home, "git push").status).toBe(2);
+    const wide = fixture({ status: "running", phases, pushAuth: { ...granted, scope: "all" } });
+    expect(guard(wide.proj, wide.home, "git push").status).toBe(2);
+    const missing = fixture({ status: "running", phases });
+    expect(guard(missing.proj, missing.home, "git push").status).toBe(2);
+  });
+
+  it("granted authority does not license a force-push", () => {
+    const { proj, home } = fixture({ status: "running", phases, pushAuth: granted });
+    expect(guard(proj, home, "git push --force-with-lease").status).toBe(2);
+  });
+
+  it("no running manifest: plain push passes; quoted mention passes mid-run", () => {
+    for (const status of ["staged", "complete", "stopped"]) {
+      const { proj, home } = fixture({ status, phases, pushAuth: { granted: false } });
+      expect(guard(proj, home, "git push").status, status).toBe(0);
+    }
+    const { proj, home } = fixture({ status: "running", phases, pushAuth: { granted: false } });
+    expect(guard(proj, home, 'git commit -m "git push later"').status).toBe(0);
+  });
+});

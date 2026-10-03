@@ -205,7 +205,8 @@ batch-specific loop.
      scope-limited to the manifest's phases — REC-5's confirmation
      moved to run start, never silently skipped (record that line in
      the push summary). `pushAuth.granted: false` → the phase ends
-     verified-not-pushed, recorded for the report; nothing pushes.
+     verified-not-pushed, recorded for the report; nothing pushes
+     (enforced by the run guard, which refuses `git push` mid-run).
 3. **Tracker-first visibility.** Per-issue claim/close comments already
    come from work's lifecycle — never duplicate them. ADD, on the
    umbrella issue, ONE comment per phase transition: phase N started /
