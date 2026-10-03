@@ -2878,10 +2878,25 @@ export function buildServer(deps: {
       description:
         "Publish project documentation to the configured docs connector — " +
         "README.md becomes the landing page, docs/ (+ CHANGELOG.md) becomes the child " +
-        "page tree, and the landing page gains a Documentation contents section. Idempotent",
-      inputSchema: z.object({ projectName: z.string().optional() }),
+        "page tree, and the landing page gains a Documentation contents section. Idempotent. " +
+        "Publishes OUTSIDE the repo, so it requires confirm: true — pass it only after the " +
+        "project owner explicitly said yes; without it the call is refused and nothing is published",
+      inputSchema: z.object({
+        projectName: z.string().optional(),
+        confirm: z.boolean().optional().describe(
+          "must be true — the owner's explicit yes to publishing docs externally",
+        ),
+      }),
     },
-    wrap(async (a: { projectName?: string }) => {
+    wrap(async (a: { projectName?: string; confirm?: boolean }) => {
+      // Never auto-publish -- the owner's explicit yes is the only key
+      if (a.confirm !== true) {
+        throw new CairnError(
+          "PRECONDITION_FAILED",
+          "docs_publish refused: publishing pushes repo docs to an external site and needs the owner's explicit yes",
+          "ask the project owner whether to publish the docs; on an explicit yes, call docs_publish again with confirm: true",
+        );
+      }
       const d = dir();
       return publishTree(await getDocsConnector(d), d, a.projectName);
     }),

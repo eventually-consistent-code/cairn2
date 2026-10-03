@@ -23,8 +23,9 @@ until every phase is verified.
    history; its leak gate and diff confirmation apply unchanged) and
    commit the docs. When a docs connector is configured (`docs:` in
    cairn.json), fold an explicit "publish the docs?" OFFER into distill's
-   diff confirmation — one question — and run `docs_publish` only on yes.
-   NEVER auto-publish. Advisory: a distill or publish failure is reported
+   diff confirmation — one question — and run `docs_publish(confirm:
+   true)` only on the owner's explicit yes (the server refuses without
+   it). NEVER auto-publish. Advisory: a distill or publish failure is reported
    and skipped, never blocks the summit — archived phases still resolve
    (milestones/vN), so docs can be regenerated after the archive.
 4. `milestone_complete(summary)` — closes tracker phases (skips recorded
