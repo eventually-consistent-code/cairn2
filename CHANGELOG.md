@@ -1,5 +1,72 @@
 # Changelog
 
+## v2.8.1 — the fixes (2026-10-03)
+
+The first real sweep, taken on v2.8.0, filed eleven findings against
+cairn itself. This release closes all of them through the normal work
+lifecycle, so the next sweep can report them as fixed. Most were rules
+the instructions stated and nothing enforced: git commands that destroy
+work, pushes that skip ship's gate, a docs publish that never asked
+first. One regression found mid-fix (a quoted command substitution the
+new parser read as plain text) is closed here too.
+
+Some of these fixes narrow a gap rather than seal it, and they say so
+below. The follow-ups are filed.
+
+Tool count holds at 87. Suite 1680 → 1735.
+
+### guards
+
+- The run guard now refuses `git reset --hard` and every form of
+  force-push (`--force`, `-f` alone or clustered, `--force-with-lease`,
+  `--force-if-includes`, a `+refspec`) in every session, not only during
+  a run. It reads the command as shell words, so a commit message that
+  mentions a reset passes, and a command substitution inside double
+  quotes is checked as a command of its own. `CAIRN_ALLOW_DESTRUCTIVE_GIT=1`
+  overrides, in the session env or as the command's leading assignment.
+- While a run is live, a `git push` from any worktree is refused unless
+  the run's manifest grants push authority over its phases. There is no
+  override: push authority is the owner's decision at the staging gate.
+  The manifest doesn't record which phase a push carries, so this checks
+  that authority was granted, not that it covers the push.
+- ship's "never push with flagged drift" is now enforced, not just
+  stated. `plan_drift` stamps the commit it checked and whether it came
+  out clean, and an agent push to the default branch is refused when
+  that stamp is missing, dirty, or for a different commit. Other branches
+  are untouched. `CAIRN_ALLOW_UNSHIPPED_PUSH=1` overrides. ship re-runs
+  the drift check after its own last commit so its stamp stays current.
+  The open-issues half of ship's gate is still enforced by procedure,
+  not by the hook.
+- The harness guard now sees through wrapper flags (`sudo -u root tee`,
+  `env -i FOO=1 rm`, `nice -n`, `timeout`, `xargs` and their kin) and
+  through `bash -lc`, where only a literal `-c` used to count. Wrapper
+  coverage is a known list; `su`, `find -delete`/`-exec` and paths fed
+  to `xargs` on stdin are not yet on it.
+- `docs_publish` refuses unless passed `confirm: true`, and the docs and
+  summit procedures pass it only on the owner's explicit yes. Summit's
+  "never auto-publish" rule now has something behind it.
+
+### the sweep
+
+- A sweep manifest now answers to its legs. A finding the leg refuted is
+  refused, a serious security finding needs that leg's two panel votes,
+  and a leg record path outside the project's audit folder, a symlink or
+  a non-regular file is refused instead of read. A finding reworded in
+  both its title and its scenario still links to no leg; that gap is
+  narrowed, not closed.
+- A sweep manifest no longer credits seats a second time for findings
+  its legs already credited, which had doubled every sweep finding's
+  survival count.
+- `ledger_append` gains an evidence-only line that makes no closure
+  claim. A later evidence line for the same task supersedes an earlier
+  closure line, so a misattributed close can be corrected without
+  rewriting an append-only ledger. `audit tests` now logs this way.
+
+### docs
+
+- The server README's tool list (71 → 87) and the runbook's tool
+  catalog (79 → 87) are current.
+
 ## v2.8.0 — the sweep (2026-10-02)
 
 Milestone v8 closes on its capstone: one audit mode that runs every
