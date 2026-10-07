@@ -1,8 +1,13 @@
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Client, InMemoryTransport } from "@modelcontextprotocol/client";
 import { describe, expect, it } from "vitest";
 import { MAX_CANDIDATES, pairRule, type Control, type RuleLine } from "../src/audit/rule-coverage.js";
+import { buildServer } from "../src/index.js";
+import { FakeTracker } from "../src/tracker/fake.js";
 
 /**
  * Phase 25 surface gaps — the pieces of the sweep that live in prose and
@@ -75,6 +80,59 @@ describe("audit sweep mode (#179)", () => {
     for (const f of ["commands/audit.md", "skills/cairn-trailhead/SKILL.md", "harness/AGENTS-cairn.md"]) {
       expect(read(f), f).toContain("sweep (whole-project rescan)");
     }
+  });
+
+  // The prose wraps; compare on collapsed whitespace.
+  const flat = section.replace(/\s+/g, " ");
+
+  it("the report is one prioritized backlog, then the eval table, then spend, then the outlook emit", () => {
+    expect(flat).toContain("regressed critical → new critical → persisting critical → " +
+      "regressed important → new important → persisting important. Minors as counts only");
+    expect(flat).toContain("fixed since the baseline: N");
+    const at = ["Backlog, in exactly this order", "Eval table", "Spend:", "`outlook_emit(tracker:"]
+      .map((s) => flat.indexOf(s));
+    expect(at.every((i) => i >= 0)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    // Spend sums the cost report per filed issue — the flag must exist.
+    expect(flat).toContain('hooks/scripts/cost-report.mjs" --issue <id>');
+    expect(read("hooks/scripts/cost-report.mjs")).toContain('flag("--issue")');
+  });
+
+  it("the eval table reads eval-verdicts --json, and every field it leads with is one the script emits", () => {
+    expect(flat).toContain("node scripts/eval-verdicts.mjs <that file> --json");
+    const dir = mkdtempSync(join(tmpdir(), "cairn-sweep-evals-"));
+    writeFileSync(join(dir, "aggregate-result.json"), JSON.stringify({ cases: [{
+      name: "a", promptMarkdown: "---\ntags: [regression]\n---\n", arms: { with: [{ passed: false }] } }] }));
+    const r = spawnSync(process.execPath, [join(ROOT, "scripts", "eval-verdicts.mjs"), dir, "--json"], { encoding: "utf8" });
+    const row = JSON.parse(r.stdout).cases[0];
+    // "Lead with any row whose `gate` is true and `gateOk` false" — a failing regression row is exactly that.
+    expect(flat).toMatch(/whose `gate` is true and `gateOk` false/);
+    expect(row).toMatchObject({ gate: true, gateOk: false });
+    for (const col of ["case", "tier", "passed", "runs", "verdict"]) expect(row, col).toHaveProperty(col);
+  });
+
+  it("the outlook emit names only tracker keys the tool's schema accepts", async () => {
+    const keys = /`outlook_emit\(tracker: \{([^}]*)\}\)`/.exec(flat)?.[1].split(",").map((k) => k.trim()) ?? [];
+    expect(keys).toEqual(["open", "inProgress", "blocked", "nextVerb", "asOf"]);
+    const projectDir = mkdtempSync(join(tmpdir(), "cairn-sweep-outlook-"));
+    writeFileSync(join(projectDir, "cairn.json"), JSON.stringify({ tracker: { type: "github", config: { repo: "o/r" } } }));
+    const server = buildServer({ projectDir, tracker: new FakeTracker(), fetchLatestVersion: async () => "9.9.9" });
+    const [ct, st] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "test", version: "0.0.0" });
+    await Promise.all([server.connect(st), client.connect(ct)]);
+    const tool = (await client.listTools()).tools.find((t) => t.name === "outlook_emit");
+    const tracker = (tool?.inputSchema.properties as Record<string, { properties?: Record<string, unknown> }>)?.tracker;
+    const accepted = Object.keys(tracker?.properties ?? {});
+    // Unknown keys are stripped, not refused — a misnamed one would vanish from the board silently.
+    for (const k of keys) expect(accepted, k).toContain(k);
+    await client.close();
+  });
+
+  it("--fix runs leg by leg, and a skipped leg is one line, never a stand-in record", () => {
+    expect(flat).toContain("`fix/<leg-scope>-<date>/`");
+    expect(flat).toContain("Never one patch spanning two legs' findings, never one ask across legs");
+    expect(flat).toContain('"leg skipped: memory — no card store here"');
+    expect(flat).toContain("never write a stand-in record for a leg that didn't run");
   });
 });
 

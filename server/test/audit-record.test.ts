@@ -297,6 +297,55 @@ describe("sweep manifest + baseline delta (#215)", () => {
       { legs: [{ scope: "x", path: "y.md" }] })).toThrow(/not sweep-/);
   });
 
+  it("a finding this sweep's panel refuted lands in no delta class", () => {
+    const repo = freshRepo();
+    writeAuditRecord(repo, "sweep-2026-01-01", "findings", [NULL_DEREF]);
+    const killed: AuditFinding = { severity: "important", title: "phantom race",
+      failure_scenario: "two writers interleave and lose an update",
+      panel: [{ seat: "v", verdict: "REFUTED", evidence: "single writer by construction" }] };
+    const second = writeAuditRecord(repo, "sweep-2026-01-02", "findings", [NULL_DEREF, killed]);
+    const d = second.delta!;
+    const classed = [...d.new, ...d.persisting, ...d.fixed, ...d.regressed].map((f) => f.title);
+    expect(classed).toEqual(["lookup dereferences null"]);
+    expect(d.persisting.map((f) => f.title)).toEqual(["lookup dereferences null"]);
+    // Still in the record, marked — just never in the delta section.
+    const raw = readFileSync(second.path, "utf8");
+    expect(raw).toContain("refuted: true — not filed to the tracker");
+    expect(raw).not.toMatch(/^- \w+ — important: phantom race$/m);
+  });
+
+  it("matching is one-to-one, exact titles first — a fuzzy match never steals a title's prior", () => {
+    const repo = freshRepo();
+    const STALE_NODE = minor("cache returns stale node", "map_get after map_set returns the pre-write node");
+    writeAuditRecord(repo, "sweep-2026-01-01", "findings", [STALE_NODE, RETRY_LOOP, NULL_DEREF]);
+    const fuzzy = minor("map read is stale after write", "map_get after map_set returns the pre-write node from cache");
+    const titled = minor("cache returns stale node", "the outlook board shows yesterday's counts after a refresh");
+    // Two paraphrases of one prior null-deref: only one may claim it.
+    const para1 = minor("caller crashes on missing key", "lookup(undefined) returns null and the caller crashes with a TypeError");
+    const para2 = minor("lookup crash on undefined", "lookup(undefined) returns null so the caller crashes with TypeError");
+    const d = writeAuditRecord(repo, "sweep-2026-01-02", "findings", [fuzzy, titled, para1, para2]).delta!;
+    expect(d.persisting.map((f) => f.title)).toEqual(["cache returns stale node", "caller crashes on missing key"]);
+    expect(d.new.map((f) => f.title)).toEqual(["map read is stale after write", "lookup crash on undefined"]);
+    expect(d.fixed.map((f) => f.title)).toEqual(["retry loop never backs off"]);
+  });
+
+  it("the baseline is the latest manifest dated no later than this one — never a later date, never the file being rewritten", () => {
+    const repo = freshRepo();
+    const late = writeAuditRecord(repo, "sweep-2026-01-05", "findings", [NULL_DEREF]);
+    // A backdated sweep has no baseline: the only other manifest is later.
+    const early = writeAuditRecord(repo, "sweep-2026-01-03", "findings", [STALE_FOOTER]);
+    expect(early.delta).toBeNull();
+    // Same-day rerun of the 01-05 sweep overwrites its own file; it diffs
+    // against 01-03, not against the copy it is replacing.
+    const rerun = writeAuditRecord(repo, "sweep-2026-01-05", "findings", [NULL_DEREF, RETRY_LOOP]);
+    expect(rerun.path).toBe(late.path);
+    const d = rerun.delta!;
+    expect(d.baseline.path).toBe(early.path);
+    expect(d.persisting).toEqual([]);
+    expect(d.new.map((f) => f.title)).toEqual(["lookup dereferences null", "retry loop never backs off"]);
+    expect(d.fixed.map((f) => f.title)).toEqual(["settings footer is stale"]);
+  });
+
   it("a sweep manifest credits no seat yield — its legs already did (#255)", () => {
     const repo = freshRepo();
     const yieldBase = fresh();

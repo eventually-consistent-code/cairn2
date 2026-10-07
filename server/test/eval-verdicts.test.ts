@@ -5,7 +5,7 @@
 
 import { describe, it, expect, afterEach } from "vitest";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -149,5 +149,45 @@ describe("eval-verdicts", () => {
     const c = kase("blocky", [], [true]) as { promptMarkdown: string };
     c.promptMarkdown = "---\nname: blocky\ntags:\n  - do\n  - capability\n---\nbody\n";
     expect(run(fixture([c])).out.cases[0].tier).toBe("capability");
+  });
+});
+
+describe("eval-verdicts over the live suite (#209)", () => {
+  const ROOT = join(dirname(SCRIPT), "..");
+
+  it("every evals/ case loads with exactly one tier, and docs/EVALS.md's per-case table agrees", () => {
+    const names = readdirSync(join(ROOT, "evals"), { withFileTypes: true })
+      .filter((d) => d.isDirectory() && /^\d\d-/.test(d.name)).map((d) => d.name).sort();
+    expect(names.length).toBeGreaterThan(0);
+
+    // One run per case, embedded prompt untiered: only the live prompt.md
+    // (found through suite.root) can supply the tier, so an untiered or
+    // double-tiered case in evals/ is an exit-2 load error here.
+    const results = mkdtempSync(join(tmpdir(), "cairn-eval-verdicts-"));
+    dirs.push(results);
+    writeFileSync(join(results, "aggregate-result.json"), JSON.stringify({
+      suite: { root: ROOT },
+      cases: names.map((name) => ({ name, dir: `evals/${name}`, promptMarkdown: "---\nname: x\n---\n",
+        arms: { with: [{ passed: true, graders: [] }], without: [] } })),
+    }));
+    const r = run(results);
+    expect(r.status, r.stderr).toBe(0);
+    const live = Object.fromEntries(r.out.cases.map((c: { case: string; tier: string }) => [c.case, c.tier]));
+
+    // The documented tier for each case: one row per case, plus range rows ("10–19 trigger-*").
+    const docs = readFileSync(join(ROOT, "docs", "EVALS.md"), "utf8");
+    const documented: Record<string, string> = {};
+    for (const m of docs.matchAll(/^\| (\d\d) ([a-z0-9-]+) \| (regression|capability) \|/gm)) {
+      documented[`${m[1]}-${m[2]}`] = m[3];
+    }
+    for (const m of docs.matchAll(/^\| (\d\d)[–-](\d\d) ([a-z0-9-]+)-\* \| (regression|capability) \|/gm)) {
+      for (const n of names) {
+        const num = Number(n.slice(0, 2));
+        if (num >= Number(m[1]) && num <= Number(m[2]) && n.slice(3).startsWith(`${m[3]}-`)) documented[n] = m[4];
+      }
+    }
+    expect(live).toEqual(documented);
+    // The suite keeps at least one gate — a tier flip can't silently empty it.
+    expect(Object.values(live)).toContain("regression");
   });
 });

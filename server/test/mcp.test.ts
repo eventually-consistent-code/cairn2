@@ -286,6 +286,39 @@ describe("cairn MCP server", () => {
     expect((hunch.content as Array<{ text: string }>)[0].text).toMatch(/failure_scenario/);
   });
 
+  it("audit_record carries a sweep manifest's legs and returns its delta — no new tool (#215)", async () => {
+    const footer = { severity: "minor", title: "settings footer is stale",
+      failure_scenario: "open /settings and the footer still says 2025" };
+    const leg = await call("audit_record", { scope: "docs-full", verdict: "findings", findings: [footer] });
+    const legs = [{ scope: "docs-full", path: leg.json.path }];
+    const first = await call("audit_record", {
+      scope: "sweep-2026-01-01", verdict: "findings", findings: [footer], legs,
+    });
+    expect(first.isError).toBeFalsy();
+    expect(first.json.delta).toBeNull();
+    const raw = readFileSync(first.json.path, "utf8");
+    expect(raw).toContain(`leg: docs-full => ${leg.json.path}`);
+    expect(raw).toMatch(/settings footer is stale\nscenario: [^\n]*\nsource leg: docs-full/);
+
+    // The leg's own judgment binds the manifest through the tool too (#248).
+    const killedLeg = await call("audit_record", { scope: "review-sweep", verdict: "findings", findings: [
+      { severity: "important", title: "phantom race", failure_scenario: "two writers interleave and lose an update",
+        panel: [{ seat: "v", verdict: "REFUTED", evidence: "single writer by construction" }] }] });
+    const resurrected = await call("audit_record", { scope: "sweep-2026-01-02", verdict: "findings", findings: [
+      { severity: "important", title: "phantom race", failure_scenario: "two writers interleave and lose an update",
+        panel: [{ seat: "v", verdict: "CONFIRMED", evidence: "looked again" }] }],
+      legs: [{ scope: "review-sweep", path: killedLeg.json.path }] });
+    expect(resurrected.isError).toBe(true);
+    expect(resurrected.json.code).toBe("PRECONDITION_FAILED");
+
+    // The docs leg re-runs clean; the next manifest diffs against the first.
+    const clean = await call("audit_record", { scope: "docs-full", verdict: "pass", findings: [] });
+    const second = await call("audit_record", { scope: "sweep-2026-01-02", verdict: "pass", findings: [],
+      legs: [{ scope: "docs-full", path: clean.json.path }] });
+    expect(second.json.delta).toMatchObject({ baseline: { path: first.json.path }, new: [], persisting: [], regressed: [] });
+    expect(second.json.delta.fixed.map((f: { title: string }) => f.title)).toEqual(["settings footer is stale"]);
+  });
+
   it("plan lifecycle through tools: scaffold → ensure → issues_set → status → drift", async () => {
     const proj = await call("plan_scaffold_project", { name: "T" });
     expect(proj.json.created.length).toBe(2);
